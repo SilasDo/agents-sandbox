@@ -66,3 +66,11 @@ The trade-off: the seed write briefly asserts "applied" before the VM exists. If
 what is baked in, which is harmless because with no VM `PlanReconfig` short-circuits to no recreate. Recreated VMs (a
 genuine config change against an existing home) still refresh fingerprints via `persistConfigHashes` after creation; the
 state is never fingerprint-less on that path, so the change detected there is real.
+
+## Known gap (issue #223)
+
+`tmpSizeChange`, `workspaceQuotaChange`, and `homeVolumeChange` compare against `cfg.Volumes[...]`, but the SDK does not
+round-trip volumes on read-back (same fact behind the fingerprint approach), so these three detectors never fire — a
+changed `tmp_size`/workspace quota on an existing VM is silently ignored until an unrelated recreate. `rootDiskChange`
+reads `cfg.RootDisk` and is unaffected. Fix is either a fingerprint (as for network/env) or deleting the dead detectors;
+tracked in #223, out of scope for #221.
