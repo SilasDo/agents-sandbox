@@ -97,10 +97,10 @@ func TestOfferDismissedDoesNotPrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
-	if err := state.WriteRootState(state.RootState{
+	if err := seedRootState(state.RootState{
 		Migrations: map[string]state.Migration{MigrationName: {Status: state.MigrationDismissed}},
 	}); err != nil {
-		t.Fatalf("WriteRootState: %v", err)
+		t.Fatalf("seedRootState: %v", err)
 	}
 
 	var prompted bool
@@ -125,7 +125,7 @@ func TestOfferTerminalMigrationDoesNotPrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCompleted},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -149,7 +149,7 @@ func TestOfferFinalizesOpenCampaignWithNothingLeft(t *testing.T) {
 	name := naming.HomePrefix + "done"
 	addVolumeDir(t, legacy, name)
 	// Campaign copied everything, then crashed before writing completed.
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying, Copied: []string{name}},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -189,7 +189,7 @@ func TestOfferStartFreshIsNotLostToACompletedCampaign(t *testing.T) {
 		if m, _ := root.Migration(MigrationName); m.Status != "" {
 			t.Fatalf("precondition: status = %q, want pending", m.Status)
 		}
-		if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+		if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 			MigrationName: {Status: state.MigrationCompleted},
 		}}); err != nil {
 			t.Fatalf("concurrent completion: %v", err)
@@ -214,20 +214,13 @@ func TestOfferStartFreshIsNotLostToACompletedCampaign(t *testing.T) {
 
 // TestOfferStartFreshLockFailureSurfaces pins that a migration-lock acquisition
 // failure on the start-fresh path surfaces as an Offer error rather than a
-// silent no-op. A regular file occupying $MSB_HOME/.agents-sandbox makes the
-// lock directory creation fail.
+// silent no-op. A directory occupying the root-state lock path makes the lock
+// open fail.
 func TestOfferStartFreshLockFailureSurfaces(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
-
-	privateHome := runtime.PrivateHome()
-	if err := os.MkdirAll(privateHome, 0o750); err != nil {
-		t.Fatalf("mkdir private home: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(privateHome, ".agents-sandbox"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("block lock dir: %v", err)
-	}
+	blockRootLock(t)
 
 	var prompted bool
 	ui := interactiveUI(choiceFresh, &prompted)
@@ -452,7 +445,7 @@ func makeLegacyVolumesUnlistable(t *testing.T, legacy string) {
 func seedPartialDestination(t *testing.T, legacy, name string) {
 	t.Helper()
 	addVolumeDir(t, legacy, name)
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
 		t.Fatalf("seed copying migration: %v", err)
@@ -526,7 +519,7 @@ func TestOfferStartFreshRemovalFailureAborts(t *testing.T) {
 // never clobbers a terminal write another session already made.
 func TestFinalizeCompletedCampaignTerminalIsNoOp(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCompleted},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -667,7 +660,7 @@ func TestOfferCopyingListingErrorBlocks(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	makeLegacyVolumesUnlistable(t, legacy)
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -788,7 +781,9 @@ func TestFinalizeMigrationWarnsExcluded(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := termio.NewTestMock(t)
 	m := state.Migration{Status: state.MigrationCopying, Excluded: []string{naming.HomePrefix + "bad"}}
-	if err := finalizeMigration(m, &ui); err != nil {
+	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
+		return finalizeMigration(tx, m, &ui)
+	}); err != nil {
 		t.Fatalf("finalizeMigration: %v", err)
 	}
 	if len(ui.WarnCalls) != 1 {

@@ -226,7 +226,7 @@ func TestResolveHomeAction_ActionQuitReturnsQuit(t *testing.T) {
 func TestRecordHomeImage_UpdatesDigestInState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
-	state.WriteState(state.Key{Slug: "myproj", Agent: "opencode"}, state.HomeState{
+	seedHomeState(state.Key{Slug: "myproj", Agent: "opencode"}, state.HomeState{
 		HomeVolume:  "agents-sandbox-home-myproj-20260806T143022",
 		ImageDigest: "sha256:old",
 	})
@@ -262,6 +262,55 @@ func TestRecordHomeImage_MissingStateIsNoop(t *testing.T) {
 		&termio.Mock{},
 	); err != nil {
 		t.Fatalf("RecordHomeImage should not error on missing state, got: %v", err)
+	}
+}
+
+// TestApplyHomeActionAbortsWhenHomeVolumeChangedConcurrently pins the same
+// compare-and-set guard for the run-time home action: after its msb I/O it
+// commits under the home lock only if home_volume is still the resolved one.
+func TestApplyHomeActionAbortsWhenHomeVolumeChangedConcurrently(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+
+	key := state.Key{Slug: "myproj", Agent: "opencode"}
+	oldVol := "agents-sandbox-home-myproj-old"
+	seedHomeState(key, state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"})
+
+	mock := &msb.MockMsbClient{}
+	mock.CreateSandboxFn = func(_ context.Context, _ string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
+		if err := state.WithHomeState(key, func(cur *state.HomeState, _ bool) (bool, error) {
+			cur.HomeVolume = "agents-sandbox-home-myproj-other"
+			return true, nil
+		}); err != nil {
+			t.Fatalf("concurrent write: %v", err)
+		}
+		return msb.NewMockSandbox(msb.SandboxOpts{}), nil
+	}
+	vm := NewManager(&termio.Mock{})
+
+	_, err := vm.ApplyHomeAction(
+		context.Background(),
+		mock,
+		key,
+		oldVol,
+		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		ActionReset,
+		options.RunOptions{},
+		&termio.Mock{},
+	)
+	if err == nil {
+		t.Fatal("expected a concurrent-change error, got nil")
+	}
+	if !strings.Contains(err.Error(), "home volume changed concurrently") {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.HomeVolume != "agents-sandbox-home-myproj-other" {
+		t.Errorf("HomeVolume = %q, want the concurrent writer's value", st.HomeVolume)
 	}
 }
 
@@ -318,7 +367,7 @@ func TestApplyHomeAction_ExecutesAndKeepsOld(t *testing.T) {
 
 			slug := "myproj"
 			oldVol := "agents-sandbox-home-myproj-old"
-			state.WriteState(
+			seedHomeState(
 				state.Key{Slug: slug, Agent: "opencode"},
 				state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 			)
@@ -373,7 +422,7 @@ func TestApplyHomeAction_Reset_DryRun_NoWrites(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)
@@ -424,7 +473,7 @@ func TestApplyHomeAction_Migrate_DryRunVM_NoStateWrite(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)
@@ -470,7 +519,7 @@ func TestApplyHomeAction_Migrate_CopyFails_RemovesNewVolume(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)
@@ -581,7 +630,7 @@ func TestResolveHomeVolume_FoundInState(t *testing.T) {
 		return msb.MockVolumeHandle{Name_: name}, nil
 	}
 
-	state.WriteState(state.Key{Slug: "myproj", Agent: "opencode"}, state.HomeState{
+	seedHomeState(state.Key{Slug: "myproj", Agent: "opencode"}, state.HomeState{
 		HomeVolume:  "agents-sandbox-home-myproj-20260806T143022",
 		ImageDigest: "sha256:abc",
 	})
@@ -697,7 +746,7 @@ func TestResolveHomeVolume_VolumeNotFoundInSandbox(t *testing.T) {
 		return msb.MockVolumeHandle{Name_: name}, nil
 	}
 
-	state.WriteState(state.Key{Slug: "orphanproj", Agent: "opencode"}, state.HomeState{
+	seedHomeState(state.Key{Slug: "orphanproj", Agent: "opencode"}, state.HomeState{
 		HomeVolume:  "agents-sandbox-home-orphanproj-20260806T143022",
 		ImageDigest: "sha256:abc",
 	})
@@ -833,7 +882,7 @@ func TestResolveHomeVolume_RecoversWhenRecordedVolumeGone(t *testing.T) {
 	const recorded = "agents-sandbox-home-drifted-20250101T000000"
 	const recovered = "agents-sandbox-home-drifted-20260101T000000"
 	key := state.Key{Slug: "drifted", Agent: "opencode"}
-	state.WriteState(key, state.HomeState{HomeVolume: recorded, ImageDigest: "sha256:old"})
+	seedHomeState(key, state.HomeState{HomeVolume: recorded, ImageDigest: "sha256:old"})
 
 	mock := &msb.MockMsbClient{}
 	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
@@ -868,10 +917,10 @@ func TestResolveHomeVolume_RecoversWhenRecordedVolumeGone(t *testing.T) {
 	}
 }
 
-// TestResolveHomeVolume_RecoveryWriteStateFails covers the branch where the
-// recovered state cannot be persisted (e.g. a directory sits at the state
-// path): the volume is still returned and a warning is emitted.
-func TestResolveHomeVolume_RecoveryWriteStateFails(t *testing.T) {
+// TestResolveHomeVolume_RecoveryStateFails covers the branch where the recovery
+// transaction cannot run (e.g. a directory sits at the state path, so the state
+// read fails): the volume is still returned and a warning is emitted.
+func TestResolveHomeVolume_RecoveryStateFails(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	const recovered = "agents-sandbox-home-writefail-20260101T000000"
@@ -912,8 +961,8 @@ func TestResolveHomeVolume_RecoveryWriteStateFails(t *testing.T) {
 	if volName != recovered {
 		t.Errorf("volume = %q, want recovered %q", volName, recovered)
 	}
-	if !strings.Contains(strings.Join(ui.WarnCalls, " "), "failed to write state file") {
-		t.Errorf("expected a write-state warning, got %v", ui.WarnCalls)
+	if !strings.Contains(strings.Join(ui.WarnCalls, " "), "failed to recover state file") {
+		t.Errorf("expected a state-recovery warning, got %v", ui.WarnCalls)
 	}
 }
 
@@ -926,7 +975,7 @@ func TestResolveHomeVolume_StateWinsOverRecoveredVolume(t *testing.T) {
 	const stateVol = "agents-sandbox-home-precedence-20250101T000000"
 	const liveVol = "agents-sandbox-home-precedence-20260101T000000"
 	key := state.Key{Slug: "precedence", Agent: "opencode"}
-	state.WriteState(key, state.HomeState{HomeVolume: stateVol, ImageDigest: "sha256:abc"})
+	seedHomeState(key, state.HomeState{HomeVolume: stateVol, ImageDigest: "sha256:abc"})
 
 	mock := &msb.MockMsbClient{}
 	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
@@ -970,13 +1019,17 @@ func TestResolveHomeVolume_RecoveryPreservesFingerprints(t *testing.T) {
 	const recorded = "agents-sandbox-home-fp-20250101T000000"
 	const recovered = "agents-sandbox-home-fp-20260101T000000"
 	key := state.Key{Slug: "fp", Agent: "opencode"}
-	state.WriteState(key, state.HomeState{
-		HomeVolume:   recorded,
-		ImageDigest:  "sha256:old",
-		EnvState:     state.EnvState{Hash: "envhash", Names: []string{"A"}},
-		SecretState:  state.SecretState{Hash: "secrethash", Names: []string{"B"}},
-		NetworkState: state.NetworkState{Hash: "nethash", Names: []string{"example.com"}},
-		MountState:   state.MountState{Hash: "mountHash", Names: []string{"/x"}},
+	seedHomeState(key, state.HomeState{
+		HomeVolume:      recorded,
+		ImageDigest:     "sha256:old",
+		AgentVersion:    "1.2.3",
+		AgentSource:     "tool",
+		DockerSource:    "user",
+		OfferedVersions: []string{"2.0.0"},
+		EnvState:        state.EnvState{Hash: "envhash", Names: []string{"A"}},
+		SecretState:     state.SecretState{Hash: "secrethash", Names: []string{"B"}},
+		NetworkState:    state.NetworkState{Hash: "nethash", Names: []string{"example.com"}},
+		MountState:      state.MountState{Hash: "mountHash", Names: []string{"/x"}},
 	})
 
 	mock := &msb.MockMsbClient{}
@@ -1013,6 +1066,10 @@ func TestResolveHomeVolume_RecoveryPreservesFingerprints(t *testing.T) {
 	if hs.EnvState.Hash != "envhash" || hs.NetworkState.Hash != "nethash" ||
 		hs.SecretState.Hash != "secrethash" || hs.MountState.Hash != "mountHash" {
 		t.Errorf("fingerprints not preserved: %+v", hs)
+	}
+	if hs.AgentVersion != "1.2.3" || hs.AgentSource != "tool" || hs.DockerSource != "user" ||
+		len(hs.OfferedVersions) != 1 || hs.OfferedVersions[0] != "2.0.0" {
+		t.Errorf("upgrade fields not preserved: %+v", hs)
 	}
 	if hs.ImageDigest != "sha256:new" {
 		t.Errorf("digest = %q, want %q", hs.ImageDigest, "sha256:new")
@@ -1269,7 +1326,7 @@ func TestApplyHomeAction_Reset_Success(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)
@@ -1317,15 +1374,19 @@ func TestApplyHomeAction_PreservesFingerprints(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{
-			HomeVolume:   oldVol,
-			ImageDigest:  "sha256:old",
-			EnvState:     state.EnvState{Hash: "envhash", Names: []string{"FOO"}},
-			SecretState:  state.SecretState{Hash: "sechash", Names: []string{"TOKEN"}},
-			NetworkState: state.NetworkState{Hash: "nethash", Names: []string{"none"}},
-			MountState:   state.MountState{Hash: "mounthash", Names: []string{"/mnt/x"}},
+			HomeVolume:      oldVol,
+			ImageDigest:     "sha256:old",
+			AgentVersion:    "1.2.3",
+			AgentSource:     "tool",
+			DockerSource:    "user",
+			OfferedVersions: []string{"2.0.0"},
+			EnvState:        state.EnvState{Hash: "envhash", Names: []string{"FOO"}},
+			SecretState:     state.SecretState{Hash: "sechash", Names: []string{"TOKEN"}},
+			NetworkState:    state.NetworkState{Hash: "nethash", Names: []string{"none"}},
+			MountState:      state.MountState{Hash: "mounthash", Names: []string{"/mnt/x"}},
 		},
 	)
 
@@ -1353,6 +1414,10 @@ func TestApplyHomeAction_PreservesFingerprints(t *testing.T) {
 		st.NetworkState.Hash != "nethash" || st.MountState.Hash != "mounthash" {
 		t.Errorf("fingerprints not preserved after home action: %+v", st)
 	}
+	if st.AgentVersion != "1.2.3" || st.AgentSource != "tool" || st.DockerSource != "user" ||
+		len(st.OfferedVersions) != 1 || st.OfferedVersions[0] != "2.0.0" {
+		t.Errorf("upgrade fields not preserved after home action: %+v", st)
+	}
 	if st.ImageDigest != "sha256:new" {
 		t.Errorf("state ImageDigest = %q, want %q", st.ImageDigest, "sha256:new")
 	}
@@ -1364,7 +1429,7 @@ func TestApplyHomeAction_PrefillFails_RemovesVolume(t *testing.T) {
 
 	slug := "myproj"
 	oldVol := "agents-sandbox-home-myproj-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)

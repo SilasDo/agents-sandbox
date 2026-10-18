@@ -364,7 +364,7 @@ func TestCopyVolumesResumesFromCopying(t *testing.T) {
 	addVolumeDir(t, legacy, done)
 	addVolumeDir(t, legacy, partial)
 	// A prior campaign copied "done" then crashed; "partial" is present but unrecorded.
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying, Copied: []string{done}},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -466,19 +466,12 @@ func TestCopyVolumesExcludesCopyTreeFailureAndCompletes(t *testing.T) {
 }
 
 // TestCopyVolumesLockFailureAborts pins that a failure to acquire the migration
-// lock aborts the campaign. A regular file occupying $MSB_HOME/.agents-sandbox
-// makes the lock directory creation fail.
+// lock aborts the campaign. A directory occupying the root-state lock path
+// makes the lock open fail.
 func TestCopyVolumesLockFailureAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	installLegacyHome(t)
-
-	privateHome := runtime.PrivateHome()
-	if err := os.MkdirAll(privateHome, 0o750); err != nil {
-		t.Fatalf("mkdir private home: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(privateHome, ".agents-sandbox"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("block lock dir: %v", err)
-	}
+	blockRootLock(t)
 
 	ui := termio.NewTestMock(t)
 	if err := CopyVolumes(context.Background(), &msb.MockMsbClient{}, &ui); err == nil {
@@ -501,7 +494,7 @@ func TestCopyVolumesTerminalIsNoOp(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
 	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed} {
-		if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+		if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 			MigrationName: {Status: status},
 		}}); err != nil {
 			t.Fatalf("seed %q: %v", status, err)
@@ -523,7 +516,7 @@ func TestCopyVolumesTerminalIsNoOp(t *testing.T) {
 func TestCopyVolumesResumeListingErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	makeLegacyVolumesUnlistable(t, installLegacyHome(t))
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -543,7 +536,7 @@ func TestCopyVolumesCopiedSaveErrorAborts(t *testing.T) {
 	legacy := installLegacyHome(t)
 	name := naming.HomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -568,7 +561,7 @@ func TestCopyVolumesExclusionSaveErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
-	if err := state.WriteRootState(state.RootState{Migrations: map[string]state.Migration{
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
@@ -602,15 +595,24 @@ func TestCopyVolumesStateWriteFailureAborts(t *testing.T) {
 	}
 }
 
-// blockRootState makes the root state write fail while leaving it readable, by
-// removing write permission from the state directory: the atomic write's temp
-// file cannot be created. A missing state file still reads as the zero state.
+// blockRootState makes the root state write fail while leaving it readable and
+// the lock acquirable, by removing write permission from the state directory:
+// the atomic write's temp file cannot be created. The lock dir and file are
+// pre-created so the campaign reaches its state writes rather than failing at
+// the lock; a missing state file still reads as the zero state.
 func blockRootState(t *testing.T) {
 	t.Helper()
 	if os.Geteuid() == 0 {
 		t.Skip("running as root: a read-only directory does not block writes")
 	}
 	dir := configpaths.Get().UserStateDir()
+	locks := filepath.Join(dir, "locks")
+	if err := os.MkdirAll(locks, 0o700); err != nil {
+		t.Fatalf("create locks dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(locks, "root.lock"), nil, 0o600); err != nil {
+		t.Fatalf("create root lock: %v", err)
+	}
 	if err := os.Chmod(dir, 0o500); err != nil {
 		t.Fatalf("block root state dir: %v", err)
 	}

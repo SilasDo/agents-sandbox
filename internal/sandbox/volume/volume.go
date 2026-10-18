@@ -149,20 +149,29 @@ func (vm *Manager) ApplyHomeAction(
 		}
 	}
 
-	newState := state.NewHomeState(newName, info.Digest)
-	// Preserve the env/secret/network/mount fingerprints from the previous
-	// state: a home action changes the home volume data, not the env/secrets/
-	// network/mounts baked into the VM, so discarding them would trigger a
-	// false VM rebuild on the next startup (see EnvChanged/SecretsChanged/
-	// NetworkChanged/MountsChanged treating empty state as "changed").
-	if prior, err := state.ReadState(k); err == nil {
-		newState.EnvState = prior.EnvState
-		newState.SecretState = prior.SecretState
-		newState.NetworkState = prior.NetworkState
-		newState.MountState = prior.MountState
-	}
-	if err := state.WriteState(k, newState); err != nil {
-		ui.Warnf("failed to write state file: %v", err)
+	// Change only the home volume identity and digest, keeping every other field
+	// (env/secret/network/mount fingerprints and the upgrade state) that a home
+	// action does not affect: dropping them would trigger a false VM rebuild or
+	// re-fire the upgrade prompt on the next startup (see
+	// EnvChanged/SecretsChanged/NetworkChanged/MountsChanged treating empty
+	// state as "changed"). The write runs under the home lock but is guarded by a
+	// compare-and-set on the resolved home volume, since the msb I/O above ran
+	// without the lock: if another writer changed home_volume in the meantime,
+	// abort and drop the new volume rather than clobber it.
+	if err := state.WithHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
+		if cur.HomeVolume != oldVolume {
+			return false, fmt.Errorf(
+				"home volume changed concurrently (want %q, have %q)",
+				oldVolume,
+				cur.HomeVolume,
+			)
+		}
+		cur.HomeVolume = newName
+		cur.ImageDigest = info.Digest
+		return true, nil
+	}); err != nil {
+		vm.cleanupVolume(ctx, client, newName, ui)
+		return "", err
 	}
 	ui.Infof("%s to new home volume %q (old %q kept)", label, newName, oldVolume)
 	return newName, nil

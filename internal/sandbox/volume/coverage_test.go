@@ -110,7 +110,7 @@ func TestVolumeOp_ReadStateCorruptError(t *testing.T) {
 func TestVolumeOp_NoVolumeToOperate(t *testing.T) {
 	_, ui := setupVolumeOpsFixtures(t)
 	slug := "novolproj"
-	state.WriteState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{})
+	seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{})
 
 	err := CmdReset(
 		context.Background(),
@@ -129,7 +129,7 @@ func TestVolumeOp_NoVolumeToOperate(t *testing.T) {
 func TestVolumeOp_PrefillFails(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:abc"},
 	)
@@ -152,7 +152,7 @@ func TestVolumeOp_PrefillFails(t *testing.T) {
 func TestVolumeOp_MainFails_CleanupVolumeFailsWarns(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:abc"},
 	)
@@ -186,7 +186,7 @@ func TestVolumeOp_MainFails_CleanupVolumeFailsWarns(t *testing.T) {
 	}
 	var warned bool
 	for _, c := range ui.WarnCalls {
-		if strings.Contains(c, "failed to clean up") {
+		if strings.Contains(c, "failed to remove new volume") {
 			warned = true
 		}
 	}
@@ -195,10 +195,10 @@ func TestVolumeOp_MainFails_CleanupVolumeFailsWarns(t *testing.T) {
 	}
 }
 
-func TestVolumeOp_WriteStateFails_Warns(t *testing.T) {
+func TestVolumeOp_WriteStateFails_ReturnsError(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:old"},
 	)
@@ -230,17 +230,18 @@ func TestVolumeOp_WriteStateFails_Warns(t *testing.T) {
 		false,
 		ui,
 	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected a state-write error, got nil")
 	}
-	var warned bool
-	for _, c := range ui.WarnCalls {
-		if strings.Contains(c, "failed to write state file") {
-			warned = true
-		}
+	if !strings.Contains(err.Error(), "write state") {
+		t.Errorf("unexpected error: %v", err)
 	}
-	if !warned {
-		t.Errorf("expected write-state warning, got: %v", ui.WarnCalls)
+	st, readErr := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
+	if readErr != nil {
+		t.Fatalf("ReadState: %v", readErr)
+	}
+	if st.HomeVolume != "old-vol" {
+		t.Errorf("HomeVolume = %q, want the uncommitted write to leave old-vol in place", st.HomeVolume)
 	}
 }
 
@@ -248,7 +249,7 @@ func TestVolumeOp_RemoveOldFails_Warns(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 	slug := "testproj-aBc1234D"
 	oldVol := "agents-sandbox-home-" + slug + "-old"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: oldVol, ImageDigest: "sha256:old"},
 	)
@@ -294,7 +295,7 @@ func TestCmdEdit_LoadImageFails(t *testing.T) {
 	docker.WithDefaultErrorDockerMock(t)
 
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:abc"},
 	)
@@ -369,7 +370,7 @@ func TestCopyVolume_DestroyFailureWarns(t *testing.T) {
 func TestCmdEdit_DestroyFailureWarns(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:abc"},
 	)
@@ -468,7 +469,7 @@ func TestRecordHomeImage_WriteStateFails(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "writefail-rh"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "vol", ImageDigest: "sha256:old"},
 	)
@@ -491,12 +492,12 @@ func TestRecordHomeImage_WriteStateFails(t *testing.T) {
 	}
 	var warned bool
 	for _, c := range ui.WarnCalls {
-		if strings.Contains(c, "failed to write state file") {
+		if strings.Contains(c, "failed to update state file") {
 			warned = true
 		}
 	}
 	if !warned {
-		t.Errorf("expected write-state warning, got: %v", ui.WarnCalls)
+		t.Errorf("expected update-state warning, got: %v", ui.WarnCalls)
 	}
 }
 
@@ -596,12 +597,12 @@ func TestApplyHomeAction_CreateVolumeFails(t *testing.T) {
 	}
 }
 
-func TestApplyHomeAction_WriteStateFails_Warns(t *testing.T) {
+func TestApplyHomeAction_WriteStateFails_ReturnsError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
 
 	slug := "writefail-apply"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:old"},
 	)
@@ -617,10 +618,12 @@ func TestApplyHomeAction_WriteStateFails_Warns(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(sdir, 0o700) })
 
 	mock := &msb.MockMsbClient{}
+	var createdVol string
 	mock.CreateSandboxFn = func(_ context.Context, _ string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
 		return msb.NewMockSandbox(msb.SandboxOpts{}), nil
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		createdVol = name
 		return &msb.MockVolumeHandle{Name_: name}, nil
 	}
 
@@ -636,17 +639,20 @@ func TestApplyHomeAction_WriteStateFails_Warns(t *testing.T) {
 		options.RunOptions{},
 		ui,
 	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected a state-write error, got nil")
 	}
-	var warned bool
-	for _, c := range ui.WarnCalls {
-		if strings.Contains(c, "failed to write state file") {
-			warned = true
+	if !strings.Contains(err.Error(), "write state") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	var cleanedUp bool
+	for _, v := range mock.RemovedVolumes {
+		if v == createdVol {
+			cleanedUp = true
 		}
 	}
-	if !warned {
-		t.Errorf("expected write-state warning, got: %v", ui.WarnCalls)
+	if !cleanedUp {
+		t.Errorf("expected uncommitted volume %q to be cleaned up; removed=%v", createdVol, mock.RemovedVolumes)
 	}
 }
 
@@ -654,7 +660,7 @@ func TestCmdEdit_LoadImageFailsInMain(t *testing.T) {
 	mock, ui := setupVolumeOpsFixtures(t)
 
 	slug := "testproj-aBc1234D"
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
 		state.HomeState{HomeVolume: "old-vol", ImageDigest: "sha256:abc"},
 	)

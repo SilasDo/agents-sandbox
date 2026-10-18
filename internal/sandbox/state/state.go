@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/inoio/agents-sandbox/internal/atomicwrite"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -20,6 +21,13 @@ type Key struct {
 
 func stateRoot() string {
 	return configpaths.Get().UserStateDir()
+}
+
+// locksDir is the never-deleted tree holding every lock file. Lock files live
+// outside the removable per-key state directory so removing a key's state can
+// never delete the lock a concurrent writer holds (or resurrect removed state).
+func locksDir() string {
+	return filepath.Join(stateRoot(), "locks")
 }
 
 // KeyDir returns the state directory for a project/agent key.
@@ -60,12 +68,30 @@ type MountState = FingerprintState
 //
 //exhaustruct:ignore
 type HomeState struct {
-	HomeVolume   string       `yaml:"home_volume"`
-	ImageDigest  string       `yaml:"image_digest"`
-	EnvState     EnvState     `yaml:"env_state,omitempty"`
-	SecretState  SecretState  `yaml:"secret_state,omitempty"`
-	NetworkState NetworkState `yaml:"network_state,omitempty"`
-	MountState   MountState   `yaml:"mount_state,omitempty"`
+	HomeVolume      string       `yaml:"home_volume"`
+	ImageDigest     string       `yaml:"image_digest"`
+	AgentVersion    string       `yaml:"agent_version,omitempty"`
+	AgentSource     string       `yaml:"agent_source,omitempty"`
+	DockerSource    string       `yaml:"docker_source,omitempty"`
+	OfferedVersions []string     `yaml:"offered_versions,omitempty"`
+	EnvState        EnvState     `yaml:"env_state,omitempty"`
+	SecretState     SecretState  `yaml:"secret_state,omitempty"`
+	NetworkState    NetworkState `yaml:"network_state,omitempty"`
+	MountState      MountState   `yaml:"mount_state,omitempty"`
+}
+
+// Offered reports whether the version has already had its rebuild prompt shown
+// for this project's image.
+func (s *HomeState) Offered(v string) bool {
+	return slices.Contains(s.OfferedVersions, v)
+}
+
+// MarkOffered records that v's rebuild prompt has been shown for this project's
+// image, so it is not offered again.
+func (s *HomeState) MarkOffered(v string) {
+	if !s.Offered(v) {
+		s.OfferedVersions = append(s.OfferedVersions, v)
+	}
 }
 
 // NewHomeState returns a HomeState with a zeroed EnvState/SecretState, ready
@@ -102,12 +128,19 @@ func stateFile(k Key) string {
 	return slugPath(k, "state.yaml")
 }
 
-// ErrStateNotFound is returned by readState when no state file exists yet.
+// ErrStateNotFound is returned by ReadState when no state file exists yet.
 var ErrStateNotFound = errors.New("state file not found")
+
+// ErrStateUnparsable wraps a YAML parse failure in ReadState, classifying a
+// corrupt document distinctly from a missing one. WithHomeState returns it
+// without writing so an unknown document is never clobbered; only recovery
+// (RecoverHomeState) may discard an unparsable document.
+var ErrStateUnparsable = errors.New("state file is unparsable")
 
 // ReadState loads and parses the state file.
 // Returns ErrStateNotFound with a nil state if no file exists.
-// Returns an error for parse failures or non-"not found" I/O errors.
+// Returns ErrStateUnparsable-wrapped error for parse failures and a plain error
+// for non-"not found" I/O errors.
 func ReadState(k Key) (*HomeState, error) {
 	path := stateFile(k)
 	data, err := os.ReadFile(path)
@@ -119,13 +152,14 @@ func ReadState(k Key) (*HomeState, error) {
 	}
 	var state HomeState
 	if err := yaml.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("parse state file %s: %w", path, err)
+		return nil, fmt.Errorf("parse state file %s: %w: %w", path, ErrStateUnparsable, err)
 	}
 	return &state, nil
 }
 
-// WriteState atomically writes the state to disk.
-func WriteState(k Key, state HomeState) error {
+// writeState atomically writes the state to disk. Unexported so every mutation
+// flows through WithHomeState or RecoverHomeState.
+func writeState(k Key, state HomeState) error {
 	data, err := yaml.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
@@ -136,18 +170,22 @@ func WriteState(k Key, state HomeState) error {
 	return nil
 }
 
-// RemoveState removes the state file and its per-agent directory. Legacy
-// agent-less keys remove only the legacy state file so per-project claims and
-// other agents' state survive.
-func RemoveState(k Key) error {
-	if k.Agent != "" {
-		return os.RemoveAll(KeyDir(k))
-	}
-	// Legacy agent-less state lived directly under the slug dir; remove only
-	// the legacy state file, leaving per-project claims and sibling per-agent
-	// state intact.
-	if err := os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml")); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+// RemoveHomeState removes the state file and its per-agent directory, taking
+// the blocking home lock, like every other state mutation, so a concurrent
+// writer cannot resurrect the removed state. Lock files under locksDir are
+// never removed. Legacy agent-less keys remove only the legacy state file so
+// per-project claims and other agents' state survive.
+func RemoveHomeState(k Key) error {
+	return withHomeLock(k, func() error {
+		if k.Agent != "" {
+			return os.RemoveAll(KeyDir(k))
+		}
+		// Legacy agent-less state lived directly under the slug dir; remove
+		// only the legacy state file, leaving per-project claims and sibling
+		// per-agent state intact.
+		if err := os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml")); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	})
 }

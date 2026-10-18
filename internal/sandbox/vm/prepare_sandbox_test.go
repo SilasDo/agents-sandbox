@@ -36,10 +36,6 @@ import (
 func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.5.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
-
 	// The resolver records the requested version and returns it, so the test
 	// observes exactly what PrepareSandbox passed instead of a network lookup.
 	var requested string
@@ -89,9 +85,14 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 	mock.SetGotSandbox(sh)
 	msb.WithMsbMock(t, mock)
 
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.5.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
@@ -122,9 +123,6 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 // force-rebuilt and the run reports the newer version being baked in.
 func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.0.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
 
 	origUpgradeInfo := agentLatestVersion
 	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "2.0.0", nil }
@@ -176,9 +174,14 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 	mock.SetGotSandbox(sh)
 	msb.WithMsbMock(t, mock)
 
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.0.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
@@ -272,9 +275,14 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 
 	// Seed home state so ResolveHomeVolume reuses the existing volume and
 	// digest matches (no image-change home-volume prompt).
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.0.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	// The opencode daemon is healthy inside the VM, so ensureDaemon returns
@@ -370,9 +378,14 @@ func TestPrepareSandboxRunsStartupHook(t *testing.T) {
 	mock.SetGotSandbox(sh)
 	msb.WithMsbMock(t, mock)
 
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.0.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
@@ -410,9 +423,6 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 	origUpgradeInfo := agentLatestVersion
 	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
 	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.5.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
 
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
@@ -452,9 +462,14 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 	mock.SetGotSandbox(sh)
 	msb.WithMsbMock(t, mock)
 
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.5.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	var offeredWith msb.Client
@@ -499,9 +514,6 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 	origUpgradeInfo := agentLatestVersion
 	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
 	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.5.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
 
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
@@ -526,6 +538,11 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 		},
 	}
 	msb.WithMsbMock(t, mock)
+
+	seedHomeState(
+		state.Key{Slug: git.ProjectSlug(), Agent: "opencode"},
+		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
+	)
 
 	origOffer := offerRuntimeHomeMigration
 	offerRuntimeHomeMigration = func(_ context.Context, _ msb.Client, _ termio.UI) error {
@@ -562,9 +579,6 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 	origUpgradeInfo := agentLatestVersion
 	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
 	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.5.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
 
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
@@ -604,9 +618,14 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 	mock.SetGotSandbox(sh)
 	msb.WithMsbMock(t, mock)
 
-	state.WriteState(
+	seedHomeState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"},
+		state.HomeState{
+			HomeVolume:   "home-vol",
+			ImageDigest:  "sha256:abc123",
+			AgentVersion: "1.5.0",
+			AgentSource:  agentSourceTool,
+		},
 	)
 
 	rootStatePath := filepath.Join(configpaths.Get().UserStateDir(), "state.yaml")
@@ -718,9 +737,6 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 	origUpgradeInfo := agentLatestVersion
 	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
 	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
-	if err := saveUpgradeState(upgradeState{CurrentVersion: "1.5.0"}); err != nil {
-		t.Fatalf("saveUpgradeState: %v", err)
-	}
 
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
@@ -754,11 +770,13 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 	}
 	msb.WithMsbMock(t, mock)
 
-	if err := state.WriteState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
-		HomeVolume:  "home-vol",
-		ImageDigest: "sha256:abc123",
+	if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+		HomeVolume:   "home-vol",
+		ImageDigest:  "sha256:abc123",
+		AgentVersion: "1.5.0",
+		AgentSource:  agentSourceTool,
 	}); err != nil {
-		t.Fatalf("WriteState: %v", err)
+		t.Fatalf("seedHomeState: %v", err)
 	}
 
 	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
