@@ -10,6 +10,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- Runner image: install microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`, for
+  applications whose TLS trust is separate from the guest's system store. `msb-trust java` imports the interception CA
+  into a JDK's `cacerts` and `msb-trust chrome` into Chrome/Chromium's NSS store; `msb-trust all` configures every
+  supported application whose tools are installed. `curl`, `git`, Python, Go, and Node already trust the CA through the
+  system store. The script is vendored verbatim from microsandbox v0.7.8 (`data/msb-trust.LICENSE` records the source,
+  the hash, and the re-sync command), and its bytes participate in the runner image's content identity (#152).
 - CLI: `image remove <ref>...` (`rm`) deletes cached runner images by reference and `sandbox remove <name>` (`rm`)
   removes a project VM. `image remove` accepts only `agents-sandbox/runner-*` references and refuses an in-use image
   unless `-f`/`--force` (naming the referencing projects); `sandbox remove` refuses a running VM unless

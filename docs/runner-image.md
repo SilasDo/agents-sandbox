@@ -63,6 +63,12 @@ re-appends any `AGENTS_SANDBOX_IMAGE_PATH` entry that is missing from the reset 
 position; nothing is duplicated). `mkdir -p /opt/agents-sandbox/bin` always runs so the `COPY` source exists. The image
 always ends with `USER dev` and `WORKDIR /workspace`.
 
+The runner also installs microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`. It is for
+applications whose TLS trust is separate from the guest's system store — a JDK's `cacerts`, Chrome/Chromium's NSS
+store — which matters as soon as a secret turns on TLS interception. See
+[Secrets]({% link configuration/secrets.md %}#trusting-the-ca-in-applications) for which applications already work, and
+the [Java recipe]({% link recipes/java-ca-trust.md %}) for a worked example.
+
 ## Base starting point
 
 By default the base tools block starts from `debian:trixie-slim` and installs the recommended CLI tools: `git`,
@@ -261,8 +267,9 @@ and the pi image is `agents-sandbox/runner-my-project:pi-latest`.
 ### Skip-build when unchanged
 
 The Docker build is skipped when the baked `org.agents-sandbox.dockerfile-id` label matches the current content. This
-label is a hash of the rendered Dockerfile and the agent version, so an image already built from the exact same
-Dockerfile and agent version is reused instead of being rebuilt.
+label is a hash of the rendered Dockerfile, the build-context files it installs (the `/etc/profile.d` `PATH` merge
+script and the CA-trust helper), and the agent version, so an image already built from the exact same inputs is reused
+instead of being rebuilt.
 
 Each tool stage pins its version as an `ARG` default in the rendered Dockerfile (`NODE_VERSION`, the agent's
 `<AGENT>_VERSION`, `DOCKER_VERSION`). The version is therefore part of the build content, so bumping it changes the

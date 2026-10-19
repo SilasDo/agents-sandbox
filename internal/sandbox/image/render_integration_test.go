@@ -372,6 +372,40 @@ func TestRenderDockerfileLoginShellHasImagePath(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileTrustHelperRunsInImage proves the CA-trust helper lands in
+// the built image as a runnable command, which is what a Java user needs to
+// import the interception CA into a JDK trust store. The executable bit travels
+// in the build context rather than in the Dockerfile, so nothing short of a real
+// build and run shows that the installed file can be executed; asserting on the
+// guest CA path also catches a vendored script that no longer matches our guest
+// layout. Invoking the command directly (no shell) is what exercises the mode.
+func TestRenderDockerfileTrustHelperRunsInImage(t *testing.T) {
+	origGet := docker.Get
+	docker.Get = docker.RealClient
+	t.Cleanup(func() { docker.Get = origGet })
+
+	a, ok := agent.Lookup("opencode")
+	if !ok {
+		t.Fatal("opencode agent not registered")
+	}
+	version, err := resolveAgentVersion(context.Background(), a, "")
+	if err != nil {
+		t.Fatalf("resolve agent version: %v", err)
+	}
+
+	tag := "agents-sandbox/it-trust-helper"
+	t.Cleanup(func() { removeTestImage(tag) })
+	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, nil, false), version, false, tag)
+
+	out, err := exec.Command("docker", "run", "--rm", tag, "msb-trust", "java", "--help").CombinedOutput()
+	if err != nil {
+		t.Fatalf("msb-trust java --help failed in the built image: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "/.msb/tls/ca.pem") {
+		t.Errorf("helper output does not name the guest interception CA:\n%s", out)
+	}
+}
+
 // removeTestImage removes a test image by tag while preserving the shared build
 // cache. PruneChildren must stay false: true selects Docker's "prune" default,
 // which also deletes the untagged parent images the classic builder uses as its

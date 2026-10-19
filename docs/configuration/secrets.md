@@ -96,6 +96,34 @@ $MSB_<SECRET_NAME>
 
 For example, the guest value of `GITHUB_TOKEN` is `$MSB_GITHUB_TOKEN`.
 
+## Trusting the CA in applications
+
+Replacing a placeholder requires the proxy to terminate TLS towards the allowed host. The VM trusts a microsandbox CA
+at `/.msb/tls/ca.pem`; the guest's system store is set up to trust it, and the proxy points the common runtimes at it
+through `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, and `CURL_CA_BUNDLE`. `curl`, `git`, Python, Go,
+and Node need no extra setup.
+
+Applications that keep their **own** certificate store do not read any of that. For those the runner image installs
+microsandbox's [trust helper](https://github.com/superradcompany/microsandbox/blob/main/scripts/msb-trust/msb-trust.sh)
+as `msb-trust`:
+
+```console
+msb-trust all      # every supported application whose tools are installed
+msb-trust java     # the JDK's default trust store
+msb-trust chrome   # the current user's Chrome/Chromium NSS store
+```
+
+The helper imports the CA, preserves the certificates that are already there, and never installs packages. `java`
+needs `keytool` on `PATH` (or `JAVA_HOME` pointing at a JDK) and `chrome` needs `certutil`
+(`libnss3-tools`/`nss-tools`); a missing tool is reported instead of installed. Run it with `--help` for the
+application-specific requirements, or see the [Java recipe]({% link recipes/java-ca-trust.md %}) for the setup and how
+to import the CA automatically on every VM boot.
+
+Two things the helper does not cover. Containers built inside the VM have their own root store, so a `docker build` that
+downloads over HTTPS fails certificate verification: copy the CA into the image being built (for example
+`/usr/local/share/ca-certificates/microsandbox-ca.crt`, then `update-ca-certificates` in that Dockerfile). Applications
+with a bundled trust store also have to be configured individually.
+
 ## OpenCode authentication
 
 OpenCode stores credentials created by `/connect` in:

@@ -259,32 +259,59 @@ func scanBuildOutput(r io.Reader, line func(string)) error {
 
 const dockerfileMode = 0o644
 
-// writeDockerfileTar writes the synthetic build context — the rendered Dockerfile
-// followed by the profile.d merge script — to w as a tar stream.
+// executableFileMode marks a build-context file that the image installs as a
+// runnable command. Docker's COPY takes the installed file's permission bits
+// from the context entry, so the mode has to be set here.
+const executableFileMode = 0o755
+
+// buildContextFile is one non-Dockerfile file in the synthetic build context.
+type buildContextFile struct {
+	name    string
+	content []byte
+	mode    int64
+}
+
+// buildContextFiles returns the synthetic build context's files in write order.
+// It is the single source of truth for the context tar and the image identity,
+// so a new asset is both shipped and identity-invalidating.
+func buildContextFiles() []buildContextFile {
+	return []buildContextFile{
+		{pathMergeAsset, pathMergeScript(), dockerfileMode},
+		{trustHelperAsset, trustHelperScript(), executableFileMode},
+	}
+}
+
+// writeDockerfileTar writes the synthetic build context — the rendered
+// Dockerfile followed by the build-context files — to w as a tar stream.
 func writeDockerfileTar(w io.Writer, dockerfile []byte) error {
 	tw := tar.NewWriter(w)
-	for _, entry := range []struct {
-		name    string
-		content []byte
-	}{
-		{"Dockerfile", dockerfile},
-		{pathMergeAsset, pathMergeScript()},
-	} {
-		if err := tw.WriteHeader(&tar.Header{
-			Name: entry.name,
-			Mode: dockerfileMode,
-			Size: int64(len(entry.content)),
-		}); err != nil {
+	if err := writeTarEntry(tw, "Dockerfile", dockerfile, dockerfileMode); err != nil {
+		_ = tw.Close()
+		return err
+	}
+	for _, file := range buildContextFiles() {
+		if err := writeTarEntry(tw, file.name, file.content, file.mode); err != nil {
 			_ = tw.Close()
-			return fmt.Errorf("tar write header: %w", err)
-		}
-		if _, err := io.Copy(tw, bytes.NewReader(entry.content)); err != nil {
-			_ = tw.Close()
-			return fmt.Errorf("tar write %s: %w", entry.name, err)
+			return err
 		}
 	}
 	if err := tw.Close(); err != nil {
 		return fmt.Errorf("tar close: %w", err)
+	}
+	return nil
+}
+
+// writeTarEntry writes one regular file to the context tar.
+func writeTarEntry(tw *tar.Writer, name string, content []byte, mode int64) error {
+	if err := tw.WriteHeader(&tar.Header{
+		Name: name,
+		Mode: mode,
+		Size: int64(len(content)),
+	}); err != nil {
+		return fmt.Errorf("tar write header: %w", err)
+	}
+	if _, err := io.Copy(tw, bytes.NewReader(content)); err != nil {
+		return fmt.Errorf("tar write %s: %w", name, err)
 	}
 	return nil
 }
