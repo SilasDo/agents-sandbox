@@ -24,6 +24,13 @@ func TestOpencodeAttachCommand(t *testing.T) {
 	}
 }
 
+func TestOpencodeConfigDirAliases(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	if _, ok := agent.AsConfigDirAliaser(a); ok {
+		t.Error("opencode (v1) must not declare config dir aliases")
+	}
+}
+
 func TestOpencodeAttachCommandQuotesTarget(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	cmd, _ := agent.AsAttachRunner(a)

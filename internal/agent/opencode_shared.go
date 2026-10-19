@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 )
 
-// opencodeConfig carries the config-dir behavior shared by the opencode and
-// opencode2 profiles: v2 reads the same ~/.config/opencode files as v1, so both
-// agents share the snippet pattern, merged config path, config file names, and
-// provisioning rules.
+// opencodeConfig carries opencode (v1)'s config behavior: the snippet pattern,
+// merged config path, config file names, and provisioning rules. opencode2
+// embeds it for those guest-side concerns (it still reads v1's ~/.config/opencode
+// files and auth.json) while overriding ConfigDirName for its own launcher
+// config namespace.
 type opencodeConfig struct{}
 
 // opencodeAutoupdateDisabled is the AgentEnv value both opencode profiles set on

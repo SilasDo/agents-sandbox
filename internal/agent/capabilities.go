@@ -88,6 +88,19 @@ func AsAttachRunner(a Agent) (AttachRunner, bool) { p, ok := a.(AttachRunner); r
 // AsProvisioner returns the agent's Provisioner, if it implements one.
 func AsProvisioner(a Agent) (Provisioner, bool) { p, ok := a.(Provisioner); return p, ok }
 
+// ConfigDirAliaser declares alternate launcher config-dir names this agent used
+// before its current ConfigDirName. They are fallback candidates only: the
+// primary dir always wins when present.
+type ConfigDirAliaser interface {
+	ConfigDirAliases() []string
+}
+
+// AsConfigDirAliaser returns the agent's ConfigDirAliaser, if it implements one.
+func AsConfigDirAliaser(a Agent) (ConfigDirAliaser, bool) {
+	p, ok := a.(ConfigDirAliaser)
+	return p, ok
+}
+
 // VersionProvider exposes how to read the installed agent version from a
 // running image: the shell command to run and a parser for its output. Agents
 // print their version in different formats, so parsing is per-agent.

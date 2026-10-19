@@ -31,8 +31,19 @@ func TestOpencode2LookupAndName(t *testing.T) {
 
 func TestOpencode2ConfigDirName(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
-	if a.ConfigDirName() != "opencode" {
-		t.Errorf("ConfigDirName = %q, want opencode (v2 shares the v1 config dir)", a.ConfigDirName())
+	if a.ConfigDirName() != "opencode2" {
+		t.Errorf("ConfigDirName = %q, want opencode2 (v2 has its own config namespace)", a.ConfigDirName())
+	}
+}
+
+func TestOpencode2ConfigDirAliases(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	al, ok := agent.AsConfigDirAliaser(a)
+	if !ok {
+		t.Fatal("opencode2 should declare config dir aliases")
+	}
+	if got := al.ConfigDirAliases(); !slices.Equal(got, []string{"opencode"}) {
+		t.Errorf("ConfigDirAliases = %v, want [opencode]", got)
 	}
 }
 

@@ -23,6 +23,14 @@ type opencode2Profile struct {
 
 func (opencode2Profile) Name() string { return opencode2Name }
 
+// ConfigDirName scopes opencode2's own launcher config dir; the guest config
+// path and host drop-in still come from the embedded opencodeConfig.
+func (opencode2Profile) ConfigDirName() string { return opencode2Name }
+
+// ConfigDirAliases names the legacy shared config dir opencode2 used before it
+// gained its own namespace.
+func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeName} }
+
 func (opencode2Profile) ImageSpec() ImageSpec {
 	return ImageSpec{
 		VersionArg: versionArgFor(opencode2Name),
