@@ -167,21 +167,12 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeListCmd("/workspace")
-	for _, part := range []string{
-		"-u opencode:opencode",
-		"--get --data-urlencode 'location[directory]=/workspace'",
-		"/api/location) || exit 1",
-		"jq -re '.project.id | select(length > 0)') || exit 1",
-		"jq -re '.project.canonical | select(length > 0)') || exit 1",
-		"http://127.0.0.1:4096/api/worktree?projectID=$PID",
-		`jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`,
-	} {
-		if !strings.Contains(got, part) {
-			t.Errorf("WorktreeListCmd = %q, want to contain %q", got, part)
-		}
-	}
-	if strings.Contains(got, "/api/project/current") || strings.Contains(got, "/api/worktree/$PID") {
-		t.Errorf("WorktreeListCmd still uses v1 routes: %q", got)
+	// Exact equality (mirroring the create tests) pins the whole command: a
+	// substring check would be satisfied by the shared location prelude even if
+	// the list curl lost its credential or fell back to a v1 route.
+	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -sf -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
+	if got != want {
+		t.Errorf("WorktreeListCmd = %q, want %q", got, want)
 	}
 }
 

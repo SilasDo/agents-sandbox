@@ -108,14 +108,23 @@ func ResolveTarget(
 	if err != nil {
 		return "", fmt.Errorf("list worktrees for %q: %w", spec.Name, err)
 	}
-	if listOut.Success() {
-		if dir, ok := findWorktreeDir(listOut.Stdout(), spec.Name); ok {
-			if spec.Base != "" {
-				ui.Warnf("worktree %q already exists; ignoring base %q", spec.Name, spec.Base)
-			}
-			ui.Infof("reusing existing worktree %q: %s%s", spec.Name, dir, worktreeDetachedNote(a))
-			return dir, nil
+	// A failed list must abort rather than fall through to create: silently
+	// treating it as "no worktrees" would abandon an existing worktree for a new
+	// server-suffixed one and hide a daemon route or field rename.
+	if !listOut.Success() {
+		return "", fmt.Errorf(
+			"list worktrees for %q failed (exit %d): %s",
+			spec.Name,
+			listOut.ExitCode(),
+			listOut.Stderr(),
+		)
+	}
+	if dir, ok := findWorktreeDir(listOut.Stdout(), spec.Name); ok {
+		if spec.Base != "" {
+			ui.Warnf("worktree %q already exists; ignoring base %q", spec.Name, spec.Base)
 		}
+		ui.Infof("reusing existing worktree %q: %s%s", spec.Name, dir, worktreeDetachedNote(a))
+		return dir, nil
 	}
 
 	if spec.Base != "" {

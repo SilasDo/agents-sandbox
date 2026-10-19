@@ -143,13 +143,22 @@ func opencode2LocatePrelude(target string) string {
 		"CANON=$(printf '%s' \"$LOC\" | jq -re '.project.canonical | select(length > 0)') || exit 1; "
 }
 
+// opencode2WorktreeListFilter is the jq program that drops the project's
+// canonical root from the worktree list. It rejects a non-array payload with a
+// non-zero exit so a route or field rename fails the list instead of reading as
+// an empty one, which would abandon an existing worktree for a new
+// server-suffixed one.
+const opencode2WorktreeListFilter = `if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end`
+
 // WorktreeListCmd lists the project's worktrees through v2's project-scoped
-// route, dropping the canonical root entry so a worktree name equal to the
-// repository directory name never reuses the main checkout.
+// route. The curl response is captured before jq runs, so curl's own failure
+// propagates (a piped-into-jq failure would exit 0 with empty stdout and read as
+// "no worktrees"); the filter then drops the canonical root entry and fails on a
+// non-array payload (see opencode2WorktreeListFilter).
 func (opencode2Profile) WorktreeListCmd(target string) string {
 	return opencode2LocatePrelude(target) +
-		"curl -sf " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID | " +
-		"jq -c --arg canonical \"$CANON\" '[.[]|select(.directory != $canonical)]'"
+		"LIST=$(curl -sf " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID) || exit 1; " +
+		"printf '%s' \"$LIST\" | jq -ce --arg canonical \"$CANON\" " + shellQuote(opencode2WorktreeListFilter)
 }
 
 // WorktreeCreateCmd creates a worktree through v2's project-scoped route. The
