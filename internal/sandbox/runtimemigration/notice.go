@@ -106,9 +106,21 @@ func renderNotice(a legacyArtifacts, uncopied []string) string {
 func writeUncopiedWarning(b *strings.Builder, uncopied []string) {
 	b.WriteString("  These volumes were not copied into agents-sandbox and still hold data:\n")
 	for _, name := range uncopied {
-		b.WriteString("    " + name + "\n")
+		b.WriteString("    " + sanitizeNoticeName(name) + "\n")
 	}
 	b.WriteString("  They were left in place; do not remove them.\n\n")
+}
+
+// sanitizeNoticeName strips control characters — including newlines and the
+// escape byte — from a volume name so a hostile or odd legacy-home directory
+// name cannot forge notice lines or emit terminal escapes.
+func sanitizeNoticeName(name string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, name)
 }
 
 // writeRemovableLeftovers writes the "ours, safe to remove" tier and its removal

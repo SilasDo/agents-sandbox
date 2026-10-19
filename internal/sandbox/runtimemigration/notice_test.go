@@ -52,6 +52,17 @@ func TestRenderNoticeNamesUncopiedVolumes(t *testing.T) {
 	}
 }
 
+func TestRenderNoticeSanitizesUncopiedNames(t *testing.T) {
+	hostile := naming.HomePrefix + "a\n    rm -rf ~/Documents\x1b[31m"
+	out := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}}, []string{hostile})
+	if strings.Contains(out, "\n    rm -rf ~/Documents") {
+		t.Errorf("a control character in a volume name forged a notice line:\n%q", out)
+	}
+	if strings.Contains(out, "\x1b") {
+		t.Errorf("a volume name leaked an escape byte into the notice:\n%q", out)
+	}
+}
+
 func TestRenderNoticeUncopiedSuppressesWholesaleCommand(t *testing.T) {
 	out := renderNotice(
 		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
