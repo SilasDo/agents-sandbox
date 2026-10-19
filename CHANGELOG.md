@@ -96,6 +96,9 @@ command reports the bare version (e.g. `0.1.0`).
   unchanged (`~/.config/opencode/`).
 - Runner image: the interactive agent-upgrade prompt now names both the available release and the version currently baked
   into the image, so the choice to rebuild or keep the current version is informed.
+- Docs: the [Deprecations](https://inoio.github.io/agents-sandbox/deprecations.html) page now states the full policy — the
+  replacement always wins, renames are shimmed while only default-behaviour changes make a clean break, and a user-facing
+  form is never removed without a deprecation cycle (#205).
 
 ### Fixed
 

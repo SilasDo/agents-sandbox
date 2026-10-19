@@ -78,7 +78,9 @@ never a patch.
   against; they warn on every `EnsureImage` (including cached reuse) and are
   covered by `internal/sandbox/image/deprecation_test.go`. A deprecation without a
   test is incomplete.
-- The docs `deprecations.md` page (added in #206) is updated from the register by
+- The docs `deprecations.md` page (added in #206) mirrors the rules above
+  (works/warns/hides, replacement precedence, minimum lifetime, clean-break-vs-shim,
+  no undeprecated removals) alongside the register, updated from the register by
   hand (small, curated) and checked by `make check`'s docs linkcheck.
 
 ## Non-goals
