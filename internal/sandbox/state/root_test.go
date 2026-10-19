@@ -98,6 +98,18 @@ func TestSetMigrationInitializesRegistry(t *testing.T) {
 	}
 }
 
+func TestMigrationAcknowledgedRoundTrips(t *testing.T) {
+	if MigrationAcknowledged != "acknowledged" {
+		t.Fatalf("MigrationAcknowledged = %q, want \"acknowledged\"", MigrationAcknowledged)
+	}
+	rs := &RootState{}
+	rs.SetMigration("legacy_runtime_notice", Migration{Status: MigrationAcknowledged})
+	got, ok := rs.Migration("legacy_runtime_notice")
+	if !ok || got.Status != MigrationAcknowledged {
+		t.Fatalf("round-tripped migration = %+v (ok=%v), want acknowledged", got, ok)
+	}
+}
+
 func TestWithRootStatePreservesOtherMigrations(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	if err := writeRootState(RootState{Migrations: map[string]Migration{

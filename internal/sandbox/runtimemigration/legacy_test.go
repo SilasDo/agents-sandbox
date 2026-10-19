@@ -163,7 +163,7 @@ func TestNecessaryVolumesReportsOnlyMissingLegacyNames(t *testing.T) {
 }
 
 func TestNecessaryVolumesTerminalStatusIsNeverNecessary(t *testing.T) {
-	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed} {
+	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged} {
 		legacy := newHome(t)
 		addVolumeDir(t, legacy, naming.HomePrefix+"orphan")
 		got, err := necessaryVolumes(legacy, newHome(t), state.Migration{Status: status})

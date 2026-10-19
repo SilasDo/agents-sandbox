@@ -45,7 +45,8 @@ func presentPrivateVolumeNames(privateHome string) ([]string, error) {
 // necessaryVolumes returns the legacy home volume names that still need copying,
 // given the current migration status. The migration is the source of truth for
 // what "necessary" means:
-//   - completed/dismissed: the campaign is over; nothing is ever necessary.
+//   - completed/dismissed/acknowledged: the campaign is over; nothing is ever
+//     necessary.
 //   - copying: legacy names minus those already accounted for (Copied, Kept, or
 //     Excluded). The private listing is not consulted, so a present volume not
 //     recorded as accounted for is an unambiguous partial and stays necessary
@@ -53,7 +54,7 @@ func presentPrivateVolumeNames(privateHome string) ([]string, error) {
 //   - pending (zero status): legacy names absent from the private home.
 func necessaryVolumes(legacyHome, privateHome string, m state.Migration) ([]string, error) {
 	switch m.Status {
-	case state.MigrationCompleted, state.MigrationDismissed:
+	case state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged:
 		return nil, nil
 	case state.MigrationCopying:
 		return copyingNecessaryVolumes(legacyHome, m)

@@ -25,9 +25,10 @@ type RootState struct {
 type MigrationStatus string
 
 const (
-	MigrationCopying   MigrationStatus = "copying"
-	MigrationCompleted MigrationStatus = "completed"
-	MigrationDismissed MigrationStatus = "dismissed"
+	MigrationCopying      MigrationStatus = "copying"
+	MigrationCompleted    MigrationStatus = "completed"
+	MigrationDismissed    MigrationStatus = "dismissed"
+	MigrationAcknowledged MigrationStatus = "acknowledged"
 )
 
 // Migration tracks one one-time migration. Copied, Kept, and Excluded are
