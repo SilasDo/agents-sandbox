@@ -26,8 +26,8 @@ func TestDescribeConfigScopes(t *testing.T) {
 	if !strings.Contains(targets, "user: ") || !strings.Contains(targets, "project: ") {
 		t.Errorf("targets should list both scopes, got %q", targets)
 	}
-	if !strings.Contains(targets, "relative to CWD") {
-		t.Errorf("project scope should be labelled relative, got %q", targets)
+	if strings.Contains(targets, "relative to CWD") {
+		t.Errorf("targets should show explicit absolute paths, got %q", targets)
 	}
 }
 

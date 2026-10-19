@@ -109,6 +109,10 @@ func (m *mockConfigPaths) ProjectConfigDir() string {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "projectconfig"))
 }
 
+func (m *mockConfigPaths) ProjectConfigDirAbs() string {
+	return filepath.Join(m.baseDir, "projectconfig")
+}
+
 func (m *mockConfigPaths) UserEnvFile() string {
 	return filepath.Join(m.UserConfigDir(), envFileName)
 }
@@ -167,6 +171,11 @@ func (f *failFastConfigPaths) UserAgentConfigDir(_ agent.Agent) string {
 func (f *failFastConfigPaths) UserAgentConfigDirCandidates(_ agent.Agent) []string {
 	f.mustMock()
 	return nil
+}
+
+func (f *failFastConfigPaths) ProjectConfigDirAbs() string {
+	f.mustMock()
+	return ""
 }
 
 func (f *failFastConfigPaths) ProjectAgentConfigDirCandidates(_ agent.Agent) []string {

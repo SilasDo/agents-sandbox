@@ -246,4 +246,8 @@ func TestConfigAgentOpencode2UsesOwnDir(t *testing.T) {
 	if !strings.Contains(joined, srcDir) {
 		t.Errorf("expected the opencode2 source dir %q in output, got:\n%s", srcDir, joined)
 	}
+	projDir := filepath.Join(configpaths.Get().ProjectConfigDirAbs(), "opencode2")
+	if !strings.Contains(joined, projDir) {
+		t.Errorf("expected the absolute opencode2 project dir %q in output, got:\n%s", projDir, joined)
+	}
 }

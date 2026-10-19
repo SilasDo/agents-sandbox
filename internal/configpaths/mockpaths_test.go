@@ -42,6 +42,9 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := os.Getenv("HOME"); got != filepath.Join(base, "home") {
 		t.Errorf("$HOME = %q, want %q (WithMockConfigPaths must redirect HOME)", got, filepath.Join(base, "home"))
 	}
+	if got := cfgPaths.ProjectConfigDirAbs(); got != filepath.Join(base, "projectconfig") {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q", got, filepath.Join(base, "projectconfig"))
+	}
 	if got := cfgPaths.ProjectConfigDir(); got != filepath.Join(base, "projectconfig") {
 		t.Errorf("ProjectConfigDir() = %q, want %q", got, filepath.Join(base, "projectconfig"))
 	}

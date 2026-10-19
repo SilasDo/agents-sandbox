@@ -145,7 +145,12 @@ legacy dir actually exists (nothing to warn about otherwise), always — not
 gated to once. It names the agent, the full legacy user/project paths actually
 read, and the primary user/project paths to migrate into, and says **copy** (not
 move) because the legacy dir is also the `opencode` agent's live dir; it states
-the guest `~/.config/opencode` path is unchanged. The load runs exactly once per process today
+the guest `~/.config/opencode` path is unchanged. Paths are absolute: the
+project dir is resolved through the new `configpaths.ProjectConfigDirAbs` seam
+method (the relative `ProjectConfigDir` resolved against the cwd, degrading to
+the relative form only if the cwd is unreadable), so `config agent` and the
+warning show explicit locations rather than a cwd-relative path. It names only
+the scopes whose dir exists. The load runs exactly once per process today
 (`run_orchestrate.go`: "Load the merged agent config … exactly once per
 startup"), and `config agent` invokes it once; a regression test asserts the
 warning fires exactly once per load. If a future path loads more than once, the

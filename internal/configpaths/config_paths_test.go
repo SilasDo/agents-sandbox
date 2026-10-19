@@ -1,6 +1,7 @@
 package configpaths
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -257,6 +258,29 @@ func TestValidConfigDirName(t *testing.T) {
 		t.Run("reject "+bad, func(t *testing.T) {
 			assertPanics(t, func() { validConfigDirName("test", bad) })
 		})
+	}
+}
+
+func TestProjectConfigDirAbs(t *testing.T) {
+	WithRealConfigPaths(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != filepath.Join(wd, ".agents-sandbox") {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q", got, filepath.Join(wd, ".agents-sandbox"))
+	}
+}
+
+func TestProjectConfigDirAbsFallsBackWhenCwdUnreadable(t *testing.T) {
+	WithRealConfigPaths(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != ".agents-sandbox" {
+		t.Errorf("ProjectConfigDirAbs() with an unreadable cwd = %q, want the relative fallback", got)
 	}
 }
 

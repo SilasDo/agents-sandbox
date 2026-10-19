@@ -29,6 +29,7 @@ func TestFailFastConfigPathsPanics(t *testing.T) {
 		{"UserEnvSecretFile", func() { f.UserEnvSecretFile() }},
 		{"UserEnvSecretYAMLFile", func() { f.UserEnvSecretYAMLFile() }},
 		{"ProjectConfigDir", func() { f.ProjectConfigDir() }},
+		{"ProjectConfigDirAbs", func() { _ = f.ProjectConfigDirAbs() }},
 		{"ProjectAgentConfigDir", func() { f.ProjectAgentConfigDir(a) }},
 		{"ProjectAgentConfigDirCandidates", func() { f.ProjectAgentConfigDirCandidates(a) }},
 		{"ProjectEnvFile", func() { f.ProjectEnvFile() }},

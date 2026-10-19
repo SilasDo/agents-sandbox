@@ -823,6 +823,7 @@ func (p *projectDockerfilePaths) UserEnvFile() string           { return "" }
 func (p *projectDockerfilePaths) UserEnvSecretFile() string     { return "" }
 func (p *projectDockerfilePaths) UserEnvSecretYAMLFile() string { return "" }
 func (p *projectDockerfilePaths) ProjectConfigDir() string      { return "" }
+func (p *projectDockerfilePaths) ProjectConfigDirAbs() string   { return "" }
 func (p *projectDockerfilePaths) ProjectAgentConfigDir(agent.Agent) string {
 	return ""
 }

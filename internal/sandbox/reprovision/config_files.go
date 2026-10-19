@@ -105,21 +105,33 @@ func anyDirExists(dirs ...string) (bool, error) {
 }
 
 // describeConfigScopes renders "user: <dir>, project: <dir>" for the given
-// scopes. The user path is absolute (XDG/home-rooted); the project path is
-// relative and is labelled as such. When onlyExisting is set, scopes whose dir
-// is absent are omitted rather than named as if read.
+// absolute scopes. When onlyExisting is set, scopes whose dir is absent are
+// omitted rather than named as if read.
 func describeConfigScopes(userDir, projectDir string, onlyExisting bool) string {
 	parts := make([]string, 0, 2)
 	if !onlyExisting || isDir(userDir) {
 		parts = append(parts, fmt.Sprintf("user: %q", userDir))
 	}
 	if !onlyExisting || isDir(projectDir) {
-		parts = append(parts, fmt.Sprintf("project: %q (relative to CWD)", projectDir))
+		parts = append(parts, fmt.Sprintf("project: %q", projectDir))
 	}
 	if len(parts) == 0 {
 		return "(none)"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// SourceDirs returns the absolute user and project config dirs in effect for
+// the resolved source, naming the legacy dir when the source is a fallback. The
+// project path is resolved against the current directory so display shows an
+// explicit location.
+func SourceDirs(a agent.Agent, src ConfigSource) (string, string) {
+	name := src.Fallback
+	if name == "" {
+		name = a.ConfigDirName()
+	}
+	projectBase := cp.Get().ProjectConfigDirAbs()
+	return filepath.Join(cp.Get().UserConfigDir(), name), filepath.Join(projectBase, name)
 }
 
 // isDir reports whether path names an existing directory.
@@ -234,15 +246,15 @@ func LoadConfigFilesForHost(
 	}
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
-		primaryUser := cp.Get().UserAgentConfigDir(a)
-		primaryProject := cp.Get().ProjectAgentConfigDir(a)
+		legacyUser, legacyProject := SourceDirs(a, src)
+		primaryUser, primaryProject := SourceDirs(a, ConfigSource{UserDir: "", ProjectDir: "", Fallback: ""})
 		ui.Warnf(
 			"agent %s is reading launcher config from the legacy shared %q dir (%s), which agent opencode also uses; "+
 				"because any %q dir disables the fallback, copy everything you need in one go into the %q namespace (%s) — a partial copy will not fall back for the rest. "+
 				"The guest ~/.config/opencode path is unchanged.",
 			a.Name(),
 			src.Fallback,
-			describeConfigScopes(src.UserDir, src.ProjectDir, true),
+			describeConfigScopes(legacyUser, legacyProject, true),
 			a.ConfigDirName(),
 			a.ConfigDirName(),
 			describeConfigScopes(primaryUser, primaryProject, false),

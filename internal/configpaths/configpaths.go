@@ -23,6 +23,7 @@ type ConfigPaths interface {
 	UserEnvSecretYAMLFile() string
 
 	ProjectConfigDir() string
+	ProjectConfigDirAbs() string
 	ProjectAgentConfigDir(a agent.Agent) string
 	ProjectAgentConfigDirCandidates(a agent.Agent) []string
 	ProjectEnvFile() string
@@ -124,6 +125,18 @@ func (c *realConfigPaths) UserHomeDir() (string, error) {
 
 // ProjectConfigDir returns the tool's project-config directory: $PWD/agents-sandbox.
 func (c *realConfigPaths) ProjectConfigDir() string { return projectConfigDir }
+
+// ProjectConfigDirAbs returns the project-config directory as an absolute path by
+// resolving the relative ProjectConfigDir against the current directory, so
+// display can name an explicit location regardless of where it is read. If the
+// current directory cannot be read it degrades to the relative ProjectConfigDir.
+func (c *realConfigPaths) ProjectConfigDirAbs() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return projectConfigDir
+	}
+	return filepath.Join(cwd, projectConfigDir)
+}
 
 // UserEnvFile returns the user-level environment definitions file.
 func (c *realConfigPaths) UserEnvFile() string {

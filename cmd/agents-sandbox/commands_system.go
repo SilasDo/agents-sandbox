@@ -395,13 +395,13 @@ func printConfigAgent(
 	mirrorFiles []reprovision.MirrorFile,
 	provision bool,
 ) {
-	ui.Outf("agent: %s", a.Name())
+	userDir, projectDir := reprovision.SourceDirs(a, source)
 	sourceKind := "primary"
 	if source.Fallback != "" {
 		sourceKind = fmt.Sprintf("legacy fallback %q", source.Fallback)
 	}
-	ui.Outf("config dir: user=%q  project=%q (relative to CWD)  (%s)",
-		source.UserDir, source.ProjectDir, sourceKind)
+	ui.Outf("agent: %s", a.Name())
+	ui.Outf("config dir: user=%q  project=%q  (%s)", userDir, projectDir, sourceKind)
 	if len(sources) == 0 {
 		ui.Out("No snippet files found; no merged config is provisioned.")
 	} else {
