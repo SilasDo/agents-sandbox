@@ -163,6 +163,16 @@ func TestMockIsSafeForConcurrentUse(t *testing.T) {
 	}
 }
 
+func TestMockAcknowledgeRecordsAndReturnsError(t *testing.T) {
+	m := &Mock{AcknowledgeErr: errors.New("boom")}
+	if err := m.Acknowledge("note"); err == nil {
+		t.Fatal("Acknowledge() error = nil, want the configured error")
+	}
+	if len(m.AcknowledgeCalls) != 1 || m.AcknowledgeCalls[0] != "note" {
+		t.Errorf("AcknowledgeCalls = %v, want [\"note\"]", m.AcknowledgeCalls)
+	}
+}
+
 func TestMockPromptFnsOverrideDefaults(t *testing.T) {
 	m := &Mock{
 		SelectFn: func(string, []Choice, string) (string, error) { return "x", nil },

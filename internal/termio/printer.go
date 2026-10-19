@@ -154,6 +154,20 @@ func (p *printer) Spinnerf(format string, args ...any) Spinner {
 	return newSpinner(p.stderr, p.color, p.level, p.format(format, args...))
 }
 
+// Acknowledge prints a one-time notice and, when interactive, waits for the
+// user to press Enter. A non-interactive session prints the notice but returns
+// immediately, so its caller does not record an acknowledgment the user never
+// gave.
+func (p *printer) Acknowledge(message string) error {
+	p.write(p.stderr, "", message)
+	if !p.IsInteractive() {
+		return nil
+	}
+	fmt.Fprint(p.stderr, "Press Enter to continue: ")
+	_, err := p.getStdinReader().ReadString('\n')
+	return err
+}
+
 func (p *printer) StdOut() io.Writer {
 	return p.stdout
 }
