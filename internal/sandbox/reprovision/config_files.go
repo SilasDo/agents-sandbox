@@ -31,6 +31,49 @@ var evalProvisionRules = agent.EvalProvisionRules
 // layout regardless of the configured runtime user.
 const VMHomeDir = mounts.VMHomeDir
 
+// ConfigSource is the resolved launcher config-dir pair for an agent. Fallback
+// is the legacy dir name actually in use, or "" when the primary dirs are used.
+type ConfigSource struct {
+	UserDir    string
+	ProjectDir string
+	Fallback   string
+}
+
+// ResolveConfigSource picks the agent's launcher config dirs. The primary dirs
+// win when either exists in any scope; otherwise the first alias whose dir
+// exists in either scope is used for both scopes. When nothing exists the
+// primary dirs are returned and Fallback is empty.
+func ResolveConfigSource(a agent.Agent) ConfigSource {
+	userCands := cp.Get().UserAgentConfigDirCandidates(a)
+	projectCands := cp.Get().ProjectAgentConfigDirCandidates(a)
+	if len(userCands) == 0 || len(projectCands) == 0 {
+		return ConfigSource{}
+	}
+	if anyDirExists(userCands[0], projectCands[0]) {
+		return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}
+	}
+	for i := 1; i < len(userCands); i++ {
+		if anyDirExists(userCands[i], projectCands[i]) {
+			return ConfigSource{
+				UserDir:    userCands[i],
+				ProjectDir: projectCands[i],
+				Fallback:   filepath.Base(userCands[i]),
+			}
+		}
+	}
+	return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}
+}
+
+// anyDirExists reports whether any path names an existing directory.
+func anyDirExists(dirs ...string) bool {
+	for _, d := range dirs {
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
 // AgentConfigPath returns the VM path where the agent's merged config is
 // provisioned for the given home directory. It delegates to the agent's own
 // ConfigMerger so the path reflects the agent's config layout.
