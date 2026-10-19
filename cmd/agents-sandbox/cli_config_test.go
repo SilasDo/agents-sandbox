@@ -214,6 +214,23 @@ func mustOpencode2(t *testing.T) agent.Agent {
 	return a
 }
 
+func TestConfigAgentOpencode2ShowsLegacyFallback(t *testing.T) {
+	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
+	legacy := filepath.Join(configpaths.Get().UserConfigDir(), "opencode")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, legacy, "opencode-model.json", `{"model":"legacy"}`)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config agent --agent opencode2: %v", err)
+	}
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "legacy fallback") {
+		t.Errorf("expected the config-agent output to flag the legacy fallback, got:\n%s", joined)
+	}
+}
+
 func TestConfigAgentOpencode2UsesOwnDir(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
 	srcDir := configpaths.Get().UserAgentConfigDir(mustOpencode2(t))

@@ -110,8 +110,9 @@ That is different from the agents-sandbox input directory:
 ~/.config/agents-sandbox/opencode/
 ```
 
-An `auth.json` placed in the latter directory is mirrored to `/home/dev/.config/opencode/auth.json`; it is not
-automatically OpenCode's credential store. To use secret placeholders in OpenCode's credential store, provision the
+(`opencode2` uses `~/.config/agents-sandbox/opencode2/` instead; see the fallback note in
+[Agent configuration]({% link configuration/agent.md %}).) An `auth.json` placed in the latter directory is mirrored to
+`/home/dev/.config/opencode/auth.json`; it is not automatically OpenCode's credential store. To use secret placeholders in OpenCode's credential store, provision the
 placeholder file explicitly with the launcher's `home:` key.
 
 For example, for GitHub Copilot:

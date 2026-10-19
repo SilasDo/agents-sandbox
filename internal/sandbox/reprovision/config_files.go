@@ -79,10 +79,13 @@ func ResolveConfigSource(a agent.Agent) (ConfigSource, error) {
 	return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}, nil
 }
 
-// anyDirExists reports whether any path names an existing directory. A stat
-// error other than "not exist" is surfaced rather than silently treated as
-// absent, so a permission or I/O failure cannot silently select another dir.
+// anyDirExists reports whether any path names an existing directory. Every
+// candidate is tried, so an unreadable candidate in one scope does not hide a
+// usable one in the other; a stat error other than "not exist" is remembered
+// and surfaced only when no candidate exists, rather than being treated as
+// absent or aborting the search.
 func anyDirExists(dirs ...string) (bool, error) {
+	var statErr error
 	for _, d := range dirs {
 		info, err := os.Stat(d)
 		switch {
@@ -93,10 +96,12 @@ func anyDirExists(dirs ...string) (bool, error) {
 		case errors.Is(err, fs.ErrNotExist):
 			// absent in this scope; try the next
 		default:
-			return false, fmt.Errorf("stat config dir %q: %w", d, err)
+			if statErr == nil {
+				statErr = fmt.Errorf("stat config dir %q: %w", d, err)
+			}
 		}
 	}
-	return false, nil
+	return false, statErr
 }
 
 // AgentConfigPath returns the VM path where the agent's merged config is
@@ -207,16 +212,16 @@ func LoadConfigFilesForHost(
 	if src.Fallback != "" {
 		ui.Warnf(
 			"agent %s is reading launcher config from the legacy shared %q dir (user: %q, project: %q), which agent opencode also uses; "+
-				"copy the files %s should read into the %q namespace (user: %q, project: %q) to silence this warning. "+
+				"copy all of its files (not a subset) into the %q namespace (user: %q, project: %q) to silence this warning — any %q dir disables the fallback. "+
 				"The guest ~/.config/opencode path is unchanged.",
 			a.Name(),
 			src.Fallback,
 			src.UserDir,
 			src.ProjectDir,
-			a.Name(),
 			a.ConfigDirName(),
 			cp.Get().UserAgentConfigDir(a),
 			cp.Get().ProjectAgentConfigDir(a),
+			a.ConfigDirName(),
 		)
 	}
 	return &ConfigFiles{
@@ -494,20 +499,20 @@ type MirrorFile struct {
 }
 
 // Describe returns the merged config, the snippet sources, the host drop-in
-// files, and the verbatim mirror files (host path → VM path) for agent a,
-// without touching a VM.
+// files, the verbatim mirror files (host path → VM path), and the resolved
+// config source for agent a, without touching a VM.
 func Describe(
 	a agent.Agent,
 	hostHome, vmHome string,
 	ui termio.UI,
 	provisionHostConfig bool,
-) ([]byte, []string, []HostFile, []MirrorFile, error) {
+) ([]byte, []string, []HostFile, []MirrorFile, ConfigSource, error) {
 	cf, err := LoadConfigFilesForHost(a, hostHome, vmHome, ui, provisionHostConfig)
 	if err != nil {
-		return nil, nil, nil, nil, err
+		return nil, nil, nil, nil, ConfigSource{}, err
 	}
 	hostFiles := hostFilesFromProvisioner(a, hostHome, vmHome, cf)
-	return cf.Merged, cf.Sources, hostFiles, mirrorFilesFromConfig(a, vmHome, cf.Source), nil
+	return cf.Merged, cf.Sources, hostFiles, mirrorFilesFromConfig(a, vmHome, cf.Source), cf.Source, nil
 }
 
 // mirrorFilesFromConfig returns the mirror display records for agent a.

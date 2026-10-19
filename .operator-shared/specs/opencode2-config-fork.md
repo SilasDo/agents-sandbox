@@ -84,7 +84,10 @@ puts host I/O in pure profiles) and over "configpaths stats the filesystem"
   Built as `filepath.Join(base, name)` over `ConfigDirName()` then
   `ConfigDirAliases()`. `UserAgentConfigDir`/`ProjectAgentConfigDir` stay
   (primary path). Each name is validated to be a single clean path element
-  (rejecting `""`, `.`, `..`, and embedded separators) and a bad name panics:
+  (rejecting `""`, `.`, `..`, and any name containing the path separator —
+  including a bare `/`) and a bad name panics; the primary path constructors
+  (`UserAgentConfigDir`/`ProjectAgentConfigDir`) validate too, so the guard is
+  intrinsic rather than call-order-dependent. Without this:
   `filepath.Join` cleans `..`, so an unvalidated name like `..` would resolve to
   the launcher config root and the mirror would copy its files — including
   `env.secret` — into the VM, bypassing the msb-secret rule.
@@ -154,6 +157,10 @@ in `CHANGELOG.md` (`Unreleased` → `Changed`) and in the agent docs.
 Guest keys (`ConfigFiles.Keys` = VM paths) are unchanged, so reconfig
 fingerprints are unaffected. Content differences between v1 and v2 dirs
 naturally produce different materialized config per agent VM, as designed.
+Known pre-existing limitation (now reachable via the source switch):
+`AgentConfigEqual` compares content but not mirror *removals*, so moving to a
+source with strictly fewer mirror files leaves the stale VM copies in place
+without a daemon restart. Out of scope here; noted for a follow-up.
 
 ### Candidate-method purity (test seam)
 
@@ -208,7 +215,11 @@ Implementation notes (post-build): `configpaths.agentConfigDirCandidates` does n
 de-duplication (aliases are distinct legacy names by contract). An adversarial
 review round then added (a) per-name validation in `configpaths` (see above),
 (b) a candidate-pair guard plus non-"not exist" `os.Stat` error propagation in
-`ResolveConfigSource`, and (c) the clarified fallback warning. The deliberate
+`ResolveConfigSource`, and (c) the clarified fallback warning. A second review
+round tightened name validation to reject any separator (the bare `/` had
+slipped), made the primary path constructors validate intrinsically, made
+`anyDirExists` try every candidate before surfacing an error, and had
+`config agent` print the effective source plus a legacy-fallback marker. The deliberate
 tradeoff stands unchanged: an empty or partial primary dir silently disables the
 fallback (no warning) — now stated explicitly in the user docs. `ConfigFiles.Source`
 is set once per load and reused by `Describe`.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
@@ -73,7 +74,7 @@ func MSBHome() string {
 // UserAgentConfigDir returns the directory of the active agent's own user
 // config, nested under the tool's user config base.
 func (c *realConfigPaths) UserAgentConfigDir(a agent.Agent) string {
-	return filepath.Join(c.UserConfigDir(), a.ConfigDirName())
+	return filepath.Join(c.UserConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName()))
 }
 
 // UserAgentConfigDirCandidates returns the agent's user config-dir candidates,
@@ -105,7 +106,8 @@ func agentConfigDirCandidates(base string, a agent.Agent) []string {
 // copy unrelated host files — including launcher secrets — into the VM. A bad
 // name is a profile programming error, so it fails fast.
 func validConfigDirName(agentName, name string) string {
-	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+	if name == "" || name == "." || name == ".." ||
+		strings.ContainsRune(name, filepath.Separator) || filepath.Base(name) != name {
 		panic(
 			fmt.Sprintf("agent %s declares invalid config dir name %q: must be a single path element", agentName, name),
 		)
@@ -164,7 +166,7 @@ func (c *realConfigPaths) ProjectDockerfile() string {
 
 // ProjectAgentConfigDir returns the project-local config dir for the agent.
 func (c *realConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
-	return filepath.Join(projectConfigDir, a.ConfigDirName())
+	return filepath.Join(projectConfigDir, validConfigDirName(a.Name(), a.ConfigDirName()))
 }
 
 func (c *realConfigPaths) ProjectEnvFile() string {

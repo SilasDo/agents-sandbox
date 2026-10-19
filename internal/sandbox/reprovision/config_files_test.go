@@ -925,7 +925,7 @@ func TestDescribe(t *testing.T) {
 	testutil.WriteFile(t, ocConfig, "opencode.json", `{"a":1}`)
 
 	ui := termio.NewTestMock(t)
-	merged, sources, hostFiles, mirrorFiles, err := Describe(a, hostHome, vmHome, &ui, true)
+	merged, sources, hostFiles, mirrorFiles, _, err := Describe(a, hostHome, vmHome, &ui, true)
 	if err != nil {
 		t.Fatalf("Describe: %v", err)
 	}

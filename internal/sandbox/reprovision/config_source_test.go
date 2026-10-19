@@ -80,6 +80,45 @@ func TestResolveConfigSourceStatError(t *testing.T) {
 	})
 }
 
+// splitCandidates serves distinct user and project candidate lists, so a test
+// can make one scope unreadable while the other is usable.
+type splitCandidates struct {
+	configpaths.ConfigPaths
+
+	user, project []string
+}
+
+func (s splitCandidates) UserAgentConfigDirCandidates(agent.Agent) []string { return s.user }
+
+func (s splitCandidates) ProjectAgentConfigDirCandidates(agent.Agent) []string { return s.project }
+
+func TestResolveConfigSourceStatErrorDoesNotHideUsableScope(t *testing.T) {
+	// An unreadable user candidate must not abort when the project candidate
+	// exists: "either scope exists" still resolves the primary.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	existing := t.TempDir()
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths {
+		return splitCandidates{
+			user:    []string{filepath.Join(blocker, "opencode2")},
+			project: []string{existing},
+		}
+	}
+	t.Cleanup(func() { configpaths.Get = orig })
+
+	a, _ := agent.Lookup("opencode2")
+	got, err := ResolveConfigSource(a)
+	if err != nil {
+		t.Fatalf("ResolveConfigSource: unexpected error %v", err)
+	}
+	if got.Fallback != "" || got.ProjectDir != existing {
+		t.Errorf("ResolveConfigSource = %+v, want primary with project dir %q", got, existing)
+	}
+}
+
 func TestResolveConfigSource(t *testing.T) {
 	cases := []struct {
 		name                       string
