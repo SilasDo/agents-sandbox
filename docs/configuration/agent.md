@@ -13,8 +13,9 @@ selects the coding-agent profile to run, build, provision, or manage. The agent 
 config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship as built-in profiles:
 
 - **`opencode`** (default) — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
-- **`opencode2`** — opencode 2 (beta), installed from `@opencode-ai/cli@beta` on npm; daemon-based with serve/attach,
-  worktree sessions, and npm beta-tag upgrade checks. It owns its own launcher config namespace
+- **`opencode2`** — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the npm
+  `beta` tag is used only for upgrade checks. Daemon-based with serve/attach, worktree sessions. It owns its own launcher
+  config namespace
   (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`), separate from `opencode`, because v2's config
   schema (e.g. structured `providers.*.models.*.capabilities`) differs from v1's — so the two can now diverge. Its VM
   config path and host drop-in stay `~/.config/opencode/` (v2 reads the same files as v1).

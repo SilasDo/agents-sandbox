@@ -3,12 +3,30 @@ package reprovision
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
+
+func TestDescribeConfigScopes(t *testing.T) {
+	existing := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	if got := describeConfigScopes(missing, missing, true); got != "(none)" {
+		t.Errorf("onlyExisting with nothing present = %q, want (none)", got)
+	}
+	onlyExisting := describeConfigScopes(existing, missing, true)
+	if !strings.Contains(onlyExisting, "user: ") || strings.Contains(onlyExisting, "project:") {
+		t.Errorf("onlyExisting should list only the present scope, got %q", onlyExisting)
+	}
+	targets := describeConfigScopes(existing, missing, false)
+	if !strings.Contains(targets, "user: ") || !strings.Contains(targets, "project: ") {
+		t.Errorf("targets should list both scopes, got %q", targets)
+	}
+}
 
 // emptyCandidatesConfigPaths returns no candidates, exercising the guard that
 // keeps ResolveConfigSource from indexing an empty candidate list.

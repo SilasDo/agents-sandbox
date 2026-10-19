@@ -400,7 +400,8 @@ func printConfigAgent(
 	if source.Fallback != "" {
 		sourceKind = fmt.Sprintf("legacy fallback %q", source.Fallback)
 	}
-	ui.Outf("config dir: user=%s  project=%s  (%s)", source.UserDir, source.ProjectDir, sourceKind)
+	ui.Outf("config dir: user=%q  project=%q  (%s)",
+		absolutePath(source.UserDir), absolutePath(source.ProjectDir), sourceKind)
 	if len(sources) == 0 {
 		ui.Out("No snippet files found; no merged config is provisioned.")
 	} else {
@@ -427,6 +428,16 @@ func printConfigAgent(
 		}
 		ui.Outf("  %-9s %s  ->  %s", status, hf.HostPath, hf.VMPath)
 	}
+}
+
+// absolutePath returns p as an absolute path when it can be resolved against
+// the current directory, so mixed relative/absolute source paths display in one
+// consistent form.
+func absolutePath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
 }
 
 // resolveConfigAgentName resolves the agent name for the config agent command:

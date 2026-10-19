@@ -104,6 +104,31 @@ func anyDirExists(dirs ...string) (bool, error) {
 	return false, statErr
 }
 
+// describeConfigScopes renders "user: <dir>, project: <dir>" for the given
+// scopes, as absolute quoted paths so the user can act on them from any
+// directory. When onlyExisting is set, scopes whose dir is absent are omitted
+// rather than named as if read.
+func describeConfigScopes(userDir, projectDir string, onlyExisting bool) string {
+	scopes := []struct{ name, dir string }{{"user", userDir}, {"project", projectDir}}
+	parts := make([]string, 0, len(scopes))
+	for _, s := range scopes {
+		if onlyExisting {
+			if info, err := os.Stat(s.dir); err != nil || !info.IsDir() {
+				continue
+			}
+		}
+		dir := s.dir
+		if abs, err := filepath.Abs(dir); err == nil {
+			dir = abs
+		}
+		parts = append(parts, fmt.Sprintf("%s: %q", s.name, dir))
+	}
+	if len(parts) == 0 {
+		return "(none)"
+	}
+	return strings.Join(parts, ", ")
+}
+
 // AgentConfigPath returns the VM path where the agent's merged config is
 // provisioned for the given home directory. It delegates to the agent's own
 // ConfigMerger so the path reflects the agent's config layout.
@@ -210,18 +235,18 @@ func LoadConfigFilesForHost(
 	}
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
+		primaryUser := cp.Get().UserAgentConfigDir(a)
+		primaryProject := cp.Get().ProjectAgentConfigDir(a)
 		ui.Warnf(
-			"agent %s is reading launcher config from the legacy shared %q dir (user: %q, project: %q), which agent opencode also uses; "+
-				"copy all of its files (not a subset) into the %q namespace (user: %q, project: %q) to silence this warning — any %q dir disables the fallback. "+
+			"agent %s is reading launcher config from the legacy shared %q dir (%s), which agent opencode also uses; "+
+				"because any %q dir disables the fallback, copy everything you need in one go into the %q namespace (%s) — a partial copy will not fall back for the rest. "+
 				"The guest ~/.config/opencode path is unchanged.",
 			a.Name(),
 			src.Fallback,
-			src.UserDir,
-			src.ProjectDir,
+			describeConfigScopes(src.UserDir, src.ProjectDir, true),
 			a.ConfigDirName(),
-			cp.Get().UserAgentConfigDir(a),
-			cp.Get().ProjectAgentConfigDir(a),
 			a.ConfigDirName(),
+			describeConfigScopes(primaryUser, primaryProject, false),
 		)
 	}
 	return &ConfigFiles{

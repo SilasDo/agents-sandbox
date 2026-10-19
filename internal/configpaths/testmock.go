@@ -87,7 +87,7 @@ func (m *mockConfigPaths) UserDataDir() string {
 }
 
 func (m *mockConfigPaths) UserAgentConfigDir(a agent.Agent) string {
-	return ensureMockConfigDirectory(filepath.Join(m.UserConfigDir(), a.ConfigDirName()))
+	return ensureMockConfigDirectory(filepath.Join(m.UserConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName())))
 }
 
 func (m *mockConfigPaths) UserHomeDir() (string, error) {
@@ -118,7 +118,9 @@ func (m *mockConfigPaths) UserEnvSecretFile() string {
 }
 
 func (m *mockConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
-	return ensureMockConfigDirectory(filepath.Join(m.ProjectConfigDir(), a.ConfigDirName()))
+	return ensureMockConfigDirectory(
+		filepath.Join(m.ProjectConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName())),
+	)
 }
 
 func (m *mockConfigPaths) ProjectEnvFile() string {

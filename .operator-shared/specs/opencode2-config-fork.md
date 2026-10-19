@@ -102,7 +102,13 @@ puts host I/O in pure profiles) and over "configpaths stats the filesystem"
   ```
   The resolver rejects an empty or length-mismatched candidate pair, and a
   `os.Stat` error other than "not exist" is propagated rather than silently
-  treated as absent.
+  treated as absent. Two intended edge behaviors: a stat error on the
+  **primary** aborts resolution before aliases are considered (fail-closed — an
+  unreadable primary never silently falls back to the legacy namespace), and
+  when one scope is unreadable but the other resolves, resolution proceeds with
+  the readable scope and emits no warning (the warning is keyed to `Fallback`).
+  The `config agent` view labels the effective source without flagging the
+  empty-primary case (the spec's silent-empty tradeoff stands).
 
 ### The signal: "an opencode2 dir anywhere"
 

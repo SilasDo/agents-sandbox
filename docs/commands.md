@@ -371,7 +371,7 @@ agents-sandbox config agent --agent pi
 
 | Flag       | Short | Default    | Purpose                                                                 |
 |------------|-------|------------|-------------------------------------------------------------------------|
-| `--agent`  | —     | `opencode` | Coding-agent profile to inspect: `opencode` (default), `pi`, or `claude-code`. |
+| `--agent`  | —     | `opencode` | Coding-agent profile to inspect: `opencode` (default), `opencode2`, `pi`, or `claude-code`. |
 
 The agent is resolved from the `--agent` flag, then the positional `[name]`, then the configured agent, then `opencode`. Passing both `--agent` and a positional `[name]` (conflicting values) returns an "ambiguous" error.
 
