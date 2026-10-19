@@ -121,17 +121,25 @@ func describeConfigScopes(userDir, projectDir string, onlyExisting bool) string 
 	return strings.Join(parts, ", ")
 }
 
-// SourceDirs returns the absolute user and project config dirs in effect for
-// the resolved source, naming the legacy dir when the source is a fallback. The
-// project path is resolved against the current directory so display shows an
-// explicit location.
-func SourceDirs(a agent.Agent, src ConfigSource) (string, string) {
-	name := src.Fallback
-	if name == "" {
-		name = a.ConfigDirName()
+// SourceDirs returns the user and project config dirs actually read for the
+// resolved source. They come straight from the source so display can never
+// diverge from what was read; the seam builds candidates absolute, so both are
+// absolute.
+func SourceDirs(src ConfigSource) (string, string) {
+	return src.UserDir, src.ProjectDir
+}
+
+// PrimaryDirs returns the absolute primary (non-fallback) user and project
+// config dirs an agent migrates to. It reads the candidate lists, which never
+// create dirs: naming the migration target must not manufacture the very dir
+// whose existence switches the agent off the legacy fallback.
+func PrimaryDirs(a agent.Agent) (string, string) {
+	user := cp.Get().UserAgentConfigDirCandidates(a)
+	project := cp.Get().ProjectAgentConfigDirCandidates(a)
+	if len(user) == 0 || len(project) == 0 {
+		return "", ""
 	}
-	projectBase := cp.Get().ProjectConfigDirAbs()
-	return filepath.Join(cp.Get().UserConfigDir(), name), filepath.Join(projectBase, name)
+	return user[0], project[0]
 }
 
 // isDir reports whether path names an existing directory.
@@ -246,12 +254,12 @@ func LoadConfigFilesForHost(
 	}
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
-		legacyUser, legacyProject := SourceDirs(a, src)
-		primaryUser, primaryProject := SourceDirs(a, ConfigSource{UserDir: "", ProjectDir: "", Fallback: ""})
+		legacyUser, legacyProject := SourceDirs(src)
+		primaryUser, primaryProject := PrimaryDirs(a)
 		ui.Warnf(
 			"agent %s is reading launcher config from the legacy shared %q dir (%s), which agent opencode also uses; "+
-				"because any %q dir disables the fallback, copy everything you need in one go into the %q namespace (%s) — a partial copy will not fall back for the rest. "+
-				"The guest ~/.config/opencode path is unchanged.",
+				"a %q dir in either the user or project scope switches both scopes, so copy (do not move) everything you need in one go into the %q namespace (%s): "+
+				"a partial copy will not fall back for the rest. The guest ~/.config/opencode path is unchanged.",
 			a.Name(),
 			src.Fallback,
 			describeConfigScopes(legacyUser, legacyProject, true),

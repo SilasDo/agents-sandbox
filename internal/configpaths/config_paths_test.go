@@ -133,8 +133,8 @@ func TestRealAgentConfigDirCandidates(t *testing.T) {
 		t.Errorf("user candidates = %v, want %v", got, want)
 	}
 	wantProject := []string{
-		filepath.Join(projectConfigDir, "opencode2"),
-		filepath.Join(projectConfigDir, "opencode"),
+		filepath.Join(Get().ProjectConfigDirAbs(), "opencode2"),
+		filepath.Join(Get().ProjectConfigDirAbs(), "opencode"),
 	}
 	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
 		t.Errorf("project candidates = %v, want %v", got, wantProject)
@@ -158,7 +158,12 @@ func TestProjectDirsAndFiles(t *testing.T) {
 	cfgPaths := Get()
 	a, _ := agent.Lookup("opencode")
 
-	if got := cfgPaths.ProjectAgentConfigDir(a); got != filepath.Join(projectConfigDir, a.ConfigDirName()) {
+	if got := cfgPaths.ProjectAgentConfigDir(
+		a,
+	); got != filepath.Join(
+		cfgPaths.ProjectConfigDirAbs(),
+		a.ConfigDirName(),
+	) {
 		t.Errorf("ProjectAgentConfigDir() = %q", got)
 	}
 	if got := cfgPaths.ProjectEnvFile(); got != filepath.Join(projectConfigDir, EnvFileName) {

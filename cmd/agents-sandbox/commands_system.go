@@ -395,7 +395,7 @@ func printConfigAgent(
 	mirrorFiles []reprovision.MirrorFile,
 	provision bool,
 ) {
-	userDir, projectDir := reprovision.SourceDirs(a, source)
+	userDir, projectDir := reprovision.SourceDirs(source)
 	sourceKind := "primary"
 	if source.Fallback != "" {
 		sourceKind = fmt.Sprintf("legacy fallback %q", source.Fallback)

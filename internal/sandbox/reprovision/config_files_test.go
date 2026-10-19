@@ -1029,6 +1029,15 @@ func TestLoadConfigFilesFallsBackToLegacyDir(t *testing.T) {
 	if n := countWarns(ui.WarnCalls, "legacy shared"); n != 1 {
 		t.Errorf("legacy fallback warning count = %d, want 1; warnings: %v", n, ui.WarnCalls)
 	}
+	warn := ui.WarnCalls[0]
+	legacyProject := filepath.Join(cp.ProjectConfigDirAbs(), "opencode")
+	primaryProject := filepath.Join(cp.ProjectConfigDirAbs(), "opencode2")
+	if !strings.Contains(warn, legacy) || !strings.Contains(warn, legacyProject) {
+		t.Errorf("warning should name the legacy dirs actually read; got %q", warn)
+	}
+	if !strings.Contains(warn, primaryProject) || !strings.Contains(warn, "do not move") {
+		t.Errorf("warning should name the primary targets and say not to move; got %q", warn)
+	}
 }
 
 func TestLoadConfigFilesPrimarySuppressesLegacy(t *testing.T) {

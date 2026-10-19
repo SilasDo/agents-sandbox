@@ -375,6 +375,14 @@ agents-sandbox config agent --agent pi
 
 The agent is resolved from the `--agent` flag, then the positional `[name]`, then the configured agent, then `opencode`. Passing both `--agent` and a positional `[name]` (conflicting values) returns an "ambiguous" error.
 
+The output names the launcher (host) config dirs actually read, as absolute paths:
+
+```
+config dir: user="/home/me/.config/agents-sandbox/opencode2"  project="/work/repo/.agents-sandbox/opencode2"  (primary)
+```
+
+The trailing label is `primary` when the agent's own namespace is used, or `legacy fallback "<dir>"` when the agent is reading a shared legacy namespace (see [agent configuration]({% link configuration/agent.md %})). These are host launcher-config dirs; the guest agent config path is always `~/.config/opencode` regardless.
+
 Each host file is listed as `merged` (its VM path is the merged config path or part of the removed config-file family) or `not merged` (copied verbatim). Verbatim mirror files are listed as their host source path → VM path.
 
 #### config home

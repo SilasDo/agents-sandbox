@@ -30,13 +30,14 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 - **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`, `~/.config/agents-sandbox/opencode2/`)
 - **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
 
-> **Legacy fallback (migrating from an older version):** the `opencode2` launcher config dir is new. While no
-> `opencode2` dir exists (in either scope), `opencode2` reads the old shared `opencode` dir — which the `opencode` agent
-> also uses — and warns on every run while it falls back. To migrate, **copy** the files you want `opencode2` to read
-> from `~/.config/agents-sandbox/opencode/` into `~/.config/agents-sandbox/opencode2/` (and the project equivalent);
-> copy, not move, if you also use `opencode`. Once an `opencode2` dir exists it is used exclusively and the warning
-> stops, so copy **all** the files in one go: a partial `opencode2/` dir disables the fallback and silently ignores the
-> leftovers. The guest `~/.config/opencode/` path is never affected.
+> **Legacy fallback (migrating from an older version):** the `opencode2` launcher config dir is new. While **no**
+> `opencode2` dir exists in **either** scope, `opencode2` reads the old shared `opencode` dir — which the `opencode`
+> agent also uses — and warns on every run while it falls back. To migrate, **copy** the files you want `opencode2` to
+> read from `~/.config/agents-sandbox/opencode/` into `~/.config/agents-sandbox/opencode2/` (and the project
+> equivalent); copy, not move, if you also use `opencode`. The two scopes switch together: as soon as an `opencode2`
+> dir exists in **either** the user or the project scope, **both** scopes read their `opencode2/` dir and the warning
+> stops — so copy **all** the files in one go, because a partial `opencode2/` dir disables the fallback for the other
+> scope too and silently ignores the leftovers. The guest `~/.config/opencode/` path is never affected.
 
 VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently

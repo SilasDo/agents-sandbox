@@ -43,6 +43,15 @@ func (emptyCandidatesConfigPaths) ProjectAgentConfigDirCandidates(agent.Agent) [
 	return nil
 }
 
+func TestPrimaryDirsEmptyCandidates(t *testing.T) {
+	withEmptyCandidates(t)
+
+	a, _ := agent.Lookup("opencode2")
+	if user, project := PrimaryDirs(a); user != "" || project != "" {
+		t.Errorf("PrimaryDirs with no candidates = (%q, %q), want empty", user, project)
+	}
+}
+
 func TestResolveConfigSourceEmptyCandidates(t *testing.T) {
 	withEmptyCandidates(t)
 
@@ -159,6 +168,29 @@ func TestResolveConfigSourceStatErrorDoesNotHideUsableScope(t *testing.T) {
 	}
 }
 
+func TestSourceDirsMirrorResolvedSource(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	a, _ := agent.Lookup("opencode2")
+
+	src := ConfigSource{
+		UserDir:    filepath.Join(cp.UserConfigDir(), "opencode"),
+		ProjectDir: filepath.Join(cp.ProjectConfigDirAbs(), "opencode"),
+		Fallback:   "opencode",
+	}
+	user, project := SourceDirs(src)
+	if user != src.UserDir || project != src.ProjectDir {
+		t.Errorf("SourceDirs = (%q, %q), want the resolved source dirs", user, project)
+	}
+	primaryUser, primaryProject := PrimaryDirs(a)
+	if primaryUser != cp.UserAgentConfigDir(a) || primaryProject != cp.ProjectAgentConfigDir(a) {
+		t.Errorf("PrimaryDirs = (%q, %q), want the seam's primary dirs", primaryUser, primaryProject)
+	}
+	if filepath.IsAbs(primaryProject) == false {
+		t.Errorf("PrimaryDirs project dir %q should be absolute", primaryProject)
+	}
+}
+
 func TestResolveConfigSource(t *testing.T) {
 	cases := []struct {
 		name                       string
@@ -172,6 +204,8 @@ func TestResolveConfigSource(t *testing.T) {
 		{"project legacy", false, false, false, true, "opencode"},
 		{"primary beats legacy", true, true, true, true, ""},
 		{"any primary wins", false, true, true, false, ""},
+		{"user primary, project legacy", true, false, false, true, ""},
+		{"alias in both scopes", false, true, false, true, "opencode"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -1,7 +1,9 @@
 # opencode2 Config Namespace Fork Implementation Plan
 
 > **Status:** implemented on `opencode2-config-fork` (PR #232); all tasks complete. A later adversarial review
-> hardened config-dir name validation and the resolver's error handling.
+> hardened config-dir name validation and the resolver's error handling. The code sketches below are drafting
+> artifacts: the shipped warning text differs (says **copy, do not move**, names the legacy and primary paths, and
+> states the either-scope rule) and project config dirs are absolute. The spec is the source of truth.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

@@ -85,8 +85,10 @@ func (c *realConfigPaths) UserAgentConfigDirCandidates(a agent.Agent) []string {
 }
 
 // ProjectAgentConfigDirCandidates returns the project config-dir candidates.
+// The base is absolute so the dirs that resolution reads are the same dirs that
+// display reports, with no second derivation of the project root.
 func (c *realConfigPaths) ProjectAgentConfigDirCandidates(a agent.Agent) []string {
-	return agentConfigDirCandidates(projectConfigDir, a)
+	return agentConfigDirCandidates(c.ProjectConfigDirAbs(), a)
 }
 
 func agentConfigDirCandidates(base string, a agent.Agent) []string {
@@ -177,9 +179,10 @@ func (c *realConfigPaths) ProjectDockerfile() string {
 	return filepath.Join(projectConfigDir, dockerfileName)
 }
 
-// ProjectAgentConfigDir returns the project-local config dir for the agent.
+// ProjectAgentConfigDir returns the project-local config dir for the agent,
+// absolute to match ProjectAgentConfigDirCandidates.
 func (c *realConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
-	return filepath.Join(projectConfigDir, validConfigDirName(a.Name(), a.ConfigDirName()))
+	return filepath.Join(c.ProjectConfigDirAbs(), validConfigDirName(a.Name(), a.ConfigDirName()))
 }
 
 func (c *realConfigPaths) ProjectEnvFile() string {

@@ -31,7 +31,12 @@ naming nor desirable).
   (`ProvisionRules`) exactly `opencode`.
 - Preserve existing users' opencode2 config, which lives in the shared
   `.../opencode/` dir today, via a fallback.
-- Leave opencode (v1) behavior completely unchanged.
+- Leave opencode (v1) behavior unchanged. The one deliberate exception: the
+  shared resolver now `os.Stat`s candidate dirs for every agent, so a
+  non-"not exist" stat error on a candidate surfaces instead of being swallowed
+  (previously `scanSnippets`/`filewalk` ignored such errors). v1 declares no
+  alias, so its dir selection and warning behavior are identical; only the
+  error-propagation edge differs.
 
 ## Non-goals
 
@@ -82,8 +87,11 @@ puts host I/O in pure profiles) and over "configpaths stats the filesystem"
   ProjectAgentConfigDirCandidates(a agent.Agent) []string
   ```
   Built as `filepath.Join(base, name)` over `ConfigDirName()` then
-  `ConfigDirAliases()`. `UserAgentConfigDir`/`ProjectAgentConfigDir` stay
-  (primary path). Each name is validated to be a single clean path element
+  `ConfigDirAliases()`. The project base is `ProjectConfigDirAbs()` (absolute),
+  so the dirs resolution reads are the same dirs display reports — one source of
+  truth, no second derivation of the project root.
+  `UserAgentConfigDir`/`ProjectAgentConfigDir` stay (primary path) and are also
+  absolute for the project scope. Each name is validated to be a single clean path element
   (rejecting `""`, `.`, `..`, and any name containing the path separator —
   including a bare `/`) and a bad name panics; the primary path constructors
   (`UserAgentConfigDir`/`ProjectAgentConfigDir`) validate too, so the guard is
@@ -140,17 +148,22 @@ Behavior matrix (user/project, opencode2 = primary, opencode = legacy):
 
 ### Warning
 
-Emitted at the single config-load boundary when `Fallback != ""` **and** a
-legacy dir actually exists (nothing to warn about otherwise), always — not
-gated to once. It names the agent, the full legacy user/project paths actually
-read, and the primary user/project paths to migrate into, and says **copy** (not
-move) because the legacy dir is also the `opencode` agent's live dir; it states
-the guest `~/.config/opencode` path is unchanged. Paths are absolute: the
-project dir is resolved through the new `configpaths.ProjectConfigDirAbs` seam
-method (the relative `ProjectConfigDir` resolved against the cwd, degrading to
-the relative form only if the cwd is unreadable), so `config agent` and the
-warning show explicit locations rather than a cwd-relative path. It names only
-the scopes whose dir exists. The load runs exactly once per process today
+Emitted at the single config-load boundary when `Fallback != ""` (which by
+construction implies a legacy dir exists), always — not gated to once. It names
+the agent, the full legacy user/project paths actually read, and the primary
+user/project paths to migrate into, and says **copy** (do not move) because the
+legacy dir is also the `opencode` agent's live dir; it states that an
+`opencode2` dir in either scope switches both scopes, and that the guest
+`~/.config/opencode` path is unchanged. Paths are absolute: the project dir is
+resolved through the `configpaths.ProjectConfigDirAbs` seam method (the relative
+`ProjectConfigDir` resolved against the cwd, degrading to the relative form only
+if the cwd is unreadable), so `config agent` and the warning show explicit
+locations rather than a cwd-relative path. `reprovision.SourceDirs` returns the
+resolved source's dirs verbatim (display cannot diverge from what was read), and
+`reprovision.PrimaryDirs` reads candidate[0] from the non-creating candidate
+lists — naming the migration target must never manufacture the primary dir,
+since its existence is the switch. It names only the scopes whose dir exists.
+The load runs exactly once per process today
 (`run_orchestrate.go`: "Load the merged agent config … exactly once per
 startup"), and `config agent` invokes it once; a regression test asserts the
 warning fires exactly once per load. If a future path loads more than once, the
