@@ -105,28 +105,27 @@ func anyDirExists(dirs ...string) (bool, error) {
 }
 
 // describeConfigScopes renders "user: <dir>, project: <dir>" for the given
-// scopes, as absolute quoted paths so the user can act on them from any
-// directory. When onlyExisting is set, scopes whose dir is absent are omitted
-// rather than named as if read.
+// scopes. The user path is absolute (XDG/home-rooted); the project path is
+// relative and is labelled as such. When onlyExisting is set, scopes whose dir
+// is absent are omitted rather than named as if read.
 func describeConfigScopes(userDir, projectDir string, onlyExisting bool) string {
-	scopes := []struct{ name, dir string }{{"user", userDir}, {"project", projectDir}}
-	parts := make([]string, 0, len(scopes))
-	for _, s := range scopes {
-		if onlyExisting {
-			if info, err := os.Stat(s.dir); err != nil || !info.IsDir() {
-				continue
-			}
-		}
-		dir := s.dir
-		if abs, err := filepath.Abs(dir); err == nil {
-			dir = abs
-		}
-		parts = append(parts, fmt.Sprintf("%s: %q", s.name, dir))
+	parts := make([]string, 0, 2)
+	if !onlyExisting || isDir(userDir) {
+		parts = append(parts, fmt.Sprintf("user: %q", userDir))
+	}
+	if !onlyExisting || isDir(projectDir) {
+		parts = append(parts, fmt.Sprintf("project: %q (relative to CWD)", projectDir))
 	}
 	if len(parts) == 0 {
 		return "(none)"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// isDir reports whether path names an existing directory.
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
 }
 
 // AgentConfigPath returns the VM path where the agent's merged config is
