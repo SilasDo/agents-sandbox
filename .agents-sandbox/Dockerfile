@@ -19,7 +19,7 @@ RUN GOBIN=/usr/local/bin go install gotest.tools/gotestsum@v${GOTESTSUM_VERSION}
 # build-essential for CGO, shellcheck for shell script linting, default-jre for the PlantUML jar
 # (the full JRE, not -headless: PlantUML renders fonts and needs libharfbuzz/libfontmanager)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential bundler shellcheck default-jre && \
+    apt-get install -y --no-install-recommends build-essential bundler shellcheck default-jre fd-find && \
     rm -rf /var/lib/apt/lists/*
 
 # zig (tarball and install dir are architecture-specific; a stable symlink keeps PATH fixed)
