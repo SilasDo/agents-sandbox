@@ -34,6 +34,10 @@ If you encounter a runtime error, submit a bug report at:
 
 ### Legacy home volumes after upgrading
 
+For the upgrade overview — what changed, the migration choices, and how to retire
+`~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). The
+notes below cover diagnosing an interrupted or unclear copy.
+
 Versions before the private runtime home stored home volumes under
 `~/.microsandbox/volumes/`. On the first interactive `run`/`shell` after
 upgrading, agents-sandbox offers once to copy those `agents-sandbox-home-*`

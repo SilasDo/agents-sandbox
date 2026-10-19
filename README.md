@@ -10,7 +10,9 @@
 
 agents-sandbox allows you to isolate your coding agents from the rest of your dev environment. You are put in control over what parts of your host machine and network environment are available to each agent. agents-sandbox acts as a launcher for [opencode](https://opencode.ai), [opencode2](https://opencode.ai),
 [pi](https://pi.dev), and [Claude Code](https://claude.com/product/claude-code). It builds or reuses a dedicated [microsandbox](https://microsandbox.dev/) VM per
-project and agent, then attaches the selected agent inside that VM.
+project and agent, then attaches the selected agent inside that VM. A system-wide microsandbox installation is not
+required: agents-sandbox provisions its own isolated runtime under its data directory and never touches your
+`~/.microsandbox`.
 
 On top of that, agents-sandbox utilizes the robust secrets management of microsandbox, which significantly reduces the exposure of secrets to the agent. This way, your helpful assistant (or even a rogue agent) won't be able to accidentally publish dev secrets to a public wiki page ;)
 

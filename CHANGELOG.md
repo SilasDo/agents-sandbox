@@ -64,6 +64,14 @@ command reports the bare version (e.g. `0.1.0`).
   happen. When a private volume already exists under a legacy name (a prior copy of unclear status), the offer says so
   and lets you copy only the missing volumes (leaving the existing ones untouched) or dismiss; the prompt points at
   `volume remove` for manual cleanup.
+- After the one-time legacy home-volume migration, an interactive `run`/`shell` now shows a one-time notice that
+  agents-sandbox runs its own microsandbox runtime and a system-wide microsandbox is no longer required. It names
+  which parts of `~/.microsandbox` are ours and safe to remove (and gives the commands) versus your own data, is
+  acknowledged with a keypress and never shown again, prints without acknowledgment in non-interactive sessions, and
+  never deletes anything.
+- A new [Upgrading to 0.6](https://inoio.github.io/agents-sandbox/install/upgrading.html) page documents the private
+  runtime home, the legacy home-volume migration, the uninstall payoff for a system-wide microsandbox, and the 0.6
+  renames.
 - `volume remove <name>...` (alias `rm`) removes home volumes by name. It prompts for confirmation (pass `--yes` to
   skip it non-interactively) and refuses when a project's state still references a volume, unless `-f`/`--force` is
   given.
