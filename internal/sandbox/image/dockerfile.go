@@ -58,7 +58,8 @@ const (
 
 // trustHelperAsset is the build-context file carrying the CA-trust helper;
 // trustHelperDest is where the final stage installs it inside the image.
-// /usr/local/bin is on the default PATH, so the helper runs without a shell.
+// /usr/local/bin is on the PATH of the standard bases, so the helper runs
+// without a shell; a custom base that drops it needs the absolute path.
 const (
 	trustHelperAsset = "msb-trust.sh"
 	trustHelperDest  = "/usr/local/bin/msb-trust"

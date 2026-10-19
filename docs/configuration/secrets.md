@@ -115,14 +115,15 @@ msb-trust chrome   # the current user's Chrome/Chromium NSS store
 
 The helper imports the CA, preserves the certificates that are already there, and never installs packages. `java`
 needs `keytool` on `PATH` (or `JAVA_HOME` pointing at a JDK) and `chrome` needs `certutil`
-(`libnss3-tools`/`nss-tools`); a missing tool is reported instead of installed. Run it with `--help` for the
-application-specific requirements, or see the [Java recipe]({% link recipes/java-ca-trust.md %}) for the setup and how
-to import the CA automatically on every VM boot.
+(`libnss3-tools`/`nss-tools`); a missing tool is reported instead of installed. `msb-trust <application> --help` lists
+what that application needs. The helper's own messages say `sh msb-trust.sh …`, the layout upstream expects when you
+save the script next to your code, so translate the name to `msb-trust` when you follow them. The
+[Java recipe]({% link recipes/java-ca-trust.md %}) has the full setup and the import every VM boot needs.
 
 Two things the helper does not cover. Containers built inside the VM have their own root store, so a `docker build` that
-downloads over HTTPS fails certificate verification: copy the CA into the image being built (for example
-`/usr/local/share/ca-certificates/microsandbox-ca.crt`, then `update-ca-certificates` in that Dockerfile). Applications
-with a bundled trust store also have to be configured individually.
+downloads over HTTPS fails certificate verification: copy the CA out of the VM
+(`/usr/local/share/ca-certificates/microsandbox-ca.crt`) into the build context and install it in that Dockerfile, then
+run `update-ca-certificates`. Applications with a bundled trust store also have to be configured individually.
 
 ## OpenCode authentication
 

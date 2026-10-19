@@ -34,8 +34,13 @@ Gradle/Maven fails with `SunCertPathBuilderException`. The helper's handlers are
 - We deliberately do **not** auto-run it at VM boot. Upstream rejected an automatic `JAVA_TOOL_OPTIONS` for #1689
   because it cannot cover Nix/SDKMAN JDKs or custom or password-protected stores, and a launcher-side auto-run would
   have to guess the same things. The documented answer is the startup hook.
+- **Renamed command.** The image installs it as `msb-trust`, while the script's own messages say `sh msb-trust.sh …`
+  (upstream's layout is "save the script beside your code"). A `msb-trust.sh` symlink would not help: `sh msb-trust.sh`
+  resolves the operand against the CWD, not `PATH`. With verbatim vendoring the messages stay as upstream wrote them, so
+  the rename is explained in `secrets.md` and the recipe instead.
 - The import does **not** survive a VM recreate: the trust store is image state, not home-volume state. The hook is
-  what makes it hold across rebuilds, config changes, and resets.
+  what makes it hold across rebuilds, config changes, and resets. It fires on VM start only, so a hook added to a
+  running VM needs a stop (or any recreate) before it applies.
 - Not covered, and out of scope for the helper: containers built inside the VM (they have their own root store, so a
   `docker build` that fetches over HTTPS still needs the CA installed into the image being built — the `AGENTS.md`
   workaround stands), and applications with a bundled trust store.
@@ -49,10 +54,11 @@ application that uses a separate trust store"). A `node` handler would be dead c
 ## Verification
 
 `TestRenderDockerfileTrustHelperRunsInImage` (integration-tagged) builds the runner image and runs
-`msb-trust java --help` directly — no shell — which proves the exec bit survived the context `COPY` and that the
-vendored script still names the guest CA path (`/.msb/tls/ca.pem`). The unit tests pin the tar entry (content and mode)
-and the final stage's `COPY`. Locally, the `java` handler was verified against a real `keytool` (import, idempotent
-re-run, and the non-root failure on the root-owned store).
+`msb-trust java --help` directly — no shell — which proves the exec bit survived the context `COPY` and that the java
+handler still documents the guest CA path (`/.msb/tls/ca.pem`). The unit tests pin the tar entry (content and mode), the
+final stage's `COPY`, and — like the profile.d merge script — that editing the helper's bytes changes
+`computeDockerfileID`. Locally, the `java` handler was verified against a real `keytool` (import, idempotent re-run, and
+the non-root failure on the root-owned store).
 
 ## Documentation
 

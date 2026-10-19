@@ -209,6 +209,21 @@ For `env.secret.yaml`, values may contain `@` without issues. Ensure the entry d
 `allow_any_host_dangerous: true` — entries with no hosts definition are silently skipped. An empty `value` is valid
 and passed through unchanged.
 
+## TLS certificate errors for one application
+
+Once a secret is configured, requests to the matching hosts go through microsandbox's TLS proxy, which the guest system
+store trusts. An application with its own trust store does not, and fails with a certificate-path error — Java reports
+`SunCertPathBuilderException: unable to find valid certification path to requested target`. Import the CA into that
+store with the `msb-trust` helper from the runner image:
+
+```console
+agents-sandbox shell --root
+msb-trust java
+```
+
+See [Trusting the CA in applications]({% link configuration/secrets.md %}) for which applications already work, and the
+[Java recipe]({% link recipes/java-ca-trust.md %}) for the boot hook that repeats the import after a recreate.
+
 ## Memory or CPU limits too low
 
 If the agent runs slowly or VMs fail to start with resource errors, increase allocation:

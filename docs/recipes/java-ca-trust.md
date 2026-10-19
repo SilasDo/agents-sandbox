@@ -29,7 +29,13 @@ Alternatively point `FROM` at a JDK image and treat it as a [custom base]({% lin
 
 ## Import the CA
 
-Run the helper inside the VM:
+The JDK's trust store is root-owned, so import it from a root shell in the VM:
+
+```console
+agents-sandbox shell --root
+```
+
+Then, in that shell:
 
 ```console
 msb-trust java
@@ -39,16 +45,20 @@ It writes to the JDK's default trust store (`$JAVA_HOME/lib/security/cacerts`, u
 `/etc/ssl/certs/java/cacerts`) under the alias `microsandbox-interception`. Verify the import:
 
 ```console
-keytool -list -cacerts -alias microsandbox-interception -storepass changeit
+keytool -list -cacerts -alias microsandbox-interception
 ```
 
-The store is owned by root, so the import needs root; `msb-trust java` as the `dev` user fails. If the store password is
-not the default `changeit`, set `MSB_JAVA_STORE_PASSWORD` for the import. For a JDK outside the system layout (SDKMAN,
-Nix), set `JAVA_HOME` to it — the helper uses `$JAVA_HOME/bin/keytool` when it is set, otherwise `keytool` from `PATH`.
-The helper never installs packages and reports a missing `keytool` instead.
+`keytool` prompts for the store password; pass `-storepass changeit` (or the value of `MSB_JAVA_STORE_PASSWORD`) in a
+non-interactive shell. Running `msb-trust java` as the `dev` user fails on that store's permissions. A JVM that is
+already running — a Gradle daemon, for example — keeps the trust store it loaded, so restart it after the import.
 
-`msb-trust all` also configures Chrome/Chromium's NSS store when `certutil` is present, and `msb-trust --help` lists what
-is supported.
+For a JDK outside the system layout (SDKMAN, Nix), set `JAVA_HOME` to it — the helper uses `$JAVA_HOME/bin/keytool`
+when it is set, otherwise `keytool` from `PATH`. The helper never installs packages and reports a missing `keytool`
+instead.
+
+`msb-trust all` also configures Chrome/Chromium's NSS store when `certutil` is present. The helper's own messages tell
+you to run `sh msb-trust.sh …`, because upstream ships the script as a file you save next to your code; the installed
+command is `msb-trust`, so translate the name when you follow them.
 
 ## Import it automatically on boot
 
@@ -73,8 +83,10 @@ home:
 exec msb-trust java
 ```
 
-The hook runs before the agent session starts, so the first `./gradlew` in the session already trusts the CA. A failing
-hook is logged and does not stop the VM, but the `[ -r ... ]` guard keeps a project without secrets quiet.
+The hook runs before the agent session starts, so the first `./gradlew` in the session already trusts the CA. It fires
+when the VM **starts**, not when it is attached to, so adding it to an already-running VM needs one `agents-sandbox stop`
+(or any change that recreates the VM) before it takes effect. A failing hook is logged and does not stop the VM, but the
+`[ -r ... ]` guard keeps a project without secrets quiet.
 
 Keep `JAVA_HOME` in the project Dockerfile (`ENV JAVA_HOME=/path/to/jdk`) if the JDK is not the system one, so the
 root-run hook imports into the right trust store.
