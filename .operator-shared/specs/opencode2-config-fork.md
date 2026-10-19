@@ -1,7 +1,7 @@
 # Design: fork the opencode2 launcher config namespace
 
 Date: 2026-10-19
-Status: proposed (not approved for implementation)
+Status: implemented on `opencode2-config-fork` (pending merge)
 
 ## Intent
 
@@ -191,7 +191,15 @@ migration (a primary dir plus leftover legacy files): that case stays silent.
   exactly-once-warning tests.
 - `docs/configuration/agent.md` — opencode2 section: own launcher dir, unchanged
   guest path/drop-in, fallback behavior.
+- `README.md` — the built-in-agents list's opencode2 bullet: own launcher dir,
+  unchanged guest path/drop-in.
 - `CHANGELOG.md` — `Unreleased` → `Changed`.
+
+Implementation notes (post-build): `configpaths.agentConfigDirCandidates` does no
+de-duplication (aliases are distinct legacy names by contract), and
+`ResolveConfigSource` carries no empty-candidates guard (the name list always
+seeds the primary, so candidates are never empty). `ConfigFiles.Source` is set
+once per load and reused by `Describe`.
 
 ## Left to the builder
 
