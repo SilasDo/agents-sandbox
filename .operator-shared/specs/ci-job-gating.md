@@ -30,11 +30,18 @@ paths:
 - The label name has no single source of truth: it appears in the job condition, in the job's comment, and in
   CONTRIBUTING's Testing section. GitHub also needs the label to exist in the repository before anyone can add it:
   `run-integration` is created there (delete with `gh label delete run-integration`).
+- Applying a label needs the repository's **triage** role or higher — read alone is not enough — so anyone with write
+  access qualifies and a read-only collaborator or outside contributor cannot self-serve. That is why CONTRIBUTING says
+  to ask a maintainer. A label a contributor sets in their own fork does nothing: the condition reads the base
+  repository's labels on the PR.
 
 ## Behavior
 
 - Adding the label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.
-- The gate works for fork PRs. The job uses no secrets, and `pull_request` (never `pull_request_target`) keeps the token
-  read-only, so a labeled fork PR only spends runner minutes.
+- The gate is not a privilege boundary: `lint`/`test` already execute PR code on the same runner, so labeling adds
+  compute, not trust. For fork PRs, `pull_request` (never `pull_request_target`) withholds secrets and forces a read-only
+  token, and the integration job uses no secrets in any case. Independently, a first-time contributor's fork PR needs a
+  maintainer's workflow approval before any job runs (repo setting `fork-pr-contributor-approval`:
+  `first_time_contributors`).
