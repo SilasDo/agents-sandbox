@@ -13,15 +13,17 @@ nav_order: 30
 Up to 0.5.x, agents-sandbox used your system-wide microsandbox (`~/.microsandbox`)
 as its runtime. Starting with 0.6, it provisions its own isolated runtime under its
 data directory — `~/.local/share/agents-sandbox/msb`, or
-`$XDG_DATA_HOME/agents-sandbox/msb`. It never reads or writes your
-`~/.microsandbox`, and it no longer requires an `msb` command or any particular
-microsandbox version on your machine.
+`$XDG_DATA_HOME/agents-sandbox/msb`. The runtime never uses `~/.microsandbox` and
+never writes to it; the one-time migration below reads it only to copy your old
+volumes. It also no longer requires an `msb` command or any particular microsandbox
+version on your machine.
 
 Nothing broke in the upgrade: agents-sandbox simply stopped depending on software
 it does not own. `agents-sandbox doctor` reports the private runtime home and its
 location.
 
-For the durable "why" behind this split, see [Sandboxes]({% link sandboxes.md %}).
+For the durable "why" behind this split, see
+[Sandboxes]({% link sandboxes.md %}#why-agents-sandbox-runs-its-own-microsandbox).
 This page covers what to do about the old home.
 
 ## Migrating your old home volumes
@@ -57,10 +59,10 @@ for the full cleanup path.
 
 ## Removing the old microsandbox home
 
-Once the migration is resolved, a one-time interactive notice tells you that your
-system-wide microsandbox is now optional. It requires a keypress, appears once,
-and prints without acknowledgment in non-interactive sessions. Nothing is deleted
-for you.
+Once the migration is resolved — or when there is nothing to migrate — a
+one-time interactive notice tells you that your system-wide microsandbox is now
+optional. It requires a keypress, appears once, and prints without acknowledgment
+in non-interactive sessions. Nothing is deleted for you.
 
 `~/.microsandbox` holds two different things:
 
@@ -87,7 +89,11 @@ rm -rf ~/.microsandbox
 
 If any volume could not be copied, it is left in place and named in the notice:
 check it before removing anything, and do not remove the whole folder while it
-remains.
+remains — in that case the notice does not offer the wholesale command at all.
+
+Removing `~/.microsandbox` does not uninstall a system-wide microsandbox by
+itself. Since agents-sandbox no longer requires the system-wide `msb` command,
+you can also uninstall a system-wide microsandbox the way you installed it.
 
 ## Renamed flags and commands
 
