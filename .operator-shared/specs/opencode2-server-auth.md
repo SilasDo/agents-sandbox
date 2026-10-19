@@ -55,7 +55,8 @@ v1 (`opencode`) is unaffected: its `/global/health` is unauthenticated and its
   Those calls now carry the credential but return 404, so `--worktree` for
   opencode2 remains non-functional; correcting it needs the `WorktreeProvider`
   commands to receive the target directory (to resolve the project id by
-  `canonical`), which is a separate change.
+  `canonical`), which is a separate change. Specified in
+  `opencode2-worktree-api.md` (issue #235).
 - No health check via an unauthenticated endpoint (`/` web UI): it would report
   "listening", not "healthy", and would not fix attach/worktree auth.
 - No reliance on upstream PR #46270 (make `serve` unauthenticated when the
