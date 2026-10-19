@@ -245,9 +245,14 @@ func legacySandboxNames(legacyHome string) ([]string, error) {
 }
 
 // legacyArtifacts are the launcher-owned leftovers in the legacy home.
+// VolumesUnreadable records that <legacyHome>/volumes could not be listed: it is
+// empty for firing detection (an unreadable directory counts as absent), but
+// command selection must withhold destructive commands because unlisted volumes
+// may still hold data.
 type legacyArtifacts struct {
-	HomeVolumes []string
-	Sandboxes   []string
+	HomeVolumes       []string
+	Sandboxes         []string
+	VolumesUnreadable bool
 }
 
 func (a legacyArtifacts) present() bool {
@@ -260,11 +265,21 @@ func detectLegacyArtifacts(legacyHome string) (legacyArtifacts, error) {
 	if err != nil {
 		return legacyArtifacts{}, err
 	}
+	// A tolerant listing swallows an unreadable volumes directory as empty.
+	// Detection may treat that as absent, but command selection may not: an
+	// unlistable directory can still hold uncopied volumes. A strict listing
+	// distinguishes "empty" from "could not read".
+	volumesUnreadable := false
+	if len(volumes) == 0 {
+		if _, strictErr := campaignLegacyVolumeNames(legacyHome); strictErr != nil {
+			volumesUnreadable = true
+		}
+	}
 	sandboxes, err := legacySandboxNames(legacyHome)
 	if err != nil {
 		return legacyArtifacts{}, err
 	}
-	return legacyArtifacts{HomeVolumes: volumes, Sandboxes: sandboxes}, nil
+	return legacyArtifacts{HomeVolumes: volumes, Sandboxes: sandboxes, VolumesUnreadable: volumesUnreadable}, nil
 }
 
 // detectLegacyArtifactsFor resolves the legacy home and delegates.

@@ -293,6 +293,19 @@ func loopedVolumeHome(t *testing.T) string {
 	return home
 }
 
+// makeVolumeDirUnreadable chmods <home>/volumes to 000 so its listing fails with
+// permission denied: the tolerant listing treats that as empty, while the strict
+// listing reports it. The mode is restored in cleanup so t.TempDir can recurse
+// into the directory when removing it.
+func makeVolumeDirUnreadable(t *testing.T, home string) {
+	t.Helper()
+	volumes := filepath.Join(home, "volumes")
+	if err := os.Chmod(volumes, 0o000); err != nil {
+		t.Fatalf("chmod volumes 000: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(volumes, 0o750) })
+}
+
 func TestPresentLegacyTargets(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
@@ -396,6 +409,29 @@ func TestDetectLegacyArtifactsToleratesMissingDirs(t *testing.T) {
 	}
 	if got.present() {
 		t.Fatalf("artifacts = %+v, want none for an empty home", got)
+	}
+}
+
+// TestDetectLegacyArtifactsMarksUnreadableVolumes pins that an unlistable
+// <legacyHome>/volumes is surfaced as VolumesUnreadable so command selection can
+// withhold destructive commands, even though the tolerant listing reports it as
+// empty and an unreadable directory alone must not fire the notice.
+func TestDetectLegacyArtifactsMarksUnreadableVolumes(t *testing.T) {
+	legacy := newHome(t)
+	makeVolumeDirUnreadable(t, legacy)
+
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if !got.VolumesUnreadable {
+		t.Errorf("artifacts = %+v, want VolumesUnreadable", got)
+	}
+	if len(got.HomeVolumes) != 0 {
+		t.Errorf("HomeVolumes = %v, want none from an unreadable directory", got.HomeVolumes)
+	}
+	if got.present() {
+		t.Error("artifacts.present() = true, want false: an unreadable volumes dir alone must not fire")
 	}
 }
 

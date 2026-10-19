@@ -488,12 +488,15 @@ func TestCopyVolumesStateReadErrorAborts(t *testing.T) {
 	}
 }
 
-// TestCopyVolumesTerminalIsNoOp pins that a terminal migration copies nothing.
+// TestCopyVolumesTerminalIsNoOp pins that a terminal migration copies nothing
+// and preserves its recorded status. The status check is what makes the
+// acknowledged case meaningful: without the guard the campaign would open and
+// finalize, overwriting it to completed.
 func TestCopyVolumesTerminalIsNoOp(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
-	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed} {
+	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged} {
 		if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 			MigrationName: {Status: status},
 		}}); err != nil {
@@ -506,6 +509,13 @@ func TestCopyVolumesTerminalIsNoOp(t *testing.T) {
 		}
 		if len(client.Volumes) != 0 || len(client.RemovedVolumes) != 0 {
 			t.Errorf("status %q: CopyVolumes touched volumes", status)
+		}
+		root, err := state.ReadRootState()
+		if err != nil {
+			t.Fatalf("status %q: read root state: %v", status, err)
+		}
+		if got, _ := root.Migration(MigrationName); got.Status != status {
+			t.Errorf("status %q: migration = %q, want the terminal status preserved", status, got.Status)
 		}
 	}
 }

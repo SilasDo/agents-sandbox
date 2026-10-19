@@ -86,6 +86,22 @@ func TestRenderNoticeUncopiedSuppressesVolumeGlob(t *testing.T) {
 	}
 }
 
+// TestRenderNoticeUnreadableVolumesSuppressesWholesaleCommand pins that an
+// unlistable legacy volumes directory withholds the wholesale command: unlisted
+// home volumes may still hold data. The sandbox globs stay safe.
+func TestRenderNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
+	out := renderNotice(
+		legacyArtifacts{Sandboxes: []string{naming.VMPrefix + "p"}, VolumesUnreadable: true},
+		nil,
+	)
+	if strings.Contains(out, "rm -rf ~/.microsandbox\n") {
+		t.Errorf("notice suggests wholesale removal while the volumes directory is unreadable:\n%s", out)
+	}
+	if !strings.Contains(out, "could not list ~/.microsandbox/volumes") {
+		t.Errorf("notice does not explain the unreadable volumes directory:\n%s", out)
+	}
+}
+
 func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{IsInteractiveResult: true}
@@ -243,6 +259,29 @@ func TestShowNoticePrivateListingErrorSuppressesCommands(t *testing.T) {
 		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
 	}
 	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
+}
+
+// TestShowNoticeUnreadableVolumesSuppressesWholesaleCommand pins the end-to-end
+// conservative path: launcher sandboxes make the notice fire while
+// <legacyHome>/volumes is unlistable, so the notice withholds the wholesale
+// command and explains why instead.
+func TestShowNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	makeVolumeDirUnreadable(t, legacy)
+	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
+
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := showNotice(false, ui); err != nil {
+		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
+	if !strings.Contains(ui.AcknowledgeCalls[0], "could not list ~/.microsandbox/volumes") {
+		t.Errorf("notice = %q, want the unreadable-volumes note", ui.AcknowledgeCalls[0])
+	}
 }
 
 // assertSuppressesDestructiveCommands fails when a notice suggests deleting the

@@ -79,18 +79,28 @@ func acknowledgeNotice() error {
 // wholesale rm -rf ~/.microsandbox and the selective
 // ~/.microsandbox/volumes/agents-sandbox-home-* glob both match an uncopied
 // volume. The safe sandbox globs are still offered, and the volumes glob is
-// replaced by a note to remove the remaining volumes individually.
+// replaced by a note to remove the remaining volumes individually. An unreadable
+// legacy volumes directory is treated the same way: the wholesale command is
+// withheld and replaced by a note to inspect it, because unlisted home volumes
+// may still hold data.
 func renderNotice(a legacyArtifacts, uncopied []string) string {
 	var b strings.Builder
 	b.WriteString("agents-sandbox now runs its own microsandbox runtime\n\n")
 	b.WriteString("Nothing broke — agents-sandbox keeps its runtime in its own private home now,\n")
 	b.WriteString("so the system-wide microsandbox is no longer needed to run it.\n\n")
 	b.WriteString("Your ~/.microsandbox was left untouched. It holds two kinds of things:\n\n")
-	if len(uncopied) > 0 {
+	hasUncopied := len(uncopied) > 0
+	if hasUncopied {
 		writeUncopiedWarning(&b, uncopied)
 	}
-	writeRemovableLeftovers(&b, a, len(uncopied) > 0)
-	if len(uncopied) == 0 {
+	writeRemovableLeftovers(&b, a, hasUncopied)
+	switch {
+	case hasUncopied:
+		// The leading warning already covers it; no wholesale command.
+	case a.VolumesUnreadable:
+		b.WriteString("  We could not list ~/.microsandbox/volumes, so the volumes there were not\n")
+		b.WriteString("  copied or listed. Inspect that directory; do not remove the folder wholesale.\n\n")
+	default:
 		b.WriteString("  Everything else is your own microsandbox data; we never touch it. Remove the\n")
 		b.WriteString("  whole folder only if microsandbox was installed just for agents-sandbox:\n")
 		b.WriteString("    rm -rf ~/.microsandbox\n\n")

@@ -39,12 +39,12 @@ func saveMigration(tx *state.RootTxn, m state.Migration) error {
 // single copy entry point; which volumes were left uncopied is derived at
 // notice-render time from the two home listings, never threaded from here.
 //
-// A terminal migration (completed or dismissed) is a no-op. Starting from
-// pending records the legacy targets already present in the private home as Kept
-// (dismissed from the migration at the user's choice), so accepting the offer
-// neither discards nor re-copies a home the user already has. A volume-scoped
-// copy failure is recorded in Excluded (with a warning) only once its partial
-// destination is confirmed removed; if the destination cannot be removed the
+// A terminal migration (completed, dismissed, or acknowledged) is a no-op.
+// Starting from pending records the legacy targets already present in the
+// private home as Kept (dismissed from the migration at the user's choice), so
+// accepting the offer neither discards nor re-copies a home the user already
+// has. A volume-scoped copy failure is recorded in Excluded (with a warning) only
+// once its partial destination is confirmed removed; if the destination cannot be removed the
 // campaign aborts, because completing would let the home resolver adopt the
 // partial. A campaign-scoped failure (the lock, the state read/write, or the home
 // listing) likewise returns the error and leaves the status copying so the next
@@ -65,7 +65,8 @@ func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
 // and lock held. It commits after each volume so an interruption resumes exactly.
 func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx *state.RootTxn) error {
 	m, _ := tx.State().Migration(MigrationName)
-	if m.Status == state.MigrationCompleted || m.Status == state.MigrationDismissed {
+	if m.Status == state.MigrationCompleted || m.Status == state.MigrationDismissed ||
+		m.Status == state.MigrationAcknowledged {
 		return nil
 	}
 

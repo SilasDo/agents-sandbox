@@ -22,11 +22,12 @@ You can verify afterwards by running `docker info`. It should show a healthy dae
 
 agents-sandbox provisions its own private microsandbox runtime under its data
 directory (`~/.local/share/agents-sandbox/msb`, or
-`$XDG_DATA_HOME/agents-sandbox/msb`) and points the SDK at it. It never reads or
-writes your own `~/.microsandbox`, does not install a user-facing `msb`
-command, and does not require any particular `msb` version on your machine. If
-agents-sandbox is the only thing installed, the absence of an `msb` command is
-expected, not a defect.
+`$XDG_DATA_HOME/agents-sandbox/msb`) and points the SDK at it. The runtime never
+reads or writes your own `~/.microsandbox`; the one-time upgrade migration reads
+it only to copy your old volumes (see [Upgrading to 0.6]({% link install/upgrading.md %})).
+It does not install a user-facing `msb` command, and does not require any
+particular `msb` version on your machine. If agents-sandbox is the only thing
+installed, the absence of an `msb` command is expected, not a defect.
 
 If you encounter a runtime error, submit a bug report at:
 
