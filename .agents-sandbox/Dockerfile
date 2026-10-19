@@ -1,4 +1,4 @@
-FROM agents-sandbox/runner-base-dind:latest
+FROM agents-sandbox/runner-base-docker:latest
 
 # default versions, keep in sync with versions in Makefile
 ARG GO_VERSION=1.27.1
