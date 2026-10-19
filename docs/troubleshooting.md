@@ -38,32 +38,15 @@ For the upgrade overview — what changed, the migration choices, and how to ret
 `~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). The
 notes below cover diagnosing an interrupted or unclear copy.
 
-Versions before the private runtime home stored home volumes under
-`~/.microsandbox/volumes/`. On the first interactive `run`/`shell` after
-upgrading, agents-sandbox offers once to copy those `agents-sandbox-home-*`
-volumes into its private home. You must choose: **Copy the volumes** (carry the
-old data over), **Start fresh** (leave the old volumes untouched and never ask
-again), or **Quit** (abort this session; ask again next time). "Start fresh" is
-remembered and the offer is not shown again. (The option is labelled **Dismiss**
-instead of "Start fresh" when a private volume of unclear status must be removed,
-or when a copy was already in progress.)
-
-The decision is required before a session can proceed, because starting would
-otherwise create a fresh home volume and overwrite the project's recorded
-reference before the old data could be copied. Non-interactive runs (including
-`--yes`) therefore never copy and, while legacy volumes remain, stop with a
-message to run an interactive `run`/`shell` once to copy them or start fresh.
-
-Once the migration is resolved — copied, or dismissed with "Start fresh" — each
-project whose recorded volume is not present in the private home starts a fresh
-one automatically, so you can keep working without migrating anything.
+An interrupted copy resumes where it stopped, because progress is tracked in
+agents-sandbox's host state. If a private volume already exists under a legacy
+name — for example after `~/.local/state/agents-sandbox/state.yaml` was removed —
+its status is unclear; the note below covers that case.
 
 #### Private volumes with unclear status
 
-If a private volume already exists under a legacy name, the offer says so and
-cannot tell whether it is a complete copy or a partial one whose progress was
-lost (this can happen if `~/.local/state/agents-sandbox/state.yaml` was removed).
-The offer then gives two options:
+The offer says so, cannot tell whether such a volume is a complete copy or a
+partial one, and gives two options:
 
 - **Copy the missing volumes; dismiss the existing private volumes from the
   migration** — copies only the absent volumes and leaves the existing ones

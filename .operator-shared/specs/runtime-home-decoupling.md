@@ -8,7 +8,9 @@ read_if: Implementing or reviewing runtime-home decoupling, the private `MSB_HOM
 Date: 2026-10-15
 
 Status: **implemented** on `opencode/runtime-home-decoupling` (PR #142); pending
-merge. The copy state model is the host-owned `migrations` registry in
+merge. The post-migration legacy-runtime notice is implemented on
+`issue-207-legacy-runtime-notice` (PR #239). The copy state model is the
+host-owned `migrations` registry in
 "Persisted state". An earlier design tracked completion with an in-volume
 sentinel and no cross-process locking; review found it unsafe (guest-controlled
 completion, symlink-followable marker write, concurrent sessions deleting each

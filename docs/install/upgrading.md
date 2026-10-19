@@ -42,8 +42,10 @@ of unclear status must be removed, or when an interrupted copy must be resumed.
 
 The copy is crash- and concurrency-safe: progress is tracked in agents-sandbox's
 host state, so an interrupted campaign resumes exactly where it stopped, and two
-sessions cannot clobber a live copy. A volume that cannot be copied is reported,
-left in place, and recorded as excluded — never silently dropped.
+sessions cannot clobber a live copy. A volume that cannot be copied is reported
+and left in place; the post-migration notice names every legacy volume that has
+no counterpart in the private home — a failed copy, or a volume you chose not to
+migrate — so it is never silently dropped.
 
 The decision is required before a session can proceed, because starting would
 otherwise create a fresh home volume and overwrite the project's recorded
@@ -60,9 +62,12 @@ for the full cleanup path.
 ## Removing the old microsandbox home
 
 Once the migration is resolved — or when there is nothing to migrate — a
-one-time interactive notice tells you that your system-wide microsandbox is now
-optional. It requires a keypress, appears once, and prints without acknowledgment
-in non-interactive sessions. Nothing is deleted for you.
+one-time notice tells you that your system-wide microsandbox is now optional. An
+interactive session shows the full notice and waits for a keypress before
+continuing; a non-interactive session (including `--yes`) prints only a one-line
+pointer, without the removal commands and without recording the acknowledgment,
+so the full notice still appears the next time you are interactive. Nothing is
+deleted for you.
 
 `~/.microsandbox` holds two different things:
 
@@ -72,11 +77,12 @@ in non-interactive sessions. Nothing is deleted for you.
   - `~/.microsandbox/sandboxes/agents-sandbox-task-*`
 - **Yours** — any other microsandbox data. agents-sandbox never touches it.
 
-If any volume could not be copied, it is left in place and named in the notice:
-check it before removing anything. That uncopied volume also matches the
-`agents-sandbox-home-*` glob, so do not run the volume command below when one is
-listed — remove the other volumes individually and leave the uncopied one in
-place.
+The notice names every legacy home volume that has no counterpart in the private
+home — a failed copy, or a volume you chose not to migrate. Those volumes still
+hold data and must not be removed. While any remain, the notice withholds both
+the wholesale `rm -rf ~/.microsandbox` and the `agents-sandbox-home-*` glob,
+since both match an uncopied volume: remove the other volumes individually and
+leave the uncopied ones in place.
 
 Remove just our leftovers:
 
@@ -93,8 +99,8 @@ agents-sandbox:
 rm -rf ~/.microsandbox
 ```
 
-When a volume could not be copied, the notice also withholds the wholesale
-command: do not remove the whole folder while that volume remains.
+When uncopied volumes remain, the notice also withholds the wholesale command:
+do not remove the whole folder while one remains.
 
 Removing `~/.microsandbox` does not uninstall a system-wide microsandbox by
 itself. Since agents-sandbox no longer requires the system-wide `msb` command,
@@ -109,6 +115,7 @@ removal targets. The short list:
 - `--dind` / `dind` / `AGENTS_SANDBOX_DIND` → `--docker` / `docker` / `AGENTS_SANDBOX_DOCKER`
 - `sandbox list --names` → the global `-q` / `--quiet`
 - `prune --age` (and `-a`) → `--older-than`
+- `--opencode-version` → `--agent-version`
 - `volume migrate|reset|edit --rebuild` → run `agents-sandbox build` first
 
 Release notes live on the

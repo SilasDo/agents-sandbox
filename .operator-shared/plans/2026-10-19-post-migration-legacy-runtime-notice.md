@@ -1,5 +1,9 @@
 # Post-migration Legacy-runtime Notice Implementation Plan
 
+> **Status:** implemented on `issue-207-legacy-runtime-notice` (PR #239); all tasks complete, including the fix-wave
+> revisions (uncopied volumes derived at render time, the bounded one-line non-interactive notice, and sanitized volume
+> names). Where the code sketches below differ from the shipped code, the spec is the source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** After a ≤0.5.0 upgrader's legacy microsandbox home is dealt with, tell them once — interactively, acknowledgably — that agents-sandbox now runs its own isolated runtime and their system-wide microsandbox is optional; never delete anything.
