@@ -14,14 +14,23 @@ const opencode2Name = "opencode2"
 const opencode2Port = "4096"
 
 // opencode2Profile is the opencode 2 (beta) coding agent. It embeds
-// opencodeConfig for the config handling it shares with v1 (v2 reads the same
-// ~/.config/opencode files and auth.json) and overrides the daemon, worktree,
-// attach, and version behavior for the v2 server API.
+// opencodeConfig for the guest config path, auth, and host drop-in it shares
+// with v1 (v2 reads the same ~/.config/opencode files and auth.json), overrides
+// the launcher config dir to its own namespace, and overrides the daemon,
+// worktree, attach, and version behavior for the v2 server API.
 type opencode2Profile struct {
 	opencodeConfig
 }
 
 func (opencode2Profile) Name() string { return opencode2Name }
+
+// ConfigDirName scopes opencode2's own launcher config dir; the guest config
+// path and host drop-in still come from the embedded opencodeConfig.
+func (opencode2Profile) ConfigDirName() string { return opencode2Name }
+
+// ConfigDirAliases names the legacy shared config dir opencode2 used before it
+// gained its own namespace.
+func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeName} }
 
 func (opencode2Profile) ImageSpec() ImageSpec {
 	return ImageSpec{

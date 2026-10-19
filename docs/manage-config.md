@@ -34,7 +34,9 @@ for f in "$HOME"/.config/opencode/* "$HOME"/.config/opencode/.[!.]*; do
 done
 ```
 
-(For pi / claude-code, use `~/.config/agents-sandbox/pi/` / `.../claude/`.) Snippets matching
+(For opencode2 / pi / claude-code, use `~/.config/agents-sandbox/opencode2/` / `.../pi/` / `.../claude/`. An
+`opencode2` dir is separate from the `opencode` one; see the fallback note in
+[Agent configuration]({% link configuration/agent.md %}).) Snippets matching
 the agent's pattern (e.g. `opencode*.json*`) are deep-merged into the VM config; see
 [Agent configuration]({% link configuration/agent.md %}).
 

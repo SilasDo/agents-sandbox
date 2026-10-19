@@ -1,7 +1,9 @@
 package configpaths
 
 import (
+	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -119,6 +121,26 @@ func TestUserAgentConfigDir(t *testing.T) {
 	}
 }
 
+func TestRealAgentConfigDirCandidates(t *testing.T) {
+	WithRealConfigPaths(t)
+	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
+	oc2, _ := agent.Lookup("opencode2")
+	want := []string{
+		"/xdg/config/agents-sandbox/opencode2",
+		"/xdg/config/agents-sandbox/opencode",
+	}
+	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
+		t.Errorf("user candidates = %v, want %v", got, want)
+	}
+	wantProject := []string{
+		filepath.Join(Get().ProjectConfigDirAbs(), "opencode2"),
+		filepath.Join(Get().ProjectConfigDirAbs(), "opencode"),
+	}
+	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
+		t.Errorf("project candidates = %v, want %v", got, wantProject)
+	}
+}
+
 func TestUserEnvFiles(t *testing.T) {
 	WithRealConfigPaths(t)
 	t.Setenv("HOME", t.TempDir())
@@ -136,7 +158,12 @@ func TestProjectDirsAndFiles(t *testing.T) {
 	cfgPaths := Get()
 	a, _ := agent.Lookup("opencode")
 
-	if got := cfgPaths.ProjectAgentConfigDir(a); got != filepath.Join(projectConfigDir, a.ConfigDirName()) {
+	if got := cfgPaths.ProjectAgentConfigDir(
+		a,
+	); got != filepath.Join(
+		cfgPaths.ProjectConfigDirAbs(),
+		a.ConfigDirName(),
+	) {
 		t.Errorf("ProjectAgentConfigDir() = %q", got)
 	}
 	if got := cfgPaths.ProjectEnvFile(); got != filepath.Join(projectConfigDir, EnvFileName) {
@@ -226,6 +253,40 @@ func TestFailFastProjectAgentConfigDirPanics(t *testing.T) {
 	assertPanics(t, func() {
 		(&failFastConfigPaths{}).ProjectAgentConfigDir(agentAgent(t))
 	})
+}
+
+func TestValidConfigDirName(t *testing.T) {
+	if got := validConfigDirName("opencode2", "opencode2"); got != "opencode2" {
+		t.Errorf("validConfigDirName(valid) = %q, want opencode2", got)
+	}
+	for _, bad := range []string{"", ".", "..", "/", "//", "./", "a/b", "a/../b", "/abs", "../sibling", "foo/"} {
+		t.Run("reject "+bad, func(t *testing.T) {
+			assertPanics(t, func() { validConfigDirName("test", bad) })
+		})
+	}
+}
+
+func TestProjectConfigDirAbs(t *testing.T) {
+	WithRealConfigPaths(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != filepath.Join(wd, ".agents-sandbox") {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q", got, filepath.Join(wd, ".agents-sandbox"))
+	}
+}
+
+func TestProjectConfigDirAbsFallsBackWhenCwdUnreadable(t *testing.T) {
+	WithRealConfigPaths(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != ".agents-sandbox" {
+		t.Errorf("ProjectConfigDirAbs() with an unreadable cwd = %q, want the relative fallback", got)
+	}
 }
 
 func TestMSBHomeUnderDataDir(t *testing.T) {

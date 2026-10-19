@@ -7,7 +7,7 @@ import (
 )
 
 // opencodeProfile is the opencode (v1) coding agent. It embeds opencodeConfig
-// for the config handling it shares with opencode2.
+// for the guest config path, auth, and host drop-in it shares with opencode2.
 type opencodeProfile struct {
 	opencodeConfig
 }

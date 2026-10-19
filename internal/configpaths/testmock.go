@@ -87,7 +87,7 @@ func (m *mockConfigPaths) UserDataDir() string {
 }
 
 func (m *mockConfigPaths) UserAgentConfigDir(a agent.Agent) string {
-	return ensureMockConfigDirectory(filepath.Join(m.UserConfigDir(), a.ConfigDirName()))
+	return ensureMockConfigDirectory(filepath.Join(m.UserConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName())))
 }
 
 func (m *mockConfigPaths) UserHomeDir() (string, error) {
@@ -97,8 +97,20 @@ func (m *mockConfigPaths) UserHomeDir() (string, error) {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "home")), nil
 }
 
+func (m *mockConfigPaths) UserAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(filepath.Join(m.baseDir, "userconfig"), a)
+}
+
+func (m *mockConfigPaths) ProjectAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(filepath.Join(m.baseDir, "projectconfig"), a)
+}
+
 func (m *mockConfigPaths) ProjectConfigDir() string {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "projectconfig"))
+}
+
+func (m *mockConfigPaths) ProjectConfigDirAbs() string {
+	return filepath.Join(m.baseDir, "projectconfig")
 }
 
 func (m *mockConfigPaths) UserEnvFile() string {
@@ -110,7 +122,9 @@ func (m *mockConfigPaths) UserEnvSecretFile() string {
 }
 
 func (m *mockConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
-	return ensureMockConfigDirectory(filepath.Join(m.ProjectConfigDir(), a.ConfigDirName()))
+	return ensureMockConfigDirectory(
+		filepath.Join(m.ProjectConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName())),
+	)
 }
 
 func (m *mockConfigPaths) ProjectEnvFile() string {
@@ -152,6 +166,21 @@ func (f *failFastConfigPaths) UserDataDir() string   { f.mustMock(); return "" }
 func (f *failFastConfigPaths) UserAgentConfigDir(_ agent.Agent) string {
 	f.mustMock()
 	return ""
+}
+
+func (f *failFastConfigPaths) UserAgentConfigDirCandidates(_ agent.Agent) []string {
+	f.mustMock()
+	return nil
+}
+
+func (f *failFastConfigPaths) ProjectConfigDirAbs() string {
+	f.mustMock()
+	return ""
+}
+
+func (f *failFastConfigPaths) ProjectAgentConfigDirCandidates(_ agent.Agent) []string {
+	f.mustMock()
+	return nil
 }
 
 func (f *failFastConfigPaths) UserHomeDir() (string, error) { f.mustMock(); return "", nil }

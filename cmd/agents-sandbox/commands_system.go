@@ -342,7 +342,7 @@ func buildConfigAgentCmd(ui termio.UI) *cobra.Command {
 			}
 			provision := provisionHostConfigEnabled(c)
 			hostHome, _ := configpaths.Get().UserHomeDir()
-			merged, sources, hostFiles, mirrorFiles, err := reprovision.Describe(
+			merged, sources, hostFiles, mirrorFiles, source, err := reprovision.Describe(
 				a,
 				hostHome,
 				reprovision.VMHomeDir,
@@ -352,7 +352,7 @@ func buildConfigAgentCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printConfigAgent(ui, a, merged, sources, hostFiles, mirrorFiles, provision)
+			printConfigAgent(ui, a, source, merged, sources, hostFiles, mirrorFiles, provision)
 			return nil
 		},
 	}
@@ -388,13 +388,20 @@ func provisionHostConfigEnabled(c *cobra.Command) bool {
 func printConfigAgent(
 	ui termio.UI,
 	a agent.Agent,
+	source reprovision.ConfigSource,
 	merged []byte,
 	sources []string,
 	hostFiles []reprovision.HostFile,
 	mirrorFiles []reprovision.MirrorFile,
 	provision bool,
 ) {
+	userDir, projectDir := reprovision.SourceDirs(source)
+	sourceKind := "primary"
+	if source.Fallback != "" {
+		sourceKind = fmt.Sprintf("legacy fallback %q", source.Fallback)
+	}
 	ui.Outf("agent: %s", a.Name())
+	ui.Outf("config dir: user=%q  project=%q  (%s)", userDir, projectDir, sourceKind)
 	if len(sources) == 0 {
 		ui.Out("No snippet files found; no merged config is provisioned.")
 	} else {

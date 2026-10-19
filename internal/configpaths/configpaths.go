@@ -1,8 +1,10 @@
 package configpaths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
@@ -13,6 +15,7 @@ type ConfigPaths interface {
 	UserStateDir() string
 	UserDataDir() string
 	UserAgentConfigDir(a agent.Agent) string
+	UserAgentConfigDirCandidates(a agent.Agent) []string
 	UserHomeDir() (string, error)
 
 	UserEnvFile() string
@@ -20,7 +23,9 @@ type ConfigPaths interface {
 	UserEnvSecretYAMLFile() string
 
 	ProjectConfigDir() string
+	ProjectConfigDirAbs() string
 	ProjectAgentConfigDir(a agent.Agent) string
+	ProjectAgentConfigDirCandidates(a agent.Agent) []string
 	ProjectEnvFile() string
 	ProjectEnvSecretFile() string
 	ProjectEnvSecretYAMLFile() string
@@ -70,7 +75,47 @@ func MSBHome() string {
 // UserAgentConfigDir returns the directory of the active agent's own user
 // config, nested under the tool's user config base.
 func (c *realConfigPaths) UserAgentConfigDir(a agent.Agent) string {
-	return filepath.Join(c.UserConfigDir(), a.ConfigDirName())
+	return filepath.Join(c.UserConfigDir(), validConfigDirName(a.Name(), a.ConfigDirName()))
+}
+
+// UserAgentConfigDirCandidates returns the agent's user config-dir candidates,
+// primary first, then each alias. Paths only: the method never creates dirs.
+func (c *realConfigPaths) UserAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(c.UserConfigDir(), a)
+}
+
+// ProjectAgentConfigDirCandidates returns the project config-dir candidates.
+// The base is absolute so the dirs that resolution reads are the same dirs that
+// display reports, with no second derivation of the project root.
+func (c *realConfigPaths) ProjectAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(c.ProjectConfigDirAbs(), a)
+}
+
+func agentConfigDirCandidates(base string, a agent.Agent) []string {
+	names := []string{a.ConfigDirName()}
+	if al, ok := agent.AsConfigDirAliaser(a); ok {
+		names = append(names, al.ConfigDirAliases()...)
+	}
+	dirs := make([]string, 0, len(names))
+	for _, name := range names {
+		dirs = append(dirs, filepath.Join(base, validConfigDirName(a.Name(), name)))
+	}
+	return dirs
+}
+
+// validConfigDirName rejects a name that is not a single clean path element.
+// Without this, names like "", ".", ".." or "a/b" would resolve to the launcher
+// config root or a parent: filepath.Join cleans "..", so the config mirror could
+// copy unrelated host files — including launcher secrets — into the VM. A bad
+// name is a profile programming error, so it fails fast.
+func validConfigDirName(agentName, name string) string {
+	if name == "" || name == "." || name == ".." ||
+		strings.ContainsRune(name, filepath.Separator) || filepath.Base(name) != name {
+		panic(
+			fmt.Sprintf("agent %s declares invalid config dir name %q: must be a single path element", agentName, name),
+		)
+	}
+	return name
 }
 
 // UserHomeDir returns the host user's home directory. It is the root the
@@ -82,6 +127,18 @@ func (c *realConfigPaths) UserHomeDir() (string, error) {
 
 // ProjectConfigDir returns the tool's project-config directory: $PWD/agents-sandbox.
 func (c *realConfigPaths) ProjectConfigDir() string { return projectConfigDir }
+
+// ProjectConfigDirAbs returns the project-config directory as an absolute path by
+// resolving the relative ProjectConfigDir against the current directory, so
+// display can name an explicit location regardless of where it is read. If the
+// current directory cannot be read it degrades to the relative ProjectConfigDir.
+func (c *realConfigPaths) ProjectConfigDirAbs() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return projectConfigDir
+	}
+	return filepath.Join(cwd, projectConfigDir)
+}
 
 // UserEnvFile returns the user-level environment definitions file.
 func (c *realConfigPaths) UserEnvFile() string {
@@ -122,9 +179,10 @@ func (c *realConfigPaths) ProjectDockerfile() string {
 	return filepath.Join(projectConfigDir, dockerfileName)
 }
 
-// ProjectAgentConfigDir returns the project-local config dir for the agent.
+// ProjectAgentConfigDir returns the project-local config dir for the agent,
+// absolute to match ProjectAgentConfigDirCandidates.
 func (c *realConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
-	return filepath.Join(projectConfigDir, a.ConfigDirName())
+	return filepath.Join(c.ProjectConfigDirAbs(), validConfigDirName(a.Name(), a.ConfigDirName()))
 }
 
 func (c *realConfigPaths) ProjectEnvFile() string {

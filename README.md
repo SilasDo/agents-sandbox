@@ -90,7 +90,9 @@ Four agents ship as built-in profiles:
 
 - **`opencode`** (default) — a daemon-based agent with serve/attach, worktree sessions, and GitHub-release upgrade checks.
 - **`opencode2`** — opencode 2 (beta), installed from its native installer; daemon-based with serve/attach, worktree
-  sessions, and npm beta-tag upgrade checks. It shares the `opencode` config directory (v2 reads the same files as v1).
+  sessions, and npm beta-tag upgrade checks. It owns its own launcher config dir (`~/.config/agents-sandbox/opencode2/`,
+  project equivalent `.agents-sandbox/opencode2/`), while its VM config path and host drop-in stay `~/.config/opencode/`.
+  While no `opencode2/` dir exists it falls back to the shared `opencode/` dir with a warning (see the agent docs).
 - **`pi`** — the pi coding agent (`@earendil-works/pi-coding-agent`, an npm-installed node bundle — the only agent that
   needs node), run interactively, with upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, installed from its native installer, run interactively, with upgrade

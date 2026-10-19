@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -41,6 +42,9 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := os.Getenv("HOME"); got != filepath.Join(base, "home") {
 		t.Errorf("$HOME = %q, want %q (WithMockConfigPaths must redirect HOME)", got, filepath.Join(base, "home"))
 	}
+	if got := cfgPaths.ProjectConfigDirAbs(); got != filepath.Join(base, "projectconfig") {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q", got, filepath.Join(base, "projectconfig"))
+	}
 	if got := cfgPaths.ProjectConfigDir(); got != filepath.Join(base, "projectconfig") {
 		t.Errorf("ProjectConfigDir() = %q, want %q", got, filepath.Join(base, "projectconfig"))
 	}
@@ -71,6 +75,34 @@ func TestMockConfigPaths(t *testing.T) {
 	}
 	if got := cfgPaths.ProjectDockerfile(); got != filepath.Join(base, "projectconfig", dockerfileName) {
 		t.Errorf("ProjectDockerfile() = %q, want %q", got, filepath.Join(base, "projectconfig", dockerfileName))
+	}
+}
+
+func TestMockAgentConfigDirCandidates(t *testing.T) {
+	WithMockConfigPaths(t)
+	base := Get().(*mockConfigPaths).baseDir
+	oc, _ := agent.Lookup("opencode")
+	oc2, _ := agent.Lookup("opencode2")
+
+	if got := Get().UserAgentConfigDirCandidates(oc); !slices.Equal(
+		got,
+		[]string{filepath.Join(base, "userconfig", "opencode")},
+	) {
+		t.Errorf("opencode user candidates = %v", got)
+	}
+	want := []string{filepath.Join(base, "userconfig", "opencode2"), filepath.Join(base, "userconfig", "opencode")}
+	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
+		t.Errorf("opencode2 user candidates = %v, want %v", got, want)
+	}
+	wantProject := []string{
+		filepath.Join(base, "projectconfig", "opencode2"),
+		filepath.Join(base, "projectconfig", "opencode"),
+	}
+	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
+		t.Errorf("opencode2 project candidates = %v, want %v", got, wantProject)
+	}
+	if _, err := os.Stat(filepath.Join(base, "userconfig", "opencode2")); !os.IsNotExist(err) {
+		t.Errorf("candidate methods must not create dirs; stat err = %v", err)
 	}
 }
 
