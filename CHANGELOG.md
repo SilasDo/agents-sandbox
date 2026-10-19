@@ -34,7 +34,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Internal: add `make test-integration` — runs every `integration`-tagged test across the module (excluded from the main
   suite), currently the docker-build tests that build a real image for every `RenderDockerfile` composition case (no
   project Dockerfile, managed base, and custom Fedora base, each with and without docker). Wired into CI as a selective
-  job (main/release/manual).
+  job: main and releases, manual dispatch, and any PR labeled `run-integration`.
+- Internal: the CI integration job (the docker-build suite) runs on a PR when a maintainer adds the `run-integration`
+  label, and `workflow_dispatch` is now a declared trigger so the job's manual-dispatch condition is reachable (a
+  manual run requires the trigger to be on the default branch).
 - Internal: add `make compile-all` — compiles every test binary including `integration`-tagged files without a docker
   daemon, and run it in the CI lint job so a tagged-only compile regression fails on PRs instead of only on main.
 - Internal: raise the `make test-integration` timeout to 60m. The docker-build suite legitimately runs ~10 minutes on a

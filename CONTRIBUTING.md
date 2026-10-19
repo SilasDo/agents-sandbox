@@ -84,6 +84,9 @@ This project defaults to **test-driven development**:
 - Every new or changed CLI command or flag should be covered in `cmd/agents-sandbox/cli_*_test.go`.
 - Add focused unit tests for internal functionality with each implementation.
 - Do manual tests and run the full suite with `make check` before submitting.
+- The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
+  it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
+  there; it always runs on `main` and on releases.
 
 ## Documentation
 
