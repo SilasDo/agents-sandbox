@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -188,6 +189,65 @@ func TestResolveTargetReuseWarnsIgnoredBase(t *testing.T) {
 	}
 }
 
+// TestResolveTargetReuseIgnoresUnresolvableBase pins the ordering constraint:
+// the base is validated only on the create path, never on reuse. The failing
+// ExecOut entry is never consulted under the correct ordering, so the call
+// succeeds; if validation were moved ahead of the reuse check it would fail.
+func TestResolveTargetReuseIgnoresUnresolvableBase(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	existing := "/home/dev/.local/share/opencode/worktree/abc/foo"
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0,
+				`["`+existing+`"]`, "", nil),
+		},
+		ExecOut: map[string]msb.ShellResult{
+			"git -C /workspace rev-parse --verify main^{commit}": msb.NewTestResult(
+				false,
+				128,
+				"",
+				"unknown revision",
+				nil,
+			),
+		},
+		ShellCalls: &[]string{},
+		ExecCalls:  &[]string{},
+	}
+	dir, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "foo", Base: "main"},
+		mounts.WorkspaceMountPath,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("reuse must ignore an unresolvable base, got error: %v", err)
+	}
+	if dir != existing {
+		t.Errorf("got dir %q, want reused worktree %q", dir, existing)
+	}
+	if len(*sb.ExecCalls) != 0 {
+		t.Errorf("reuse must not validate the base; exec calls: %v", *sb.ExecCalls)
+	}
+	found := false
+	for _, w := range ui.WarnCalls {
+		if strings.Contains(w, "ignoring base") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning that base is ignored on reuse; got: %v", ui.WarnCalls)
+	}
+	for _, call := range *sb.ShellCalls {
+		if strings.Contains(call, "POST") {
+			t.Errorf("expected reuse without create, but created a new worktree: %q", call)
+		}
+	}
+}
+
 func TestResolveTargetCreatesWithoutBase(t *testing.T) {
 	ui := &termio.Mock{}
 	provider := mustWorktreeProvider(t)
@@ -240,6 +300,7 @@ func TestResolveTargetCreatesWithBaseValidatesAndSendsStartCommand(t *testing.T)
 			),
 		},
 		ShellCalls: &[]string{},
+		ExecCalls:  &[]string{},
 	}
 	dir, err := ResolveTarget(
 		context.Background(),
@@ -254,6 +315,9 @@ func TestResolveTargetCreatesWithBaseValidatesAndSendsStartCommand(t *testing.T)
 	}
 	if want := "/workspace/worktrees/feat-x"; dir != want {
 		t.Errorf("got dir %q, want %q", dir, want)
+	}
+	if !slices.Contains(*sb.ExecCalls, "git -C /workspace rev-parse --verify main^{commit}") {
+		t.Errorf("expected base validated against the launch directory; exec calls: %v", *sb.ExecCalls)
 	}
 	found := false
 	for _, call := range *sb.ShellCalls {
