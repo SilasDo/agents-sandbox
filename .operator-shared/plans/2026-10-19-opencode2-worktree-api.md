@@ -15,7 +15,7 @@
 - Module `github.com/inoio/agents-sandbox`, Go 1.26.
 - `make fmt` / `golangci-lint fmt` to format (never `go fmt`); `make lint` (never `go vet`).
 - TDD: write the failing test, run it, implement, run it green, commit.
-- No behavior change for the `opencode` (v1) agent beyond the new (ignored) target parameter.
+- No behavior change for the `opencode` (v1) agent's routes, bodies, or command shapes beyond the new (ignored) target parameter; base validation moved ahead of the create for both providers.
 - The v2 create body is exactly `Worktree.CreateInput` (`additionalProperties: false`): only `projectID`, `name`, and `branch` — never `strategy`, `directory`, `from`, or `startCommand`.
 - Every v2 request keeps the baked credential (`opencode2CurlAuth`, `-u opencode:opencode`).
 - Targets come from `vm.ResolveTarget`'s `defaultDir`; nothing else may be sent as the v2 location.

@@ -117,9 +117,9 @@ command reports the bare version (e.g. `0.1.0`).
   auth is mandatory and baked into the image, so the previous opt-in `OPENCODE_SERVER_PASSWORD`/`OPENCODE_SERVER_USERNAME`
   guidance (valid for opencode v1) was wrong and left the client unable to connect.
 - opencode2: `--worktree` created worktrees through the v1 routes, which v2 does not serve, so a worktree session always
-  failed with 404. It now uses v2's project-scoped worktree API — `/api/location` to resolve the project and
-  `/api/worktree?projectID=` to list and create — and an unresolvable `:<base>` ref fails before a worktree is created
-  (#235).
+  failed with 404. It now resolves the project via `/api/location`, lists with `GET /api/worktree?projectID=`, and
+  creates with `POST /api/worktree` (`projectID` in the body). For both agents a `:<base>` ref is now validated before
+  a worktree is created, so an unresolvable ref fails without leaving an orphan worktree (#235).
 - Agent upgrade: a project that already has a runner image but no recorded agent version (e.g. the first run after the
   `updater.yaml` migration) no longer silently rebuilds to the latest release on an unpinned `run`/`shell`, and no longer
   fails offline. The baseline is recovered from the existing image's `agent-version` label so the normal upgrade prompt

@@ -49,14 +49,14 @@ v1 (`opencode`) is unaffected: its `/global/health` is unauthenticated and its
 - No per-VM random password and no state persistence of a credential (rejected
   in favour of the fixed env value for simplicity).
 - No worktree-route correction. v2's worktree API is project-scoped
-  (`GET /api/project` → the project list, `GET /api/worktree?projectID=<id>`, and
-  `POST /api/worktree` with `projectID` in the body), but the `opencode2` profile
-  still issues the v1 routes (`/api/project/current`, `/api/worktree/$PID`).
-  Those calls now carry the credential but return 404, so `--worktree` for
-  opencode2 remains non-functional; correcting it needs the `WorktreeProvider`
-  commands to receive the target directory (to resolve the project id by
-  `canonical`), which is a separate change. Specified in
-  `opencode2-worktree-api.md` (issue #235).
+  (`GET /api/location?location[directory]=<dir>` resolves the project,
+  `GET /api/worktree?projectID=<id>` lists, and `POST /api/worktree` with
+  `projectID` in the body creates). At the time of #234 the `opencode2` profile
+  still issued the v1 routes (`/api/project/current`, `/api/worktree/$PID`).
+  Those calls carried the credential but returned 404, so `--worktree` for
+  opencode2 was non-functional; corrected in `opencode2-worktree-api.md`
+  (issue #235), which passes the target directory through the `WorktreeProvider`
+  commands and resolves the project via `/api/location`.
 - No health check via an unauthenticated endpoint (`/` web UI): it would report
   "listening", not "healthy", and would not fix attach/worktree auth.
 - No reliance on upstream PR #46270 (make `serve` unauthenticated when the

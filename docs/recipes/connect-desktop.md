@@ -40,9 +40,9 @@ auth with a credential baked into the runner image — connect as username
 An opencode server is bound to the directory it starts in — that directory
 becomes its project scope. opencode currently offers no way to re-point a
 running server at a different path: `serve` has no working-directory flag (it
-uses the server's startup directory), and while `attach`/`run` accept `--dir`,
-that path is resolved on the client side and does not relocate the server's
-project. So agents-sandbox always runs the server with the project mounted at
+uses the server's startup directory), and while `opencode` (v1) `attach`/`run` accept
+`--dir` — and `opencode2` (v2) takes the directory as a positional argument — that path is resolved on the client side and
+does not relocate the server's project. So agents-sandbox always runs the server with the project mounted at
 `/workspace`, and any client — TUI or Desktop — must address that same path.
 
 ## Connecting Opencode Desktop to the sandbox

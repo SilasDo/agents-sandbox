@@ -25,7 +25,7 @@ agents-sandbox -w bugfix-fix-thing:main -y # worktree from local base ref
 When you pass `--worktree <name>`:
 
 1. The launcher passes the name to the agent daemon inside the running VM via its worktree API.
-2. The daemon creates or reuses a worktree inside the VM under the guest home volume at `~/.local/share/opencode/worktree/<short-project-id>/<name>` (the id is a truncated project hash). The host repository is **unaffected**.
+2. The daemon creates or reuses a worktree inside the VM under the guest home volume (`~/.local/share/opencode/worktree/`); for `opencode2` (v2) the exact layout is `~/.local/share/opencode/worktree/<short-project-id>/<name>` (the id is a truncated project hash). The host repository is **unaffected**.
 3. The launcher attaches the agent with the worktree directory as its working directory — `opencode attach` takes it via `--dir`, while `opencode2` takes it as a positional argument. This is where the agent reads source files and writes edits.
 4. The host repository is left untouched — no host-side worktrees are created or managed.
 
