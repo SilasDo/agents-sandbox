@@ -80,6 +80,9 @@
 - `project-state-transactions.md`
   - Description: Approved contract (PR #225 follow-up, option B) making project/launcher state handling structurally correct: one locked transaction per document (`WithHomeState`/`RecoverHomeState`/`WithRootState`/`RemoveHomeState`) as the *entire* mutation API, a host-only flock held across read → mutate → write, recovery as the only wholesale writer, lock files under a never-deleted `<root>/locks/` tree, a same-process reentrancy fail-fast, and compare-and-set guards (never the home lock) across msb I/O. Retires the exported lock-free `WriteState`/`WriteRootState`/`UpdateRootState`/`UpdateHomeState`/`UpdateExistingHomeState`/`ReplaceHomeState` and supersedes `upgrade-state-scoping.md`'s writer-serialization clause.
   - Read If: Changing any project/launcher state read-modify-write, the state lock files, recovery of a lost/corrupt `state.yaml`, or deciding how a writer preserves the fields it does not own.
+- `ci-job-gating.md`
+  - Description: Contract for gating the costly `integration` job in `.github/workflows/ci.yml`: it runs on `main`, release tags, manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; the invariants keeping those conditions live (declared triggers for referenced event names, `pull_request.types` replacing the defaults, why integration stays in `ci.yml` for `release`'s `needs`, the default-branch requirement for dispatch, the label name's scattered mentions).
+  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, or the `run-integration` label.
 
 ### `plans/` - TDD implementation plans
 
