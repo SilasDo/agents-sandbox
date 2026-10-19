@@ -49,6 +49,16 @@ func TestRenderNoticeNamesExcludedVolumes(t *testing.T) {
 	}
 }
 
+func TestRenderNoticeExcludedSuppressesWholesaleCommand(t *testing.T) {
+	out := renderNotice(
+		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
+		[]string{naming.HomePrefix + "bad"},
+	)
+	if strings.Contains(out, "rm -rf ~/.microsandbox\n") {
+		t.Errorf("notice suggests wholesale removal while uncopied volumes remain:\n%s", out)
+	}
+}
+
 func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{IsInteractiveResult: true}

@@ -59,7 +59,9 @@ func acknowledgeNotice() error {
 }
 
 // renderNotice builds the notice text. Only the tiers actually present are
-// shown; the wholesale-removal command always appears with its caveat.
+// shown. The wholesale-removal command appears with its caveat unless excluded
+// volumes exist: those live under ~/.microsandbox, so a wholesale rm would
+// destroy uncopied data, and the notice must never suggest it.
 func renderNotice(a legacyArtifacts, excluded []string) string {
 	var b strings.Builder
 	b.WriteString("agents-sandbox now runs its own microsandbox runtime\n\n")
@@ -85,15 +87,18 @@ func renderNotice(a legacyArtifacts, excluded []string) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("  Everything else is your own microsandbox data; we never touch it. Remove the\n")
-	b.WriteString("  whole folder only if microsandbox was installed just for agents-sandbox:\n")
-	b.WriteString("    rm -rf ~/.microsandbox\n\n")
+	if len(excluded) == 0 {
+		b.WriteString("  Everything else is your own microsandbox data; we never touch it. Remove the\n")
+		b.WriteString("  whole folder only if microsandbox was installed just for agents-sandbox:\n")
+		b.WriteString("    rm -rf ~/.microsandbox\n\n")
+	}
 	if len(excluded) > 0 {
 		b.WriteString("  These volumes could not be copied and still hold data:\n")
 		for _, name := range excluded {
 			b.WriteString("    " + name + "\n")
 		}
-		b.WriteString("  They were left in place; check them before removing anything.\n\n")
+		b.WriteString("  They were left in place; check them before removing anything. Do not remove\n")
+		b.WriteString("  the whole ~/.microsandbox while they remain.\n\n")
 	}
 	b.WriteString("Nothing was deleted for you.")
 	return b.String()
