@@ -9,6 +9,77 @@ import (
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 )
 
+// emptyCandidatesConfigPaths returns no candidates, exercising the guard that
+// keeps ResolveConfigSource from indexing an empty candidate list.
+type emptyCandidatesConfigPaths struct{ configpaths.ConfigPaths }
+
+func (emptyCandidatesConfigPaths) UserAgentConfigDirCandidates(agent.Agent) []string {
+	return nil
+}
+
+func (emptyCandidatesConfigPaths) ProjectAgentConfigDirCandidates(agent.Agent) []string {
+	return nil
+}
+
+func TestResolveConfigSourceEmptyCandidates(t *testing.T) {
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return emptyCandidatesConfigPaths{} }
+	t.Cleanup(func() { configpaths.Get = orig })
+
+	a, _ := agent.Lookup("opencode2")
+	if _, err := ResolveConfigSource(a); err == nil {
+		t.Error("expected an error for empty config-dir candidates")
+	}
+}
+
+// staticCandidates serves fixed candidate dirs so a test can point the
+// resolver at paths whose os.Stat fails with a non-"not exist" error.
+type staticCandidates struct {
+	configpaths.ConfigPaths
+
+	dirs []string
+}
+
+func (s staticCandidates) UserAgentConfigDirCandidates(agent.Agent) []string {
+	return s.dirs
+}
+
+func (s staticCandidates) ProjectAgentConfigDirCandidates(agent.Agent) []string {
+	return s.dirs
+}
+
+func withStaticCandidates(t *testing.T, dirs ...string) {
+	t.Helper()
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return staticCandidates{dirs: dirs} }
+	t.Cleanup(func() { configpaths.Get = orig })
+}
+
+func TestResolveConfigSourceStatError(t *testing.T) {
+	// A candidate beneath a regular file makes os.Stat fail with ENOTDIR,
+	// which must surface rather than be treated as "absent" — for the primary
+	// candidate and for an alias candidate reached through the fallback loop.
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := agent.Lookup("opencode2")
+
+	t.Run("primary", func(t *testing.T) {
+		withStaticCandidates(t, filepath.Join(blocker, "opencode2"))
+		if _, err := ResolveConfigSource(a); err == nil {
+			t.Error("expected an error when the primary candidate stat fails")
+		}
+	})
+
+	t.Run("alias", func(t *testing.T) {
+		withStaticCandidates(t, filepath.Join(t.TempDir(), "absent"), filepath.Join(blocker, "opencode"))
+		if _, err := ResolveConfigSource(a); err == nil {
+			t.Error("expected an error when an alias candidate stat fails")
+		}
+	})
+}
+
 func TestResolveConfigSource(t *testing.T) {
 	cases := []struct {
 		name                       string
@@ -40,7 +111,10 @@ func TestResolveConfigSource(t *testing.T) {
 			mk(cp.ProjectConfigDir(), "opencode", tc.proj1)
 
 			a, _ := agent.Lookup("opencode2")
-			got := ResolveConfigSource(a)
+			got, err := ResolveConfigSource(a)
+			if err != nil {
+				t.Fatalf("ResolveConfigSource: %v", err)
+			}
 
 			name := "opencode2"
 			if tc.wantFallback != "" {

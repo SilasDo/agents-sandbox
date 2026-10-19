@@ -1026,7 +1026,7 @@ func TestLoadConfigFilesFallsBackToLegacyDir(t *testing.T) {
 	if _, ok := cf.Mirror[mirrorPath]; !ok {
 		t.Errorf("mirror missing legacy file %q; have %v", mirrorPath, cf.Mirror)
 	}
-	if n := countWarns(ui.WarnCalls, "legacy config"); n != 1 {
+	if n := countWarns(ui.WarnCalls, "legacy shared"); n != 1 {
 		t.Errorf("legacy fallback warning count = %d, want 1; warnings: %v", n, ui.WarnCalls)
 	}
 }
@@ -1060,7 +1060,7 @@ func TestLoadConfigFilesPrimarySuppressesLegacy(t *testing.T) {
 	if !strings.Contains(string(cf.Merged), "v2-primary") || strings.Contains(string(cf.Merged), "v1-legacy") {
 		t.Errorf("merged config should read only the primary dir: %s", cf.Merged)
 	}
-	if n := countWarns(ui.WarnCalls, "legacy config"); n != 0 {
+	if n := countWarns(ui.WarnCalls, "legacy shared"); n != 0 {
 		t.Errorf("unexpected legacy warning: %v", ui.WarnCalls)
 	}
 }

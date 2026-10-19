@@ -1,5 +1,8 @@
 # opencode2 Config Namespace Fork Implementation Plan
 
+> **Status:** implemented on `opencode2-config-fork` (PR #232); all tasks complete. A later adversarial review
+> hardened config-dir name validation and the resolver's error handling.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Give opencode2 its own launcher config namespace (`…/agents-sandbox/opencode2/`) so v1 and v2 config can diverge, while the guest config path and host drop-in stay `opencode`.

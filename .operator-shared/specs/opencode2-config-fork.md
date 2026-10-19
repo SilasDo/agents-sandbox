@@ -83,7 +83,11 @@ puts host I/O in pure profiles) and over "configpaths stats the filesystem"
   ```
   Built as `filepath.Join(base, name)` over `ConfigDirName()` then
   `ConfigDirAliases()`. `UserAgentConfigDir`/`ProjectAgentConfigDir` stay
-  (primary path).
+  (primary path). Each name is validated to be a single clean path element
+  (rejecting `""`, `.`, `..`, and embedded separators) and a bad name panics:
+  `filepath.Join` cleans `..`, so an unvalidated name like `..` would resolve to
+  the launcher config root and the mirror would copy its files — including
+  `env.secret` — into the VM, bypassing the msb-secret rule.
 - **reprovision** — existence/precedence/warning. A resolver picks the source:
   ```go
   type ConfigSource struct {
@@ -91,8 +95,11 @@ puts host I/O in pure profiles) and over "configpaths stats the filesystem"
       ProjectDir string
       Fallback   string // legacy dir name actually in use; "" for primary
   }
-  func ResolveConfigSource(a agent.Agent) ConfigSource
+  func ResolveConfigSource(a agent.Agent) (ConfigSource, error)
   ```
+  The resolver rejects an empty or length-mismatched candidate pair, and a
+  `os.Stat` error other than "not exist" is propagated rather than silently
+  treated as absent.
 
 ### The signal: "an opencode2 dir anywhere"
 
@@ -126,8 +133,10 @@ Behavior matrix (user/project, opencode2 = primary, opencode = legacy):
 
 Emitted at the single config-load boundary when `Fallback != ""` **and** a
 legacy dir actually exists (nothing to warn about otherwise), always — not
-gated to once. It names the legacy and primary dirs and tells the user to move
-files. The load runs exactly once per process today
+gated to once. It names the agent, the full legacy user/project paths actually
+read, and the primary user/project paths to migrate into, and says **copy** (not
+move) because the legacy dir is also the `opencode` agent's live dir; it states
+the guest `~/.config/opencode` path is unchanged. The load runs exactly once per process today
 (`run_orchestrate.go`: "Load the merged agent config … exactly once per
 startup"), and `config agent` invokes it once; a regression test asserts the
 warning fires exactly once per load. If a future path loads more than once, the
@@ -196,10 +205,13 @@ migration (a primary dir plus leftover legacy files): that case stays silent.
 - `CHANGELOG.md` — `Unreleased` → `Changed`.
 
 Implementation notes (post-build): `configpaths.agentConfigDirCandidates` does no
-de-duplication (aliases are distinct legacy names by contract), and
-`ResolveConfigSource` carries no empty-candidates guard (the name list always
-seeds the primary, so candidates are never empty). `ConfigFiles.Source` is set
-once per load and reused by `Describe`.
+de-duplication (aliases are distinct legacy names by contract). An adversarial
+review round then added (a) per-name validation in `configpaths` (see above),
+(b) a candidate-pair guard plus non-"not exist" `os.Stat` error propagation in
+`ResolveConfigSource`, and (c) the clarified fallback warning. The deliberate
+tradeoff stands unchanged: an empty or partial primary dir silently disables the
+fallback (no warning) — now stated explicitly in the user docs. `ConfigFiles.Source`
+is set once per load and reused by `Describe`.
 
 ## Left to the builder
 

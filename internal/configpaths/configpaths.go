@@ -1,6 +1,7 @@
 package configpaths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -92,10 +93,24 @@ func agentConfigDirCandidates(base string, a agent.Agent) []string {
 		names = append(names, al.ConfigDirAliases()...)
 	}
 	dirs := make([]string, 0, len(names))
-	for _, n := range names {
-		dirs = append(dirs, filepath.Join(base, n))
+	for _, name := range names {
+		dirs = append(dirs, filepath.Join(base, validConfigDirName(a.Name(), name)))
 	}
 	return dirs
+}
+
+// validConfigDirName rejects a name that is not a single clean path element.
+// Without this, names like "", ".", ".." or "a/b" would resolve to the launcher
+// config root or a parent: filepath.Join cleans "..", so the config mirror could
+// copy unrelated host files — including launcher secrets — into the VM. A bad
+// name is a profile programming error, so it fails fast.
+func validConfigDirName(agentName, name string) string {
+	if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+		panic(
+			fmt.Sprintf("agent %s declares invalid config dir name %q: must be a single path element", agentName, name),
+		)
+	}
+	return name
 }
 
 // UserHomeDir returns the host user's home directory. It is the root the

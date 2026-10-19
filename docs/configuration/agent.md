@@ -15,8 +15,9 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
 - **`opencode`** (default) — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
 - **`opencode2`** — opencode 2 (beta), installed from `@opencode-ai/cli@beta` on npm; daemon-based with serve/attach,
   worktree sessions, and npm beta-tag upgrade checks. It owns its own launcher config namespace
-  (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`) while its VM config path and host drop-in stay
-  `~/.config/opencode/` (v2 reads the same files as v1).
+  (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`), separate from `opencode`, because v2's config
+  schema (e.g. structured `providers.*.models.*.capabilities`) differs from v1's — so the two can now diverge. Its VM
+  config path and host drop-in stay `~/.config/opencode/` (v2 reads the same files as v1).
 - **`pi`** — the pi coding agent, run interactively; upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
 
@@ -28,9 +29,13 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 - **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`, `~/.config/agents-sandbox/opencode2/`)
 - **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
 
-> **Legacy fallback:** while no `opencode2` dir exists (in either scope), `opencode2` reads the old shared `opencode` dir
-> and warns on every run while it falls back to the old dir; creating the `opencode2` dir switches it over, after which
-> `opencode` and `opencode2` no longer share launcher config.
+> **Legacy fallback (migrating from an older version):** the `opencode2` launcher config dir is new. While no
+> `opencode2` dir exists (in either scope), `opencode2` reads the old shared `opencode` dir — which the `opencode` agent
+> also uses — and warns on every run while it falls back. To migrate, **copy** the files you want `opencode2` to read
+> from `~/.config/agents-sandbox/opencode/` into `~/.config/agents-sandbox/opencode2/` (and the project equivalent);
+> copy, not move, if you also use `opencode`. Once an `opencode2` dir exists it is used exclusively and the warning
+> stops, so copy **all** the files in one go: a partial `opencode2/` dir disables the fallback and silently ignores the
+> leftovers. The guest `~/.config/opencode/` path is never affected.
 
 VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently

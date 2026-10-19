@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -43,35 +45,58 @@ type ConfigSource struct {
 // win when either exists in any scope; otherwise the first alias whose dir
 // exists in either scope is used for both scopes. When nothing exists the
 // primary dirs are returned and Fallback is empty.
-func ResolveConfigSource(a agent.Agent) ConfigSource {
+func ResolveConfigSource(a agent.Agent) (ConfigSource, error) {
 	userCands := cp.Get().UserAgentConfigDirCandidates(a)
 	projectCands := cp.Get().ProjectAgentConfigDirCandidates(a)
-	if anyDirExists(userCands[0], projectCands[0]) {
-		return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}
+	if len(userCands) == 0 || len(userCands) != len(projectCands) {
+		return ConfigSource{}, fmt.Errorf(
+			"agent %s resolved %d user / %d project config-dir candidates; expected a non-empty parallel pair",
+			a.Name(), len(userCands), len(projectCands))
+	}
+	primaryExists, err := anyDirExists(userCands[0], projectCands[0])
+	if err != nil {
+		return ConfigSource{}, err
+	}
+	if primaryExists {
+		return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}, nil
 	}
 	// The candidate lists are parallel by construction: both come from the
 	// same ordered name list via agentConfigDirCandidates, so userCands[i] and
 	// projectCands[i] name the same config dir in their respective scopes.
 	for i := 1; i < len(userCands); i++ {
-		if anyDirExists(userCands[i], projectCands[i]) {
+		exists, err := anyDirExists(userCands[i], projectCands[i])
+		if err != nil {
+			return ConfigSource{}, err
+		}
+		if exists {
 			return ConfigSource{
 				UserDir:    userCands[i],
 				ProjectDir: projectCands[i],
 				Fallback:   filepath.Base(userCands[i]),
-			}
+			}, nil
 		}
 	}
-	return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}
+	return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}, nil
 }
 
-// anyDirExists reports whether any path names an existing directory.
-func anyDirExists(dirs ...string) bool {
+// anyDirExists reports whether any path names an existing directory. A stat
+// error other than "not exist" is surfaced rather than silently treated as
+// absent, so a permission or I/O failure cannot silently select another dir.
+func anyDirExists(dirs ...string) (bool, error) {
 	for _, d := range dirs {
-		if info, err := os.Stat(d); err == nil && info.IsDir() {
-			return true
+		info, err := os.Stat(d)
+		switch {
+		case err == nil:
+			if info.IsDir() {
+				return true, nil
+			}
+		case errors.Is(err, fs.ErrNotExist):
+			// absent in this scope; try the next
+		default:
+			return false, fmt.Errorf("stat config dir %q: %w", d, err)
 		}
 	}
-	return false
+	return false, nil
 }
 
 // AgentConfigPath returns the VM path where the agent's merged config is
@@ -124,7 +149,10 @@ func LoadConfigFilesForHost(
 	ui termio.UI,
 	provisionHostConfig bool,
 ) (*ConfigFiles, error) {
-	src := ResolveConfigSource(a)
+	src, err := ResolveConfigSource(a)
+	if err != nil {
+		return nil, err
+	}
 	mergedPath, mergedConfig, sources, hasSnippets, err := buildMergedConfig(a, vmHome, src)
 	if err != nil {
 		return nil, err
@@ -177,8 +205,19 @@ func LoadConfigFilesForHost(
 	}
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
-		ui.Warnf("agent %s is using the legacy config directory %q; move its files to %q to silence this warning",
-			a.Name(), src.Fallback, a.ConfigDirName())
+		ui.Warnf(
+			"agent %s is reading launcher config from the legacy shared %q dir (user: %q, project: %q), which agent opencode also uses; "+
+				"copy the files %s should read into the %q namespace (user: %q, project: %q) to silence this warning. "+
+				"The guest ~/.config/opencode path is unchanged.",
+			a.Name(),
+			src.Fallback,
+			src.UserDir,
+			src.ProjectDir,
+			a.Name(),
+			a.ConfigDirName(),
+			cp.Get().UserAgentConfigDir(a),
+			cp.Get().ProjectAgentConfigDir(a),
+		)
 	}
 	return &ConfigFiles{
 		HasSnippets: hasSnippets,

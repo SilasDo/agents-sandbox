@@ -78,7 +78,7 @@
 ### `plans/` - TDD implementation plans
 
 - `2026-10-19-opencode2-config-fork.md`
-  - Description: 5-task TDD plan for `specs/opencode2-config-fork.md`: opencode2 `ConfigDirName` + `ConfigDirAliaser` capability (Task 1), `configpaths` candidate methods (Task 2), `ResolveConfigSource` (Task 3), merge/mirror wiring + fallback warning + CLI test (Task 4), docs/changelog (Task 5). Not yet implemented.
+  - Description: 5-task TDD plan for `specs/opencode2-config-fork.md`: opencode2 `ConfigDirName` + `ConfigDirAliaser` capability (Task 1), `configpaths` candidate methods (Task 2), `ResolveConfigSource` (Task 3), merge/mirror wiring + fallback warning + CLI test (Task 4), docs/changelog (Task 5). Implemented on `opencode2-config-fork` (PR #232); a subsequent adversarial review hardened name validation and the resolver's error handling.
   - Read If: Implementing or reviewing the opencode2 config-namespace fork.
 - `2026-10-07-guided-onboarding-a-credential-kind.md`
   - Description: Plan A (credential kinds, explicit `Guide`, network-deny handling) — implemented on `issue-99-guided-onboarding-a`.

@@ -249,6 +249,17 @@ func TestFailFastProjectAgentConfigDirPanics(t *testing.T) {
 	})
 }
 
+func TestValidConfigDirName(t *testing.T) {
+	if got := validConfigDirName("opencode2", "opencode2"); got != "opencode2" {
+		t.Errorf("validConfigDirName(valid) = %q, want opencode2", got)
+	}
+	for _, bad := range []string{"", ".", "..", "a/b", "a/../b", "/abs", "../sibling"} {
+		t.Run("reject "+bad, func(t *testing.T) {
+			assertPanics(t, func() { validConfigDirName("test", bad) })
+		})
+	}
+}
+
 func TestMSBHomeUnderDataDir(t *testing.T) {
 	WithMockConfigPaths(t)
 	got := MSBHome()
