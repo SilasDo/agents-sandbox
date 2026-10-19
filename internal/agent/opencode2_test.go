@@ -160,8 +160,8 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 		"-u opencode:opencode",
 		"--get --data-urlencode 'location[directory]=/workspace'",
 		"/api/location) || exit 1",
-		"jq -re '.project.id') || exit 1",
-		"jq -r '.project.canonical'",
+		"jq -re '.project.id | select(length > 0)') || exit 1",
+		"jq -re '.project.canonical | select(length > 0)') || exit 1",
 		"http://127.0.0.1:4096/api/worktree?projectID=$PID",
 		`jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`,
 	} {
@@ -178,7 +178,7 @@ func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x", Target: "/workspace"})
-	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id') || exit 1; CANON=$(printf '%s' "$LOC" | jq -r '.project.canonical'); curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
+	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
 	}
@@ -188,7 +188,7 @@ func TestOpencode2WorktreeCreateCmdWithBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Base: "main", Target: "/workspace"})
-	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id') || exit 1; CANON=$(printf '%s' "$LOC" | jq -r '.project.canonical'); curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
+	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd(with base) = %q, want %q", got, want)
 	}
@@ -203,6 +203,30 @@ func TestOpencode2WorktreeCreateCmdQuotesTargetAndBase(t *testing.T) {
 	}
 	if !strings.Contains(got, `--arg branch 'it'\''s'`) {
 		t.Errorf("base not shell-quoted: %q", got)
+	}
+}
+
+// TestOpencode2WorktreePreludeGuardsFailClosed pins the two prelude guards: an
+// explicit empty project id must not yield `projectID=`, and a missing/null
+// canonical must abort instead of becoming the literal "null" the list filter
+// would then compare every entry against (keeping the canonical root).
+func TestOpencode2WorktreePreludeGuardsFailClosed(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	commands := map[string]string{
+		"list":   worktree.WorktreeListCmd("/workspace"),
+		"create": worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Target: "/workspace"}),
+	}
+	for name, got := range commands {
+		if !strings.Contains(got, "jq -re '.project.id | select(length > 0)') || exit 1") {
+			t.Errorf("%s command project-id guard must reject an empty id: %q", name, got)
+		}
+		if !strings.Contains(got, "jq -re '.project.canonical | select(length > 0)') || exit 1") {
+			t.Errorf("%s command canonical guard must reject a missing canonical: %q", name, got)
+		}
+		if strings.Contains(got, "jq -re '.project.id')") || strings.Contains(got, "jq -r '.project.canonical'") {
+			t.Errorf("%s command still has the fail-open guards: %q", name, got)
+		}
 	}
 }
 

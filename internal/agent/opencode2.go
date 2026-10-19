@@ -121,20 +121,21 @@ func (opencode2Profile) DaemonAuthHint() string {
 }
 
 // opencode2ServerURL is the loopback base URL of the opencode2 serve daemon,
-// used by the launcher's server-API calls.
+// used by the worktree API calls.
 const opencode2ServerURL = "http://127.0.0.1:" + opencode2Port
 
 // opencode2LocatePrelude resolves the project scoped to target and exports the
 // worktree calls' inputs: LOC (the raw /api/location response), PID (the
 // project id) and CANON (the project's canonical directory — the main checkout,
 // which the worktree list must exclude). It aborts the command when the location
-// call fails or no project id can be read, so a request is never sent with an
-// empty projectID.
+// call fails, or the project id or canonical directory is missing or empty, so
+// a request is never sent with an empty projectID and the list is never filtered
+// against a literal "null".
 func opencode2LocatePrelude(target string) string {
 	return "LOC=$(curl -sf " + opencode2CurlAuth + " --get --data-urlencode " +
 		shellQuote("location[directory]="+target) + " " + opencode2ServerURL + "/api/location) || exit 1; " +
-		"PID=$(printf '%s' \"$LOC\" | jq -re '.project.id') || exit 1; " +
-		"CANON=$(printf '%s' \"$LOC\" | jq -r '.project.canonical'); "
+		"PID=$(printf '%s' \"$LOC\" | jq -re '.project.id | select(length > 0)') || exit 1; " +
+		"CANON=$(printf '%s' \"$LOC\" | jq -re '.project.canonical | select(length > 0)') || exit 1; "
 }
 
 // WorktreeListCmd lists the project's worktrees through v2's project-scoped
