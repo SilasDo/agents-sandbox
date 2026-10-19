@@ -533,7 +533,7 @@ func TestFinalizeCompletedCampaignTerminalIsNoOp(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	if _, err := finalizeCompletedCampaign(); err != nil {
+	if err := finalizeCompletedCampaign(); err != nil {
 		t.Fatalf("finalizeCompletedCampaign: %v", err)
 	}
 	root, _ := state.ReadRootState()
@@ -545,7 +545,7 @@ func TestFinalizeCompletedCampaignTerminalIsNoOp(t *testing.T) {
 func TestFinalizeCompletedCampaignStateReadError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	writeCorruptRootState(t)
-	if _, err := finalizeCompletedCampaign(); err == nil {
+	if err := finalizeCompletedCampaign(); err == nil {
 		t.Fatal("finalizeCompletedCampaign() error = nil, want a state read error")
 	}
 }
@@ -1008,13 +1008,20 @@ func TestOfferNonInteractiveNoticeDoesNotMark(t *testing.T) {
 	}
 }
 
-func TestOfferNoticeNamesExcludedVolumes(t *testing.T) {
+// TestOfferNoticeNamesUncopiedVolumes pins the render-time derivation (D1): the
+// notice names a volume a campaign failed to copy by comparing the two home
+// listings, not by threading the transient Excluded set. A volume already present
+// in the private home is copied state and must not be named.
+func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	bad := naming.HomePrefix + "bad"
-	good := naming.HomePrefix + "good"
+	present := naming.HomePrefix + "present"
 	addVolumeDir(t, legacy, bad)
-	addVolumeDir(t, legacy, good)
+	addVolumeDir(t, legacy, present)
+	if err := os.MkdirAll(filepath.Join(runtime.PrivateHome(), "volumes", present), 0o750); err != nil {
+		t.Fatalf("seed present private volume: %v", err)
+	}
 
 	target := t.TempDir()
 	client := &msb.MockMsbClient{
@@ -1029,7 +1036,72 @@ func TestOfferNoticeNamesExcludedVolumes(t *testing.T) {
 	if err := Offer(context.Background(), client, ui); err != nil {
 		t.Fatalf("Offer() error = %v", err)
 	}
-	if len(ui.AcknowledgeCalls) != 1 || !strings.Contains(ui.AcknowledgeCalls[0], bad) {
-		t.Fatalf("AcknowledgeCalls = %v, want the excluded volume %q named", ui.AcknowledgeCalls, bad)
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
 	}
+	if !strings.Contains(ui.AcknowledgeCalls[0], bad) {
+		t.Errorf("notice = %q, want the uncopied volume %q named", ui.AcknowledgeCalls[0], bad)
+	}
+	if strings.Contains(ui.AcknowledgeCalls[0], present) {
+		t.Errorf("notice = %q, must not name the copied volume %q", ui.AcknowledgeCalls[0], present)
+	}
+}
+
+// TestOfferDismissSuppressesCommandsForUncopiedVolumes pins that the dismiss
+// path suppresses the destructive commands even though the campaign's transient
+// Excluded set is dropped at the terminal write: the uncopied volume is derived
+// from the home listings when the notice renders.
+func TestOfferDismissSuppressesCommandsForUncopiedVolumes(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	uncopied := naming.HomePrefix + "uncopied"
+	remaining := naming.HomePrefix + "remaining"
+	addVolumeDir(t, legacy, uncopied)
+	addVolumeDir(t, legacy, remaining)
+	// A campaign that failed to copy "uncopied" and still had "remaining" to do.
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		MigrationName: {Status: state.MigrationCopying, Excluded: []string{uncopied}},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	ui := noticeUI(choiceFresh)
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer: %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	if !strings.Contains(ui.AcknowledgeCalls[0], uncopied) {
+		t.Errorf("notice = %q, want the uncopied volume %q named", ui.AcknowledgeCalls[0], uncopied)
+	}
+	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
+}
+
+// TestOfferTerminalSessionSuppressesCommandsForUncopiedVolumes is the regression
+// commit a049122 missed: on a later session the campaign's Excluded list is gone,
+// yet a legacy volume with no private counterpart must still be named and must
+// still suppress both destructive commands.
+func TestOfferTerminalSessionSuppressesCommandsForUncopiedVolumes(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	left := naming.HomePrefix + "left-behind"
+	addVolumeDir(t, legacy, left)
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		MigrationName: {Status: state.MigrationCompleted},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer: %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	if !strings.Contains(ui.AcknowledgeCalls[0], left) {
+		t.Errorf("notice = %q, want the uncopied volume %q named", ui.AcknowledgeCalls[0], left)
+	}
+	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
 }

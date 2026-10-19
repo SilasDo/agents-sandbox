@@ -2,11 +2,14 @@ package runtimemigration
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
+	"github.com/inoio/agents-sandbox/internal/sandbox/runtime"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -36,20 +39,20 @@ func TestRenderNoticeAlwaysOffersTheWholesaleCommand(t *testing.T) {
 	}
 }
 
-func TestRenderNoticeNamesExcludedVolumes(t *testing.T) {
+func TestRenderNoticeNamesUncopiedVolumes(t *testing.T) {
 	out := renderNotice(
 		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
 		[]string{naming.HomePrefix + "bad"},
 	)
 	if !strings.Contains(out, naming.HomePrefix+"bad") {
-		t.Errorf("notice missing the excluded volume name:\n%s", out)
+		t.Errorf("notice missing the uncopied volume name:\n%s", out)
 	}
-	if !strings.Contains(out, "could not be copied") {
-		t.Errorf("notice missing the excluded warning:\n%s", out)
+	if !strings.Contains(out, "were not copied into agents-sandbox") {
+		t.Errorf("notice missing the uncopied warning:\n%s", out)
 	}
 }
 
-func TestRenderNoticeExcludedSuppressesWholesaleCommand(t *testing.T) {
+func TestRenderNoticeUncopiedSuppressesWholesaleCommand(t *testing.T) {
 	out := renderNotice(
 		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
 		[]string{naming.HomePrefix + "bad"},
@@ -59,7 +62,7 @@ func TestRenderNoticeExcludedSuppressesWholesaleCommand(t *testing.T) {
 	}
 }
 
-func TestRenderNoticeExcludedSuppressesVolumeGlob(t *testing.T) {
+func TestRenderNoticeUncopiedSuppressesVolumeGlob(t *testing.T) {
 	out := renderNotice(
 		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
 		[]string{naming.HomePrefix + "bad"},
@@ -68,14 +71,14 @@ func TestRenderNoticeExcludedSuppressesVolumeGlob(t *testing.T) {
 		t.Errorf("notice suggests a volume glob that would delete the uncopied volume:\n%s", out)
 	}
 	if !strings.Contains(out, naming.HomePrefix+"bad") {
-		t.Errorf("notice no longer names the excluded volume:\n%s", out)
+		t.Errorf("notice no longer names the uncopied volume:\n%s", out)
 	}
 }
 
 func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, nil, ui); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 0 {
@@ -88,7 +91,7 @@ func TestShowNoticeSilentWhenAcknowledged(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(true, nil, ui); err != nil {
+	if err := showNotice(true, ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 0 {
@@ -96,27 +99,20 @@ func TestShowNoticeSilentWhenAcknowledged(t *testing.T) {
 	}
 }
 
-// showNoticeResult shows the notice and returns its result, the way a session
-// entrypoint propagates it, so the notice's error contract is exercised rather
-// than discarded.
-func showNoticeResult(ui termio.UI, excluded []string) error {
-	return showNotice(false, excluded, ui)
-}
-
-func TestShowNoticeNamesExcludedVolumes(t *testing.T) {
+func TestShowNoticeNamesUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
-	excluded := naming.HomePrefix + "bad"
+	uncopied := naming.HomePrefix + "uncopied"
+	addVolumeDir(t, legacy, uncopied)
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNoticeResult(ui, []string{excluded}); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {
 		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
 	}
-	if !strings.Contains(ui.AcknowledgeCalls[0], excluded) {
-		t.Errorf("notice = %q, want the excluded volume %q named", ui.AcknowledgeCalls[0], excluded)
+	if !strings.Contains(ui.AcknowledgeCalls[0], uncopied) {
+		t.Errorf("notice = %q, want the uncopied volume %q named", ui.AcknowledgeCalls[0], uncopied)
 	}
 }
 
@@ -125,7 +121,7 @@ func TestShowNoticeInteractiveMarksAcknowledged(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, nil, ui); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {
@@ -138,19 +134,23 @@ func TestShowNoticeInteractiveMarksAcknowledged(t *testing.T) {
 	}
 }
 
-func TestShowNoticeNonInteractivePrintsButDoesNotMark(t *testing.T) {
+func TestShowNoticeNonInteractivePrintsBoundedLineButDoesNotMark(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: false}
-	if err := showNotice(false, nil, ui); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
-	if len(ui.AcknowledgeCalls) != 0 {
-		t.Errorf("AcknowledgeCalls = %v, want none non-interactively", ui.AcknowledgeCalls)
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the bounded one-liner", ui.AcknowledgeCalls)
 	}
-	if len(ui.InfoCalls) == 0 {
-		t.Error("non-interactive run printed nothing")
+	line := ui.AcknowledgeCalls[0]
+	if strings.Contains(line, "rm -rf") {
+		t.Errorf("non-interactive notice contains removal commands: %q", line)
+	}
+	if strings.Contains(line, "\n") {
+		t.Errorf("non-interactive notice is not a single line: %q", line)
 	}
 	root, _ := state.ReadRootState()
 	if _, ok := root.Migration(LegacyRuntimeNoticeName); ok {
@@ -163,7 +163,7 @@ func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true, AcknowledgeErr: errors.New("stdin closed")}
-	if err := showNotice(false, nil, ui); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if len(ui.WarnCalls) == 0 {
@@ -175,13 +175,84 @@ func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 	}
 }
 
+// TestShowNoticeRecordErrorWarnsAndContinues pins that a failure to persist the
+// acknowledgment (here, a corrupt root state) is best-effort: it warns and the
+// session continues without recording the notice.
+func TestShowNoticeRecordErrorWarnsAndContinues(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	writeCorruptRootState(t)
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := showNotice(false, ui); err != nil {
+		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
+	}
+	if !warnedAbout(ui.WarnCalls, "could not record legacy runtime notice") {
+		t.Errorf("WarnCalls = %v, want the record-failure warning", ui.WarnCalls)
+	}
+}
+
 func TestShowNoticeDetectionErrorWarnsAndContinues(t *testing.T) {
 	configpaths.WithMockConfigPathsHomeError(t, errors.New("home unavailable"))
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, nil, ui); err != nil {
+	if err := showNotice(false, ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if len(ui.WarnCalls) == 0 {
 		t.Error("no warning for a detection failure")
 	}
+}
+
+// TestShowNoticePrivateListingErrorSuppressesCommands pins the conservative
+// fallback: when the private home cannot be listed, every legacy volume is
+// treated as uncopied so the notice never prints a command that could delete
+// data.
+func TestShowNoticePrivateListingErrorSuppressesCommands(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	name := naming.HomePrefix + "a"
+	addVolumeDir(t, legacy, name)
+
+	volumes := filepath.Join(runtime.PrivateHome(), "volumes")
+	if err := os.MkdirAll(filepath.Dir(volumes), 0o750); err != nil {
+		t.Fatalf("mkdir private home: %v", err)
+	}
+	if err := os.Symlink("volumes", volumes); err != nil {
+		t.Fatalf("symlink private volumes: %v", err)
+	}
+
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := showNotice(false, ui); err != nil {
+		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
+	}
+	if !warnedAbout(ui.WarnCalls, "could not list the private home") {
+		t.Errorf("WarnCalls = %v, want the conservative-listing warning", ui.WarnCalls)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
+}
+
+// assertSuppressesDestructiveCommands fails when a notice suggests deleting the
+// whole legacy home or its agents-sandbox-home-* volumes: both would delete an
+// uncopied volume that still holds data.
+func assertSuppressesDestructiveCommands(t *testing.T, notice string) {
+	t.Helper()
+	if strings.Contains(notice, "rm -rf ~/.microsandbox\n") {
+		t.Errorf("notice suggests wholesale removal while a volume is uncopied:\n%s", notice)
+	}
+	if strings.Contains(notice, "rm -rf ~/.microsandbox/volumes/agents-sandbox-home-*") {
+		t.Errorf("notice suggests a volume glob that would delete an uncopied volume:\n%s", notice)
+	}
+}
+
+// warnedAbout reports whether any warning contains substring.
+func warnedAbout(warnCalls []string, substring string) bool {
+	for _, call := range warnCalls {
+		if strings.Contains(call, substring) {
+			return true
+		}
+	}
+	return false
 }

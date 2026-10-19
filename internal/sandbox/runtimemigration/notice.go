@@ -14,11 +14,13 @@ const LegacyRuntimeNoticeName = "legacy_runtime_notice"
 // showNotice presents the post-migration notice once. It is best-effort: any
 // failure warns and returns nil so the session proceeds. It never fires for a
 // fresh install or a user's own unrelated microsandbox (detection is
-// prefix-based), and never deletes anything. It records the acknowledgment only
-// in an interactive session, so a non-interactive run cannot silently consume
-// the one-time moment. excluded names volumes a just-finalized campaign could
-// not copy, which still hold data.
-func showNotice(acknowledged bool, excluded []string, ui termio.UI) error {
+// prefix-based), and never deletes anything. An interactive session renders the
+// full notice, waits for the user, and records the acknowledgment; a
+// non-interactive session prints only a bounded one-line form and records
+// nothing, so the one-time moment is not silently consumed. The uncopied volumes
+// it warns about are derived from the two home listings at render time, so the
+// warning survives the dismiss path and later sessions.
+func showNotice(acknowledged bool, ui termio.UI) error {
 	if acknowledged {
 		return nil
 	}
@@ -30,12 +32,18 @@ func showNotice(acknowledged bool, excluded []string, ui termio.UI) error {
 	if !artifacts.present() {
 		return nil
 	}
-	message := renderNotice(artifacts, excluded)
+	uncopied, err := uncopiedLegacyVolumes(artifacts.HomeVolumes)
+	if err != nil {
+		// Conservative: without the private listing, treat every legacy volume as
+		// uncopied so the notice never prints a command that could delete data.
+		ui.Warnf("could not list the private home; assuming no legacy volumes were copied: %v", err)
+		uncopied = artifacts.HomeVolumes
+	}
 	if !ui.IsInteractive() {
-		ui.Infof("%s", message)
+		_ = ui.Acknowledge(noticeSummaryLine())
 		return nil
 	}
-	if err := ui.Acknowledge(message); err != nil {
+	if err := ui.Acknowledge(renderNotice(artifacts, uncopied)); err != nil {
 		ui.Warnf("could not show legacy runtime notice: %v", err)
 		return nil
 	}
@@ -43,6 +51,13 @@ func showNotice(acknowledged bool, excluded []string, ui termio.UI) error {
 		ui.Warnf("could not record legacy runtime notice: %v", err)
 	}
 	return nil
+}
+
+// noticeSummaryLine is the bounded one-line form for a non-interactive session:
+// the fact and where to read more, with no removal commands.
+func noticeSummaryLine() string {
+	return "agents-sandbox now runs its own microsandbox runtime; your system-wide microsandbox is optional. " +
+		"See the 'Upgrading to 0.6' docs to clean up."
 }
 
 // acknowledgeNotice records the terminal acknowledgment under the root lock,
@@ -59,23 +74,23 @@ func acknowledgeNotice() error {
 }
 
 // renderNotice builds the notice text. Only the tiers actually present are
-// shown. When excluded volumes exist the notice leads with a "do not remove"
+// shown. When uncopied volumes exist the notice leads with a "do not remove"
 // warning naming them, and suppresses every command that would delete them: the
 // wholesale rm -rf ~/.microsandbox and the selective
-// ~/.microsandbox/volumes/agents-sandbox-home-* glob both match an excluded
-// (uncopied) volume. The safe sandbox globs are still offered, and the volumes
-// glob is replaced by a note to remove the remaining volumes individually.
-func renderNotice(a legacyArtifacts, excluded []string) string {
+// ~/.microsandbox/volumes/agents-sandbox-home-* glob both match an uncopied
+// volume. The safe sandbox globs are still offered, and the volumes glob is
+// replaced by a note to remove the remaining volumes individually.
+func renderNotice(a legacyArtifacts, uncopied []string) string {
 	var b strings.Builder
 	b.WriteString("agents-sandbox now runs its own microsandbox runtime\n\n")
 	b.WriteString("Nothing broke — agents-sandbox keeps its runtime in its own private home now,\n")
 	b.WriteString("so the system-wide microsandbox is no longer needed to run it.\n\n")
 	b.WriteString("Your ~/.microsandbox was left untouched. It holds two kinds of things:\n\n")
-	if len(excluded) > 0 {
-		writeExcludedWarning(&b, excluded)
+	if len(uncopied) > 0 {
+		writeUncopiedWarning(&b, uncopied)
 	}
-	writeRemovableLeftovers(&b, a, len(excluded) > 0)
-	if len(excluded) == 0 {
+	writeRemovableLeftovers(&b, a, len(uncopied) > 0)
+	if len(uncopied) == 0 {
 		b.WriteString("  Everything else is your own microsandbox data; we never touch it. Remove the\n")
 		b.WriteString("  whole folder only if microsandbox was installed just for agents-sandbox:\n")
 		b.WriteString("    rm -rf ~/.microsandbox\n\n")
@@ -84,21 +99,23 @@ func renderNotice(a legacyArtifacts, excluded []string) string {
 	return b.String()
 }
 
-// writeExcludedWarning writes the leading "do not remove" paragraph naming the
-// volumes a campaign could not copy, before any removal command.
-func writeExcludedWarning(b *strings.Builder, excluded []string) {
-	b.WriteString("  These volumes could not be copied and still hold data:\n")
-	for _, name := range excluded {
+// writeUncopiedWarning writes the leading "do not remove" paragraph naming the
+// volumes that were not copied into agents-sandbox, before any removal command.
+// It reads true both for a failed copy and for a volume the user chose not to
+// migrate.
+func writeUncopiedWarning(b *strings.Builder, uncopied []string) {
+	b.WriteString("  These volumes were not copied into agents-sandbox and still hold data:\n")
+	for _, name := range uncopied {
 		b.WriteString("    " + name + "\n")
 	}
 	b.WriteString("  They were left in place; do not remove them.\n\n")
 }
 
 // writeRemovableLeftovers writes the "ours, safe to remove" tier and its removal
-// commands, if any of our leftovers are present. When excluded volumes exist,
-// hasExcluded suppresses the agents-sandbox-home-* glob (it matches an uncopied
+// commands, if any of our leftovers are present. When uncopied volumes exist,
+// hasUncopied suppresses the agents-sandbox-home-* glob (it matches an uncopied
 // volume) and offers a qualification instead; the sandbox globs are unaffected.
-func writeRemovableLeftovers(b *strings.Builder, a legacyArtifacts, hasExcluded bool) {
+func writeRemovableLeftovers(b *strings.Builder, a legacyArtifacts, hasUncopied bool) {
 	if len(a.HomeVolumes) == 0 && len(a.Sandboxes) == 0 {
 		return
 	}
@@ -112,7 +129,7 @@ func writeRemovableLeftovers(b *strings.Builder, a legacyArtifacts, hasExcluded 
 	}
 	b.WriteString("  Remove just these with:\n")
 	if len(a.HomeVolumes) > 0 {
-		writeVolumeRemovalCommand(b, hasExcluded)
+		writeVolumeRemovalCommand(b, hasUncopied)
 	}
 	if len(a.Sandboxes) > 0 {
 		b.WriteString("    rm -rf ~/.microsandbox/sandboxes/agents-sandbox-vm-*\n")
@@ -122,10 +139,10 @@ func writeRemovableLeftovers(b *strings.Builder, a legacyArtifacts, hasExcluded 
 }
 
 // writeVolumeRemovalCommand writes the removal command for our home volumes, or
-// a qualification when excluded volumes exist: the glob matches an uncopied
+// a qualification when uncopied volumes exist: the glob matches an uncopied
 // volume, so the user must remove the remaining volumes individually.
-func writeVolumeRemovalCommand(b *strings.Builder, hasExcluded bool) {
-	if hasExcluded {
+func writeVolumeRemovalCommand(b *strings.Builder, hasUncopied bool) {
+	if hasUncopied {
 		b.WriteString("    (the agents-sandbox-home-* glob also matches the uncopied volumes above;\n")
 		b.WriteString("    remove the rest individually and leave those in place)\n")
 		return

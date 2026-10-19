@@ -53,6 +53,8 @@ func presentPrivateVolumeNames(privateHome string) ([]string, error) {
 //   - pending (zero status): legacy names absent from the private home.
 func necessaryVolumes(legacyHome, privateHome string, m state.Migration) ([]string, error) {
 	switch m.Status {
+	// The acknowledged case is defensive only: acknowledged is written solely to
+	// the legacy_runtime_notice entry and never to runtime_home.
 	case state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged:
 		return nil, nil
 	case state.MigrationCopying:
@@ -211,6 +213,29 @@ func matchingDirNames(dir string, match func(string) bool, tolerateUnreadable bo
 // failure is returned, so an open campaign fails closed.
 func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
 	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsHomeVolume, tolerateUnreadable)
+}
+
+// uncopiedLegacyVolumes returns the legacy home volume names with no counterpart
+// in the private home: volumes a campaign failed to copy, or that the user chose
+// not to migrate. Deriving it from the two home listings keeps it available on
+// the dismiss path and in later sessions, where the migration's transient
+// Excluded set has already been dropped.
+func uncopiedLegacyVolumes(legacyVolumes []string) ([]string, error) {
+	present, err := presentPrivateVolumeNames(runtime.PrivateHome())
+	if err != nil {
+		return nil, err
+	}
+	presentSet := make(map[string]bool, len(present))
+	for _, name := range present {
+		presentSet[name] = true
+	}
+	var uncopied []string
+	for _, name := range legacyVolumes {
+		if !presentSet[name] {
+			uncopied = append(uncopied, name)
+		}
+	}
+	return uncopied, nil
 }
 
 // legacySandboxNames lists launcher-owned sandbox records under

@@ -33,20 +33,11 @@ func saveMigration(tx *state.RootTxn, m state.Migration) error {
 	return tx.Commit()
 }
 
-// CopyVolumes runs the legacy home-volume copy campaign and discards the
-// excluded names. It is the exported entry point kept for callers and tests;
-// production flows through copyVolumesCampaign so Offer can report the excluded
-// volumes in the notice. See copyVolumesCampaign.
-func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
-	_, err := copyVolumesCampaign(ctx, client, ui)
-	return err
-}
-
-// copyVolumesCampaign runs the legacy home-volume copy campaign under the
-// host-only root lock, recording progress in the migration registry so an
-// interrupted campaign resumes exactly and a concurrent session cannot clobber a
-// live copy. It returns the names it excluded (failed to copy), which still hold
-// data in the legacy home.
+// CopyVolumes runs the legacy home-volume copy campaign under the host-only root
+// lock, recording progress in the migration registry so an interrupted campaign
+// resumes exactly and a concurrent session cannot clobber a live copy. It is the
+// single copy entry point; which volumes were left uncopied is derived at
+// notice-render time from the two home listings, never threaded from here.
 //
 // A terminal migration (completed or dismissed) is a no-op. Starting from
 // pending records the legacy targets already present in the private home as Kept
@@ -63,41 +54,35 @@ func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
 // deliberately held across the msb copy I/O (which can take minutes): a
 // non-blocking acquirer (the upgrade check or the legacy updater fold) defers to
 // a later run instead of racing a live copy.
-func copyVolumesCampaign(ctx context.Context, client msb.Client, ui termio.UI) ([]string, error) {
-	var excluded []string
+func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
 	_, err := state.WithRootState(true, func(tx *state.RootTxn) error {
-		var inner error
-		excluded, inner = copyVolumesLocked(ctx, client, ui, tx)
-		return inner
+		return copyVolumesLocked(ctx, client, ui, tx)
 	})
-	if err != nil {
-		return nil, err
-	}
-	return excluded, nil
+	return err
 }
 
 // copyVolumesLocked runs the campaign body with the root transaction's document
 // and lock held. It commits after each volume so an interruption resumes exactly.
-func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx *state.RootTxn) ([]string, error) {
+func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx *state.RootTxn) error {
 	m, _ := tx.State().Migration(MigrationName)
 	if m.Status == state.MigrationCompleted || m.Status == state.MigrationDismissed {
-		return nil, nil
+		return nil
 	}
 
 	legacyHome, err := runtime.LegacyHome()
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if m.Status != state.MigrationCopying {
 		m, err = startCampaign(tx, legacyHome)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	names, err := necessaryVolumesFor(m)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for _, name := range names {
 		if err := copyVolume(ctx, client, legacyHome, name); err != nil {
@@ -105,25 +90,22 @@ func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx 
 				// The destination partial could not be removed, so it is still a
 				// usable home under a migration target. Abort as campaign-scoped
 				// rather than record an exclusion that completion would seal in.
-				return nil, fmt.Errorf("copy volume %q: %w", name, removeErr)
+				return fmt.Errorf("copy volume %q: %w", name, removeErr)
 			}
 			m.Excluded = append(m.Excluded, name)
 			if serr := saveMigration(tx, m); serr != nil {
-				return nil, serr
+				return serr
 			}
 			ui.Warnf("skipping legacy home volume %q: %v", name, err)
 			continue
 		}
 		m.Copied = append(m.Copied, name)
 		if err := saveMigration(tx, m); err != nil {
-			return nil, err
+			return err
 		}
 		ui.Infof("copied legacy home volume %q", name)
 	}
-	if err := finalizeMigration(tx); err != nil {
-		return nil, err
-	}
-	return m.Excluded, nil
+	return finalizeMigration(tx)
 }
 
 // startCampaign opens the migration campaign, recording the legacy targets
@@ -139,8 +121,8 @@ func startCampaign(tx *state.RootTxn, legacyHome string) (state.Migration, error
 }
 
 // finalizeMigration records the terminal completed status. The transient
-// Copied/Kept/Excluded lists are dropped by the terminal write; the caller keeps
-// the excluded names to report in the post-migration notice.
+// Copied/Kept/Excluded lists are dropped by the terminal write; the
+// post-migration notice derives the uncopied volumes from the home listings.
 func finalizeMigration(tx *state.RootTxn) error {
 	return saveMigration(tx, state.Migration{Status: state.MigrationCompleted})
 }

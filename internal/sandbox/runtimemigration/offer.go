@@ -69,7 +69,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 	migration, _ := rootState.Migration(MigrationName)
 	_, noticeAcknowledged := rootState.Migration(LegacyRuntimeNoticeName)
 	if migration.Status == state.MigrationCompleted || migration.Status == state.MigrationDismissed {
-		return showNotice(noticeAcknowledged, nil, ui)
+		return showNotice(noticeAcknowledged, ui)
 	}
 
 	names, err := necessaryVolumesFor(migration)
@@ -82,15 +82,14 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 	}
 	unclear := unclearVolumes(migration, presentTargets)
 
-	var excluded []string
 	if len(names) == 0 && len(unclear) == 0 {
 		if migration.Status == state.MigrationCopying {
-			excluded, err = finalizeCompletedCampaign()
+			err = finalizeCompletedCampaign()
 			if err != nil {
 				return err
 			}
 		}
-		return showNotice(noticeAcknowledged, excluded, ui)
+		return showNotice(noticeAcknowledged, ui)
 	}
 
 	if !ui.IsInteractive() {
@@ -114,8 +113,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 
 	switch choice {
 	case choiceCopy:
-		excluded, err = copyVolumesCampaign(ctx, client, ui)
-		if err != nil {
+		if err := CopyVolumes(ctx, client, ui); err != nil {
 			return fmt.Errorf("copying legacy home volumes: %w", err)
 		}
 	case choiceFresh:
@@ -125,7 +123,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 	default:
 		return ErrMigrationPending
 	}
-	return showNotice(noticeAcknowledged, excluded, ui)
+	return showNotice(noticeAcknowledged, ui)
 }
 
 // handleOfferListingError resolves a failure to list the homes while deriving the
@@ -160,19 +158,16 @@ func presentLegacyTargetsFor() ([]string, error) {
 // finalizeCompletedCampaign closes out an open campaign that has nothing left to
 // copy (it crashed after copying everything but before recording completion). It
 // re-reads state under the root lock and only writes completed while the entry is
-// still copying, so it never clobbers a concurrent terminal write. It returns the
-// campaign's excluded names for the post-migration notice.
-func finalizeCompletedCampaign() ([]string, error) {
-	var excluded []string
+// still copying, so it never clobbers a concurrent terminal write.
+func finalizeCompletedCampaign() error {
 	_, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		m, _ := tx.State().Migration(MigrationName)
 		if m.Status != state.MigrationCopying {
 			return nil
 		}
-		excluded = m.Excluded
 		return finalizeMigration(tx)
 	})
-	return excluded, err
+	return err
 }
 
 // dismissMigration records the permanent opt-out under the root lock, re-reading

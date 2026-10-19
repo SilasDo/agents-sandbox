@@ -224,8 +224,9 @@ func (m *Mock) Confirm(prompt string, defaultYes bool) (bool, error) {
 	return m.ConfirmResult, m.ConfirmErr
 }
 
-// Acknowledge records the notice. It does not gate on IsInteractiveResult: the
-// caller decides whether a non-interactive session may record an acknowledgment.
+// Acknowledge records the notice regardless of IsInteractiveResult: both the
+// interactive and the non-interactive path call it, and the caller decides
+// whether the acknowledgment is recorded.
 func (m *Mock) Acknowledge(message string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
