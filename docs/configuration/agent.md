@@ -14,8 +14,9 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
 
 - **`opencode`** (default) — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
 - **`opencode2`** — opencode 2 (beta), installed from `@opencode-ai/cli@beta` on npm; daemon-based with serve/attach,
-  worktree sessions, and npm beta-tag upgrade checks. It shares the `opencode` config directory (v2 reads the same files
-  as v1).
+  worktree sessions, and npm beta-tag upgrade checks. It owns its own launcher config namespace
+  (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`) while its VM config path and host drop-in stay
+  `~/.config/opencode/` (v2 reads the same files as v1).
 - **`pi`** — the pi coding agent, run interactively; upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
 
@@ -24,8 +25,12 @@ interactive TUI instead. Passing an unsupported `--agent` name reports the valid
 
 Each agent owns its config directories, one subdir per agent under the tool's config base:
 
-- **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`)
-- **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`)
+- **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`, `~/.config/agents-sandbox/opencode2/`)
+- **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
+
+> **Legacy fallback:** while no `opencode2` dir exists (in either scope), `opencode2` reads the old shared `opencode` dir
+> and warns on every run; creating the `opencode2` dir switches it over, after which `opencode` and `opencode2` no longer
+> share launcher config.
 
 VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently
@@ -39,7 +44,8 @@ user and project directories, and written to the agent's VM config path:
 
 - **opencode** — snippets match `opencode*.json*` (e.g. `opencode-model.json`, `opencode-permissions.jsonc`); merged to
   `/home/dev/.config/opencode/opencode.jsonc`. A file named exactly `opencode.json` no longer merges by default.
-- **opencode2** — same snippet pattern and merged config path as `opencode` (v2 reads the same files as v1).
+- **opencode2** — same snippet pattern and merged config path as `opencode` (v2 reads the same files as v1), but read
+  from its own `opencode2/` config dirs instead of the shared `opencode/` dirs.
 - **pi** — snippets match `settings*.json*` in the `pi/` subdir; merged to `/home/dev/.pi/agent/settings.json`.
 - **claude-code** — snippets match `settings*.json*` in the `claude/` subdir; merged to `/home/dev/.claude/settings.json`.
 
@@ -65,7 +71,8 @@ Beyond the snippet merge, the `<agent>` config directories (`~/.config/agents-sa
 `.agents-sandbox/<agent>/`) act as a **1:1 verbatim mirror** of the agent's VM config directory. Every file and
 subdirectory in them is copied verbatim into the VM, preserving its relative path (for opencode: `tui.json`, `AGENTS.md`,
 `agents/`, `commands/`, `themes/`, `plugins/`, `skills/`, `tools/`, …). This makes your whole agent setup available in
-the VM without extra configuration.
+the VM without extra configuration. For `opencode2`, read from its own `opencode2/` dirs rather than the shared
+`opencode/` dirs.
 
 Two families of files are *not* mirrored:
 

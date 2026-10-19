@@ -86,6 +86,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
+  `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists, it falls back to
+  the old `opencode` dir and warns on every run; creating the `opencode2` dir switches to it. The guest config path and
+  host drop-in are unchanged (`~/.config/opencode/`).
 - Runner image: the interactive agent-upgrade prompt now names both the available release and the version currently baked
   into the image, so the choice to rebuild or keep the current version is informed.
 
@@ -462,7 +466,7 @@ command reports the bare version (e.g. `0.1.0`).
 - Self-upgrade: `run`/`shell` check GitHub for a newer agents-sandbox release (throttled to `upgrade.interval`, default `1d`, minimum `1h`). `upgrade.mode` controls behavior: `prompt` (default; continue / don't-ask-again / upgrade & continue / upgrade & exit, falling back to a notice when non-interactive), `notify`, `auto`, or `auto-exit`. A new `upgrade` command installs the latest release on demand. Checks are skipped for `dev` builds and offline failures are ignored.
 
 - CLI: a new `--agent <name>` flag on `run`, `build`, and the `volume` subcommands selects the coding-agent profile to run/build/provision. The registry abstraction keeps existing usage fully backward compatible (`opencode` remains the default).
-- Agents: a built-in `opencode2` (opencode 2 beta) profile, installed from `@opencode-ai/cli@beta` on npm. Daemon-based like `opencode` (serve/attach on the v2 `/api` server, worktree sessions, health via `/api/health`), it shares the `opencode` config directory (v2 reads the same files as v1), resolves its latest version from the npm `beta` dist-tag, and compares `0.0.0-beta-<build>` versions numerically (plain semver mis-sorts them across digit lengths). The quiescence reaper now skips the v1 session-status wait for daemons that expose no such endpoints.
+- Agents: a built-in `opencode2` (opencode 2 beta) profile, installed from `@opencode-ai/cli@beta` on npm. Daemon-based like `opencode` (serve/attach on the v2 `/api` server, worktree sessions, health via `/api/health`), it originally shared the `opencode` config directory (v2 reads the same files as v1; later given its own `opencode2` launcher config namespace), resolves its latest version from the npm `beta` dist-tag, and compares `0.0.0-beta-<build>` versions numerically (plain semver mis-sorts them across digit lengths). The quiescence reaper now skips the v1 session-status wait for daemons that expose no such endpoints.
 - Agents: built-in `pi` (`@earendil-works/pi-coding-agent`) and `claude-code` (`@anthropic-ai/claude-code`) profiles, alongside the default `opencode`. Both run interactively via the TUI (no daemon), support snippet config merge into `~/.pi/agent/settings.json` / `~/.claude/settings.json`, and resolve latest versions for `build` (pi via `pi.dev`, claude-code via the npm registry). `--worktree` and `--serve-only` are rejected for agents without a daemon.
 - Image: the runner Dockerfile installs Node.js before the agent install block so npm-based agents (pi, claude-code) can be installed with `npm install -g`.
 - Config: the agent-specific config family (which files the merged config supersedes) is now driven per agent rather than hardcoded to opencode, so merged config detection and `config agent` output are correct for pi and claude-code.
