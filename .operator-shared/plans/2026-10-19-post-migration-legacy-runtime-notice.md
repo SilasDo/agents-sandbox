@@ -1011,12 +1011,12 @@ git commit -m "feat(migration): show the legacy-runtime notice from Offer"
 
 ---
 
-### Task 6: Docs, CHANGELOG, and brain catalog
+### Task 6: Docs — the "Upgrading to 0.6" page (resolves #208), CHANGELOG, catalog
 
 **Files:**
 - Create: `docs/install/upgrading.md`
 - Modify: `docs/install.md` (link the new page)
-- Modify: `docs/troubleshooting.md` (cross-link)
+- Modify: `docs/troubleshooting.md` (point the upgrade overview at the new page; keep only diagnostics)
 - Modify: `README.md` (positioning line)
 - Modify: `CHANGELOG.md` (`[Unreleased]` → `### Added`)
 - Modify: `.operator-shared/catalog.md` (list the new plan)
@@ -1025,36 +1025,80 @@ git commit -m "feat(migration): show the legacy-runtime notice from Offer"
 - Consumes: the notice behavior from Tasks 1–5.
 - Produces: user-facing docs.
 
+**Scope (issue #208, decided with the user):** this task implements issue #208's
+"Upgrading to 0.6" page in full; this PR resolves #208. The page owns the migration
+**mechanics** and the uninstall payoff. `docs/sandboxes.md` owns the durable "why"
+(cross-link, do not duplicate). There is **no separate release-history page** — link the
+GitHub Releases page. The page also documents the post-migration notice from #207.
+
 - [ ] **Step 1: Create `docs/install/upgrading.md`**
 
 Front matter and content (Jekyll links use `{% link %}` relative to `docs/`):
 
 ```markdown
 ---
-title: Upgrading
-description: "What changes when you upgrade agents-sandbox from 0.5.x or earlier, and how to clean up the legacy ~/.microsandbox afterwards."
+title: Upgrading to 0.6
+description: "What changes when you upgrade agents-sandbox from 0.5.x or earlier, how to migrate your old home volumes, and how to retire a system-wide microsandbox."
 layout: default
 parent: Install
 nav_order: 30
 ---
 
-# Upgrading
+# Upgrading to 0.6
 
-## From 0.5.x or earlier
+## Your system-wide microsandbox is now optional
 
-Earlier versions used your system-wide microsandbox (`~/.microsandbox`) as the
-runtime. agents-sandbox now provisions its own microsandbox runtime under its
-data directory (`~/.local/share/agents-sandbox/msb`, or
-`$XDG_DATA_HOME/agents-sandbox/msb`); it never reads or writes your own
-`~/.microsandbox`, and a system-wide microsandbox is no longer required.
+Up to 0.5.x, agents-sandbox used your system-wide microsandbox (`~/.microsandbox`)
+as its runtime. Starting with 0.6, it provisions its own isolated runtime under its
+data directory — `~/.local/share/agents-sandbox/msb`, or
+`$XDG_DATA_HOME/agents-sandbox/msb`. It never reads or writes your
+`~/.microsandbox`, and it no longer requires an `msb` command or any particular
+microsandbox version on your machine.
 
-On the first interactive `run`/`shell` after upgrading, agents-sandbox offers
-once to copy your old `~/.microsandbox/volumes/agents-sandbox-home-*` volumes
-into its private home — see
-[Legacy home volumes after upgrading]({% link troubleshooting.md %}#legacy-home-volumes-after-upgrading).
-Once that is resolved, it shows a one-time notice explaining that your
-system-wide microsandbox is now optional. The notice is informational only:
-agents-sandbox never deletes `~/.microsandbox`.
+Nothing broke in the upgrade: agents-sandbox simply stopped depending on software
+it does not own. `agents-sandbox doctor` reports the private runtime home and its
+location.
+
+For the durable "why" behind this split, see [Sandboxes]({% link sandboxes.md %}).
+This page covers what to do about the old home.
+
+## Migrating your old home volumes
+
+Versions before the private runtime home stored each project's persistent home
+volume under `~/.microsandbox/volumes/agents-sandbox-home-*`. On the first
+interactive `run`/`shell` after upgrading, agents-sandbox offers once to copy
+those volumes into its private home. You choose:
+
+- **Copy the volumes** — carry the old data over.
+- **Start fresh** — leave the old volumes untouched and never ask again.
+- **Quit** — abort this session; ask again next time.
+
+The option is labelled **Dismiss** instead of "Start fresh" when a private volume
+of unclear status must be removed, or when an interrupted copy must be resumed.
+
+The copy is crash- and concurrency-safe: progress is tracked in agents-sandbox's
+host state, so an interrupted campaign resumes exactly where it stopped, and two
+sessions cannot clobber a live copy. A volume that cannot be copied is reported,
+left in place, and recorded as excluded — never silently dropped.
+
+The decision is required before a session can proceed, because starting would
+otherwise create a fresh home volume and overwrite the project's recorded
+reference before the old data could be copied. Non-interactive runs (including
+`--yes`) therefore never copy; while legacy volumes remain, they stop with a
+message to run an interactive `run`/`shell` once.
+
+If a private volume is in unclear status (for example after a lost `state.yaml`),
+use `agents-sandbox volume remove --force <name>` to drop it and let the next
+offer re-copy it. See
+[Legacy home volumes after upgrading]({% link troubleshooting.md %}#legacy-home-volumes-after-upgrading)
+for the full cleanup path.
+
+## Removing the old microsandbox home
+
+Once the migration is resolved, a one-time interactive notice tells you that your
+system-wide microsandbox is now optional. It requires a keypress, appears once,
+and prints without acknowledgment in non-interactive sessions. Nothing is deleted
+for you.
 
 `~/.microsandbox` holds two different things:
 
@@ -1063,44 +1107,83 @@ agents-sandbox never deletes `~/.microsandbox`.
   - `~/.microsandbox/sandboxes/agents-sandbox-vm-*`
   - `~/.microsandbox/sandboxes/agents-sandbox-task-*`
 - **Yours** — any other microsandbox data. agents-sandbox never touches it.
-  Remove the whole `~/.microsandbox` only if microsandbox was installed solely
-  for agents-sandbox.
 
-`agents-sandbox doctor` reports the private runtime home and its location.
+Remove just our leftovers:
+
+```console
+rm -rf ~/.microsandbox/volumes/agents-sandbox-home-*
+rm -rf ~/.microsandbox/sandboxes/agents-sandbox-vm-*
+rm -rf ~/.microsandbox/sandboxes/agents-sandbox-task-*
+```
+
+Remove the whole folder only if microsandbox was installed solely for
+agents-sandbox:
+
+```console
+rm -rf ~/.microsandbox
+```
+
+If any volume could not be copied, it is left in place and named in the notice:
+check it before removing anything, and do not remove the whole folder while it
+remains.
+
+## Renamed flags and commands
+
+0.6 also renamed a few spellings. The old forms still work with a one-time
+warning; [Deprecations]({% link deprecations.md %}) has the full table and
+removal targets. The short list:
+
+- `--dind` / `dind` / `AGENTS_SANDBOX_DIND` → `--docker` / `docker` / `AGENTS_SANDBOX_DOCKER`
+- `sandbox list --names` → the global `-q` / `--quiet`
+- `prune --age` (and `-a`) → `--older-than`
+- `volume migrate|reset|edit --rebuild` → run `agents-sandbox build` first
+
+Release notes live on the
+[GitHub Releases page](https://github.com/inoio/agents-sandbox/releases); this
+documentation does not keep a separate release history.
 ```
 
 - [ ] **Step 2: Link the new page from `docs/install.md`**
 
-Add to the list:
+Add to the list of install pages:
 
 ```markdown
-- [Upgrading]({% link install/upgrading.md %})
+- [Upgrading to 0.6]({% link install/upgrading.md %})
 ```
 
-- [ ] **Step 3: Cross-link from `docs/troubleshooting.md`**
+- [ ] **Step 3: Point `docs/troubleshooting.md` at the new page**
 
-In the "Microsandbox runtime" section, after the sentence that ends "expected, not a defect.", add:
+At the start of the `### Legacy home volumes after upgrading` section, add:
 
 ```markdown
-If you upgraded from 0.5.x or earlier, see
-[Upgrading]({% link install/upgrading.md %}) for what changed and how to clean
-up the old `~/.microsandbox`.
+For the upgrade overview — what changed, the migration choices, and how to retire
+`~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). The
+notes below cover diagnosing an interrupted or unclear copy.
 ```
+
+Keep the rest of the section: it is troubleshooting detail (interrupted copies,
+unclear private volumes, `volume remove --force`), not the upgrade overview.
 
 - [ ] **Step 4: Add the README positioning line**
 
-In `README.md`, near the microsandbox description, add one sentence stating that a system-wide microsandbox is not required (agents-sandbox provisions its own isolated runtime).
+In `README.md`, near the microsandbox description, add one sentence stating that a
+system-wide microsandbox is not required: agents-sandbox provisions its own
+isolated runtime under its data directory and never touches the user's
+`~/.microsandbox`.
 
 - [ ] **Step 5: Add the CHANGELOG entry**
 
-Under `## [Unreleased]` → `### Added`:
+Under `## [Unreleased]` → `### Added`, add two bullets:
 
 ```markdown
 - After the one-time legacy home-volume migration, an interactive `run`/`shell` now shows a one-time notice that
   agents-sandbox runs its own microsandbox runtime and a system-wide microsandbox is no longer required. It names
   which parts of `~/.microsandbox` are ours and safe to remove (and gives the commands) versus your own data, is
   acknowledged with a keypress and never shown again, prints without acknowledgment in non-interactive sessions, and
-  never deletes anything. See the new [Upgrading](https://inoio.github.io/agents-sandbox/install/upgrading.html) page.
+  never deletes anything.
+- A new [Upgrading to 0.6](https://inoio.github.io/agents-sandbox/install/upgrading.html) page documents the private
+  runtime home, the legacy home-volume migration, the uninstall payoff for a system-wide microsandbox, and the 0.6
+  renames.
 ```
 
 - [ ] **Step 6: List the plan in the shared catalog**
@@ -1109,20 +1192,21 @@ In `.operator-shared/catalog.md`, under `### plans/ - TDD implementation plans`,
 
 ```markdown
 - `2026-10-19-post-migration-legacy-runtime-notice.md`
-  - Description: TDD plan for the `runtime-home-decoupling.md` "Post-migration legacy-runtime notice": `termio.Acknowledge`, the `acknowledged` migration status, prefix-based legacy-artifact detection, notice rendering/acknowledgment (`legacy_runtime_notice`), and wiring all four trigger points into `runtimemigration.Offer`.
-  - Read If: Implementing or reviewing issue #207, the post-migration notice, or `termio.Acknowledge`.
+  - Description: TDD plan for the `runtime-home-decoupling.md` "Post-migration legacy-runtime notice": `termio.Acknowledge`, the `acknowledged` migration status, prefix-based legacy-artifact detection, notice rendering/acknowledgment (`legacy_runtime_notice`), wiring all four trigger points into `runtimemigration.Offer`, and the "Upgrading to 0.6" docs page (issue #208).
+  - Read If: Implementing or reviewing issue #207, the post-migration notice, `termio.Acknowledge`, or the upgrading docs page (#208).
 ```
 
 - [ ] **Step 7: Verify docs and run the full check**
 
 Run: `make check`
-Expected: fmt, lint, tests, and `ci/check-docs.sh` all pass.
+Expected: fmt, lint, tests, and `ci/check-docs.sh` all pass (the docs linkcheck is the
+gate for #208's "Done when").
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git add docs/install/upgrading.md docs/install.md docs/troubleshooting.md README.md CHANGELOG.md .operator-shared/catalog.md
-git commit -m "docs: document the post-migration legacy-runtime notice"
+git commit -m "docs: add the Upgrading to 0.6 page and the notice entry"
 ```
 
 ---

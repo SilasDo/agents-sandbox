@@ -438,8 +438,9 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   informational line but must not mark the notice acknowledged; an interactive session
   still surfaces it.
 - Discoverable homes for the same fact (for users who never see the notice): a dedicated
-  `docs/install/upgrading.md` page, README positioning ("no system-wide microsandbox
-  required"), the CHANGELOG entry, and `doctor` reporting the private home.
+  `docs/install/upgrading.md` page (the "Upgrading to 0.6" page, which owns the migration
+  mechanics and the uninstall payoff — issue #208), README positioning ("no system-wide
+  microsandbox required"), the CHANGELOG entry, and `doctor` reporting the private home.
 
 ### State-file placement (related, separate)
 
