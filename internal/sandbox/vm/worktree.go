@@ -71,10 +71,10 @@ func findWorktreeDir(listStdout string, slug string) (string, bool) {
 // already exists for that name, otherwise create a new one, and return its
 // directory path. When a base is present on an existing (reused) worktree the
 // base is silently ignored with a warning. When a base is present on a fresh
-// create the base is validated (no fetch) and the create body carries a
-// `git reset --hard <base>` startCommand. An agent without a worktree provider
-// falls back to defaultDir. defaultDir is the workspace bind root the session
-// was launched from.
+// create the base is validated against the launch directory (no fetch) before
+// the create, so an unresolvable base aborts without creating a worktree. An
+// agent without a worktree provider falls back to defaultDir. defaultDir is the
+// workspace bind root the session was launched from.
 func ResolveTarget(
 	ctx context.Context,
 	a agent.Agent,
@@ -107,6 +107,12 @@ func ResolveTarget(
 		}
 	}
 
+	if spec.Base != "" {
+		if err = validateWorktreeBase(ctx, sb, defaultDir, spec.Base); err != nil {
+			return "", fmt.Errorf("worktree %q: %w", spec.Name, err)
+		}
+	}
+
 	ui.Verbosef("creating worktree %q", spec.Name)
 	createSpec := agent.WorktreeSpec{
 		Name:   spec.Name,
@@ -124,12 +130,6 @@ func ResolveTarget(
 	dir, ok := provider.WorktreeParseDir(out.Stdout())
 	if !ok {
 		return "", fmt.Errorf("parse worktree response for %q", spec.Name)
-	}
-
-	if spec.Base != "" {
-		if err := validateWorktreeBase(ctx, sb, dir, spec.Base); err != nil {
-			return "", fmt.Errorf("worktree %q: %w", spec.Name, err)
-		}
 	}
 
 	ui.Verbosef("worktree for %q: %s", spec.Name, dir)

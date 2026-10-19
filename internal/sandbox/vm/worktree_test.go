@@ -231,7 +231,7 @@ func TestResolveTargetCreatesWithBaseValidatesAndSendsStartCommand(t *testing.T)
 			),
 		},
 		ExecOut: map[string]msb.ShellResult{
-			"git -C /workspace/worktrees/feat-x rev-parse --verify main^{commit}": msb.NewTestResult(
+			"git -C /workspace rev-parse --verify main^{commit}": msb.NewTestResult(
 				true,
 				0,
 				"abc123",
@@ -283,7 +283,7 @@ func TestResolveTargetCreateFailsOnUnresolvableBase(t *testing.T) {
 			),
 		},
 		ExecOut: map[string]msb.ShellResult{
-			"git -C /workspace/worktrees/feat-x rev-parse --verify nope^{commit}": msb.NewTestResult(
+			"git -C /workspace rev-parse --verify nope^{commit}": msb.NewTestResult(
 				false,
 				128,
 				"",
@@ -302,6 +302,11 @@ func TestResolveTargetCreateFailsOnUnresolvableBase(t *testing.T) {
 		ui,
 	); err == nil {
 		t.Error("expected error for unresolvable base")
+	}
+	for _, call := range *sb.ShellCalls {
+		if strings.Contains(call, "POST") {
+			t.Errorf("expected no create request for an unresolvable base: %q", call)
+		}
 	}
 }
 
