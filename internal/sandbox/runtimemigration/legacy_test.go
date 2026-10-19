@@ -341,6 +341,77 @@ func TestNecessaryVolumesPrivateReadError(t *testing.T) {
 	}
 }
 
+// addSandboxDir creates <home>/sandboxes/<name>.
+func addSandboxDir(t *testing.T, home, name string) {
+	t.Helper()
+	path := filepath.Join(home, "sandboxes", name)
+	if err := os.MkdirAll(path, 0o750); err != nil {
+		t.Fatalf("create sandbox record %q: %v", name, err)
+	}
+}
+
+func TestDetectLegacyArtifactsFindsHomeVolumes(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.HomeVolumes) != 1 || len(got.Sandboxes) != 0 || !got.present() {
+		t.Fatalf("artifacts = %+v, want one home volume and nothing else", got)
+	}
+}
+
+func TestDetectLegacyArtifactsFindsLauncherSandboxes(t *testing.T) {
+	legacy := newHome(t)
+	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
+	addSandboxDir(t, legacy, naming.TaskPrefix+"proj")
+	addSandboxDir(t, legacy, "user-own")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.Sandboxes) != 2 || len(got.HomeVolumes) != 0 || !got.present() {
+		t.Fatalf("artifacts = %+v, want the two launcher sandboxes only", got)
+	}
+}
+
+func TestDetectLegacyArtifactsSilentForUnrelatedHome(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, "user-own-volume")
+	addSandboxDir(t, legacy, "user-own-sandbox")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if got.present() {
+		t.Fatalf("artifacts = %+v, want none", got)
+	}
+}
+
+func TestDetectLegacyArtifactsToleratesMissingDirs(t *testing.T) {
+	got, err := detectLegacyArtifacts(t.TempDir())
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if got.present() {
+		t.Fatalf("artifacts = %+v, want none for an empty home", got)
+	}
+}
+
+func TestDetectLegacyArtifactsForResolvesLegacyHome(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	got, err := detectLegacyArtifactsFor()
+	if err != nil {
+		t.Fatalf("detectLegacyArtifactsFor: %v", err)
+	}
+	if !got.present() {
+		t.Fatal("detectLegacyArtifactsFor() found no artifacts in the installed legacy home")
+	}
+}
+
 func assertSameSet(t *testing.T, got, want []string) {
 	t.Helper()
 	gotSet := make(map[string]bool, len(got))

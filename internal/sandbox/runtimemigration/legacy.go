@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
@@ -177,14 +176,13 @@ func necessaryVolumesFor(m state.Migration) ([]string, error) {
 	return necessaryVolumes(legacyHome, runtime.PrivateHome(), m)
 }
 
-// homeVolumeNames lists the agents-sandbox home volumes under <home>/volumes. A
-// missing volumes directory is always empty. When tolerateUnreadable is true an
+// matchingDirNames lists the immediate subdirectories of dir whose name matches
+// match. A missing directory is always empty. When tolerateUnreadable is true an
 // existing-but-unlistable directory (not-a-directory or permission denied) is
 // also empty; when false only the missing case is empty and any other read
 // failure is returned, so an open campaign fails closed.
-func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
-	volumesDir := filepath.Join(home, "volumes")
-	entries, err := os.ReadDir(volumesDir)
+func matchingDirNames(dir string, match func(string) bool, tolerateUnreadable bool) ([]string, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -194,15 +192,61 @@ func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
 		}
 		return nil, err
 	}
-
 	var names []string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if name := entry.Name(); strings.HasPrefix(name, naming.HomePrefix) {
+		if name := entry.Name(); match(name) {
 			names = append(names, name)
 		}
 	}
 	return names, nil
+}
+
+// homeVolumeNames lists the agents-sandbox home volumes under <home>/volumes. A
+// missing volumes directory is always empty. When tolerateUnreadable is true an
+// existing-but-unlistable directory (not-a-directory or permission denied) is
+// also empty; when false only the missing case is empty and any other read
+// failure is returned, so an open campaign fails closed.
+func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
+	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsHomeVolume, tolerateUnreadable)
+}
+
+// legacySandboxNames lists launcher-owned sandbox records under
+// <legacyHome>/sandboxes. Tolerance matches the pending-state volume listing.
+func legacySandboxNames(legacyHome string) ([]string, error) {
+	return matchingDirNames(filepath.Join(legacyHome, "sandboxes"), naming.IsLauncherSandbox, true)
+}
+
+// legacyArtifacts are the launcher-owned leftovers in the legacy home.
+type legacyArtifacts struct {
+	HomeVolumes []string
+	Sandboxes   []string
+}
+
+func (a legacyArtifacts) present() bool {
+	return len(a.HomeVolumes) > 0 || len(a.Sandboxes) > 0
+}
+
+// detectLegacyArtifacts reports the launcher-owned leftovers under legacyHome.
+func detectLegacyArtifacts(legacyHome string) (legacyArtifacts, error) {
+	volumes, err := legacyVolumeNames(legacyHome)
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	sandboxes, err := legacySandboxNames(legacyHome)
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	return legacyArtifacts{HomeVolumes: volumes, Sandboxes: sandboxes}, nil
+}
+
+// detectLegacyArtifactsFor resolves the legacy home and delegates.
+func detectLegacyArtifactsFor() (legacyArtifacts, error) {
+	legacyHome, err := runtime.LegacyHome()
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	return detectLegacyArtifacts(legacyHome)
 }

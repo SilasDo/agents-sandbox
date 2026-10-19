@@ -30,3 +30,8 @@ func IsTaskSandbox(name string) bool {
 func IsLauncherSandbox(name string) bool {
 	return IsProjectSandbox(name) || IsTaskSandbox(name)
 }
+
+// IsHomeVolume reports whether name is an agents-sandbox home volume name.
+func IsHomeVolume(name string) bool {
+	return strings.HasPrefix(name, HomePrefix)
+}
