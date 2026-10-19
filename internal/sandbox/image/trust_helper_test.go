@@ -3,7 +3,9 @@ package image
 import (
 	"archive/tar"
 	"bytes"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -16,6 +18,10 @@ import (
 // test reads it directly so the assertion fails when the build context ships
 // any other bytes, rather than comparing the asset against itself.
 const vendoredTrustHelperPath = "data/msb-trust.sh"
+
+// vendoredTrustHelperLicensePath records the provenance of the vendored helper,
+// including the hash the tests hold it to.
+const vendoredTrustHelperLicensePath = "data/msb-trust.LICENSE"
 
 // TestWriteDockerfileTarShipsTrustHelperExecutable covers the synthetic build
 // context the image build consumes. The final stage COPYs the helper into the
@@ -80,4 +86,45 @@ func readTarEntries(t *testing.T, r io.Reader) (map[string]string, map[string]in
 		entries[header.Name] = string(content)
 		modes[header.Name] = header.Mode
 	}
+}
+
+// TestVendoredTrustHelperMatchesRecordedHash enforces the verbatim-vendoring
+// contract: the helper is upstream's file unmodified, and the hash beside it
+// names the revision we shipped. Re-syncing the script has to update the
+// recorded hash; hand-editing it — a tempting way to "fix" the messages that say
+// `sh msb-trust.sh` — fails here instead of silently making the license lie.
+func TestVendoredTrustHelperMatchesRecordedHash(t *testing.T) {
+	script, err := os.ReadFile(vendoredTrustHelperPath)
+	if err != nil {
+		t.Fatalf("read vendored trust helper: %v", err)
+	}
+	license, err := os.ReadFile(vendoredTrustHelperLicensePath)
+	if err != nil {
+		t.Fatalf("read trust helper license: %v", err)
+	}
+
+	want := recordedTrustHelperHash(t, string(license))
+	if got := fmt.Sprintf("%x", sha256.Sum256(script)); got != want {
+		t.Errorf(
+			"%s hashes to %s, but %s records %s",
+			vendoredTrustHelperPath,
+			got,
+			vendoredTrustHelperLicensePath,
+			want,
+		)
+	}
+}
+
+// recordedTrustHelperHash returns the SHA-256 recorded in the license file's
+// provenance header.
+func recordedTrustHelperHash(t *testing.T, license string) string {
+	t.Helper()
+	for line := range strings.SplitSeq(license, "\n") {
+		hash, found := strings.CutPrefix(strings.TrimSpace(line), "SHA-256:")
+		if found {
+			return strings.TrimSpace(hash)
+		}
+	}
+	t.Fatalf("%s records no SHA-256 line", vendoredTrustHelperLicensePath)
+	return ""
 }

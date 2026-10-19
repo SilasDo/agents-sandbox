@@ -211,8 +211,9 @@ and passed through unchanged.
 
 ## TLS certificate errors for one application
 
-Once a secret is configured, requests to the matching hosts go through microsandbox's TLS proxy, which the guest system
-store trusts. An application with its own trust store does not, and fails with a certificate-path error — Java reports
+Once a secret is configured, requests to the matching hosts go through microsandbox's TLS proxy, whose interception CA
+the guest system store trusts. An application with its own trust store does not, and fails with a certificate-path
+error — Java reports
 `SunCertPathBuilderException: unable to find valid certification path to requested target`. Import the CA into that
 store with the `msb-trust` helper from the runner image:
 

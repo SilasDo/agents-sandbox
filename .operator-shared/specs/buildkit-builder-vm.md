@@ -106,9 +106,9 @@ Components:
 ### Build flow (replaces the Docker flow)
 
 1. `image` renders the synthetic context (rendered Dockerfile + the
-   `/etc/profile.d` merge script, today assembled by `writeDockerfileTar`) into
-   a temporary host directory. BuildKit streams this directory over the
-   session, so nothing is bind-mounted into the builder VM.
+   build-context files from `buildContextFiles`, today assembled by
+   `writeDockerfileTar`) into a temporary host directory. BuildKit streams this
+   directory over the session, so nothing is bind-mounted into the builder VM.
 2. Connect `client.New(ctx, "tcp://127.0.0.1:<hostPort>")`; wait for `ListWorkers`
    to succeed (readiness).
 3. `Solve`:

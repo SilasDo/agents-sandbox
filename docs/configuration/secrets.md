@@ -99,12 +99,12 @@ For example, the guest value of `GITHUB_TOKEN` is `$MSB_GITHUB_TOKEN`.
 ## Trusting the CA in applications
 
 Replacing a placeholder requires the proxy to terminate TLS towards the allowed host. The VM trusts a microsandbox CA
-at `/.msb/tls/ca.pem`; the guest's system store is set up to trust it, and the proxy points the common runtimes at it
-through `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, and `CURL_CA_BUNDLE`. `curl`, `git`, Python, Go,
-and Node need no extra setup.
+at `/.msb/tls/ca.pem`; microsandbox's guest init installs that CA into the system store and points the common runtimes
+at it through `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`, `REQUESTS_CA_BUNDLE`, and `CURL_CA_BUNDLE`. `curl`, `git`,
+Python, Go, and Node need no extra setup.
 
 Applications that keep their **own** certificate store do not read any of that. For those the runner image installs
-microsandbox's [trust helper](https://github.com/superradcompany/microsandbox/blob/main/scripts/msb-trust/msb-trust.sh)
+microsandbox's [trust helper](https://github.com/superradcompany/microsandbox/blob/v0.7.8/scripts/msb-trust/msb-trust.sh)
 as `msb-trust`:
 
 ```console
@@ -112,6 +112,9 @@ msb-trust all      # every supported application whose tools are installed
 msb-trust java     # the JDK's default trust store
 msb-trust chrome   # the current user's Chrome/Chromium NSS store
 ```
+
+The JDK's trust store is root-owned, so run `msb-trust java` from `agents-sandbox shell --root`; `chrome` writes the
+current user's store and needs no elevation.
 
 The helper imports the CA, preserves the certificates that are already there, and never installs packages. `java`
 needs `keytool` on `PATH` (or `JAVA_HOME` pointing at a JDK) and `chrome` needs `certutil`
