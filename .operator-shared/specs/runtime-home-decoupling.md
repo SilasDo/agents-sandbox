@@ -442,7 +442,10 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   glob match an uncopied volume. The safe sandbox globs are still offered, and the volumes
   glob is replaced by a note to remove the remaining volumes individually. A failure to list
   the private home suppresses the destructive commands (treats every legacy volume as
-  uncopied) rather than risk printing one that would delete data.
+  uncopied) rather than risk printing one that would delete data. An unreadable legacy
+  `volumes` directory is handled conservatively for the same reason: it still counts as
+  absent for *firing* detection, but while it cannot be listed the notice withholds the
+  wholesale command too, because unlisted home volumes may still hold data.
 - **Persisted once-ever flag.** A second `migrations` registry entry,
   `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
   status; absence is the pending state. This keeps the "absent = pending, terminal =
