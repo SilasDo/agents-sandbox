@@ -93,7 +93,7 @@ func ResolveTarget(
 	}
 
 	ui.Verbosef("checking for an existing worktree %q", spec.Name)
-	listOut, err := sb.Shell(ctx, provider.WorktreeListCmd())
+	listOut, err := sb.Shell(ctx, provider.WorktreeListCmd(defaultDir))
 	if err != nil {
 		return "", fmt.Errorf("list worktrees for %q: %w", spec.Name, err)
 	}
@@ -109,8 +109,9 @@ func ResolveTarget(
 
 	ui.Verbosef("creating worktree %q", spec.Name)
 	createSpec := agent.WorktreeSpec{
-		Name: spec.Name,
-		Base: spec.Base,
+		Name:   spec.Name,
+		Base:   spec.Base,
+		Target: defaultDir,
 	}
 	out, err := sb.Shell(ctx, provider.WorktreeCreateCmd(createSpec))
 	if err != nil {

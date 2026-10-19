@@ -21,9 +21,11 @@ type DaemonProvider interface {
 	DaemonAuthHint() string
 }
 
-// WorktreeProvider manages git worktrees through a running daemon.
+// WorktreeProvider manages git worktrees through a running daemon. The target
+// is the launch directory the daemon scopes its worktree request to; agents
+// with global routes ignore it.
 type WorktreeProvider interface {
-	WorktreeListCmd() string
+	WorktreeListCmd(target string) string
 	WorktreeCreateCmd(spec WorktreeSpec) string
 	WorktreeParseDir(stdout string) (string, bool)
 }

@@ -38,8 +38,8 @@ func TestResolveTargetCreateNonSuccess(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
-			createCmd:                  msb.NewTestResult(false, 1, "", "failed", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			createCmd: msb.NewTestResult(false, 1, "", "failed", nil),
 		},
 	}
 	_, err := ResolveTarget(
@@ -63,8 +63,8 @@ func TestResolveTargetParseError(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
-			createCmd:                  msb.NewTestResult(true, 0, "not-json", "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			createCmd: msb.NewTestResult(true, 0, "not-json", "", nil),
 		},
 	}
 	_, err := ResolveTarget(

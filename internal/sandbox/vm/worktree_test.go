@@ -23,6 +23,58 @@ func mustWorktreeProvider(t *testing.T) agent.WorktreeProvider {
 	return provider
 }
 
+// recordingWorktreeAgent records the target and spec ResolveTarget hands to the
+// provider, so the seam contract is pinned without a real agent.
+type recordingWorktreeAgent struct {
+	fakeAgent
+
+	listTarget string
+	createSpec agent.WorktreeSpec
+}
+
+func (r *recordingWorktreeAgent) WorktreeListCmd(target string) string {
+	r.listTarget = target
+	return "list"
+}
+
+func (r *recordingWorktreeAgent) WorktreeCreateCmd(spec agent.WorktreeSpec) string {
+	r.createSpec = spec
+	return "create"
+}
+
+func (r *recordingWorktreeAgent) WorktreeParseDir(string) (string, bool) {
+	return "/workspace/wt/feat-x", true
+}
+
+func TestResolveTargetPassesTargetToProvider(t *testing.T) {
+	ui := &termio.Mock{}
+	a := &recordingWorktreeAgent{}
+	sb := &msb.MockSandbox{ShellOut: map[string]msb.ShellResult{
+		"list":   msb.NewTestResult(true, 0, `[]`, "", nil),
+		"create": msb.NewTestResult(true, 0, `{"directory":"/workspace/wt/feat-x"}`, "", nil),
+	}}
+	dir, err := ResolveTarget(
+		context.Background(),
+		a,
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != "/workspace/wt/feat-x" {
+		t.Errorf("got dir %q, want /workspace/wt/feat-x", dir)
+	}
+	if a.listTarget != mounts.WorkspaceMountPath {
+		t.Errorf("list target = %q, want %q", a.listTarget, mounts.WorkspaceMountPath)
+	}
+	if a.createSpec.Target != mounts.WorkspaceMountPath || a.createSpec.Name != "feat-x" {
+		t.Errorf("create spec = %+v, want Target %q and Name feat-x", a.createSpec, mounts.WorkspaceMountPath)
+	}
+}
+
 func TestResolveTargetEmptySpecReturnsWorkspace(t *testing.T) {
 	ui := &termio.Mock{}
 	sb := &msb.MockSandbox{ShellCalls: &[]string{}}
@@ -72,7 +124,7 @@ func TestResolveTargetReusesExistingWorktree(t *testing.T) {
 	provider := mustWorktreeProvider(t)
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0,
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0,
 				`["/home/dev/.local/share/opencode/worktree/abc/bugfix-exit-zero"]`, "", nil),
 		},
 		ShellCalls: &[]string{},
@@ -103,7 +155,7 @@ func TestResolveTargetReuseWarnsIgnoredBase(t *testing.T) {
 	provider := mustWorktreeProvider(t)
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0,
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0,
 				`["/home/dev/.local/share/opencode/worktree/abc/foo"]`, "", nil),
 		},
 		ShellCalls: &[]string{},
@@ -141,7 +193,7 @@ func TestResolveTargetCreatesWithoutBase(t *testing.T) {
 	provider := mustWorktreeProvider(t)
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
 			provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}): msb.NewTestResult(true, 0,
 				`{"directory":"/workspace/worktrees/feat-x"}`, "", nil),
 		},
@@ -169,7 +221,7 @@ func TestResolveTargetCreatesWithBaseValidatesAndSendsStartCommand(t *testing.T)
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "main"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
 			createCmd: msb.NewTestResult(
 				true,
 				0,
@@ -221,7 +273,7 @@ func TestResolveTargetCreateFailsOnUnresolvableBase(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "nope"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
 			createCmd: msb.NewTestResult(
 				true,
 				0,

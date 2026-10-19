@@ -155,7 +155,7 @@ func TestOpencode2DaemonHealthParse(t *testing.T) {
 func TestOpencode2WorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeListCmd()
+	got := worktree.WorktreeListCmd("/workspace")
 	for _, part := range []string{"/api/project/current", "/api/worktree/", "jq -r .id", "-u opencode:opencode"} {
 		if !strings.Contains(got, part) {
 			t.Errorf("WorktreeListCmd = %q, want to contain %q", got, part)

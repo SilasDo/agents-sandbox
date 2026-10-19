@@ -125,7 +125,7 @@ func (opencode2Profile) DaemonAuthHint() string {
 const opencode2ProjectIDCmd = "$(curl -sf " + opencode2CurlAuth +
 	" http://127.0.0.1:4096/api/project/current | jq -r .id)"
 
-func (opencode2Profile) WorktreeListCmd() string {
+func (opencode2Profile) WorktreeListCmd(string) string {
 	return "PID=" + opencode2ProjectIDCmd + "; curl -sf " + opencode2CurlAuth +
 		" http://127.0.0.1:4096/api/worktree/$PID"
 }
