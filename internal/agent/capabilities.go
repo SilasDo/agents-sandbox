@@ -110,6 +110,21 @@ func AsConfigDirAliaser(a Agent) (ConfigDirAliaser, bool) {
 	return p, ok
 }
 
+// DetachedWorktreeReporter declares that the agent's daemon creates worktrees on
+// a detached HEAD rather than a branch, so the launcher can warn the user to
+// create a branch before they commit (and lose the work when the guest home
+// volume goes away). Agents that keep a branch do not implement it.
+type DetachedWorktreeReporter interface {
+	WorktreeCreatesDetachedHead() bool
+}
+
+// AsDetachedWorktreeReporter returns the agent's DetachedWorktreeReporter, if it
+// implements one.
+func AsDetachedWorktreeReporter(a Agent) (DetachedWorktreeReporter, bool) {
+	p, ok := a.(DetachedWorktreeReporter)
+	return p, ok
+}
+
 // VersionProvider exposes how to read the installed agent version from a
 // running image: the shell command to run and a parser for its output. Agents
 // print their version in different formats, so parsing is per-agent.

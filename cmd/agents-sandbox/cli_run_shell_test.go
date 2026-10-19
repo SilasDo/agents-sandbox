@@ -234,14 +234,14 @@ func TestRunShellWorktreeReusesExisting(t *testing.T) {
 	_ = root.Execute()
 
 	found := false
-	for _, call := range ui.VerboseCalls {
+	for _, call := range ui.InfoCalls {
 		if strings.Contains(call, "reusing existing worktree \"bugfix-exit-zero\"") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected verbose 'reusing existing worktree'; got: %v", ui.VerboseCalls)
+		t.Errorf("expected default-visible 'reusing existing worktree'; got: %v", ui.InfoCalls)
 	}
 	for _, call := range *sb.ShellCalls {
 		if strings.Contains(call, "POST") {

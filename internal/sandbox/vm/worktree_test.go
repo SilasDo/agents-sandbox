@@ -374,6 +374,183 @@ func TestResolveTargetCreateFailsOnUnresolvableBase(t *testing.T) {
 	}
 }
 
+// opencode2Agent returns the opencode2 profile for tests exercising v2's
+// agent-specific worktree behavior.
+func opencode2Agent(t *testing.T) agent.Agent {
+	t.Helper()
+	a, ok := agent.Lookup("opencode2")
+	if !ok {
+		t.Fatal("opencode2 agent not registered")
+	}
+	return a
+}
+
+// infoCallContains reports whether any recorded info message contains every part.
+func infoCallContains(calls []string, parts ...string) bool {
+	for _, call := range calls {
+		matched := true
+		for _, part := range parts {
+			if !strings.Contains(call, part) {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+// TestResolveTargetCreateReportsWorktree pins that a fresh create is announced
+// at the default-visible level, naming the worktree and its directory.
+func TestResolveTargetCreateReportsWorktree(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}): msb.NewTestResult(true, 0,
+				`{"directory":"/workspace/worktrees/feat-x"}`, "", nil),
+		},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !infoCallContains(ui.InfoCalls, "created worktree", "feat-x", "/workspace/worktrees/feat-x") {
+		t.Errorf("expected a default-visible create message naming the directory; got: %v", ui.InfoCalls)
+	}
+}
+
+// TestResolveTargetReuseReportsWorktree pins that reuse is announced at the
+// default-visible level, naming the reused directory.
+func TestResolveTargetReuseReportsWorktree(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	dir := "/home/dev/.local/share/opencode/worktree/abc/feat-x"
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0,
+				`["`+dir+`"]`, "", nil),
+		},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !infoCallContains(ui.InfoCalls, "reusing existing worktree", "feat-x", dir) {
+		t.Errorf("expected a default-visible reuse message naming the directory; got: %v", ui.InfoCalls)
+	}
+}
+
+// TestResolveTargetOpencode2ReportsDetachedHead pins that opencode2's detached
+// HEAD (v2 never leaves a worktree on a branch) is surfaced with the recovery.
+func TestResolveTargetOpencode2ReportsDetachedHead(t *testing.T) {
+	ui := &termio.Mock{}
+	a := opencode2Agent(t)
+	provider, ok := agent.AsWorktreeProvider(a)
+	if !ok {
+		t.Fatal("opencode2 does not implement WorktreeProvider")
+	}
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeCreateCmd(agent.WorktreeSpec{
+				Name:   "feat-x",
+				Target: mounts.WorkspaceMountPath,
+			}): msb.NewTestResult(true, 0,
+				`{"directory":"/home/dev/.local/share/opencode/worktree/abc/feat-x"}`, "", nil),
+		},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		a,
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !infoCallContains(ui.InfoCalls, "detached HEAD", "git switch -c <branch>") {
+		t.Errorf("expected the create message to flag the detached HEAD and recovery; got: %v", ui.InfoCalls)
+	}
+}
+
+// TestResolveTargetOpencodeDoesNotReportDetachedHead pins that v1 (which keeps a
+// branch) never claims a detached HEAD.
+func TestResolveTargetOpencodeDoesNotReportDetachedHead(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}): msb.NewTestResult(true, 0,
+				`{"directory":"/workspace/worktrees/feat-x"}`, "", nil),
+		},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, msg := range append(append([]string{}, ui.InfoCalls...), ui.WarnCalls...) {
+		if strings.Contains(msg, "detached") {
+			t.Errorf("opencode v1 must not report a detached HEAD: %q", msg)
+		}
+	}
+}
+
+// TestResolveTargetWarnsOnRenamedWorktree pins that a daemon-returned directory
+// whose base name differs from the requested name (the -2 auto-suffix) is
+// surfaced, naming the directory actually used.
+func TestResolveTargetWarnsOnRenamedWorktree(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}): msb.NewTestResult(true, 0,
+				`{"directory":"/workspace/worktrees/feat-x-2"}`, "", nil),
+		},
+	}
+	dir, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if dir != "/workspace/worktrees/feat-x-2" {
+		t.Errorf("got dir %q, want the daemon-returned /workspace/worktrees/feat-x-2", dir)
+	}
+	if !infoCallContains(ui.WarnCalls, "feat-x", "/workspace/worktrees/feat-x-2") {
+		t.Errorf("expected a warning naming the renamed directory; got: %v", ui.WarnCalls)
+	}
+}
+
 func TestFindWorktreeDirStringList(t *testing.T) {
 	list := `[
 		"/home/dev/.local/share/opencode/worktree/abc/review-test",

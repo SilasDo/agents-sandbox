@@ -47,6 +47,17 @@ func TestOpencode2ConfigDirAliases(t *testing.T) {
 	}
 }
 
+func TestOpencode2WorktreeCreatesDetachedHead(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	reporter, ok := agent.AsDetachedWorktreeReporter(a)
+	if !ok {
+		t.Fatal("opencode2 should implement DetachedWorktreeReporter")
+	}
+	if !reporter.WorktreeCreatesDetachedHead() {
+		t.Error("WorktreeCreatesDetachedHead = false, want true (v2 leaves a detached HEAD)")
+	}
+}
+
 func TestOpencode2ImageSpec(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	spec := a.ImageSpec()

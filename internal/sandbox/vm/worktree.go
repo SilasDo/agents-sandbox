@@ -66,6 +66,17 @@ func findWorktreeDir(listStdout string, slug string) (string, bool) {
 	return "", false
 }
 
+// worktreeDetachedNote is the parenthetical appended to a worktree message for
+// agents whose daemon leaves a new worktree on a detached HEAD (v2), naming the
+// recovery; it is empty for agents that keep a branch (v1).
+func worktreeDetachedNote(a agent.Agent) string {
+	reporter, ok := agent.AsDetachedWorktreeReporter(a)
+	if !ok || !reporter.WorktreeCreatesDetachedHead() {
+		return ""
+	}
+	return " (detached HEAD; run `git switch -c <branch>` to keep your commits)"
+}
+
 // ResolveTarget returns the --dir target for attach. An empty spec → defaultDir.
 // With a name → reuse an existing worktree via the provider's HTTP API when one
 // already exists for that name, otherwise create a new one, and return its
@@ -74,7 +85,7 @@ func findWorktreeDir(listStdout string, slug string) (string, bool) {
 // create the base is validated against the launch directory (no fetch) before
 // the create, so an unresolvable base aborts without creating a worktree. An
 // agent without a worktree provider falls back to defaultDir. defaultDir is the
-// workspace bind root the session was launched from.
+// launch directory (the guest CWD, e.g. `/workspace/<sub>`).
 func ResolveTarget(
 	ctx context.Context,
 	a agent.Agent,
@@ -102,7 +113,7 @@ func ResolveTarget(
 			if spec.Base != "" {
 				ui.Warnf("worktree %q already exists; ignoring base %q", spec.Name, spec.Base)
 			}
-			ui.Verbosef("reusing existing worktree %q: %s", spec.Name, dir)
+			ui.Infof("reusing existing worktree %q: %s%s", spec.Name, dir, worktreeDetachedNote(a))
 			return dir, nil
 		}
 	}
@@ -132,6 +143,9 @@ func ResolveTarget(
 		return "", fmt.Errorf("parse worktree response for %q", spec.Name)
 	}
 
-	ui.Verbosef("worktree for %q: %s", spec.Name, dir)
+	ui.Infof("created worktree %q: %s%s", spec.Name, dir, worktreeDetachedNote(a))
+	if filepath.Base(dir) != spec.Name {
+		ui.Warnf("requested worktree name %q was already taken; the daemon created %s", spec.Name, dir)
+	}
 	return dir, nil
 }

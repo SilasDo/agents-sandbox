@@ -140,6 +140,15 @@ func TestOpencodeWorktreeCreateCmdIgnoresTarget(t *testing.T) {
 	}
 }
 
+// TestOpencodeWorktreeNotDetached pins that v1 keeps its worktrees on a branch,
+// so the launcher never reports a detached HEAD for opencode.
+func TestOpencodeWorktreeNotDetached(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	if _, ok := agent.AsDetachedWorktreeReporter(a); ok {
+		t.Error("opencode must not implement DetachedWorktreeReporter (v1 keeps a branch)")
+	}
+}
+
 func TestOpencodeWorktreeParseDir(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	worktree := mustWorktree(t, a)

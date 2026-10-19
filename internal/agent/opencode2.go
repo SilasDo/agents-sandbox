@@ -50,6 +50,11 @@ func (opencode2Profile) ConfigDirName() string { return opencode2Name }
 // gained its own namespace.
 func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeName} }
 
+// WorktreeCreatesDetachedHead reports that v2's daemon creates worktrees on a
+// detached HEAD (v1 keeps its own branch), so the launcher can tell the user how
+// to keep their commits.
+func (opencode2Profile) WorktreeCreatesDetachedHead() bool { return true }
+
 func (opencode2Profile) ImageSpec() ImageSpec {
 	return ImageSpec{
 		VersionArg: versionArgFor(opencode2Name),
