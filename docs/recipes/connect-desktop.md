@@ -29,9 +29,11 @@ Connect Opencode Desktop to the printed `http://127.0.0.1:<port>` URL — the
 port is dynamically allocated, so always use the URL agents-sandbox prints.
 The host port is bound only to the host loopback (never exposed on the LAN);
 the in-VM `opencode serve` daemon listens on all interfaces so the published
-port is reachable. To add basic auth, set `OPENCODE_SERVER_PASSWORD` (and
-optionally `OPENCODE_SERVER_USERNAME`) in the project or user env before
-starting.
+port is reachable. For `opencode` (v1) basic auth is opt-in: set
+`OPENCODE_SERVER_PASSWORD` (and optionally `OPENCODE_SERVER_USERNAME`) in the
+project or user env before starting. `opencode2` (v2) always requires basic
+auth with a credential baked into the runner image — connect as username
+`opencode` with password `opencode`.
 
 ## Why the project must live at `/workspace`
 

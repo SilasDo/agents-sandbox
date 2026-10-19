@@ -41,8 +41,8 @@ func (opencodeConfig) ProvisionRules() []ProvisionRule {
 	}
 }
 
-// parseDaemonHealth decodes the shared {"healthy": bool} health response used
-// by the opencode and opencode2 daemon agents.
+// parseDaemonHealth decodes opencode (v1)'s {"healthy": bool} health response.
+// opencode2 (v2) uses its own ServerInfo parser.
 func parseDaemonHealth(stdout string) (bool, error) {
 	var resp struct {
 		Healthy bool `json:"healthy"`

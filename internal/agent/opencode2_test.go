@@ -56,6 +56,12 @@ func TestOpencode2ImageSpec(t *testing.T) {
 	if _, ok := spec.AgentEnv["OPENCODE_DISABLE_AUTOUPDATE"]; !ok {
 		t.Errorf("AgentEnv = %v, want OPENCODE_DISABLE_AUTOUPDATE key", spec.AgentEnv)
 	}
+	// v2's serve enforces basic auth on /api/* (auto-generating a password when
+	// unset), so the daemon, the health probe, and the in-VM client must share a
+	// fixed credential.
+	if got := spec.AgentEnv["OPENCODE_SERVER_PASSWORD"]; got != "opencode" {
+		t.Errorf("AgentEnv[OPENCODE_SERVER_PASSWORD] = %q, want opencode", got)
+	}
 	wantInstall := `curl -fsSL https://opencode.ai/v2/install | bash -s -- --version "$OPENCODE2_VERSION" && cp /root/.opencode/bin/opencode /opt/agents-sandbox/bin/opencode2`
 	if spec.InstallCommand != wantInstall {
 		t.Errorf("InstallCommand = %q, want %q", spec.InstallCommand, wantInstall)
@@ -72,7 +78,7 @@ func TestOpencode2AttachCommand(t *testing.T) {
 		t.Fatal("opencode2 should implement AttachRunner")
 	}
 	got := runner.AttachCommand("/workspace", []string{"--print-logs"})
-	want := "opencode2 --server http://127.0.0.1:4096 --dir '/workspace' --print-logs"
+	want := "opencode2 --server http://127.0.0.1:4096 '/workspace' --print-logs"
 	if got != want {
 		t.Errorf("AttachCommand = %q, want %q", got, want)
 	}
@@ -82,7 +88,7 @@ func TestOpencode2AttachCommandQuotesTarget(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	runner, _ := agent.AsAttachRunner(a)
 	got := runner.AttachCommand("/workspace/my notes", nil)
-	want := "opencode2 --server http://127.0.0.1:4096 --dir '/workspace/my notes'"
+	want := "opencode2 --server http://127.0.0.1:4096 '/workspace/my notes'"
 	if got != want {
 		t.Errorf("AttachCommand = %q, want %q", got, want)
 	}
@@ -110,21 +116,36 @@ func TestOpencode2DaemonKillAndHealthCmd(t *testing.T) {
 	if !strings.Contains(daemon.DaemonKillCmd(), "pkill -f 'opencode2 serve'") {
 		t.Errorf("DaemonKillCmd = %q, want pkill opencode2 serve", daemon.DaemonKillCmd())
 	}
-	if !strings.Contains(daemon.DaemonHealthCmd(), "127.0.0.1:4096/api/health") {
-		t.Errorf("DaemonHealthCmd = %q, want v2 /api/health endpoint", daemon.DaemonHealthCmd())
+	health := daemon.DaemonHealthCmd()
+	if !strings.Contains(health, "127.0.0.1:4096/api/info") {
+		t.Errorf("DaemonHealthCmd = %q, want v2 /api/info endpoint", health)
+	}
+	if !strings.Contains(health, "-u opencode:opencode") {
+		t.Errorf("DaemonHealthCmd = %q, want basic auth credentials", health)
+	}
+	if daemon.DaemonLogPath() != "/tmp/opencode2-serve.log" {
+		t.Errorf("DaemonLogPath = %q, want /tmp/opencode2-serve.log", daemon.DaemonLogPath())
+	}
+	if hint := daemon.DaemonAuthHint(); !strings.Contains(hint, `user "opencode"`) ||
+		!strings.Contains(hint, `password "opencode"`) {
+		t.Errorf("DaemonAuthHint = %q, want the baked opencode:opencode credential", hint)
 	}
 }
 
 func TestOpencode2DaemonHealthParse(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	daemon := mustDaemon(t, a)
-	ok, err := daemon.DaemonHealthParse(`{"healthy":true,"version":"0.0.0-beta-18866","pid":1}`)
+	// v2's health endpoint is /api/info, which returns ServerInfo (no healthy
+	// field); a decoded response carrying a version means the server is ready.
+	ok, err := daemon.DaemonHealthParse(
+		`{"version":"2.0.32","pid":1,"urls":["http://127.0.0.1:4096"],"paths":{"tmp":"/tmp"}}`,
+	)
 	if err != nil || !ok {
-		t.Errorf("DaemonHealthParse(healthy) = %v, %v, want true, nil", ok, err)
+		t.Errorf("DaemonHealthParse(server info) = %v, %v, want true, nil", ok, err)
 	}
-	notOK, err := daemon.DaemonHealthParse(`{"healthy":false,"version":"0.0.0-beta-18866"}`)
+	notOK, err := daemon.DaemonHealthParse(`{"error":{"name":"UnauthorizedError"}}`)
 	if err != nil || notOK {
-		t.Errorf("DaemonHealthParse(unhealthy) = %v, %v, want false, nil", notOK, err)
+		t.Errorf("DaemonHealthParse(error body) = %v, %v, want false, nil", notOK, err)
 	}
 	if _, err := daemon.DaemonHealthParse("not json"); err == nil {
 		t.Error("DaemonHealthParse(invalid) should error")
@@ -135,7 +156,7 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeListCmd()
-	for _, part := range []string{"/api/project/current", "/api/worktree/", "jq -r .id"} {
+	for _, part := range []string{"/api/project/current", "/api/worktree/", "jq -r .id", "-u opencode:opencode"} {
 		if !strings.Contains(got, part) {
 			t.Errorf("WorktreeListCmd = %q, want to contain %q", got, part)
 		}
@@ -146,8 +167,8 @@ func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x"})
-	want := "PID=$(curl -sf http://127.0.0.1:4096/api/project/current | jq -r .id); " +
-		"curl -sf -X POST http://127.0.0.1:4096/api/worktree/$PID -H 'Content-Type: application/json' " +
+	want := "PID=$(curl -sf -u opencode:opencode http://127.0.0.1:4096/api/project/current | jq -r .id); " +
+		"curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree/$PID -H 'Content-Type: application/json' " +
 		`-d "{\"strategy\":\"git_worktree\",\"name\":\"feature/x\",\"directory\":\"$HOME/.local/share/opencode/worktree/$PID/feature/x\"}"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
