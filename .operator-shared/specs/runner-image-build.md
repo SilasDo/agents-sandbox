@@ -61,6 +61,19 @@ build eagerly via `EnsureImage` but load lazily, only when a VM is actually crea
 whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check because it always resolves a
 fresh version (pinned or latest) rather than reusing the baked one.
 
+### Latest-version sources
+
+Each profile's `LatestVersion` (the upgrade-check source) must mirror the source that profile's upstream installer
+actually resolves, so the pinned version is always one the installer can fetch:
+
+- `opencode` → GitHub `releases/latest`; `pi` → `pi.dev`; `claude-code` → npm `latest` dist-tag.
+- `opencode2` → the opencode update API's `latest` channel (`https://opencode.ai/update/api/latest/cli/npm`), the same
+  endpoint `https://opencode.ai/v2/install` queries when unpinned. Do **not** read an npm dist-tag here: the deprecated
+  `@opencode-ai/cli` `beta` tag resolves to a version whose platform tarball ships `bin/opencode2`, which the v2
+  installer (expecting `bin/opencode`) cannot install, so the runner-image build fails at the installer's `mv` step.
+  The `0.0.0-beta-<build>` numeric-comparison path in `newerOpenCode2Than` is retained only to compare against a
+  previously baked pre-GA snapshot.
+
 ## Callers
 
 - `build` / `image build` → `image.Build` → `Force = -r/--rebuild`.

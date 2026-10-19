@@ -28,6 +28,9 @@ command reports the bare version (e.g. `0.1.0`).
   changed identity inputs (project Dockerfile, agent version, Docker-in-Docker) or `--rebuild`/missing image, the
   microsandbox load reports whether the cached image is absent or stale, and a project VM recreate/daemon restart lists
   the config changes that triggered it.
+- Verbose output for the agent serve daemon now reports why it is not healthy: each `Polling for daemon health` line
+  carries the health probe's exit code, parse error, or body, and a health timeout appends the runner's daemon log tail,
+  so a daemon that never comes up can be diagnosed without leaving the session.
 - Internal: add `make test-integration` — runs every `integration`-tagged test across the module (excluded from the main
   suite), currently the docker-build tests that build a real image for every `RenderDockerfile` composition case (no
   project Dockerfile, managed base, and custom Fedora base, each with and without docker). Wired into CI as a selective
@@ -96,6 +99,23 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- opencode2: the attach client now passes the working directory as v2's positional argument instead of the removed
+  `--dir` flag, so attaching no longer exits with `Unrecognized flag: --dir`.
+- opencode2: the daemon health probe now polls `/api/info`, v2's actual health endpoint. `/api/health` matches no v2
+  route, so after the credential fix it returned 404 with an empty body and `run`/`shell` still timed out after 60s.
+- opencode2: version resolution now queries the opencode update API's `latest` channel
+  (`https://opencode.ai/update/api/latest/cli/npm`), the same source the v2 installer uses, instead of the npm `beta`
+  dist-tag of the deprecated `@opencode-ai/cli` package. That stale tag resolved to a version whose tarball ships
+  `bin/opencode2`, which the v2 installer (expecting `bin/opencode`) could not install, failing the runner-image build
+  (`mv: cannot stat .../package/bin/opencode`).
+- opencode2: the serve daemon no longer fails to become healthy. v2's `serve` enforces HTTP basic auth on every `/api/*`
+  route and auto-generates a random password when `OPENCODE_SERVER_PASSWORD` is unset, so the launcher's unauthenticated
+  health probe always returned 401 and `run`/`shell` polled until timeout. The runner image now bakes a
+  fixed `OPENCODE_SERVER_PASSWORD` (v2 hardcodes the basic-auth username to `opencode`), and the health probe, worktree
+  API calls, and in-VM attach client all use it.
+- opencode2: the `--serve-only` banner now names the credential an external client needs (`opencode:opencode`). v2's basic
+  auth is mandatory and baked into the image, so the previous opt-in `OPENCODE_SERVER_PASSWORD`/`OPENCODE_SERVER_USERNAME`
+  guidance (valid for opencode v1) was wrong and left the client unable to connect.
 - Agent upgrade: a project that already has a runner image but no recorded agent version (e.g. the first run after the
   `updater.yaml` migration) no longer silently rebuilds to the latest release on an unpinned `run`/`shell`, and no longer
   fails offline. The baseline is recovered from the existing image's `agent-version` label so the normal upgrade prompt

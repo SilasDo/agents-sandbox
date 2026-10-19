@@ -172,8 +172,9 @@ needs node: its published package is an npm-installed `#!/usr/bin/env node` bund
 self-contained native binaries and install through their upstream installers — `opencode` and `opencode2` via
 `https://opencode.ai/install` and `https://opencode.ai/v2/install`, `claude-code` via `https://claude.ai/install.sh` —
 copying the binary into `/opt/agents-sandbox/bin`; their images contain no node/npm. All four resolve their latest
-version for an unpinned build — opencode via its GitHub releases endpoint, opencode2 via the npm registry's `beta`
-dist-tag, pi via `pi.dev`, and claude-code via the npm registry's `latest` dist-tag — as a host-side HTTP query, never
+version for an unpinned build — opencode via its GitHub releases endpoint, opencode2 via the opencode update API
+(`/update/api/latest/cli/npm`, the installer's own source), pi via `pi.dev`, and claude-code via the npm registry's
+`latest` dist-tag — as a host-side HTTP query, never
 inside the image. JS-based LSP servers are expected to run on the agent's embedded JS runtime (Bun) or on node that a
 project installs in its own Dockerfile.
 

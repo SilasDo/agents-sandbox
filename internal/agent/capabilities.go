@@ -12,6 +12,13 @@ type DaemonProvider interface {
 	DaemonKillCmd() string
 	DaemonHealthCmd() string
 	DaemonHealthParse(stdout string) (bool, error)
+	// DaemonLogPath is the in-VM file the start command redirects the daemon's
+	// output to, tailed for diagnostics when the daemon never becomes healthy.
+	DaemonLogPath() string
+	// DaemonAuthHint is the one-line basic-auth note shown in serve-only
+	// guidance, telling an external client how to authenticate (or that auth is
+	// optional). It is empty when the daemon needs no credentials.
+	DaemonAuthHint() string
 }
 
 // WorktreeProvider manages git worktrees through a running daemon.

@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -35,9 +36,11 @@ func ensureDaemon(ctx context.Context, a agent.Agent, serveOnly bool, sb msb.San
 		return nil
 	}
 
-	if healthy := checkDaemonHealth(ctx, sb, provider); healthy {
+	if probe := probeDaemonHealth(ctx, sb, provider); probe.healthy {
 		ui.Verbosef("%s daemon already healthy", a.Name())
 		return nil
+	} else if probe.detail != "" {
+		ui.Verbosef("%s daemon not healthy: %s", a.Name(), probe.detail)
 	}
 
 	ui.Verbosef("starting %s serve daemon", a.Name())
@@ -49,10 +52,13 @@ func ensureDaemon(ctx context.Context, a agent.Agent, serveOnly bool, sb msb.San
 	}
 
 	deadline := time.Now().Add(daemonReadyTimeout)
+	var lastDetail string
 	for {
-		if healthy := checkDaemonHealth(ctx, sb, provider); healthy {
+		if probe := probeDaemonHealth(ctx, sb, provider); probe.healthy {
 			ui.Verbosef("%s daemon is healthy", a.Name())
 			return nil
+		} else {
+			lastDetail = probe.detail
 		}
 		if !time.Now().Before(deadline) {
 			break
@@ -62,18 +68,69 @@ func ensureDaemon(ctx context.Context, a agent.Agent, serveOnly bool, sb msb.San
 			return ctx.Err()
 		case <-time.After(daemonPollInterval):
 		}
-		ui.Verbose("Polling for daemon health")
+		ui.Verbosef("Polling for daemon health: %s", lastDetail)
 	}
-	return fmt.Errorf("%s daemon did not become healthy within %s", a.Name(), daemonReadyTimeout)
+	return fmt.Errorf("%s daemon did not become healthy within %s: %s%s",
+		a.Name(), daemonReadyTimeout, lastDetail, daemonLogTail(ctx, sb, provider))
 }
 
-func checkDaemonHealth(ctx context.Context, sb msb.Sandbox, provider agent.DaemonProvider) bool {
+// daemonProbe is the outcome of a single health probe, carrying enough detail
+// (exit code, parse error, or raw body) to diagnose a daemon that never becomes
+// healthy.
+type daemonProbe struct {
+	healthy bool
+	detail  string
+}
+
+// probeDaemonHealth runs the provider's health command once and classifies the
+// result. A healthy probe carries no detail; an unhealthy one carries a
+// human-readable explanation for verbose logging.
+func probeDaemonHealth(ctx context.Context, sb msb.Sandbox, provider agent.DaemonProvider) daemonProbe {
 	stdout, exitCode, err := daemonShellFunc(ctx, sb, provider.DaemonHealthCmd())
-	if err != nil || exitCode != 0 {
-		return false
+	if err != nil {
+		return daemonProbe{healthy: false, detail: fmt.Sprintf("health probe failed: %v", err)}
+	}
+	if exitCode != 0 {
+		return daemonProbe{healthy: false, detail: fmt.Sprintf("health probe exit %d: %s", exitCode, probeBody(stdout))}
 	}
 	healthy, err := provider.DaemonHealthParse(stdout)
-	return err == nil && healthy
+	if err != nil {
+		return daemonProbe{
+			healthy: false,
+			detail:  fmt.Sprintf("health response unparsable: %v: %s", err, probeBody(stdout)),
+		}
+	}
+	if !healthy {
+		return daemonProbe{healthy: false, detail: fmt.Sprintf("server reported unhealthy: %s", probeBody(stdout))}
+	}
+	return daemonProbe{healthy: true, detail: ""}
+}
+
+// probeBody renders a health probe's stdout for logging, flagging an empty body
+// (e.g. no response, or a response with an empty body).
+func probeBody(stdout string) string {
+	if body := strings.TrimSpace(stdout); body != "" {
+		return body
+	}
+	return "(no output)"
+}
+
+// daemonLogTail reads the daemon log's last lines to explain a health timeout.
+// It is best-effort: a missing log, a failed tail, or empty output contributes
+// nothing.
+func daemonLogTail(ctx context.Context, sb msb.Sandbox, provider agent.DaemonProvider) string {
+	path := provider.DaemonLogPath()
+	if path == "" {
+		return ""
+	}
+	stdout, exitCode, err := daemonShellFunc(ctx, sb, "tail -n 40 "+path)
+	if err != nil || exitCode != 0 {
+		return ""
+	}
+	if body := strings.TrimSpace(stdout); body != "" {
+		return fmt.Sprintf("\n--- %s (last 40 lines) ---\n%s", path, body)
+	}
+	return ""
 }
 
 // SetDaemonShellFunc replaces the daemonShellFunc factory used by ensureDaemon

@@ -123,7 +123,7 @@ above the agent while it works in the subdirectory. For an outside worktree (bin
 How `guestCWD` reaches the agent (see Background):
 
 - **opencode / opencode2** (`run`): pass `guestCWD` as the attach target → `opencode attach … --dir <guestCWD>` /
-  `opencode2 --server … --dir <guestCWD>`. This is the existing `--dir target` mechanism; no server change.
+  `opencode2 --server … <guestCWD>` (v2 takes the directory positionally; it has no `--dir`). No server change.
 - **`shell`, `pi`, `claude-code`**: attach with the SDK's `WithAttachCwd(guestCWD)` (through the msb seam's
   `AttachWith`), which sets the PTY working directory for clients that ignore the attach target.
 - **`--worktree`** keeps overriding the target with the daemon-created directory (unchanged).
@@ -184,8 +184,8 @@ needed.
   server-side directory flag**. Its startup CWD is only a **fallback**.
 - The server resolves a directory **per request**:
   `directory = query("directory") || header("x-opencode-directory") || process.cwd()`, then scopes the instance to it.
-- The **client** sets that directory: `attach --dir X` (v1) / `opencode2 … --dir X` (v2) does a local `process.chdir(X)`
-  (passing `X` through when it does not exist locally) and sends it to the server. So `--dir` is the mechanism; the
+- The **client** sets that directory: `attach --dir X` (v1) / `opencode2 … X` (v2, positional) does a local `process.chdir(X)`
+  (passing `X` through when it does not exist locally) and sends it to the server. So the attach target is the mechanism; the
   session's working directory is client-controlled, not server-predetermined.
 - `Instance.provide(directory)` resolves the git **project** by the git common dir independently of the session
   directory: a nested directory resolves the same project as the repo root, and a linked worktree resolves the same

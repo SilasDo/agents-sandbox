@@ -91,20 +91,26 @@ func logNotifyWatcherError(stop func() error, ui termio.UI) {
 }
 
 // serveOnlyMessage builds the message printed when serving the agent daemon for
-// external clients such as desktop apps.
-func serveOnlyMessage(host, port string) string {
-	return fmt.Sprintf("Connect a client to: http://%s:%s\n\n"+
-		"Optional: set OPENCODE_SERVER_PASSWORD (and OPENCODE_SERVER_USERNAME) to protect the server with basic auth.\n"+
-		"Press Ctrl-D to stop serving.", host, port)
+// external clients such as desktop apps. The basic-auth guidance is
+// agent-specific: opencode's is opt-in, opencode2's is mandatory with a baked
+// credential, so a client can only connect with the right hint.
+func serveOnlyMessage(a agent.Agent, host, port string) string {
+	authHint := ""
+	if provider, ok := agent.AsDaemonProvider(a); ok {
+		if hint := provider.DaemonAuthHint(); hint != "" {
+			authHint = hint + "\n"
+		}
+	}
+	return fmt.Sprintf("Connect a client to: http://%s:%s\n\n%sPress Ctrl-D to stop serving.", host, port, authHint)
 }
 
 // runServeOnly keeps the VM alive and blocks until ctx is done (CTRL-D or
 // SIGINT), without attaching an in-VM TUI. It holds the VM via a keeper exec so
 // the msb idle timeout does not stop it while serving.
-func runServeOnly(ctx context.Context, sb msb.Sandbox, ui termio.UI, hostPort int) error {
+func runServeOnly(ctx context.Context, a agent.Agent, sb msb.Sandbox, ui termio.UI, hostPort int) error {
 	host := options.ServeOnlyBindAddr
 	port := strconv.Itoa(hostPort)
-	ui.Infof("%s", serveOnlyMessage(host, port))
+	ui.Infof("%s", serveOnlyMessage(a, host, port))
 	keeperCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	keeperDone := keepVMAlive(keeperCtx, sb)
@@ -179,7 +185,7 @@ func runServeOnlySession(
 			release()
 		}
 	}()
-	if err := runServeOnly(ctx, sb, ui, hostPort); err != nil && !errors.Is(err, context.Canceled) {
+	if err := runServeOnly(ctx, a, sb, ui, hostPort); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
 	if acquireErr == nil {

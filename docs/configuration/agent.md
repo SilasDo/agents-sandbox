@@ -13,8 +13,8 @@ selects the coding-agent profile to run, build, provision, or manage. The agent 
 config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship as built-in profiles:
 
 - **`opencode`** (default) — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
-- **`opencode2`** — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the npm
-  `beta` tag is used only for upgrade checks. Daemon-based with serve/attach, worktree sessions. It owns its own launcher
+- **`opencode2`** — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the
+  opencode update API's `latest` channel is used for upgrade checks and unpinned builds. Daemon-based with serve/attach, worktree sessions. It owns its own launcher
   config namespace
   (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`), separate from `opencode`, because v2's config
   schema (e.g. structured `providers.*.models.*.capabilities`) differs from v1's — so the two can now diverge. Its VM
@@ -24,6 +24,12 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
 
 `--worktree` and `--serve-only` are rejected for pi and claude-code (they have no daemon); they run through the
 interactive TUI instead. Passing an unsupported `--agent` name reports the valid names in its error message.
+
+> **opencode2 server auth:** v2's `serve` requires HTTP basic auth on every `/api/*` route and would otherwise generate a
+> random password the launcher cannot know. The runner image therefore bakes a fixed `OPENCODE_SERVER_PASSWORD`, and the
+> health probe, worktree API calls, and in-VM attach client all use it. v2 hardcodes the basic-auth username to
+> `opencode` (there is no `OPENCODE_SERVER_USERNAME`), so the fixed credential is `opencode:opencode` — the value an
+> external `--serve-only` client must use to connect (see the [connect-desktop recipe]({% link recipes/connect-desktop.md %})).
 
 Each agent owns its config directories, one subdir per agent under the tool's config base:
 

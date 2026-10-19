@@ -10,8 +10,8 @@ import (
 
 // latestVersionFromJSON returns the "version" field from the JSON document at
 // url, labeling errors with the given agent name. Agents whose release
-// endpoint returns a {"version": "..."} shape (pi.dev, the npm registry) share
-// this fetcher.
+// endpoint returns a {"version": "..."} shape (pi.dev, the npm registry, and
+// the opencode update API) share this fetcher.
 func latestVersionFromJSON(ctx context.Context, url, agentName string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

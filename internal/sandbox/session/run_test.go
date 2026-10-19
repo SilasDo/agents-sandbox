@@ -78,11 +78,29 @@ func TestBuildAttachCommandNoAttachRunner(t *testing.T) {
 }
 
 func TestServeOnlyMessage(t *testing.T) {
-	msg := serveOnlyMessage("127.0.0.1", "4096")
+	opencode, _ := agent.Lookup("opencode")
+	msg := serveOnlyMessage(opencode, "127.0.0.1", "4096")
 	for _, want := range []string{"Connect a client to", "http://127.0.0.1:4096", "OPENCODE_SERVER_PASSWORD", "Ctrl-D"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("serveOnlyMessage missing %q in:\n%s", want, msg)
 		}
+	}
+}
+
+// TestServeOnlyMessageOpencode2StatesCredential verifies the serve-only guidance
+// tells an external client how to authenticate to opencode2: its basic auth is
+// mandatory with a baked credential, so the old opt-in/env wording would be
+// wrong and would leave the client unable to connect.
+func TestServeOnlyMessageOpencode2StatesCredential(t *testing.T) {
+	opencode2, _ := agent.Lookup("opencode2")
+	msg := serveOnlyMessage(opencode2, "127.0.0.1", "4096")
+	for _, want := range []string{"http://127.0.0.1:4096", `user "opencode"`, `password "opencode"`} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("serveOnlyMessage(opencode2) missing %q in:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "Optional:") {
+		t.Errorf("serveOnlyMessage(opencode2) must not offer optional auth:\n%s", msg)
 	}
 }
 
@@ -91,7 +109,7 @@ func TestRunServeOnlyBlocksUntilCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	got := make(chan error, 1)
 	ui := &termio.Mock{}
-	go func() { got <- runServeOnly(ctx, sb, ui, 4096) }()
+	go func() { got <- runServeOnly(ctx, opencodeAgent(t), sb, ui, 4096) }()
 	cancel()
 	select {
 	case err := <-got:

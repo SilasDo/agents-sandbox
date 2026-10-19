@@ -77,6 +77,15 @@ func TestOpencodeDaemonKillAndHealthCmd(t *testing.T) {
 	if !strings.Contains(daemon.DaemonHealthCmd(), "127.0.0.1:4096") {
 		t.Errorf("DaemonHealthCmd = %q, want port 4096", daemon.DaemonHealthCmd())
 	}
+	if daemon.DaemonLogPath() != "/tmp/opencode-serve.log" {
+		t.Errorf("DaemonLogPath = %q, want /tmp/opencode-serve.log", daemon.DaemonLogPath())
+	}
+	if hint := daemon.DaemonAuthHint(); !strings.Contains(hint, "OPENCODE_SERVER_PASSWORD") {
+		t.Errorf("DaemonAuthHint = %q, want mention of OPENCODE_SERVER_PASSWORD", hint)
+	}
+	if !strings.Contains(daemon.DaemonStartCmd(false), daemon.DaemonLogPath()) {
+		t.Errorf("DaemonStartCmd must redirect to DaemonLogPath, got %q", daemon.DaemonStartCmd(false))
+	}
 }
 
 func TestOpencodeDaemonHealthParse(t *testing.T) {

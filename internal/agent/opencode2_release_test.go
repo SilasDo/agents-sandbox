@@ -4,32 +4,49 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
-// overrideOpenCode2NpmURL swaps opencode2NpmBetaURL for the duration of a test.
-// It returns a restore func.
-func overrideOpenCode2NpmURL(url string) func() {
-	orig := opencode2NpmBetaURL
-	opencode2NpmBetaURL = url
-	return func() { opencode2NpmBetaURL = orig }
+// TestOpencode2VersionURLUsesUpdateAPI guards against resolving the version
+// from an npm dist-tag: the deprecated @opencode-ai/cli beta tarball ships
+// bin/opencode2, which the v2 installer (expecting bin/opencode) cannot
+// install. Resolution must mirror the v2 installer's own source, the update
+// API's "latest" channel.
+func TestOpencode2VersionURLUsesUpdateAPI(t *testing.T) {
+	if !strings.Contains(opencode2UpdateAPIURL, "opencode.ai/update/api/latest/cli/npm") {
+		t.Errorf("opencode2UpdateAPIURL = %q, want the update API latest channel", opencode2UpdateAPIURL)
+	}
+	if strings.Contains(opencode2UpdateAPIURL, "registry.npmjs.org") {
+		t.Errorf("opencode2UpdateAPIURL = %q must not read an npm dist-tag", opencode2UpdateAPIURL)
+	}
 }
 
-func TestOpencode2LatestVersionReadsNpmBeta(t *testing.T) {
+// overrideOpenCode2VersionURL swaps opencode2UpdateAPIURL for the duration of
+// a test. It returns a restore func.
+func overrideOpenCode2VersionURL(url string) func() {
+	orig := opencode2UpdateAPIURL
+	opencode2UpdateAPIURL = url
+	return func() { opencode2UpdateAPIURL = orig }
+}
+
+func TestOpencode2LatestVersionReadsUpdateAPI(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"0.0.0-beta-18866","name":"@opencode-ai/cli"}`))
+		_, _ = w.Write(
+			[]byte(`{"channel":"latest","name":"cli","version":"2.0.32","metadata":{"package":"@opencode/cli"}}`),
+		)
 	}))
 	t.Cleanup(srv.Close)
-	restore := overrideOpenCode2NpmURL(srv.URL)
+	restore := overrideOpenCode2VersionURL(srv.URL)
 	t.Cleanup(restore)
 
 	got, err := latestOpenCode2Version(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got != "0.0.0-beta-18866" {
-		t.Errorf("latestOpenCode2Version() = %q, want 0.0.0-beta-18866", got)
+	if got != "2.0.32" {
+		t.Errorf("latestOpenCode2Version() = %q, want 2.0.32", got)
 	}
 }
 
@@ -38,7 +55,7 @@ func TestOpencode2LatestVersionNon200(t *testing.T) {
 		http.Error(w, "nope", http.StatusInternalServerError)
 	}))
 	t.Cleanup(srv.Close)
-	restore := overrideOpenCode2NpmURL(srv.URL)
+	restore := overrideOpenCode2VersionURL(srv.URL)
 	t.Cleanup(restore)
 
 	if _, err := latestOpenCode2Version(context.Background()); err == nil {
@@ -51,7 +68,7 @@ func TestOpencode2LatestVersionDecodeError(t *testing.T) {
 		_, _ = w.Write([]byte("not json"))
 	}))
 	t.Cleanup(srv.Close)
-	restore := overrideOpenCode2NpmURL(srv.URL)
+	restore := overrideOpenCode2VersionURL(srv.URL)
 	t.Cleanup(restore)
 
 	if _, err := latestOpenCode2Version(context.Background()); err == nil {
@@ -65,7 +82,7 @@ func TestOpencode2LatestVersionEmptyVersion(t *testing.T) {
 		_, _ = w.Write([]byte(`{"version":""}`))
 	}))
 	t.Cleanup(srv.Close)
-	restore := overrideOpenCode2NpmURL(srv.URL)
+	restore := overrideOpenCode2VersionURL(srv.URL)
 	t.Cleanup(restore)
 
 	if _, err := latestOpenCode2Version(context.Background()); err == nil {
