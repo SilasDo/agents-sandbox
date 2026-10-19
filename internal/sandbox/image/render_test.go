@@ -815,13 +815,19 @@ func (p *projectDockerfilePaths) UserCacheDir() string                  { return
 func (p *projectDockerfilePaths) UserStateDir() string                  { return "" }
 func (p *projectDockerfilePaths) UserDataDir() string                   { return "" }
 func (p *projectDockerfilePaths) UserAgentConfigDir(agent.Agent) string { return "" }
-func (p *projectDockerfilePaths) UserHomeDir() (string, error)          { return "", nil }
-func (p *projectDockerfilePaths) UserEnvFile() string                   { return "" }
-func (p *projectDockerfilePaths) UserEnvSecretFile() string             { return "" }
-func (p *projectDockerfilePaths) UserEnvSecretYAMLFile() string         { return "" }
-func (p *projectDockerfilePaths) ProjectConfigDir() string              { return "" }
+func (p *projectDockerfilePaths) UserAgentConfigDirCandidates(agent.Agent) []string {
+	return nil
+}
+func (p *projectDockerfilePaths) UserHomeDir() (string, error)  { return "", nil }
+func (p *projectDockerfilePaths) UserEnvFile() string           { return "" }
+func (p *projectDockerfilePaths) UserEnvSecretFile() string     { return "" }
+func (p *projectDockerfilePaths) UserEnvSecretYAMLFile() string { return "" }
+func (p *projectDockerfilePaths) ProjectConfigDir() string      { return "" }
 func (p *projectDockerfilePaths) ProjectAgentConfigDir(agent.Agent) string {
 	return ""
+}
+func (p *projectDockerfilePaths) ProjectAgentConfigDirCandidates(agent.Agent) []string {
+	return nil
 }
 func (p *projectDockerfilePaths) ProjectEnvFile() string           { return "" }
 func (p *projectDockerfilePaths) ProjectEnvSecretFile() string     { return "" }

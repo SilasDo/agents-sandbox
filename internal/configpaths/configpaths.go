@@ -13,6 +13,7 @@ type ConfigPaths interface {
 	UserStateDir() string
 	UserDataDir() string
 	UserAgentConfigDir(a agent.Agent) string
+	UserAgentConfigDirCandidates(a agent.Agent) []string
 	UserHomeDir() (string, error)
 
 	UserEnvFile() string
@@ -21,6 +22,7 @@ type ConfigPaths interface {
 
 	ProjectConfigDir() string
 	ProjectAgentConfigDir(a agent.Agent) string
+	ProjectAgentConfigDirCandidates(a agent.Agent) []string
 	ProjectEnvFile() string
 	ProjectEnvSecretFile() string
 	ProjectEnvSecretYAMLFile() string
@@ -71,6 +73,34 @@ func MSBHome() string {
 // config, nested under the tool's user config base.
 func (c *realConfigPaths) UserAgentConfigDir(a agent.Agent) string {
 	return filepath.Join(c.UserConfigDir(), a.ConfigDirName())
+}
+
+// UserAgentConfigDirCandidates returns the agent's user config-dir candidates,
+// primary first, then each alias. Paths only: the method never creates dirs.
+func (c *realConfigPaths) UserAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(c.UserConfigDir(), a)
+}
+
+// ProjectAgentConfigDirCandidates returns the project config-dir candidates.
+func (c *realConfigPaths) ProjectAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(projectConfigDir, a)
+}
+
+func agentConfigDirCandidates(base string, a agent.Agent) []string {
+	names := []string{a.ConfigDirName()}
+	if al, ok := agent.AsConfigDirAliaser(a); ok {
+		names = append(names, al.ConfigDirAliases()...)
+	}
+	dirs := make([]string, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if _, dup := seen[n]; dup {
+			continue
+		}
+		seen[n] = struct{}{}
+		dirs = append(dirs, filepath.Join(base, n))
+	}
+	return dirs
 }
 
 // UserHomeDir returns the host user's home directory. It is the root the

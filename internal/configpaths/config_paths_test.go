@@ -2,6 +2,7 @@ package configpaths
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -116,6 +117,19 @@ func TestUserAgentConfigDir(t *testing.T) {
 	want := filepath.Join(Get().UserConfigDir(), a.ConfigDirName())
 	if got != want {
 		t.Errorf("UserAgentConfigDir(opencode) = %q, want %q", got, want)
+	}
+}
+
+func TestRealAgentConfigDirCandidates(t *testing.T) {
+	WithRealConfigPaths(t)
+	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
+	oc2, _ := agent.Lookup("opencode2")
+	want := []string{
+		"/xdg/config/agents-sandbox/opencode2",
+		"/xdg/config/agents-sandbox/opencode",
+	}
+	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
+		t.Errorf("user candidates = %v, want %v", got, want)
 	}
 }
 

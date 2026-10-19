@@ -97,6 +97,14 @@ func (m *mockConfigPaths) UserHomeDir() (string, error) {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "home")), nil
 }
 
+func (m *mockConfigPaths) UserAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(filepath.Join(m.baseDir, "userconfig"), a)
+}
+
+func (m *mockConfigPaths) ProjectAgentConfigDirCandidates(a agent.Agent) []string {
+	return agentConfigDirCandidates(filepath.Join(m.baseDir, "projectconfig"), a)
+}
+
 func (m *mockConfigPaths) ProjectConfigDir() string {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "projectconfig"))
 }
@@ -152,6 +160,16 @@ func (f *failFastConfigPaths) UserDataDir() string   { f.mustMock(); return "" }
 func (f *failFastConfigPaths) UserAgentConfigDir(_ agent.Agent) string {
 	f.mustMock()
 	return ""
+}
+
+func (f *failFastConfigPaths) UserAgentConfigDirCandidates(_ agent.Agent) []string {
+	f.mustMock()
+	return nil
+}
+
+func (f *failFastConfigPaths) ProjectAgentConfigDirCandidates(_ agent.Agent) []string {
+	f.mustMock()
+	return nil
 }
 
 func (f *failFastConfigPaths) UserHomeDir() (string, error) { f.mustMock(); return "", nil }
