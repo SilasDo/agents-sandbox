@@ -998,3 +998,88 @@ func TestLoadConfigFilesKeysMergedFirstAndSorted(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadConfigFilesFallsBackToLegacyDir(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	a, _ := agent.Lookup("opencode2")
+
+	legacy := filepath.Join(cp.UserConfigDir(), "opencode")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, legacy, "opencode-model.json", `{"model":"v2-legacy"}`)
+	testutil.WriteFile(t, legacy, "tui.json", `{"theme":"legacy"}`)
+
+	ui := termio.NewTestMock(t)
+	cf, err := LoadConfigFiles(a, &ui, true)
+	if err != nil {
+		t.Fatalf("LoadConfigFiles: %v", err)
+	}
+	if cf.Source.Fallback != "opencode" {
+		t.Errorf("Source.Fallback = %q, want opencode", cf.Source.Fallback)
+	}
+	if !strings.Contains(string(cf.Merged), "v2-legacy") {
+		t.Errorf("merged config did not read the legacy dir: %s", cf.Merged)
+	}
+	mirrorPath := filepath.Join(reprovisionVMConfigDir(t, a), "tui.json")
+	if _, ok := cf.Mirror[mirrorPath]; !ok {
+		t.Errorf("mirror missing legacy file %q; have %v", mirrorPath, cf.Mirror)
+	}
+	if n := countWarns(ui.WarnCalls, "legacy config"); n != 1 {
+		t.Errorf("legacy fallback warning count = %d, want 1; warnings: %v", n, ui.WarnCalls)
+	}
+}
+
+func TestLoadConfigFilesPrimarySuppressesLegacy(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	a, _ := agent.Lookup("opencode2")
+
+	for _, dir := range []string{filepath.Join(cp.UserConfigDir(), "opencode2"), filepath.Join(cp.UserConfigDir(), "opencode")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testutil.WriteFile(
+		t,
+		filepath.Join(cp.UserConfigDir(), "opencode2"),
+		"opencode-model.json",
+		`{"model":"v2-primary"}`,
+	)
+	testutil.WriteFile(t, filepath.Join(cp.UserConfigDir(), "opencode"), "opencode-model.json", `{"model":"v1-legacy"}`)
+
+	ui := termio.NewTestMock(t)
+	cf, err := LoadConfigFiles(a, &ui, true)
+	if err != nil {
+		t.Fatalf("LoadConfigFiles: %v", err)
+	}
+	if cf.Source.Fallback != "" {
+		t.Errorf("Source.Fallback = %q, want empty (primary wins)", cf.Source.Fallback)
+	}
+	if !strings.Contains(string(cf.Merged), "v2-primary") || strings.Contains(string(cf.Merged), "v1-legacy") {
+		t.Errorf("merged config should read only the primary dir: %s", cf.Merged)
+	}
+	if n := countWarns(ui.WarnCalls, "legacy config"); n != 0 {
+		t.Errorf("unexpected legacy warning: %v", ui.WarnCalls)
+	}
+}
+
+func reprovisionVMConfigDir(t *testing.T, a agent.Agent) string {
+	t.Helper()
+	cm, ok := agent.AsConfigMerger(a)
+	if !ok {
+		t.Fatal("agent has no ConfigMerger")
+	}
+	return filepath.Dir(cm.VMConfigPath(VMHomeDir))
+}
+
+func countWarns(warns []string, substr string) int {
+	n := 0
+	for _, w := range warns {
+		if strings.Contains(w, substr) {
+			n++
+		}
+	}
+	return n
+}

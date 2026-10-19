@@ -92,6 +92,7 @@ type ConfigFiles struct {
 	Merged      []byte                 // merged agent config content
 	MergedPath  string                 // VM path of the merged config ("" when no snippets)
 	Sources     []string               // host snippet paths merged into Merged
+	Source      ConfigSource           // resolved launcher config-dir pair (with legacy fallback marker)
 	HomeFiles   map[string][]byte      // VM absolute path -> content (from the home: key)
 	Provisioned map[string][]byte      // VM absolute path -> content (drop-in copy)
 	Mirror      map[string][]byte      // VM absolute path -> content (verbatim <agent> mirror)
@@ -123,7 +124,8 @@ func LoadConfigFilesForHost(
 	ui termio.UI,
 	provisionHostConfig bool,
 ) (*ConfigFiles, error) {
-	mergedPath, mergedConfig, sources, hasSnippets, err := buildMergedConfig(a, vmHome)
+	src := ResolveConfigSource(a)
+	mergedPath, mergedConfig, sources, hasSnippets, err := buildMergedConfig(a, vmHome, src)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +157,7 @@ func LoadConfigFilesForHost(
 		delete(provisioned, mergedPath)
 		delete(modes, mergedPath)
 	}
-	mirrorEntries, err := buildMirror(a, vmHome)
+	mirrorEntries, err := buildMirror(a, vmHome, src)
 	if err != nil {
 		return nil, fmt.Errorf("build config mirror: %w", err)
 	}
@@ -174,11 +176,16 @@ func LoadConfigFilesForHost(
 		remove = append(remove, provisionDestinations(a, hostHome, vmHome)...)
 	}
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
+	if src.Fallback != "" {
+		ui.Warnf("agent %s is using the legacy config directory %q; move its files to %q to silence this warning",
+			a.Name(), src.Fallback, a.ConfigDirName())
+	}
 	return &ConfigFiles{
 		HasSnippets: hasSnippets,
 		Merged:      mergedConfig,
 		MergedPath:  mergedPath,
 		Sources:     sources,
+		Source:      src,
 		HomeFiles:   homeFiles,
 		Provisioned: provisioned,
 		Mirror:      mirror,
@@ -362,12 +369,12 @@ func configFileFamilyPaths(mergedPath string, names []string) []string {
 // returns its destination VM path, content, the snippet source paths, whether
 // any snippet existed, and an error. Every agent in the registry implements
 // ConfigMerger, so a non-merger agent produces no merged config.
-func buildMergedConfig(a agent.Agent, vmHome string) (string, []byte, []string, bool, error) {
+func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (string, []byte, []string, bool, error) {
 	if cm, ok := agent.AsConfigMerger(a); ok {
 		merged, sources, hasSnippets, err := config.BuildMerged(
 			cm.SnippetPattern(),
-			cp.Get().UserAgentConfigDir(a),
-			cp.Get().ProjectAgentConfigDir(a),
+			src.UserDir,
+			src.ProjectDir,
 		)
 		if err != nil {
 			return "", nil, nil, false, fmt.Errorf("merge agent config: %w", err)
@@ -381,7 +388,7 @@ func buildMergedConfig(a agent.Agent, vmHome string) (string, []byte, []string, 
 // user and project <agent> config dirs that is neither a top-level snippet
 // match nor a top-level config-family name, keyed by VM path under the agent's
 // VM config directory. Agents without a ConfigMerger have no mirror.
-func buildMirror(a agent.Agent, vmHome string) (map[string]config.MirrorEntry, error) {
+func buildMirror(a agent.Agent, vmHome string, src ConfigSource) (map[string]config.MirrorEntry, error) {
 	cm, ok := agent.AsConfigMerger(a)
 	if !ok {
 		return map[string]config.MirrorEntry{}, nil
@@ -389,8 +396,8 @@ func buildMirror(a agent.Agent, vmHome string) (map[string]config.MirrorEntry, e
 	entries, err := config.ScanMirror(
 		cm.SnippetPattern(),
 		cm.ConfigFileNames(),
-		cp.Get().UserAgentConfigDir(a),
-		cp.Get().ProjectAgentConfigDir(a),
+		src.UserDir,
+		src.ProjectDir,
 		filepath.Dir(cm.VMConfigPath(vmHome)),
 	)
 	if err != nil {
@@ -461,11 +468,11 @@ func Describe(
 		return nil, nil, nil, nil, err
 	}
 	hostFiles := hostFilesFromProvisioner(a, hostHome, vmHome, cf)
-	return cf.Merged, cf.Sources, hostFiles, mirrorFilesFromConfig(a, vmHome), nil
+	return cf.Merged, cf.Sources, hostFiles, mirrorFilesFromConfig(a, vmHome, cf.Source), nil
 }
 
 // mirrorFilesFromConfig returns the mirror display records for agent a.
-func mirrorFilesFromConfig(a agent.Agent, vmHome string) []MirrorFile {
+func mirrorFilesFromConfig(a agent.Agent, vmHome string, src ConfigSource) []MirrorFile {
 	cm, ok := agent.AsConfigMerger(a)
 	if !ok {
 		return nil
@@ -473,8 +480,8 @@ func mirrorFilesFromConfig(a agent.Agent, vmHome string) []MirrorFile {
 	entries, err := config.ScanMirror(
 		cm.SnippetPattern(),
 		cm.ConfigFileNames(),
-		cp.Get().UserAgentConfigDir(a),
-		cp.Get().ProjectAgentConfigDir(a),
+		src.UserDir,
+		src.ProjectDir,
 		filepath.Dir(cm.VMConfigPath(vmHome)),
 	)
 	if err != nil {
