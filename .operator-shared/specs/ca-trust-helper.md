@@ -57,8 +57,10 @@ application that uses a separate trust store"). A `node` handler would be dead c
 `msb-trust java --help` directly — no shell — which proves the exec bit survived the context `COPY` and that the java
 handler still documents the guest CA path (`/.msb/tls/ca.pem`). The unit tests pin the tar entry (content and mode), the
 final stage's `COPY`, and — like the profile.d merge script — that editing the helper's bytes changes
-`computeDockerfileID`. Locally, the `java` handler was verified against a real `keytool` (import, idempotent re-run, and
-the non-root failure on the root-owned store).
+`computeDockerfileID`. `TestVendoredTrustHelperMatchesRecordedHash` is the verbatim-vendoring guard: the script must hash
+to the value recorded in `data/msb-trust.LICENSE`, so a hand-edit fails the build instead of silently making the license
+lie. Locally, the `java` handler was verified against a real `keytool` (import, idempotent re-run, and the non-root
+failure on the root-owned store).
 
 ## Documentation
 
