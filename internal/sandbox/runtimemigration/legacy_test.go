@@ -466,3 +466,27 @@ func assertSameSet(t *testing.T, got, want []string) {
 		t.Errorf("result %v = %d entries, want %d", got, len(gotSet), len(want))
 	}
 }
+
+// TestDetectLegacyArtifactsErrorsOnUnlistableVolumes pins that a non-tolerated
+// listing failure of <legacyHome>/volumes propagates rather than reading as an
+// empty home, so detection never mistakes an I/O error for "no artifacts".
+func TestDetectLegacyArtifactsErrorsOnUnlistableVolumes(t *testing.T) {
+	legacy := t.TempDir()
+	makeLegacyVolumesUnlistable(t, legacy)
+	if _, err := detectLegacyArtifacts(legacy); err == nil {
+		t.Fatal("detectLegacyArtifacts() error = nil, want the volumes listing failure")
+	}
+}
+
+// TestDetectLegacyArtifactsErrorsOnUnlistableSandboxes is the sandbox-tier twin:
+// the volumes listing succeeds, so the sandbox listing error is the one that
+// must propagate.
+func TestDetectLegacyArtifactsErrorsOnUnlistableSandboxes(t *testing.T) {
+	legacy := t.TempDir()
+	if err := os.Symlink("sandboxes", filepath.Join(legacy, "sandboxes")); err != nil {
+		t.Fatalf("symlink sandboxes: %v", err)
+	}
+	if _, err := detectLegacyArtifacts(legacy); err == nil {
+		t.Fatal("detectLegacyArtifacts() error = nil, want the sandboxes listing failure")
+	}
+}

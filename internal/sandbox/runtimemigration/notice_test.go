@@ -306,3 +306,26 @@ func warnedAbout(warnCalls []string, substring string) bool {
 	}
 	return false
 }
+
+// TestAcknowledgeNoticeKeepsAnExistingEntry pins that recording the notice is
+// idempotent: an entry written by a concurrent session is left untouched.
+func TestAcknowledgeNoticeKeepsAnExistingEntry(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		LegacyRuntimeNoticeName: {Status: state.MigrationAcknowledged},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if err := acknowledgeNotice(); err != nil {
+		t.Fatalf("acknowledgeNotice() error = %v, want nil for an existing entry", err)
+	}
+}
+
+// TestRenderNoticeWithoutArtifactsOmitsTheRemovableTier pins the early return
+// when none of ours is present: no "safe to remove" tier is printed.
+func TestRenderNoticeWithoutArtifactsOmitsTheRemovableTier(t *testing.T) {
+	out := renderNotice(legacyArtifacts{}, nil)
+	if strings.Contains(out, "Ours, safe to remove") {
+		t.Errorf("notice mentions a removable tier with no artifacts present:\n%s", out)
+	}
+}

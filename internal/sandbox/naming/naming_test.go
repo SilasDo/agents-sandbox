@@ -333,3 +333,21 @@ func TestIsLauncherSandbox(t *testing.T) {
 		}
 	}
 }
+
+func TestIsHomeVolume(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{name: HomePrefix + "proj-aBc1234D", want: true},
+		{name: VMPrefix + "proj-aBc1234D", want: false},
+		{name: TaskPrefix + "proj-aBc1234D", want: false},
+		{name: "user-volume", want: false},
+		{name: "", want: false},
+	}
+	for _, c := range cases {
+		if got := IsHomeVolume(c.name); got != c.want {
+			t.Errorf("IsHomeVolume(%q) = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

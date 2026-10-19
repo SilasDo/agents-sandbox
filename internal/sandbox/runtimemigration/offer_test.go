@@ -1105,3 +1105,22 @@ func TestOfferTerminalSessionSuppressesCommandsForUncopiedVolumes(t *testing.T) 
 	}
 	assertSuppressesDestructiveCommands(t, ui.AcknowledgeCalls[0])
 }
+
+// TestOfferFinalizeErrorPropagates pins that a failed finalize of a finished
+// campaign blocks the session instead of reporting success.
+func TestOfferFinalizeErrorPropagates(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	done := naming.HomePrefix + "done"
+	addVolumeDir(t, legacy, done)
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		MigrationName: {Status: state.MigrationCopying, Copied: []string{done}},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	blockRootState(t)
+	ui := termio.NewTestMock(t)
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, &ui); err == nil {
+		t.Fatal("Offer() error = nil, want the finalize write failure")
+	}
+}
