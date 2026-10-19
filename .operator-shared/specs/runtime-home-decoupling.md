@@ -415,7 +415,9 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   a deliberate, once-ever moment, not scroll-past output. It needs a new "acknowledge"
   primitive on the `termio.UI` seam (real printer + `Mock`); `Confirm`/`Input` semantics
   do not fit. The primitive prints unconditionally: it is not gated by the level or
-  `--quiet`, so a once-ever, interaction-required moment is never silently suppressed.
+  `--quiet`, so a once-ever, interaction-required moment is never silently suppressed. It is
+  the single presenter for both modes: interactive prints the full notice and waits,
+  non-interactive prints the one-line form and returns immediately.
 - **Trigger points** (interactive only):
   - immediately after a copy campaign finalizes `completed` (`finalizeMigration`);
   - immediately after the user chooses dismiss (`dismissMigration`);
@@ -424,23 +426,32 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   - in the `pending` state when there is nothing to copy but our artifacts are present.
 
   All four live in `runtimemigration.Offer`: it no longer returns early on a terminal
-  migration, and runs the notice after the copy/dismiss decisions (passing any excluded
-  names) and on the terminal / nothing-to-copy fallthrough. The notice is best-effort — a
-  state-read, detection, or acknowledgment failure warns and lets the session continue.
-- **Excluded volumes.** When a campaign has `excluded` volumes, the notice — rendered at
-  finalize time, because `excluded` is dropped at the terminal write — leads with a "do not
-  remove" paragraph naming them as uncopied and still holding data, left in place. It then
+  migration, and runs the notice after the copy/dismiss decisions and on the terminal /
+  nothing-to-copy fallthrough. The notice is best-effort — a state-read, detection, or
+  acknowledgment failure warns and lets the session continue.
+- **Uncopied volumes.** Any present legacy `agents-sandbox-home-*` volume with no counterpart
+  in the private home is *uncopied* (a failed copy, or a volume the user chose not to
+  migrate). This is derived at render time from the two home listings — never from the
+  transient `Excluded` set, which is dropped at the terminal write and is unavailable on a
+  later session or on the dismiss path. The notice leads with a "do not remove" paragraph
+  naming the uncopied volumes as not copied and still holding data, left in place, and then
   suppresses every command that would delete them: both the wholesale
   `rm -rf ~/.microsandbox` and the selective `~/.microsandbox/volumes/agents-sandbox-home-*`
-  glob match an excluded volume. The safe sandbox globs are still offered, and the volumes
-  glob is replaced by a note to remove the remaining volumes individually.
+  glob match an uncopied volume. The safe sandbox globs are still offered, and the volumes
+  glob is replaced by a note to remove the remaining volumes individually. A failure to list
+  the private home suppresses the destructive commands (treats every legacy volume as
+  uncopied) rather than risk printing one that would delete data.
 - **Persisted once-ever flag.** A second `migrations` registry entry,
   `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
   status; absence is the pending state. This keeps the "absent = pending, terminal =
-  permanent" semantics of the registry rather than adding a bool to `runtime_home`.
-- **Non-interactive sessions.** They cannot acknowledge, so they may print the
-  informational line but must not mark the notice acknowledged; an interactive session
-  still surfaces it.
+  permanent" semantics of the registry rather than adding a bool to `runtime_home`. The
+  value's presence is the signal — `Offer` reads the entry only for its existence, never its
+  status — so `acknowledged` documents intent; it is never written to the `runtime_home`
+  entry.
+- **Non-interactive sessions.** They cannot acknowledge, so they print a bounded one-line
+  informational form (no removal commands) through the same ungated primitive and must not
+  mark the notice acknowledged; an interactive session still surfaces the full notice. This
+  applies under `--yes` too, which is non-interactive: it gets the line, never the prompt.
 - Discoverable homes for the same fact (for users who never see the notice): a dedicated
   `docs/install/upgrading.md` page (the "Upgrading to 0.6" page, which owns the migration
   mechanics and the uninstall payoff — issue #208), README positioning ("no system-wide
