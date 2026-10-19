@@ -31,8 +31,9 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 ### `image/` — Runner image build, Dockerfile, fetch, inspect, tags
 
 - `build.go`, `dockerfile.go`, `fetch.go`, `format.go`, `image.go`, `inspect.go`, `inspect_detail.go`, `list.go`, `tags.go`, `embed.go` — image pipeline (`inspect_detail.go` is `InspectImage`: the image-inspect detail seam)
+- `data/` — build-context assets embedded into the image: the managed-base `Dockerfile`, `agents-sandbox-path.sh` (profile.d `PATH` merge, 0644), `msb-trust.sh` + `msb-trust.LICENSE` (the vendored CA-trust helper, installed 0755; see `specs/ca-trust-helper.md`)
 - `references.go` — `InUseImageReferences`: the fail-closed in-use runner-image guard, unioning the project-state scan with kept sandbox image refs (Slice 1 of the runtime-management epic)
-- `render_integration_test.go` — `//go:build integration` docker-build tests for `RenderDockerfile` composition (no Dockerfile / managed base / custom Fedora base, each ± dind). Run via `make test-integration`; wired into CI as a selective job (main/release/manual). **Cannot run inside the agents-sandbox VM** — microsandbox's egress-inspection CA makes in-image downloads (apt/dnf/node) fail; must run on a host with a normal docker daemon.
+- `render_integration_test.go` — `//go:build integration` docker-build tests for `RenderDockerfile` composition (no Dockerfile / managed base / custom Fedora base, each ± dind). Run via `make test-integration`; wired into CI as a selective job (main/release/manual). **In the agents-sandbox VM, microsandbox's egress-inspection CA makes in-image downloads (apt/dnf/node) fail** unless each base image is replaced by a CA-trusting rebuild first (the `AGENTS.md` workaround covers `debian:trixie-slim`, so the managed-base cases run; the custom-base cases need the same for `fedora:latest`).
 - Custom-base requirements (shadow-utils, POSIX shell bash→zsh→sh, curl+tar, dind prereqs) and unsupported bases (Alpine/distroless/scratch) are documented in `docs/runner-image.md`.
 
 ### `mounts/` — Filesystem mount handling
