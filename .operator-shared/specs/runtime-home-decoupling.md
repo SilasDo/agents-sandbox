@@ -398,16 +398,19 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
 - **Audience: only upgraders with evidence agents-sandbox used the legacy home.** The
   notice never fires for a fresh install, nor for a user whose `~/.microsandbox` is their
   own unrelated microsandbox. Detection is **file-based** over the legacy home: it fires
-  when `<legacyHome>/volumes` contains an `agents-sandbox-home-*` entry, or when the
-  legacy home's sandbox storage contains a launcher-prefixed name (`agents-sandbox-vm-*`
-  / `agents-sandbox-task-*`). A bare `~/.microsandbox` with none of our artifacts is
-  silent.
+  when `<legacyHome>/volumes` contains an `agents-sandbox-home-*` entry, or when
+  `<legacyHome>/sandboxes` contains an `agents-sandbox-vm-*` / `agents-sandbox-task-*`
+  entry (microsandbox's default per-sandbox state directory, `paths.sandboxes`). A missing
+  or unreadable directory counts as absent; a bare `~/.microsandbox` with none of our
+  artifacts is silent.
 - **Instruct-only; never deletes.** agents-sandbox must not delete the legacy home: it is
   shared and may hold the user's own microsandbox data, and silent data loss is an
-  anti-goal. The notice explains the distinction rather than printing one command: our
-  own `~/.microsandbox/volumes/agents-sandbox-home-*` is safe to remove, whereas the whole
-  `~/.microsandbox` is removable only if microsandbox was installed solely for
-  agents-sandbox.
+  anti-goal. The notice names both tiers and gives the exact commands, so the user acts
+  deliberately: our own `~/.microsandbox/volumes/agents-sandbox-home-*` and
+  `~/.microsandbox/sandboxes/agents-sandbox-{vm,task}-*` are safe to remove (selective
+  `rm -rf`), whereas the whole `~/.microsandbox` is removable only if microsandbox was
+  installed solely for agents-sandbox (full `rm -rf`). Only the tier(s) actually present
+  are shown.
 - **Explicit acknowledgment.** The notice requires the user to react (press a key) — it is
   a deliberate, once-ever moment, not scroll-past output. It needs a new "acknowledge"
   primitive on the `termio.UI` seam (real printer + `Mock`); `Confirm`/`Input` semantics
@@ -418,19 +421,24 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   - on a later session when the migration is already terminal but our artifacts remain in
     the legacy home and the notice was never acknowledged;
   - in the `pending` state when there is nothing to copy but our artifacts are present.
-- **Excluded volumes.** When a campaign has `excluded` volumes, the notice — shown at
-  finalize time, because `excluded` is dropped at the terminal write — warns that those
-  volumes could not be copied and still hold data, and must not suggest deleting
-  `~/.microsandbox` wholesale.
-- **Persisted once-ever flag.** A second `migrations` registry entry (e.g.
-  `legacy_runtime_notice`) records acknowledgment as a terminal status; absence is the
-  pending state. This keeps the "absent = pending, terminal = permanent" semantics of the
-  registry rather than adding a bool to `runtime_home`.
+
+  All four live in `runtimemigration.Offer`: it no longer returns early on a terminal
+  migration, and runs the notice after the copy/dismiss decisions (passing any excluded
+  names) and on the terminal / nothing-to-copy fallthrough. The notice is best-effort — a
+  state-read, detection, or acknowledgment failure warns and lets the session continue.
+- **Excluded volumes.** When a campaign has `excluded` volumes, the notice — rendered at
+  finalize time, because `excluded` is dropped at the terminal write — appends a paragraph
+  naming them as uncopied and still holding data, left in place; it still must not suggest
+  deleting `~/.microsandbox` wholesale.
+- **Persisted once-ever flag.** A second `migrations` registry entry,
+  `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
+  status; absence is the pending state. This keeps the "absent = pending, terminal =
+  permanent" semantics of the registry rather than adding a bool to `runtime_home`.
 - **Non-interactive sessions.** They cannot acknowledge, so they may print the
   informational line but must not mark the notice acknowledged; an interactive session
   still surfaces it.
-- Discoverable homes for the same fact (for users who never see the notice): an
-  upgrading/migration docs page, README positioning ("no system-wide microsandbox
+- Discoverable homes for the same fact (for users who never see the notice): a dedicated
+  `docs/install/upgrading.md` page, README positioning ("no system-wide microsandbox
   required"), the CHANGELOG entry, and `doctor` reporting the private home.
 
 ### State-file placement (related, separate)
