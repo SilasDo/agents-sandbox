@@ -7,6 +7,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
 // emptyCandidatesConfigPaths returns no candidates, exercising the guard that
@@ -22,13 +23,31 @@ func (emptyCandidatesConfigPaths) ProjectAgentConfigDirCandidates(agent.Agent) [
 }
 
 func TestResolveConfigSourceEmptyCandidates(t *testing.T) {
-	orig := configpaths.Get
-	configpaths.Get = func() configpaths.ConfigPaths { return emptyCandidatesConfigPaths{} }
-	t.Cleanup(func() { configpaths.Get = orig })
+	withEmptyCandidates(t)
 
 	a, _ := agent.Lookup("opencode2")
 	if _, err := ResolveConfigSource(a); err == nil {
 		t.Error("expected an error for empty config-dir candidates")
+	}
+}
+
+func withEmptyCandidates(t *testing.T) {
+	t.Helper()
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return emptyCandidatesConfigPaths{} }
+	t.Cleanup(func() { configpaths.Get = orig })
+}
+
+func TestLoadAndDescribePropagateResolveError(t *testing.T) {
+	withEmptyCandidates(t)
+
+	a, _ := agent.Lookup("opencode2")
+	ui := termio.NewTestMock(t)
+	if _, err := LoadConfigFilesForHost(a, t.TempDir(), t.TempDir(), &ui, true); err == nil {
+		t.Error("expected LoadConfigFilesForHost to propagate the resolution error")
+	}
+	if _, _, _, _, _, err := Describe(a, t.TempDir(), t.TempDir(), &ui, true); err == nil {
+		t.Error("expected Describe to propagate the resolution error")
 	}
 }
 
