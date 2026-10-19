@@ -156,20 +156,29 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeListCmd("/workspace")
-	for _, part := range []string{"/api/project/current", "/api/worktree/", "jq -r .id", "-u opencode:opencode"} {
+	for _, part := range []string{
+		"-u opencode:opencode",
+		"--get --data-urlencode 'location[directory]=/workspace'",
+		"/api/location) || exit 1",
+		"jq -re '.project.id') || exit 1",
+		"jq -r '.project.canonical'",
+		"http://127.0.0.1:4096/api/worktree?projectID=$PID",
+		`jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`,
+	} {
 		if !strings.Contains(got, part) {
 			t.Errorf("WorktreeListCmd = %q, want to contain %q", got, part)
 		}
+	}
+	if strings.Contains(got, "/api/project/current") || strings.Contains(got, "/api/worktree/$PID") {
+		t.Errorf("WorktreeListCmd still uses v1 routes: %q", got)
 	}
 }
 
 func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x"})
-	want := "PID=$(curl -sf -u opencode:opencode http://127.0.0.1:4096/api/project/current | jq -r .id); " +
-		"curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree/$PID -H 'Content-Type: application/json' " +
-		`-d "{\"strategy\":\"git_worktree\",\"name\":\"feature/x\",\"directory\":\"$HOME/.local/share/opencode/worktree/$PID/feature/x\"}"`
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x", Target: "/workspace"})
+	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id') || exit 1; CANON=$(printf '%s' "$LOC" | jq -r '.project.canonical'); curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
 	}
@@ -178,9 +187,22 @@ func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 func TestOpencode2WorktreeCreateCmdWithBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "f", Base: "main"})
-	if !strings.Contains(got, `\"from\":\"main\"`) {
-		t.Errorf("WorktreeCreateCmd(with base) = %q, want from:main", got)
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Base: "main", Target: "/workspace"})
+	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id') || exit 1; CANON=$(printf '%s' "$LOC" | jq -r '.project.canonical'); curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
+	if got != want {
+		t.Errorf("WorktreeCreateCmd(with base) = %q, want %q", got, want)
+	}
+}
+
+func TestOpencode2WorktreeCreateCmdQuotesTargetAndBase(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "it's", Target: "/workspace/my notes"})
+	if !strings.Contains(got, `'location[directory]=/workspace/my notes'`) {
+		t.Errorf("target not single-quoted: %q", got)
+	}
+	if !strings.Contains(got, `--arg branch 'it'\''s'`) {
+		t.Errorf("base not shell-quoted: %q", got)
 	}
 }
 
