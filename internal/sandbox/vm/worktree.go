@@ -144,7 +144,12 @@ func ResolveTarget(
 		return "", fmt.Errorf("create worktree %q: %w", spec.Name, err)
 	}
 	if !out.Success() {
-		return "", fmt.Errorf("create worktree %q failed (exit %d): %s", spec.Name, out.ExitCode(), out.Stderr())
+		return "", fmt.Errorf(
+			"create worktree %q failed (exit %d): %s (a timed-out request may still have created it)",
+			spec.Name,
+			out.ExitCode(),
+			out.Stderr(),
+		)
 	}
 
 	dir, ok := provider.WorktreeParseDir(out.Stdout())

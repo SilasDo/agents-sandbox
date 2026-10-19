@@ -27,6 +27,12 @@ const (
 	opencode2ServerPassword = "opencode"
 )
 
+// opencode2CurlFlags apply to every v2 worktree API call: -m bounds the request
+// so a hung daemon cannot block the launcher indefinitely, and -sS keeps curl's
+// error message on stderr (plain -s would silence it, leaving an empty error
+// message) while -f makes an HTTP error status a failure.
+const opencode2CurlFlags = "-fsS -m 30"
+
 // opencode2CurlAuth is the curl basic-auth flag for the fixed opencode2 server
 // credential, used by the health probe and the worktree API calls.
 const opencode2CurlAuth = "-u " + opencode2ServerUsername + ":" + opencode2ServerPassword
@@ -137,7 +143,7 @@ const opencode2ServerURL = "http://127.0.0.1:" + opencode2Port
 // a request is never sent with an empty projectID and the list is never filtered
 // against a literal "null".
 func opencode2LocatePrelude(target string) string {
-	return "LOC=$(curl -sf " + opencode2CurlAuth + " --get --data-urlencode " +
+	return "LOC=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " --get --data-urlencode " +
 		shellQuote("location[directory]="+target) + " " + opencode2ServerURL + "/api/location) || exit 1; " +
 		"PID=$(printf '%s' \"$LOC\" | jq -re '.project.id | select(length > 0)') || exit 1; " +
 		"CANON=$(printf '%s' \"$LOC\" | jq -re '.project.canonical | select(length > 0)') || exit 1; "
@@ -157,7 +163,7 @@ const opencode2WorktreeListFilter = `if type == "array" then [.[]|select(.direct
 // non-array payload (see opencode2WorktreeListFilter).
 func (opencode2Profile) WorktreeListCmd(target string) string {
 	return opencode2LocatePrelude(target) +
-		"LIST=$(curl -sf " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID) || exit 1; " +
+		"LIST=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID) || exit 1; " +
 		"printf '%s' \"$LIST\" | jq -ce --arg canonical \"$CANON\" " + shellQuote(opencode2WorktreeListFilter)
 }
 
@@ -173,7 +179,7 @@ func (opencode2Profile) WorktreeCreateCmd(spec WorktreeSpec) string {
 		object = "{projectID:$pid,name:$name,branch:$branch}"
 	}
 	return opencode2LocatePrelude(spec.Target) +
-		"curl -sf " + opencode2CurlAuth + " -X POST " + opencode2ServerURL + "/api/worktree " +
+		"curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " -X POST " + opencode2ServerURL + "/api/worktree " +
 		"-H 'Content-Type: application/json' -d \"$(jq -nc " + args + " " + shellQuote(object) + ")\""
 }
 

@@ -170,9 +170,34 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 	// Exact equality (mirroring the create tests) pins the whole command: a
 	// substring check would be satisfied by the shared location prelude even if
 	// the list curl lost its credential or fell back to a v1 route.
-	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -sf -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
+	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
 	if got != want {
 		t.Errorf("WorktreeListCmd = %q, want %q", got, want)
+	}
+}
+
+// TestOpencode2WorktreeCurlsBoundedAndKeepStderr pins that every v2 worktree
+// curl — the shared location prelude plus the list/create calls — carries a
+// bounded timeout and keeps curl's error message, so a hung daemon cannot block
+// the launcher forever and an HTTP failure reaches the user instead of emerging
+// as an empty stderr.
+func TestOpencode2WorktreeCurlsBoundedAndKeepStderr(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	commands := map[string]string{
+		"list":   worktree.WorktreeListCmd("/workspace"),
+		"create": worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Target: "/workspace"}),
+	}
+	for name, cmd := range commands {
+		segments := strings.Split(cmd, "curl ")
+		if len(segments) < 3 {
+			t.Fatalf("%s command should issue the location prelude plus one call: %q", name, cmd)
+		}
+		for _, segment := range segments[1:] {
+			if !strings.HasPrefix(segment, "-fsS -m 30 ") {
+				t.Errorf("%s curl is unbounded or silences its error: %q", name, "curl "+segment)
+			}
+		}
 	}
 }
 
@@ -180,7 +205,7 @@ func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x", Target: "/workspace"})
-	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
+	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
 	}
@@ -190,7 +215,7 @@ func TestOpencode2WorktreeCreateCmdWithBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Base: "main", Target: "/workspace"})
-	want := `LOC=$(curl -sf -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -sf -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
+	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd(with base) = %q, want %q", got, want)
 	}
