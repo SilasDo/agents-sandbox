@@ -72,6 +72,9 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 - **v2 resolves the project through `/api/location`**, not by scanning `/api/project`: the command
   seeds `location[directory]=<target>` (shell-quoted), and reads `.project.id`. An empty id or a
   non-2xx response must fail the command rather than send a request with an empty `projectID`.
+  `canonical` must likewise resolve to a non-empty value or the command aborts: with a missing
+  `canonical` the list's canonical-root filter would compare entries against a `null` sentinel and
+  fail open, keeping the main checkout in the list.
 - **v2 lists with `GET /api/worktree?projectID=<id>`**, and the emitted list **excludes the
   canonical root entry**: `jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`
   (wrapped in an array so the output stays one JSON list). Otherwise a worktree name equal
@@ -85,6 +88,12 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
     (`$HOME/.local/share/opencode/worktree/<short project id>/<name>`). Choosing a location is not
     part of this fix.
   - No `from`: `--worktree` has no stacked-worktree concept, and `from` is a directory, not a ref.
+- **Worktree reporting is user-visible.** On both create and reuse the resolved worktree directory is
+  reported at info level (default-visible). When the daemon auto-suffixes a name — the created
+  directory's base name differing from the requested slug — a warning names the directory actually
+  used. An agent whose daemon creates worktrees detached (opencode2) appends a detached-HEAD note via
+  the optional `DetachedWorktreeReporter` capability, naming the `git switch -c <branch>` recovery;
+  v1, which keeps a branch, adds no note.
 - **Base handling: the base is validated *before* the create, against the target directory, for both
   providers** (`git rev-parse --verify <base>^{commit}`, no fetch — the existing
   `validateWorktreeBase`, just moved ahead of the create and pointed at the source directory). The
