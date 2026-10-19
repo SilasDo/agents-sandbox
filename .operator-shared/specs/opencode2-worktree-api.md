@@ -76,10 +76,21 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
   `canonical` the list's canonical-root filter would compare entries against a `null` sentinel and
   fail open, keeping the main checkout in the list.
 - **v2 lists with `GET /api/worktree?projectID=<id>`**, and the emitted list **excludes the
-  canonical root entry**: `jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`
+  canonical root entry**: `jq -ce --arg canonical "$CANON" 'if type == "array" then
+  [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
   (wrapped in an array so the output stays one JSON list). Otherwise a worktree name equal
   to the repository directory name would silently "reuse" the main checkout and attach the session
   there instead of creating a worktree.
+- **A failed or unparsable worktree list must never be read as "no worktrees".** The list command
+  captures curl's response *before* piping into jq (`LIST=$(curl …) || exit 1`), so curl's own
+  non-zero exit propagates instead of being swallowed by the pipe (a failed `curl -sf` piped into
+  jq exits 0 with empty stdout); the jq filter runs with `-e` and rejects a non-array payload. The
+  shared `vm.ResolveTarget` then **aborts on a non-success list** rather than falling through to
+  create — a silent fall-through would abandon an existing worktree for a new server-suffixed one
+  (v2 never reuses a name) and hide a daemon route or field rename. The abort is shared with v1:
+  v1's global route returns a successful JSON array (`[]` when the project has no worktrees — the
+  array is only populated for worktrees OpenCode created), so a non-success result is always a
+  genuine failure, not an empty list.
 - **v2 creates with `POST /api/worktree`** and the body `{"projectID": …, "name": …}`, plus
   `"branch": <base>` when a base is given. Deliberately absent: `strategy`, `directory`, `from`,
   `startCommand`.
@@ -105,8 +116,15 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 - **Reuse matching is unchanged**: the shared base-name match over the list, which is exact because
   `--worktree` names are slugs (no separators; see below).
 
-## Deviations from v1 (must be reflected in docs, not hidden)
+## Deviations (must be reflected in docs, not hidden)
 
+- **Project resolution deviates from the issue's prescribed `GET /api/project` + canonical
+  matching.** The issue assumed the launcher could list projects (`GET /api/project`) and match the
+  target directory against each project's `canonical`. That cannot work: `/api/project` lists only
+  projects the server has **already seen**, and nothing registers this project before
+  `ResolveTarget` runs — registration happens on attach, which runs *after*. The command therefore
+  uses `GET /api/location?location[directory]=<target>`, which resolves and registers the project
+  in one request and returns `project.id` and `project.canonical` directly.
 - **Checkout state.** v1 leaves the worktree on its own branch with the base reset into it; v2 leaves
   a **detached HEAD** at the base ref (or at the source tip without a base). `docs/branch-sessions.md`
   currently states the v1 behavior unconditionally ("The worktree stays on its own `opencode/<name>`
