@@ -273,6 +273,12 @@ func TestWriteDockerfileTarWriteErrors(t *testing.T) {
 		t.Fatalf("baseline writeDockerfileTar: %v", err)
 	}
 
+	// A tar header is 512 bytes and the content is padded to a block boundary,
+	// so the first build-context file starts at this offset. Failing there
+	// exercises the per-file error path, which the Dockerfile cases below do not
+	// reach.
+	assetOffset := 512 + (len(dockerfile)+511)/512*512
+
 	cases := []struct {
 		name    string
 		writer  io.Writer
@@ -280,6 +286,8 @@ func TestWriteDockerfileTarWriteErrors(t *testing.T) {
 	}{
 		{"header write fails", &failAfterBytes{limit: 0}, "tar write header"},
 		{"content write fails", &failAfterBytes{limit: 512}, "tar write Dockerfile"},
+		{"asset header write fails", &failAfterBytes{limit: assetOffset}, "tar write header"},
+		{"asset content write fails", &failAfterBytes{limit: assetOffset + 512}, "tar write " + pathMergeAsset},
 		{"close write fails", &failOnCall{failOn: counter.calls}, "tar close"},
 	}
 	for _, tc := range cases {
