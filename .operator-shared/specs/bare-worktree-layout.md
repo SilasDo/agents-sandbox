@@ -134,6 +134,12 @@ How `guestCWD` reaches the agent (see Background):
 
 ## VM / State Identity and the Naming Scheme (unchanged)
 
+> **Superseded in part by `checkout-identity.md` (#144).** This section's "one origin, one project VM"
+> premise and the outside-worktree warning no longer hold: identity is split per checkout (state, VM,
+> home volume, image) and an outside worktree now fails fast. The mount rule and guest-CWD derivation
+> above stand; the naming/identity statements below are kept only as the state this feature was
+> designed against.
+
 VMs, home volumes, and persisted state are all keyed by `state.Key{Slug, Agent}`, where the slug is
 `<folder>-<14-char hash>` derived from the origin URL (`internal/git`, `internal/sandbox/state`,
 `internal/sandbox/volume`, `internal/sandbox/naming`).
