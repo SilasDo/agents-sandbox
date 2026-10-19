@@ -32,16 +32,16 @@ func showNotice(acknowledged bool, ui termio.UI) error {
 	if !artifacts.present() {
 		return nil
 	}
+	if !ui.IsInteractive() {
+		_ = ui.Acknowledge(noticeSummaryLine())
+		return nil
+	}
 	uncopied, err := uncopiedLegacyVolumes(artifacts.HomeVolumes)
 	if err != nil {
 		// Conservative: without the private listing, treat every legacy volume as
 		// uncopied so the notice never prints a command that could delete data.
 		ui.Warnf("could not list the private home; assuming no legacy volumes were copied: %v", err)
 		uncopied = artifacts.HomeVolumes
-	}
-	if !ui.IsInteractive() {
-		_ = ui.Acknowledge(noticeSummaryLine())
-		return nil
 	}
 	if err := ui.Acknowledge(renderNotice(artifacts, uncopied)); err != nil {
 		ui.Warnf("could not show legacy runtime notice: %v", err)
