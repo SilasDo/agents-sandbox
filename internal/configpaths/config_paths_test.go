@@ -131,6 +131,13 @@ func TestRealAgentConfigDirCandidates(t *testing.T) {
 	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
 		t.Errorf("user candidates = %v, want %v", got, want)
 	}
+	wantProject := []string{
+		filepath.Join(projectConfigDir, "opencode2"),
+		filepath.Join(projectConfigDir, "opencode"),
+	}
+	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
+		t.Errorf("project candidates = %v, want %v", got, wantProject)
+	}
 }
 
 func TestUserEnvFiles(t *testing.T) {

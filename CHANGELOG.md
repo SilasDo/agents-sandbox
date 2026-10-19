@@ -88,8 +88,8 @@ command reports the bare version (e.g. `0.1.0`).
 
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists, it falls back to
-  the old `opencode` dir and warns on every run; creating the `opencode2` dir switches to it. The guest config path and
-  host drop-in are unchanged (`~/.config/opencode/`).
+  the old `opencode` dir and warns on every run while it falls back to the old dir; creating the `opencode2` dir switches
+  to it. The guest config path and host drop-in are unchanged (`~/.config/opencode/`).
 - Runner image: the interactive agent-upgrade prompt now names both the available release and the version currently baked
   into the image, so the choice to rebuild or keep the current version is informed.
 

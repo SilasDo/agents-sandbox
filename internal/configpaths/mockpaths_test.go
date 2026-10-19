@@ -91,6 +91,13 @@ func TestMockAgentConfigDirCandidates(t *testing.T) {
 	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
 		t.Errorf("opencode2 user candidates = %v, want %v", got, want)
 	}
+	wantProject := []string{
+		filepath.Join(base, "projectconfig", "opencode2"),
+		filepath.Join(base, "projectconfig", "opencode"),
+	}
+	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
+		t.Errorf("opencode2 project candidates = %v, want %v", got, wantProject)
+	}
 	if _, err := os.Stat(filepath.Join(base, "userconfig", "opencode2")); !os.IsNotExist(err) {
 		t.Errorf("candidate methods must not create dirs; stat err = %v", err)
 	}

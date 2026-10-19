@@ -46,12 +46,12 @@ type ConfigSource struct {
 func ResolveConfigSource(a agent.Agent) ConfigSource {
 	userCands := cp.Get().UserAgentConfigDirCandidates(a)
 	projectCands := cp.Get().ProjectAgentConfigDirCandidates(a)
-	if len(userCands) == 0 || len(projectCands) == 0 {
-		return ConfigSource{}
-	}
 	if anyDirExists(userCands[0], projectCands[0]) {
 		return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}
 	}
+	// The candidate lists are parallel by construction: both come from the
+	// same ordered name list via agentConfigDirCandidates, so userCands[i] and
+	// projectCands[i] name the same config dir in their respective scopes.
 	for i := 1; i < len(userCands); i++ {
 		if anyDirExists(userCands[i], projectCands[i]) {
 			return ConfigSource{

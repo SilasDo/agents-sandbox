@@ -29,8 +29,8 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 - **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
 
 > **Legacy fallback:** while no `opencode2` dir exists (in either scope), `opencode2` reads the old shared `opencode` dir
-> and warns on every run; creating the `opencode2` dir switches it over, after which `opencode` and `opencode2` no longer
-> share launcher config.
+> and warns on every run while it falls back to the old dir; creating the `opencode2` dir switches it over, after which
+> `opencode` and `opencode2` no longer share launcher config.
 
 VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently

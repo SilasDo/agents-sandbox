@@ -92,12 +92,7 @@ func agentConfigDirCandidates(base string, a agent.Agent) []string {
 		names = append(names, al.ConfigDirAliases()...)
 	}
 	dirs := make([]string, 0, len(names))
-	seen := make(map[string]struct{}, len(names))
 	for _, n := range names {
-		if _, dup := seen[n]; dup {
-			continue
-		}
-		seen[n] = struct{}{}
 		dirs = append(dirs, filepath.Join(base, n))
 	}
 	return dirs
