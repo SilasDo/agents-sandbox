@@ -414,7 +414,8 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
 - **Explicit acknowledgment.** The notice requires the user to react (press a key) — it is
   a deliberate, once-ever moment, not scroll-past output. It needs a new "acknowledge"
   primitive on the `termio.UI` seam (real printer + `Mock`); `Confirm`/`Input` semantics
-  do not fit.
+  do not fit. The primitive prints unconditionally: it is not gated by the level or
+  `--quiet`, so a once-ever, interaction-required moment is never silently suppressed.
 - **Trigger points** (interactive only):
   - immediately after a copy campaign finalizes `completed` (`finalizeMigration`);
   - immediately after the user chooses dismiss (`dismissMigration`);
@@ -427,9 +428,12 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   names) and on the terminal / nothing-to-copy fallthrough. The notice is best-effort — a
   state-read, detection, or acknowledgment failure warns and lets the session continue.
 - **Excluded volumes.** When a campaign has `excluded` volumes, the notice — rendered at
-  finalize time, because `excluded` is dropped at the terminal write — appends a paragraph
-  naming them as uncopied and still holding data, left in place; it still must not suggest
-  deleting `~/.microsandbox` wholesale.
+  finalize time, because `excluded` is dropped at the terminal write — leads with a "do not
+  remove" paragraph naming them as uncopied and still holding data, left in place. It then
+  suppresses every command that would delete them: both the wholesale
+  `rm -rf ~/.microsandbox` and the selective `~/.microsandbox/volumes/agents-sandbox-home-*`
+  glob match an excluded volume. The safe sandbox globs are still offered, and the volumes
+  glob is replaced by a note to remove the remaining volumes individually.
 - **Persisted once-ever flag.** A second `migrations` registry entry,
   `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
   status; absence is the pending state. This keeps the "absent = pending, terminal =

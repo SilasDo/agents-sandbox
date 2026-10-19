@@ -59,6 +59,19 @@ func TestRenderNoticeExcludedSuppressesWholesaleCommand(t *testing.T) {
 	}
 }
 
+func TestRenderNoticeExcludedSuppressesVolumeGlob(t *testing.T) {
+	out := renderNotice(
+		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
+		[]string{naming.HomePrefix + "bad"},
+	)
+	if strings.Contains(out, "rm -rf ~/.microsandbox/volumes/agents-sandbox-home-*") {
+		t.Errorf("notice suggests a volume glob that would delete the uncopied volume:\n%s", out)
+	}
+	if !strings.Contains(out, naming.HomePrefix+"bad") {
+		t.Errorf("notice no longer names the excluded volume:\n%s", out)
+	}
+}
+
 func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{IsInteractiveResult: true}

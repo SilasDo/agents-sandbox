@@ -72,6 +72,12 @@ in non-interactive sessions. Nothing is deleted for you.
   - `~/.microsandbox/sandboxes/agents-sandbox-task-*`
 - **Yours** — any other microsandbox data. agents-sandbox never touches it.
 
+If any volume could not be copied, it is left in place and named in the notice:
+check it before removing anything. That uncopied volume also matches the
+`agents-sandbox-home-*` glob, so do not run the volume command below when one is
+listed — remove the other volumes individually and leave the uncopied one in
+place.
+
 Remove just our leftovers:
 
 ```console
@@ -87,9 +93,8 @@ agents-sandbox:
 rm -rf ~/.microsandbox
 ```
 
-If any volume could not be copied, it is left in place and named in the notice:
-check it before removing anything, and do not remove the whole folder while it
-remains — in that case the notice does not offer the wholesale command at all.
+When a volume could not be copied, the notice also withholds the wholesale
+command: do not remove the whole folder while that volume remains.
 
 Removing `~/.microsandbox` does not uninstall a system-wide microsandbox by
 itself. Since agents-sandbox no longer requires the system-wide `msb` command,

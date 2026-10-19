@@ -155,9 +155,11 @@ func (p *printer) Spinnerf(format string, args ...any) Spinner {
 }
 
 // Acknowledge prints a one-time notice and, when interactive, waits for the
-// user to press Enter. A non-interactive session prints the notice but returns
-// immediately, so its caller does not record an acknowledgment the user never
-// gave.
+// user to press Enter. It prints unconditionally — neither the level gate nor
+// --quiet suppresses it — because it is a deliberate, once-ever,
+// interaction-required moment that must not be silently dropped. A
+// non-interactive session prints the notice but returns immediately, so its
+// caller does not record an acknowledgment the user never gave.
 func (p *printer) Acknowledge(message string) error {
 	p.write(p.stderr, "", message)
 	if !p.IsInteractive() {

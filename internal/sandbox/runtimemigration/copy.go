@@ -34,7 +34,9 @@ func saveMigration(tx *state.RootTxn, m state.Migration) error {
 }
 
 // CopyVolumes runs the legacy home-volume copy campaign and discards the
-// excluded names. See copyVolumesCampaign.
+// excluded names. It is the exported entry point kept for callers and tests;
+// production flows through copyVolumesCampaign so Offer can report the excluded
+// volumes in the notice. See copyVolumesCampaign.
 func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
 	_, err := copyVolumesCampaign(ctx, client, ui)
 	return err
