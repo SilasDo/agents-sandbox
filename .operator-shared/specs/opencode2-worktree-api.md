@@ -1,7 +1,7 @@
 # Contract: opencode2 worktree API (v2 routes, project scoping, base refs)
 
 Date: 2026-10-19
-Status: specified (issue #235; not implemented)
+Status: implemented on fix/opencode2-worktree-api (pending merge)
 
 ## Problem
 
@@ -73,7 +73,8 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
   seeds `location[directory]=<target>` (shell-quoted), and reads `.project.id`. An empty id or a
   non-2xx response must fail the command rather than send a request with an empty `projectID`.
 - **v2 lists with `GET /api/worktree?projectID=<id>`**, and the emitted list **excludes the
-  canonical root entry**: `jq 'select(.directory != $canonical)'`. Otherwise a worktree name equal
+  canonical root entry**: `jq -c --arg canonical "$CANON" '[.[]|select(.directory != $canonical)]'`
+  (wrapped in an array so the output stays one JSON list). Otherwise a worktree name equal
   to the repository directory name would silently "reuse" the main checkout and attach the session
   there instead of creating a worktree.
 - **v2 creates with `POST /api/worktree`** and the body `{"projectID": …, "name": …}`, plus
