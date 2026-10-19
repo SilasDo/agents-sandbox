@@ -31,6 +31,15 @@ func interactiveUI(key string, prompt *bool) *termio.Mock {
 	}
 }
 
+// noticeUI returns an interactive mock whose Select returns key and which
+// records the notice acknowledgment.
+func noticeUI(key string) *termio.Mock {
+	return &termio.Mock{
+		IsInteractiveResult: true,
+		SelectFn:            func(_ string, _ []termio.Choice, _ string) (string, error) { return key, nil },
+	}
+}
+
 // writeCorruptRootState writes an unparseable root state.yaml so ReadRootState
 // fails, exercising the offer's best-effort error handling.
 func writeCorruptRootState(t *testing.T) {
@@ -524,8 +533,7 @@ func TestFinalizeCompletedCampaignTerminalIsNoOp(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	ui := termio.NewTestMock(t)
-	if err := finalizeCompletedCampaign(&ui); err != nil {
+	if _, err := finalizeCompletedCampaign(); err != nil {
 		t.Fatalf("finalizeCompletedCampaign: %v", err)
 	}
 	root, _ := state.ReadRootState()
@@ -537,8 +545,7 @@ func TestFinalizeCompletedCampaignTerminalIsNoOp(t *testing.T) {
 func TestFinalizeCompletedCampaignStateReadError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	writeCorruptRootState(t)
-	ui := termio.NewTestMock(t)
-	if err := finalizeCompletedCampaign(&ui); err == nil {
+	if _, err := finalizeCompletedCampaign(); err == nil {
 		t.Fatal("finalizeCompletedCampaign() error = nil, want a state read error")
 	}
 }
@@ -775,26 +782,6 @@ func TestOfferPromptCopyingResumeNotice(t *testing.T) {
 	}
 }
 
-// TestFinalizeMigrationWarnsExcluded pins that finalization warns about the
-// volumes the campaign could not copy, then records completed.
-func TestFinalizeMigrationWarnsExcluded(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	ui := termio.NewTestMock(t)
-	m := state.Migration{Status: state.MigrationCopying, Excluded: []string{naming.HomePrefix + "bad"}}
-	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
-		return finalizeMigration(tx, m, &ui)
-	}); err != nil {
-		t.Fatalf("finalizeMigration: %v", err)
-	}
-	if len(ui.WarnCalls) != 1 {
-		t.Fatalf("WarnCalls = %v, want one warning about the uncopied volumes", ui.WarnCalls)
-	}
-	root, _ := state.ReadRootState()
-	if got, _ := root.Migration(MigrationName); got.Status != state.MigrationCompleted {
-		t.Fatalf("status = %q, want completed", got.Status)
-	}
-}
-
 // TestOfferAmbiguousStateCopyKeepsExisting pins option 1 in the ambiguous state:
 // a present private volume of unclear status is recorded as Kept and left
 // untouched while only the missing volumes are copied.
@@ -905,5 +892,144 @@ func TestOfferAmbiguousStateDismissRemovesUnclear(t *testing.T) {
 	root, _ := state.ReadRootState()
 	if got, _ := root.Migration(MigrationName); got.Status != state.MigrationDismissed {
 		t.Fatalf("status = %q, want dismissed", got.Status)
+	}
+}
+
+func TestOfferShowsNoticeAfterCopy(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	target := t.TempDir()
+	client := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			return &msb.MockVolumeHandle{Name_: name, Path_: target}, nil
+		},
+	}
+	ui := noticeUI(choiceCopy)
+	if err := Offer(context.Background(), client, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	root, _ := state.ReadRootState()
+	if m, _ := root.Migration(MigrationName); m.Status != state.MigrationCompleted {
+		t.Fatalf("migration status = %q, want completed", m.Status)
+	}
+}
+
+func TestOfferShowsNoticeAfterDismiss(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	ui := noticeUI(choiceFresh)
+	client := &msb.MockMsbClient{}
+	if err := Offer(context.Background(), client, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+}
+
+func TestOfferShowsNoticeOnLaterTerminalSession(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	if err := seedRootState(state.RootState{}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
+		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
+		return tx.Commit()
+	}); err != nil {
+		t.Fatalf("seed completed migration: %v", err)
+	}
+
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice on a terminal session", ui.AcknowledgeCalls)
+	}
+}
+
+func TestOfferShowsNoticePendingNothingToCopy(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addSandboxDir(t, legacy, naming.VMPrefix+"proj") // artifacts present, no volumes to copy
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice", ui.AcknowledgeCalls)
+	}
+}
+
+func TestOfferNoticeOnceEver(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
+		tx.State().SetMigration(LegacyRuntimeNoticeName, state.Migration{Status: state.MigrationAcknowledged})
+		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
+		return tx.Commit()
+	}); err != nil {
+		t.Fatalf("seed acknowledged notice: %v", err)
+	}
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 0 {
+		t.Fatalf("AcknowledgeCalls = %v, want none once acknowledged", ui.AcknowledgeCalls)
+	}
+}
+
+func TestOfferNonInteractiveNoticeDoesNotMark(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
+		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
+		return tx.Commit()
+	}); err != nil {
+		t.Fatalf("seed completed migration: %v", err)
+	}
+	ui := &termio.Mock{IsInteractiveResult: false}
+	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	root, _ := state.ReadRootState()
+	if _, ok := root.Migration(LegacyRuntimeNoticeName); ok {
+		t.Error("non-interactive Offer recorded an acknowledgment")
+	}
+}
+
+func TestOfferNoticeNamesExcludedVolumes(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	bad := naming.HomePrefix + "bad"
+	good := naming.HomePrefix + "good"
+	addVolumeDir(t, legacy, bad)
+	addVolumeDir(t, legacy, good)
+
+	target := t.TempDir()
+	client := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			if name == bad {
+				return nil, errors.New("no space")
+			}
+			return &msb.MockVolumeHandle{Name_: name, Path_: target}, nil
+		},
+	}
+	ui := noticeUI(choiceCopy)
+	if err := Offer(context.Background(), client, ui); err != nil {
+		t.Fatalf("Offer() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 || !strings.Contains(ui.AcknowledgeCalls[0], bad) {
+		t.Fatalf("AcknowledgeCalls = %v, want the excluded volume %q named", ui.AcknowledgeCalls, bad)
 	}
 }
