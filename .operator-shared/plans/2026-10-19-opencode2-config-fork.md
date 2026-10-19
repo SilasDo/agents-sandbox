@@ -442,6 +442,9 @@ func TestLoadConfigFilesFallsBackToLegacyDir(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 
 	legacy := filepath.Join(cp.UserConfigDir(), "opencode")
+	if err := os.MkdirAll(legacy, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	testutil.WriteFile(t, legacy, "opencode-model.json", `{"model":"v2-legacy"}`)
 	testutil.WriteFile(t, legacy, "tui.json", `{"theme":"legacy"}`)
 
@@ -470,6 +473,11 @@ func TestLoadConfigFilesPrimarySuppressesLegacy(t *testing.T) {
 	cp := configpaths.Get()
 	a, _ := agent.Lookup("opencode2")
 
+	for _, dir := range []string{filepath.Join(cp.UserConfigDir(), "opencode2"), filepath.Join(cp.UserConfigDir(), "opencode")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	testutil.WriteFile(t, filepath.Join(cp.UserConfigDir(), "opencode2"), "opencode-model.json", `{"model":"v2-primary"}`)
 	testutil.WriteFile(t, filepath.Join(cp.UserConfigDir(), "opencode"), "opencode-model.json", `{"model":"v1-legacy"}`)
 
@@ -527,8 +535,8 @@ func mustOpencode2(t *testing.T) agent.Agent {
 
 func TestConfigAgentOpencode2UsesOwnDir(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
-	testutil.WriteFile(t, configpaths.Get().UserAgentConfigDir(mustOpencode2(t)),
-		"opencode-model.json", `{"model":"v2"}`)
+	srcDir := configpaths.Get().UserAgentConfigDir(mustOpencode2(t))
+	testutil.WriteFile(t, srcDir, "opencode-model.json", `{"model":"v2"}`)
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("config agent --agent opencode2: %v", err)
@@ -537,8 +545,8 @@ func TestConfigAgentOpencode2UsesOwnDir(t *testing.T) {
 	if !strings.Contains(joined, `"model": "v2"`) {
 		t.Errorf("opencode2 config agent did not read its own dir, got:\n%s", joined)
 	}
-	if !strings.Contains(joined, filepath.Join(".config", "agents-sandbox", "opencode2")) {
-		t.Errorf("expected the opencode2 source dir path in output, got:\n%s", joined)
+	if !strings.Contains(joined, srcDir) {
+		t.Errorf("expected the opencode2 source dir %q in output, got:\n%s", srcDir, joined)
 	}
 }
 ```
