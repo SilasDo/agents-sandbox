@@ -25,16 +25,17 @@ type ErrorCall struct {
 type Mock struct {
 	mu sync.Mutex
 
-	InfoCalls    []string
-	WarnCalls    []string
-	ErrorCalls   []ErrorCall
-	VerboseCalls []string
-	OutCalls     []string
-	PrintCalls   []string
-	SpinnerCalls []string
-	ConfirmCalls []string
-	StdOutBuffer bytes.Buffer
-	StdErrBuffer bytes.Buffer
+	InfoCalls        []string
+	WarnCalls        []string
+	ErrorCalls       []ErrorCall
+	VerboseCalls     []string
+	OutCalls         []string
+	PrintCalls       []string
+	SpinnerCalls     []string
+	ConfirmCalls     []string
+	AcknowledgeCalls []string
+	StdOutBuffer     bytes.Buffer
+	StdErrBuffer     bytes.Buffer
 
 	level               Level
 	assumeYes           bool
@@ -42,6 +43,7 @@ type Mock struct {
 	IsInteractiveResult bool
 	ConfirmResult       bool
 	ConfirmErr          error
+	AcknowledgeErr      error
 
 	SelectFn func(prompt string, choices []Choice, defaultKey string) (string, error)
 	InputFn  func(prompt, defaultValue string) (string, error)
@@ -220,6 +222,16 @@ func (m *Mock) Confirm(prompt string, defaultYes bool) (bool, error) {
 	}
 	m.ConfirmCalls = append(m.ConfirmCalls, prompt)
 	return m.ConfirmResult, m.ConfirmErr
+}
+
+// Acknowledge records the notice regardless of IsInteractiveResult: both the
+// interactive and the non-interactive path call it, and the caller decides
+// whether the acknowledgment is recorded.
+func (m *Mock) Acknowledge(message string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.AcknowledgeCalls = append(m.AcknowledgeCalls, message)
+	return m.AcknowledgeErr
 }
 
 func (m *Mock) StdOut() io.Writer {

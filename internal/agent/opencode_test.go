@@ -107,8 +107,13 @@ func TestOpencodeDaemonHealthParse(t *testing.T) {
 func TestOpencodeWorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	worktree := mustWorktree(t, a)
-	if !strings.Contains(worktree.WorktreeListCmd(), "/experimental/worktree") {
-		t.Errorf("WorktreeListCmd = %q", worktree.WorktreeListCmd())
+	if !strings.Contains(worktree.WorktreeListCmd("/workspace"), "/experimental/worktree") {
+		t.Errorf("WorktreeListCmd = %q", worktree.WorktreeListCmd("/workspace"))
+	}
+	if got := worktree.WorktreeListCmd(
+		"/workspace/my notes",
+	); got != "curl -sf http://127.0.0.1:4096/experimental/worktree" {
+		t.Errorf("WorktreeListCmd = %q, want the global v1 route", got)
 	}
 }
 
@@ -118,6 +123,29 @@ func TestOpencodeWorktreeCreateCmdWithBase(t *testing.T) {
 	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "f", Base: "main"})
 	if !strings.Contains(got, `"startCommand":"git reset --hard main"`) {
 		t.Errorf("WorktreeCreateCmd(with base) = %q", got)
+	}
+}
+
+// TestOpencodeWorktreeCreateCmdIgnoresTarget pins that v1's global route does
+// not read the launch directory: the command is identical whatever the target.
+func TestOpencodeWorktreeCreateCmdIgnoresTarget(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	worktree := mustWorktree(t, a)
+	withoutTarget := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "main"})
+	withTarget := worktree.WorktreeCreateCmd(
+		agent.WorktreeSpec{Name: "feat-x", Base: "main", Target: "/workspace/my notes"},
+	)
+	if withTarget != withoutTarget {
+		t.Errorf("WorktreeCreateCmd changed with the target: %q != %q", withTarget, withoutTarget)
+	}
+}
+
+// TestOpencodeWorktreeNotDetached pins that v1 keeps its worktrees on a branch,
+// so the launcher never reports a detached HEAD for opencode.
+func TestOpencodeWorktreeNotDetached(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	if _, ok := agent.AsDetachedWorktreeReporter(a); ok {
+		t.Error("opencode must not implement DetachedWorktreeReporter (v1 keeps a branch)")
 	}
 }
 

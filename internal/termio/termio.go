@@ -121,6 +121,11 @@ type UI interface {
 	Select(prompt string, choices []Choice, defaultKey string) (string, error)
 	Input(prompt, defaultValue string) (string, error)
 	Confirm(prompt string, defaultYes bool) (bool, error)
+	// Acknowledge prints a one-time notice unconditionally — never gated by the
+	// level or --quiet; when interactive it waits for Enter, and when
+	// non-interactive it prints and returns immediately. The caller decides
+	// whether to record the acknowledgment.
+	Acknowledge(message string) error
 }
 
 // New creates a production ui backed by the given streams.

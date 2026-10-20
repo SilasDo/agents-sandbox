@@ -163,7 +163,7 @@ func TestNecessaryVolumesReportsOnlyMissingLegacyNames(t *testing.T) {
 }
 
 func TestNecessaryVolumesTerminalStatusIsNeverNecessary(t *testing.T) {
-	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed} {
+	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged} {
 		legacy := newHome(t)
 		addVolumeDir(t, legacy, naming.HomePrefix+"orphan")
 		got, err := necessaryVolumes(legacy, newHome(t), state.Migration{Status: status})
@@ -293,6 +293,19 @@ func loopedVolumeHome(t *testing.T) string {
 	return home
 }
 
+// makeVolumeDirUnreadable chmods <home>/volumes to 000 so its listing fails with
+// permission denied: the tolerant listing treats that as empty, while the strict
+// listing reports it. The mode is restored in cleanup so t.TempDir can recurse
+// into the directory when removing it.
+func makeVolumeDirUnreadable(t *testing.T, home string) {
+	t.Helper()
+	volumes := filepath.Join(home, "volumes")
+	if err := os.Chmod(volumes, 0o000); err != nil {
+		t.Fatalf("chmod volumes 000: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(volumes, 0o750) })
+}
+
 func TestPresentLegacyTargets(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
@@ -341,6 +354,100 @@ func TestNecessaryVolumesPrivateReadError(t *testing.T) {
 	}
 }
 
+// addSandboxDir creates <home>/sandboxes/<name>.
+func addSandboxDir(t *testing.T, home, name string) {
+	t.Helper()
+	path := filepath.Join(home, "sandboxes", name)
+	if err := os.MkdirAll(path, 0o750); err != nil {
+		t.Fatalf("create sandbox record %q: %v", name, err)
+	}
+}
+
+func TestDetectLegacyArtifactsFindsHomeVolumes(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.HomeVolumes) != 1 || len(got.Sandboxes) != 0 || !got.present() {
+		t.Fatalf("artifacts = %+v, want one home volume and nothing else", got)
+	}
+}
+
+func TestDetectLegacyArtifactsFindsLauncherSandboxes(t *testing.T) {
+	legacy := newHome(t)
+	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
+	addSandboxDir(t, legacy, naming.TaskPrefix+"proj")
+	addSandboxDir(t, legacy, "user-own")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.Sandboxes) != 2 || len(got.HomeVolumes) != 0 || !got.present() {
+		t.Fatalf("artifacts = %+v, want the two launcher sandboxes only", got)
+	}
+}
+
+func TestDetectLegacyArtifactsSilentForUnrelatedHome(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, "user-own-volume")
+	addSandboxDir(t, legacy, "user-own-sandbox")
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if got.present() {
+		t.Fatalf("artifacts = %+v, want none", got)
+	}
+}
+
+func TestDetectLegacyArtifactsToleratesMissingDirs(t *testing.T) {
+	got, err := detectLegacyArtifacts(t.TempDir())
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if got.present() {
+		t.Fatalf("artifacts = %+v, want none for an empty home", got)
+	}
+}
+
+// TestDetectLegacyArtifactsMarksUnreadableVolumes pins that an unlistable
+// <legacyHome>/volumes is surfaced as VolumesUnreadable so command selection can
+// withhold destructive commands, even though the tolerant listing reports it as
+// empty and an unreadable directory alone must not fire the notice.
+func TestDetectLegacyArtifactsMarksUnreadableVolumes(t *testing.T) {
+	legacy := newHome(t)
+	makeVolumeDirUnreadable(t, legacy)
+
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if !got.VolumesUnreadable {
+		t.Errorf("artifacts = %+v, want VolumesUnreadable", got)
+	}
+	if len(got.HomeVolumes) != 0 {
+		t.Errorf("HomeVolumes = %v, want none from an unreadable directory", got.HomeVolumes)
+	}
+	if got.present() {
+		t.Error("artifacts.present() = true, want false: an unreadable volumes dir alone must not fire")
+	}
+}
+
+func TestDetectLegacyArtifactsForResolvesLegacyHome(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	got, err := detectLegacyArtifactsFor()
+	if err != nil {
+		t.Fatalf("detectLegacyArtifactsFor: %v", err)
+	}
+	if !got.present() {
+		t.Fatal("detectLegacyArtifactsFor() found no artifacts in the installed legacy home")
+	}
+}
+
 func assertSameSet(t *testing.T, got, want []string) {
 	t.Helper()
 	gotSet := make(map[string]bool, len(got))
@@ -357,5 +464,29 @@ func assertSameSet(t *testing.T, got, want []string) {
 	}
 	if len(gotSet) != len(want) {
 		t.Errorf("result %v = %d entries, want %d", got, len(gotSet), len(want))
+	}
+}
+
+// TestDetectLegacyArtifactsErrorsOnUnlistableVolumes pins that a non-tolerated
+// listing failure of <legacyHome>/volumes propagates rather than reading as an
+// empty home, so detection never mistakes an I/O error for "no artifacts".
+func TestDetectLegacyArtifactsErrorsOnUnlistableVolumes(t *testing.T) {
+	legacy := t.TempDir()
+	makeLegacyVolumesUnlistable(t, legacy)
+	if _, err := detectLegacyArtifacts(legacy); err == nil {
+		t.Fatal("detectLegacyArtifacts() error = nil, want the volumes listing failure")
+	}
+}
+
+// TestDetectLegacyArtifactsErrorsOnUnlistableSandboxes is the sandbox-tier twin:
+// the volumes listing succeeds, so the sandbox listing error is the one that
+// must propagate.
+func TestDetectLegacyArtifactsErrorsOnUnlistableSandboxes(t *testing.T) {
+	legacy := t.TempDir()
+	if err := os.Symlink("sandboxes", filepath.Join(legacy, "sandboxes")); err != nil {
+		t.Fatalf("symlink sandboxes: %v", err)
+	}
+	if _, err := detectLegacyArtifacts(legacy); err == nil {
+		t.Fatal("detectLegacyArtifacts() error = nil, want the sandboxes listing failure")
 	}
 }

@@ -7,7 +7,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
@@ -45,7 +44,8 @@ func presentPrivateVolumeNames(privateHome string) ([]string, error) {
 // necessaryVolumes returns the legacy home volume names that still need copying,
 // given the current migration status. The migration is the source of truth for
 // what "necessary" means:
-//   - completed/dismissed: the campaign is over; nothing is ever necessary.
+//   - completed/dismissed/acknowledged: the campaign is over; nothing is ever
+//     necessary.
 //   - copying: legacy names minus those already accounted for (Copied, Kept, or
 //     Excluded). The private listing is not consulted, so a present volume not
 //     recorded as accounted for is an unambiguous partial and stays necessary
@@ -53,7 +53,9 @@ func presentPrivateVolumeNames(privateHome string) ([]string, error) {
 //   - pending (zero status): legacy names absent from the private home.
 func necessaryVolumes(legacyHome, privateHome string, m state.Migration) ([]string, error) {
 	switch m.Status {
-	case state.MigrationCompleted, state.MigrationDismissed:
+	// The acknowledged case is defensive only: acknowledged is written solely to
+	// the legacy_runtime_notice entry and never to runtime_home.
+	case state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged:
 		return nil, nil
 	case state.MigrationCopying:
 		return copyingNecessaryVolumes(legacyHome, m)
@@ -141,8 +143,8 @@ func copyingNecessaryVolumes(legacyHome string, m state.Migration) ([]string, er
 
 // presentLegacyTargets returns the legacy home volume names already present in
 // the private home. Presence under the pending status means a target was already
-// restored, so a campaign starting now records these as copied rather than
-// discarding and re-copying a home the user already has.
+// restored, so a campaign starting now records these as Kept (unverified, left in
+// place) rather than discarding and re-copying a home the user already has.
 func presentLegacyTargets(legacyHome, privateHome string) ([]string, error) {
 	targets, err := campaignLegacyVolumeNames(legacyHome)
 	if err != nil {
@@ -176,14 +178,13 @@ func necessaryVolumesFor(m state.Migration) ([]string, error) {
 	return necessaryVolumes(legacyHome, runtime.PrivateHome(), m)
 }
 
-// homeVolumeNames lists the agents-sandbox home volumes under <home>/volumes. A
-// missing volumes directory is always empty. When tolerateUnreadable is true an
+// matchingDirNames lists the immediate subdirectories of dir whose name matches
+// match. A missing directory is always empty. When tolerateUnreadable is true an
 // existing-but-unlistable directory (not-a-directory or permission denied) is
 // also empty; when false only the missing case is empty and any other read
 // failure is returned, so an open campaign fails closed.
-func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
-	volumesDir := filepath.Join(home, "volumes")
-	entries, err := os.ReadDir(volumesDir)
+func matchingDirNames(dir string, match func(string) bool, tolerateUnreadable bool) ([]string, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -193,15 +194,108 @@ func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
 		}
 		return nil, err
 	}
-
 	var names []string
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
-		if name := entry.Name(); strings.HasPrefix(name, naming.HomePrefix) {
+		if name := entry.Name(); match(name) {
 			names = append(names, name)
 		}
 	}
 	return names, nil
+}
+
+// homeVolumeNames lists the agents-sandbox home volumes under <home>/volumes. A
+// missing volumes directory is always empty. When tolerateUnreadable is true an
+// existing-but-unlistable directory (not-a-directory or permission denied) is
+// also empty; when false only the missing case is empty and any other read
+// failure is returned, so an open campaign fails closed.
+func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
+	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsHomeVolume, tolerateUnreadable)
+}
+
+// uncopiedLegacyVolumes returns the legacy home volume names that still hold the
+// only trustworthy copy: those with no counterpart in the private home and those
+// present under a legacy target name but not recorded as fully copied. A legacy
+// volume is safe to remove only when the campaign recorded it Copied and its
+// destination still exists in the private home; presence alone is not proof,
+// because a Kept volume is present yet unverified (an unclear copy the user chose
+// to leave untouched). Rendered from the two listings and the migration record,
+// it survives the dismiss path and later sessions, where the campaign's transient
+// Kept/Excluded sets have been dropped.
+func uncopiedLegacyVolumes(m state.Migration, legacyVolumes []string) ([]string, error) {
+	present, err := presentPrivateVolumeNames(runtime.PrivateHome())
+	if err != nil {
+		return nil, err
+	}
+	presentSet := make(map[string]bool, len(present))
+	for _, name := range present {
+		presentSet[name] = true
+	}
+	copied := make(map[string]bool, len(m.Copied))
+	for _, name := range m.Copied {
+		copied[name] = true
+	}
+	var uncopied []string
+	for _, name := range legacyVolumes {
+		if presentSet[name] && copied[name] {
+			continue
+		}
+		uncopied = append(uncopied, name)
+	}
+	return uncopied, nil
+}
+
+// legacySandboxNames lists launcher-owned sandbox records under
+// <legacyHome>/sandboxes. Tolerance matches the pending-state volume listing.
+func legacySandboxNames(legacyHome string) ([]string, error) {
+	return matchingDirNames(filepath.Join(legacyHome, "sandboxes"), naming.IsLauncherSandbox, true)
+}
+
+// legacyArtifacts are the launcher-owned leftovers in the legacy home.
+// VolumesUnreadable records that <legacyHome>/volumes could not be listed: it is
+// empty for firing detection (an unreadable directory counts as absent), but
+// command selection must withhold destructive commands because unlisted volumes
+// may still hold data.
+type legacyArtifacts struct {
+	HomeVolumes       []string
+	Sandboxes         []string
+	VolumesUnreadable bool
+}
+
+func (a legacyArtifacts) present() bool {
+	return len(a.HomeVolumes) > 0 || len(a.Sandboxes) > 0
+}
+
+// detectLegacyArtifacts reports the launcher-owned leftovers under legacyHome.
+func detectLegacyArtifacts(legacyHome string) (legacyArtifacts, error) {
+	volumes, err := legacyVolumeNames(legacyHome)
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	// A tolerant listing swallows an unreadable volumes directory as empty.
+	// Detection may treat that as absent, but command selection may not: an
+	// unlistable directory can still hold uncopied volumes. A strict listing
+	// distinguishes "empty" from "could not read".
+	volumesUnreadable := false
+	if len(volumes) == 0 {
+		if _, strictErr := campaignLegacyVolumeNames(legacyHome); strictErr != nil {
+			volumesUnreadable = true
+		}
+	}
+	sandboxes, err := legacySandboxNames(legacyHome)
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	return legacyArtifacts{HomeVolumes: volumes, Sandboxes: sandboxes, VolumesUnreadable: volumesUnreadable}, nil
+}
+
+// detectLegacyArtifactsFor resolves the legacy home and delegates.
+func detectLegacyArtifactsFor() (legacyArtifacts, error) {
+	legacyHome, err := runtime.LegacyHome()
+	if err != nil {
+		return legacyArtifacts{}, err
+	}
+	return detectLegacyArtifacts(legacyHome)
 }

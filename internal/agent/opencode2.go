@@ -27,6 +27,12 @@ const (
 	opencode2ServerPassword = "opencode"
 )
 
+// opencode2CurlFlags apply to every v2 worktree API call: -m bounds the request
+// so a hung daemon cannot block the launcher indefinitely, and -sS keeps curl's
+// error message on stderr (plain -s would silence it, leaving an empty error
+// message) while -f makes an HTTP error status a failure.
+const opencode2CurlFlags = "-fsS -m 30"
+
 // opencode2CurlAuth is the curl basic-auth flag for the fixed opencode2 server
 // credential, used by the health probe and the worktree API calls.
 const opencode2CurlAuth = "-u " + opencode2ServerUsername + ":" + opencode2ServerPassword
@@ -49,6 +55,11 @@ func (opencode2Profile) ConfigDirName() string { return opencode2Name }
 // ConfigDirAliases names the legacy shared config dir opencode2 used before it
 // gained its own namespace.
 func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeName} }
+
+// WorktreeCreatesDetachedHead reports that v2's daemon creates worktrees on a
+// detached HEAD (v1 keeps its own branch), so the launcher can tell the user how
+// to keep their commits.
+func (opencode2Profile) WorktreeCreatesDetachedHead() bool { return true }
 
 func (opencode2Profile) ImageSpec() ImageSpec {
 	return ImageSpec{
@@ -120,31 +131,57 @@ func (opencode2Profile) DaemonAuthHint() string {
 		"\" with password \"" + opencode2ServerPassword + "\" (baked into the image)."
 }
 
-// opencode2ProjectIDCmd resolves the current project's id from the running v2
-// server; project id scopes the worktree routes.
-const opencode2ProjectIDCmd = "$(curl -sf " + opencode2CurlAuth +
-	" http://127.0.0.1:4096/api/project/current | jq -r .id)"
+// opencode2ServerURL is the loopback base URL of the opencode2 serve daemon,
+// used by the worktree API calls.
+const opencode2ServerURL = "http://127.0.0.1:" + opencode2Port
 
-func (opencode2Profile) WorktreeListCmd() string {
-	return "PID=" + opencode2ProjectIDCmd + "; curl -sf " + opencode2CurlAuth +
-		" http://127.0.0.1:4096/api/worktree/$PID"
+// opencode2LocatePrelude resolves the project scoped to target and exports the
+// worktree calls' inputs: LOC (the raw /api/location response), PID (the
+// project id) and CANON (the project's canonical directory — the main checkout,
+// which the worktree list must exclude). It aborts the command when the location
+// call fails, or the project id or canonical directory is missing or empty, so
+// a request is never sent with an empty projectID and the list is never filtered
+// against a literal "null".
+func opencode2LocatePrelude(target string) string {
+	return "LOC=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " --get --data-urlencode " +
+		shellQuote("location[directory]="+target) + " " + opencode2ServerURL + "/api/location) || exit 1; " +
+		"PID=$(printf '%s' \"$LOC\" | jq -re '.project.id | select(length > 0)') || exit 1; " +
+		"CANON=$(printf '%s' \"$LOC\" | jq -re '.project.canonical | select(length > 0)') || exit 1; "
 }
 
+// opencode2WorktreeListFilter is the jq program that drops the project's
+// canonical root from the worktree list. It accepts only an array whose entries
+// each carry a non-empty string "directory", and fails the list otherwise: a
+// non-array payload, or an entry whose directory field was renamed, blanked, or
+// retyped, must not be accepted — the base-name match would silently ignore
+// such an entry and create a second worktree beside the existing one.
+const opencode2WorktreeListFilter = `if type == "array" and all(.[]; type == "object" and (.directory | type == "string" and length > 0)) then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end`
+
+// WorktreeListCmd lists the project's worktrees through v2's project-scoped
+// route. The curl response is captured before jq runs, so curl's own failure
+// propagates (a piped-into-jq failure would exit 0 with empty stdout and read as
+// "no worktrees"); the filter then drops the canonical root entry and fails on a
+// non-array payload (see opencode2WorktreeListFilter).
+func (opencode2Profile) WorktreeListCmd(target string) string {
+	return opencode2LocatePrelude(target) +
+		"LIST=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID) || exit 1; " +
+		"printf '%s' \"$LIST\" | jq -ce --arg canonical \"$CANON\" " + shellQuote(opencode2WorktreeListFilter)
+}
+
+// WorktreeCreateCmd creates a worktree through v2's project-scoped route. The
+// body is Worktree.CreateInput (additionalProperties: false): the server picks
+// the directory, and the base ref travels as "branch". jq builds the body so
+// arbitrary ref names are quoted safely.
 func (opencode2Profile) WorktreeCreateCmd(spec WorktreeSpec) string {
-	directory := fmt.Sprintf("$HOME/.local/share/opencode/worktree/$PID/%s", spec.Name)
-	body := fmt.Sprintf(`{\"strategy\":\"git_worktree\",\"name\":\"%s\",\"directory\":\"%s\"}`, spec.Name, directory)
+	args := "--arg pid \"$PID\" --arg name " + shellQuote(spec.Name)
+	object := "{projectID:$pid,name:$name}"
 	if spec.Base != "" {
-		body = fmt.Sprintf(
-			`{\"strategy\":\"git_worktree\",\"name\":\"%s\",\"directory\":\"%s\",\"from\":\"%s\"}`,
-			spec.Name,
-			directory,
-			spec.Base,
-		)
+		args += " --arg branch " + shellQuote(spec.Base)
+		object = "{projectID:$pid,name:$name,branch:$branch}"
 	}
-	return fmt.Sprintf(
-		"PID="+opencode2ProjectIDCmd+"; curl -sf "+opencode2CurlAuth+" -X POST http://127.0.0.1:4096/api/worktree/$PID -H 'Content-Type: application/json' -d \"%s\"",
-		body,
-	)
+	return opencode2LocatePrelude(spec.Target) +
+		"curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " -X POST " + opencode2ServerURL + "/api/worktree " +
+		"-H 'Content-Type: application/json' -d \"$(jq -nc " + args + " " + shellQuote(object) + ")\""
 }
 
 func (opencode2Profile) WorktreeParseDir(stdout string) (string, bool) {

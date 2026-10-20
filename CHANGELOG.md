@@ -83,6 +83,17 @@ command reports the bare version (e.g. `0.1.0`).
   happen. When a private volume already exists under a legacy name (a prior copy of unclear status), the offer says so
   and lets you copy only the missing volumes (leaving the existing ones untouched) or dismiss; the prompt points at
   `volume remove` for manual cleanup.
+- After the one-time legacy home-volume migration, an interactive `run`/`shell` now shows a one-time notice that
+  agents-sandbox runs its own microsandbox runtime and a system-wide microsandbox is no longer required. It names
+  which parts of `~/.microsandbox` are ours and safe to remove (and gives the commands) versus your own data, warns
+  about any legacy volume that was not verifiably copied into the private home, is acknowledged with a keypress and
+  never shown again, and
+  never deletes anything. A non-interactive session (including `--yes`) prints only a one-line pointer, without the
+  removal commands and without recording the acknowledgment, so the full notice still appears the next time you are
+  interactive (#207).
+- A new [Upgrading to 0.6](https://inoio.github.io/agents-sandbox/install/upgrading.html) page documents the private
+  runtime home, the legacy home-volume migration, the uninstall payoff for a system-wide microsandbox, and the 0.6
+  renames (#208).
 - `volume remove <name>...` (alias `rm`) removes home volumes by name. It prompts for confirmation (pass `--yes` to
   skip it non-interactively) and refuses when a project's state still references a volume, unless `-f`/`--force` is
   given.
@@ -149,6 +160,17 @@ command reports the bare version (e.g. `0.1.0`).
 - opencode2: the `--serve-only` banner now names the credential an external client needs (`opencode:opencode`). v2's basic
   auth is mandatory and baked into the image, so the previous opt-in `OPENCODE_SERVER_PASSWORD`/`OPENCODE_SERVER_USERNAME`
   guidance (valid for opencode v1) was wrong and left the client unable to connect.
+- opencode2: `--worktree` created worktrees through the v1 routes, which v2 does not serve, so a worktree session always
+  failed with 404. It now resolves the project via `/api/location`, lists with `GET /api/worktree?projectID=`, and
+  creates with `POST /api/worktree` (`projectID` in the body). For both agents a `:<base>` ref is now validated before
+  a worktree is created, so an unresolvable ref fails without leaving an orphan worktree. A failed worktree listing now
+  fails the run instead of being treated as "no worktrees", so a broken daemon listing can no longer silently create a
+  second worktree and leave the existing one unused — the non-success abort is shared by both agents, and v2 also
+  rejects a list entry that carries no usable `directory` (e.g. a renamed or blanked field), which previously slipped
+  through the canonical-root filter and was then ignored by the reuse match. For opencode2 the detached-HEAD note is
+  printed only when a worktree is created: a reused worktree's checkout state is unknown (the user may already have run
+  the suggested `git switch -c`), so reuse no longer restates the claim. The v2 worktree requests are also bounded in
+  time and keep the daemon's HTTP error in the failure message (#235).
 - Agent upgrade: a project that already has a runner image but no recorded agent version (e.g. the first run after the
   `updater.yaml` migration) no longer silently rebuilds to the latest release on an unpinned `run`/`shell`, and no longer
   fails offline. The baseline is recovered from the existing image's `agent-version` label so the normal upgrade prompt

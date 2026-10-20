@@ -68,7 +68,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 	}
 	migration, _ := rootState.Migration(MigrationName)
 	if migration.Status == state.MigrationCompleted || migration.Status == state.MigrationDismissed {
-		return nil
+		return showNotice(ui)
 	}
 
 	names, err := necessaryVolumesFor(migration)
@@ -83,9 +83,12 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 
 	if len(names) == 0 && len(unclear) == 0 {
 		if migration.Status == state.MigrationCopying {
-			return finalizeCompletedCampaign(ui)
+			err = finalizeCompletedCampaign()
+			if err != nil {
+				return err
+			}
 		}
-		return nil
+		return showNotice(ui)
 	}
 
 	if !ui.IsInteractive() {
@@ -112,12 +115,14 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 		if err := CopyVolumes(ctx, client, ui); err != nil {
 			return fmt.Errorf("copying legacy home volumes: %w", err)
 		}
-		return nil
 	case choiceFresh:
-		return dismissMigration(ctx, client)
+		if err := dismissMigration(ctx, client); err != nil {
+			return err
+		}
 	default:
 		return ErrMigrationPending
 	}
+	return showNotice(ui)
 }
 
 // handleOfferListingError resolves a failure to list the homes while deriving the
@@ -153,13 +158,13 @@ func presentLegacyTargetsFor() ([]string, error) {
 // copy (it crashed after copying everything but before recording completion). It
 // re-reads state under the root lock and only writes completed while the entry is
 // still copying, so it never clobbers a concurrent terminal write.
-func finalizeCompletedCampaign(ui termio.UI) error {
+func finalizeCompletedCampaign() error {
 	_, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		m, _ := tx.State().Migration(MigrationName)
 		if m.Status != state.MigrationCopying {
 			return nil
 		}
-		return finalizeMigration(tx, m, ui)
+		return finalizeMigration(tx, m)
 	})
 	return err
 }
@@ -169,7 +174,9 @@ func finalizeCompletedCampaign(ui termio.UI) error {
 // overwritten. It first removes every unclear private volume: recording the
 // dismissal while a usable partial remains would let the home resolver adopt an
 // incomplete home under a permanent opt-out. Volumes that were copied or kept at
-// the user's choice are preserved. A cleanup failure aborts the dismissal.
+// the user's choice are preserved. The Copied record is retained so the
+// post-migration notice still knows which legacy volumes were fully migrated. A
+// cleanup failure aborts the dismissal.
 func dismissMigration(ctx context.Context, client msb.Client) error {
 	_, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		m, _ := tx.State().Migration(MigrationName)
@@ -179,7 +186,7 @@ func dismissMigration(ctx context.Context, client msb.Client) error {
 		if err := removeUnclearDestinations(ctx, client, m); err != nil {
 			return err
 		}
-		return saveMigration(tx, state.Migration{Status: state.MigrationDismissed})
+		return saveMigration(tx, state.Migration{Status: state.MigrationDismissed, Copied: m.Copied})
 	})
 	return err
 }

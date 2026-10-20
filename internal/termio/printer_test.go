@@ -372,3 +372,57 @@ func TestOutKeepsANSIIfColorEnabled(t *testing.T) {
 		t.Errorf("color-enabled Out should keep ANSI, got %q", out)
 	}
 }
+
+func TestPrinterAcknowledgeInteractiveWaitsForEnter(t *testing.T) {
+	var stderr bytes.Buffer
+	p := &printer{stdin: strings.NewReader("next\n"), stderr: &stderr, isTerminal: func(int) bool { return true }}
+	if err := p.Acknowledge("body text"); err != nil {
+		t.Fatalf("Acknowledge() error = %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "body text") || !strings.Contains(out, "Press Enter") {
+		t.Errorf("interactive Acknowledge output = %q, want body and a Press Enter affordance", out)
+	}
+}
+
+func TestPrinterAcknowledgeNonInteractivePrintsWithoutWaiting(t *testing.T) {
+	var stderr bytes.Buffer
+	p := &printer{stdin: strings.NewReader(""), stderr: &stderr, isTerminal: func(int) bool { return false }}
+	if err := p.Acknowledge("body text"); err != nil {
+		t.Fatalf("Acknowledge() error = %v", err)
+	}
+	out := stderr.String()
+	if !strings.Contains(out, "body text") {
+		t.Errorf("non-interactive Acknowledge output = %q, want the body", out)
+	}
+	if strings.Contains(out, "Press Enter") {
+		t.Errorf("non-interactive Acknowledge output = %q, want no Press Enter affordance", out)
+	}
+}
+
+// TestPrinterAcknowledgeIgnoresLevelAndQuiet pins the ungated contract: the
+// notice prints even under a suppressing level and --quiet, because it is a
+// once-ever, interaction-required moment that must not be silently dropped.
+func TestPrinterAcknowledgeIgnoresLevelAndQuiet(t *testing.T) {
+	var stderr bytes.Buffer
+	p := &printer{
+		stdin:      strings.NewReader(""),
+		stderr:     &stderr,
+		level:      LevelError,
+		quiet:      true,
+		isTerminal: func(int) bool { return false },
+	}
+	if err := p.Acknowledge("body text"); err != nil {
+		t.Fatalf("Acknowledge() error = %v", err)
+	}
+	if !strings.Contains(stderr.String(), "body text") {
+		t.Errorf("Acknowledge output = %q, want the body despite a suppressing level and --quiet", stderr.String())
+	}
+}
+
+func TestPrinterAcknowledgeReadError(t *testing.T) {
+	p := &printer{stdin: strings.NewReader(""), stderr: &bytes.Buffer{}, isTerminal: func(int) bool { return true }}
+	if err := p.Acknowledge("body text"); err == nil {
+		t.Fatal("Acknowledge() error = nil, want a read error on empty stdin")
+	}
+}

@@ -1,5 +1,11 @@
 # opencode2 Worktree API Implementation Plan
 
+> **Status:** implemented on `fix/opencode2-worktree-api` (PR #238); all tasks complete. A review round tightened the
+> v2 list filter (every entry must carry a non-empty string `directory`, so a renamed field fails the list instead of
+> being silently ignored) and confined opencode2's detached-HEAD note to the create path. The code sketches below are
+> drafting artifacts: the shipped list command captures the curl response before piping to jq, bounds every call, and
+> its prelude rejects a missing/empty project id or canonical. The spec is the source of truth.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `--worktree <name>[:<base>]` work with the `opencode2` agent by calling v2's project-scoped worktree routes instead of v1's 404ing ones.
@@ -15,7 +21,7 @@
 - Module `github.com/inoio/agents-sandbox`, Go 1.26.
 - `make fmt` / `golangci-lint fmt` to format (never `go fmt`); `make lint` (never `go vet`).
 - TDD: write the failing test, run it, implement, run it green, commit.
-- No behavior change for the `opencode` (v1) agent beyond the new (ignored) target parameter.
+- No behavior change for the `opencode` (v1) agent's routes, bodies, or command shapes beyond the new (ignored) target parameter; base validation moved ahead of the create for both providers.
 - The v2 create body is exactly `Worktree.CreateInput` (`additionalProperties: false`): only `projectID`, `name`, and `branch` — never `strategy`, `directory`, `from`, or `startCommand`.
 - Every v2 request keeps the baked credential (`opencode2CurlAuth`, `-u opencode:opencode`).
 - Targets come from `vm.ResolveTarget`'s `defaultDir`; nothing else may be sent as the v2 location.

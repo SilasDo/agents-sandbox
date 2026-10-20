@@ -1,5 +1,5 @@
 ---
-description: Design for decoupling agents-sandbox's microsandbox runtime home from any user-installed microsandbox: a private XDG data home, no user-facing msb, retired version-matching recovery (a stale runtime our own previous release left in the private home is silently force-reinstalled, partial pairs removed first), and an opt-in copy of legacy home volumes whose progress is tracked in a host-owned `migrations` registry (`runtime_home` entry with `copying`/`completed`/`dismissed` status plus transient `copied`/`kept`/`excluded` sets) in root `state.yaml`. The offer surfaces present private volumes of unclear status, and `volume remove [--force]` is the sanctioned cleanup path. A one-time, acknowledged post-migration notice tells upgraders their system-wide microsandbox is now optional (instruct-only, never deleted).
+description: Design for decoupling agents-sandbox's microsandbox runtime home from any user-installed microsandbox: a private XDG data home, no user-facing msb, retired version-matching recovery (a stale runtime our own previous release left in the private home is silently force-reinstalled, partial pairs removed first), and an opt-in copy of legacy home volumes whose progress is tracked in a host-owned `migrations` registry (`runtime_home` entry with `copying`/`completed`/`dismissed` status, a `copied` set retained at a terminal word, and transient `kept`/`excluded` sets) in root `state.yaml`. The offer surfaces present private volumes of unclear status, and `volume remove [--force]` is the sanctioned cleanup path. A one-time, acknowledged post-migration notice tells upgraders their system-wide microsandbox is now optional; it treats a legacy volume as safe to remove only when it is recorded `copied` and present in the private home, so an unverified `kept` volume is still named (instruct-only, never deleted).
 read_if: Implementing or reviewing runtime-home decoupling, the private `MSB_HOME`, removal of the runtime mismatch recovery menu or the silent stale-runtime repair, the legacy home-volume copy prompt and its persisted migration state, the ambiguous-state offer, the post-migration legacy-runtime notice, or the `volume remove` cleanup command.
 ---
 
@@ -8,7 +8,9 @@ read_if: Implementing or reviewing runtime-home decoupling, the private `MSB_HOM
 Date: 2026-10-15
 
 Status: **implemented** on `opencode/runtime-home-decoupling` (PR #142); pending
-merge. The copy state model is the host-owned `migrations` registry in
+merge. The post-migration legacy-runtime notice is implemented on
+`issue-207-legacy-runtime-notice` (PR #239). The copy state model is the
+host-owned `migrations` registry in
 "Persisted state". An earlier design tracked completion with an in-volume
 sentinel and no cross-process locking; review found it unsafe (guest-controlled
 completion, symlink-followable marker write, concurrent sessions deleting each
@@ -296,7 +298,9 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
     campaign aborts (campaign-scoped, stays `copying`) rather than completing with
     a usable partial left behind.
   - A **user-chosen** keep (`kept`, from "copy the missing volumes") deliberately
-    leaves the present volume in place; it is disclosed in the option label.
+    leaves the present volume in place; it is disclosed in the option label. Its
+    contents are unverified, so the notice still warns about the legacy volume
+    behind it.
   - **Start fresh / Dismiss** removes every present target not in `copied` and not
     in `kept` (i.e. the unclear partials) before recording `dismissed`; a removal
     failure aborts the dismissal.
@@ -347,7 +351,7 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   migrations:
     runtime_home:
       status: copying        # copying | completed | dismissed
-      copied:                # present only while status: copying; fully migrated
+      copied:                # fully migrated; retained at a terminal word
         - agents-sandbox-home-1mjusbm3wikhb0
       kept:                  # present only while status: copying; user-dismissed, left in place
         - agents-sandbox-home-1mjusbm3wikhb1
@@ -366,10 +370,13 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
     stops a failed volume from being retried.
   - **completed** — campaign over, no offer, permanent.
   - **dismissed** — user chose start-fresh/dismiss, no offer, permanent.
-- `copied`, `kept`, and `excluded` are transient: written only while `copying`
-  and dropped when the campaign reaches a terminal word. Terminal words are
-  permanent with no re-arm (unlike onboarding's source-hash re-arm); after
-  `completed` or `dismissed`, agents-sandbox never re-offers and never re-probes.
+- `kept` and `excluded` are transient: written only while `copying` and dropped
+  when the campaign reaches a terminal word. `copied` is retained at the terminal
+  word as the host-owned record of the volumes that were fully migrated, which
+  the post-migration notice uses to tell which legacy volumes are safe to remove.
+  Terminal words are permanent with no re-arm (unlike onboarding's source-hash
+  re-arm); after `completed` or `dismissed`, agents-sandbox never re-offers and
+  never re-probes.
 - Concurrent sessions are serialized by a host-only advisory lock
   (`state.FlockExclusive`) held for the campaign, at a path under the private
   home (`$MSB_HOME/.agents-sandbox/migration.lock`). The flock auto-releases on
@@ -414,7 +421,10 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
 - **Explicit acknowledgment.** The notice requires the user to react (press a key) — it is
   a deliberate, once-ever moment, not scroll-past output. It needs a new "acknowledge"
   primitive on the `termio.UI` seam (real printer + `Mock`); `Confirm`/`Input` semantics
-  do not fit.
+  do not fit. The primitive prints unconditionally: it is not gated by the level or
+  `--quiet`, so a once-ever, interaction-required moment is never silently suppressed. It is
+  the single presenter for both modes: interactive prints the full notice and waits,
+  non-interactive prints the one-line form and returns immediately.
 - **Trigger points** (interactive only):
   - immediately after a copy campaign finalizes `completed` (`finalizeMigration`);
   - immediately after the user chooses dismiss (`dismissMigration`);
@@ -423,23 +433,46 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   - in the `pending` state when there is nothing to copy but our artifacts are present.
 
   All four live in `runtimemigration.Offer`: it no longer returns early on a terminal
-  migration, and runs the notice after the copy/dismiss decisions (passing any excluded
-  names) and on the terminal / nothing-to-copy fallthrough. The notice is best-effort — a
-  state-read, detection, or acknowledgment failure warns and lets the session continue.
-- **Excluded volumes.** When a campaign has `excluded` volumes, the notice — rendered at
-  finalize time, because `excluded` is dropped at the terminal write — appends a paragraph
-  naming them as uncopied and still holding data, left in place; it still must not suggest
-  deleting `~/.microsandbox` wholesale.
+  migration, and runs the notice after the copy/dismiss decisions and on the terminal /
+  nothing-to-copy fallthrough. The notice is best-effort — a state-read, detection, or
+  acknowledgment failure warns and lets the session continue.
+- **Uncopied volumes.** A legacy volume is *uncopied* unless the migration recorded it
+  `copied` **and** its destination still exists in the private home. That covers a volume
+  with no private counterpart (a failed copy, or one never attempted) and a volume whose
+  private counterpart exists but was not recorded as `copied` — a user-chosen `kept`
+  volume, whose contents are unverified. **Presence in the private home is not proof of a
+  copy**: a `kept` volume shares its name with a present, unverified private volume, which
+  is exactly the state the ambiguous-state copy path creates. Requiring both signals is
+  what keeps the notice from advising the deletion of the only trustworthy copy. This is
+  derived at render time from the two home listings and the retained `copied` record —
+  never from the transient `kept`/`excluded` sets, which are dropped at the terminal write
+  and are unavailable on a later session or on the dismiss path. The notice leads with a
+  "do not remove" paragraph naming the uncopied volumes as not copied and still holding
+  data, left in place, and then
+  suppresses every command that would delete them: both the wholesale
+  `rm -rf ~/.microsandbox` and the selective `~/.microsandbox/volumes/agents-sandbox-home-*`
+  glob match an uncopied volume. The safe sandbox globs are still offered, and the volumes
+  glob is replaced by a note to remove the remaining volumes individually. A failure to list
+  the private home suppresses the destructive commands (treats every legacy volume as
+  uncopied) rather than risk printing one that would delete data. An unreadable legacy
+  `volumes` directory is handled conservatively for the same reason: it still counts as
+  absent for *firing* detection, but while it cannot be listed the notice withholds the
+  wholesale command too, because unlisted home volumes may still hold data.
 - **Persisted once-ever flag.** A second `migrations` registry entry,
   `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
   status; absence is the pending state. This keeps the "absent = pending, terminal =
-  permanent" semantics of the registry rather than adding a bool to `runtime_home`.
-- **Non-interactive sessions.** They cannot acknowledge, so they may print the
-  informational line but must not mark the notice acknowledged; an interactive session
-  still surfaces it.
+  permanent" semantics of the registry rather than adding a bool to `runtime_home`. The
+  value's presence is the signal — `Offer` reads the entry only for its existence, never its
+  status — so `acknowledged` documents intent; it is never written to the `runtime_home`
+  entry.
+- **Non-interactive sessions.** They cannot acknowledge, so they print a bounded one-line
+  informational form (no removal commands) through the same ungated primitive and must not
+  mark the notice acknowledged; an interactive session still surfaces the full notice. This
+  applies under `--yes` too, which is non-interactive: it gets the line, never the prompt.
 - Discoverable homes for the same fact (for users who never see the notice): a dedicated
-  `docs/install/upgrading.md` page, README positioning ("no system-wide microsandbox
-  required"), the CHANGELOG entry, and `doctor` reporting the private home.
+  `docs/install/upgrading.md` page (the "Upgrading to 0.6" page, which owns the migration
+  mechanics and the uninstall payoff — issue #208), README positioning ("no system-wide
+  microsandbox required"), the CHANGELOG entry, and `doctor` reporting the private home.
 
 ### State-file placement (related, separate)
 

@@ -73,7 +73,9 @@ func (opencodeProfile) QuestionListCmd() string {
 	return "curl -sf http://127.0.0.1:4096/question"
 }
 
-func (opencodeProfile) WorktreeListCmd() string {
+// WorktreeListCmd lists worktrees via v1's global route; the launch directory
+// is ignored because the daemon resolves the project itself.
+func (opencodeProfile) WorktreeListCmd(string) string {
 	return "curl -sf http://127.0.0.1:4096/experimental/worktree"
 }
 

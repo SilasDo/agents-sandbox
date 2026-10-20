@@ -22,11 +22,12 @@ You can verify afterwards by running `docker info`. It should show a healthy dae
 
 agents-sandbox provisions its own private microsandbox runtime under its data
 directory (`~/.local/share/agents-sandbox/msb`, or
-`$XDG_DATA_HOME/agents-sandbox/msb`) and points the SDK at it. It never reads or
-writes your own `~/.microsandbox`, does not install a user-facing `msb`
-command, and does not require any particular `msb` version on your machine. If
-agents-sandbox is the only thing installed, the absence of an `msb` command is
-expected, not a defect.
+`$XDG_DATA_HOME/agents-sandbox/msb`) and points the SDK at it. The runtime never
+reads or writes your own `~/.microsandbox`; the one-time upgrade migration reads
+it only to copy your old volumes (see [Upgrading to 0.6]({% link install/upgrading.md %})).
+It does not install a user-facing `msb` command, and does not require any
+particular `msb` version on your machine. If agents-sandbox is the only thing
+installed, the absence of an `msb` command is expected, not a defect.
 
 If you encounter a runtime error, submit a bug report at:
 
@@ -34,32 +35,19 @@ If you encounter a runtime error, submit a bug report at:
 
 ### Legacy home volumes after upgrading
 
-Versions before the private runtime home stored home volumes under
-`~/.microsandbox/volumes/`. On the first interactive `run`/`shell` after
-upgrading, agents-sandbox offers once to copy those `agents-sandbox-home-*`
-volumes into its private home. You must choose: **Copy the volumes** (carry the
-old data over), **Start fresh** (leave the old volumes untouched and never ask
-again), or **Quit** (abort this session; ask again next time). "Start fresh" is
-remembered and the offer is not shown again. (The option is labelled **Dismiss**
-instead of "Start fresh" when a private volume of unclear status must be removed,
-or when a copy was already in progress.)
+For the upgrade overview — what changed, the migration choices, and how to retire
+`~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). The
+notes below cover diagnosing an interrupted or unclear copy.
 
-The decision is required before a session can proceed, because starting would
-otherwise create a fresh home volume and overwrite the project's recorded
-reference before the old data could be copied. Non-interactive runs (including
-`--yes`) therefore never copy and, while legacy volumes remain, stop with a
-message to run an interactive `run`/`shell` once to copy them or start fresh.
-
-Once the migration is resolved — copied, or dismissed with "Start fresh" — each
-project whose recorded volume is not present in the private home starts a fresh
-one automatically, so you can keep working without migrating anything.
+An interrupted copy resumes where it stopped, because progress is tracked in
+agents-sandbox's host state. If a private volume already exists under a legacy
+name — for example after `~/.local/state/agents-sandbox/state.yaml` was removed —
+its status is unclear; the note below covers that case.
 
 #### Private volumes with unclear status
 
-If a private volume already exists under a legacy name, the offer says so and
-cannot tell whether it is a complete copy or a partial one whose progress was
-lost (this can happen if `~/.local/state/agents-sandbox/state.yaml` was removed).
-The offer then gives two options:
+The offer says so, cannot tell whether such a volume is a complete copy or a
+partial one, and gives two options:
 
 - **Copy the missing volumes; dismiss the existing private volumes from the
   migration** — copies only the absent volumes and leaves the existing ones

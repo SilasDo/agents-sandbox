@@ -25,22 +25,28 @@ type RootState struct {
 type MigrationStatus string
 
 const (
-	MigrationCopying   MigrationStatus = "copying"
-	MigrationCompleted MigrationStatus = "completed"
-	MigrationDismissed MigrationStatus = "dismissed"
+	MigrationCopying      MigrationStatus = "copying"
+	MigrationCompleted    MigrationStatus = "completed"
+	MigrationDismissed    MigrationStatus = "dismissed"
+	MigrationAcknowledged MigrationStatus = "acknowledged"
 )
 
-// Migration tracks one one-time migration. Copied, Kept, and Excluded are
-// written only while Status is MigrationCopying and dropped when the migration
-// reaches a terminal status.
+// Migration tracks one one-time migration.
 //
-// The three lists are disjoint and together account for every legacy volume the
-// campaign has considered:
+// While Status is MigrationCopying the three lists are disjoint and together
+// account for every legacy volume the campaign has considered:
 //   - Copied: fully migrated into the private home.
 //   - Kept: dismissed from the migration at the user's choice (option "copy the
-//     missing volumes"); the present private volume is intentionally left as-is.
+//     missing volumes"); the present private volume is intentionally left as-is,
+//     so its contents are unverified.
 //   - Excluded: dropped from the migration by a copy failure; the partial
 //     destination has been removed.
+//
+// At a terminal status, Kept and Excluded are dropped and Copied is retained as
+// the host-owned record of the volumes that were fully migrated. The
+// post-migration notice uses it to tell which legacy volumes are safe to remove:
+// a Kept volume shares a name with a present private volume but is not Copied, so
+// presence alone is never proof that a legacy volume was copied.
 //
 //exhaustruct:ignore
 type Migration struct {
