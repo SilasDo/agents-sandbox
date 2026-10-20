@@ -1,0 +1,312 @@
+# Design: notify for opencode2 + subagent-session filtering
+
+Date: 2026-10-20
+Status: Draft (pending review)
+
+## Problem
+
+The notify watcher never runs for the `opencode2` agent.
+
+`internal/sandbox/session/run.go` starts the watcher only when the agent implements
+`agent.EventStreamProvider`:
+
+```go
+var streamSpec *agent.EventStreamSpec
+if provider, ok := agent.AsEventStreamProvider(a); ok {
+    eventStream := provider.EventStream()
+    streamSpec = &eventStream
+}
+stopNotify := startNotifyWatcher(ctx, sb, opts.Notify, ui, streamSpec, projectSlug)
+```
+
+A nil `streamSpec` makes `startNotifyWatcher` a no-op. Only `opencodeProfile` (v1) implements
+`EventStream()`; `opencode2Profile` does not, so `--notify` (and the `notify:` config block) is
+silently accepted (opencode2 *is* a `DaemonProvider`, so `resolveNotify`'s warning does not fire)
+and does nothing. `internal/agent/capabilities_test.go` asserts this state
+(`TestOnlyOpencodeImplementsEventStreamProvider`).
+
+The secondary ask: **do not signal for subagent sessions** — only for top-level sessions the user
+can interact with. v1's notify triggers (`session.idle`, `message.part.updated`,
+`permission.asked`/`question.asked`) carry only a session id, so at the moment a trigger fires there
+was no parent link available; this was previously treated as impossible.
+
+## Goals
+
+- Notify (desktop + audio, unchanged semantics) works for the `opencode2` agent.
+- A notification fires only for a **top-level** session. "Top-level" means the session has **no
+  `parentID`**; a session with a non-empty `parentID` is a subagent (child) session and never
+  notifies — including nested subagents.
+- `opencode` (v1) keeps working exactly as today, and gains the same subagent filter.
+- No change to the channels (`desktop`, `audio: system|bell|off`), the trigger toggles
+  (`on-input`, `on-done`, `on-error`), the notification wording, or the cross-client dedup.
+
+## Non-goals
+
+- Richer notification text (session title, agent/model, cost, error message). Wording stays
+  `<agent>: input needed` / `: done` / `: error`.
+- New trigger kinds (per-step, per-tool, usage). Only the existing input/done/error triggers.
+- Filtering by anything other than `parentID` (no project/agent/title heuristics).
+- Any change to `pi`/`claude-code` (no daemon/event stream; still unsupported).
+
+## Context (verified)
+
+Probed live against the pinned binaries: `opencode2 v2.0.32` (`/opt/agents-sandbox/bin/opencode2`)
+and `opencode v1.19.3` (installed to a temp HOME for this exercise).
+
+**opencode2 (v2)**
+
+- The SSE endpoint is `GET /api/event` and it requires HTTP basic auth (`-u opencode:opencode`, the
+  fixed credential from `opencode2-server-auth.md`). v1's `/global/event` path exists on v2 but
+  serves the web-ui HTML (`200`, not SSE).
+- Envelope is flat: `data: {"id":…,"created":…,"type":"session.created","data":{…},"durable":{…}}`.
+  The event type is top-level `.type`; the session id is `.data.sessionID`.
+- Event vocabulary observed over a full turn: `session.execution.started` → `session.step.started`
+  → `session.text.started`/`session.text.delta`/`session.text.ended` → `session.step.ended` →
+  `session.execution.succeeded`, plus `session.reasoning.*`, `session.usage.updated`,
+  `session.renamed`, `session.inbox.*`.
+- **One user turn = one `session.execution.started` / `session.execution.succeeded` pair.** A prompt
+  containing two tool steps produced one execution pair with two `session.step` pairs.
+- `session.status` and `session.idle` are defined in the binary but **never appeared on the server
+  stream** during any probe (including a 26s+ idle wait); `session.execution.{started,succeeded}` is
+  the observable busy/done pair.
+- Input-needed events: `permission.asked` and `form.created` (v2 has no `question.asked`).
+  `permission.asked`'s payload (`Permission.Request`) carries `sessionID` at `.data.sessionID`;
+  `form.created`'s payload is `{form: Form.Info}` and carries it at **`.data.form.sessionID`**.
+  Error events defined: `session.error` (`{sessionID, error}`), `session.execution.failed`,
+  `session.execution.interrupted`.
+- Execution events are a terminal union: an execution starts (`session.execution.started`) and then
+  emits **exactly one** of `succeeded` / `failed` / `interrupted` (`interrupted` carries a
+  `reason`: `user`/`shutdown`/`superseded`/`inactivity`). A failed turn does not also emit
+  `succeeded`, so there is no spurious done-after-error.
+- **Events are attributed to the session that ran.** Prompting a child session directly produced
+  `session.execution.*` events carrying the *child's* id, not the parent's; the same holds for
+  session-scoped input/error events, so the child check on `.sessionID` suppresses a subagent's
+  triggers.
+- **Subagent detection:** `session.created` carries the full session info and includes a
+  `parentID` when the session is a child:
+  ```json
+  {"type":"session.created","data":{"sessionID":"ses_ea4f4539…","parentID":"ses_ea4fc6fc…","title":"child-probe",…}}
+  ```
+  A top-level session omits `parentID`. `GET /api/session` (`{data:[{id,parentID,title,outcome,…}]}`)
+  and `GET /api/session/{id}` (`Session.Info`) also expose `parentID`; a live server showed real
+  children alongside `parentID:null` roots.
+
+**opencode (v1)**
+
+- `GET /global/event` envelope: `data: {"directory":…,"project":…,"payload":{"type":…,"properties":{…}}}`.
+- **v1 also exposes the parent link** — `session.created` carries it at
+  `payload.properties.info.parentID`, and `GET /session` lists `{id, parentID, …}`:
+  ```json
+  {"payload":{"type":"session.created","properties":{"sessionID":"ses_…","info":{"…","parentID":"ses_ea4f037f…"}}}}
+  ```
+  So the filter is not a v2-only capability; v1 was a dead end only because the *trigger* events
+  lack the link, not because the stream never carries it.
+- v1 server auth is opt-in: with `OPENCODE_SERVER_PASSWORD` unset the server logs
+  `Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.` and answers `200` on
+  `/global/health` and `/session`. The launcher's v1 image sets no password, so an unauthenticated
+  seed (and the existing `SessionStatusCmd`/`QuestionListCmd`) works; a user-set password would
+  disable all three (a pre-existing limitation, not introduced here).
+- **The v1 stream has no replay.** A fresh subscription after a session already exists, a
+  `Last-Event-ID` header, and `?since=`/`?after=`/`?cursor=`/`?seq=` all emit only new events; the
+  `sync` block is a durable *inline duplicate* of the ephemeral event (same tick, same `parentID`),
+  not a catch-up. So the list seed is the **only** recovery for a `session.created` missed during a
+  gap, and no cursor/`sync` handling is warranted.
+
+**Existing code**
+
+- `internal/agent/capabilities.go` — `EventStreamSpec{StreamCommand, BusyEvents, AwaitingInput,
+  IdleEvents, ErrorEvents, Name}` and `AsEventStreamProvider`.
+- `internal/notify/watch.go` — `Watch` (reconnect loop), `watchOnce` (one SSE stream),
+  `parseSSEBlock` (v1 shape only), `handleEvent`, `streamReader`.
+- `internal/notify/event.go` — `Tracker{spec, states}`; `Handle` maps event types to
+  bus/aparse input/idle/error transitions.
+- `internal/notify/dedup.go` — per-(session, trigger) cross-client claim; `SessionBusy` releases
+  claims on the busy events.
+
+## Design
+
+### 1. Spec additions (`internal/agent/capabilities.go`)
+
+```go
+// StreamEvent is a decoded daemon event: its type, the session it belongs to,
+// and that session's parent (non-empty for a subagent session).
+type StreamEvent struct {
+    Type      string
+    SessionID string
+    ParentID  string
+}
+
+type EventStreamSpec struct {
+    StreamCommand string
+    BusyEvents    []string
+    AwaitingInput []string
+    IdleEvents    []string
+    ErrorEvents   []string
+    // SessionEvents are lifecycle event types whose payload may identify a
+    // session's parent. A non-empty parent ID marks the session as a subagent
+    // (child) session; no notification ever fires for a child session.
+    SessionEvents []string
+    // SessionListCommand is a one-shot shell command printing a JSON array of
+    // child session IDs, run each time a stream opens to seed the filter with
+    // sessions created before the watcher (re)connected. Empty disables seeding.
+    SessionListCommand string
+    // Parse decodes one SSE data payload into a StreamEvent. ok is false when
+    // the payload carries no event.
+    Parse func(payload []byte) (StreamEvent, bool)
+    Name  string
+}
+```
+
+### 2. Decoder seam: the harness shape lives in the agent
+
+`internal/notify` currently owns opencode's SSE *payload* JSON shape
+(`parseSSEBlock` reads `payload.type` / `payload.properties.sessionID`). Teaching it a second shape
+would put harness-specific code back in the generic package, against the original intent of
+`EventStreamSpec` ("`internal/notify` contains no opencode references"). Instead, the agent supplies
+the decoder:
+
+- `notify` keeps only SSE **framing** — block assembly, `data:` extraction, comment skipping — and
+  calls `spec.Parse(payload)`. Its `Event` type is replaced by `agent.StreamEvent`; nothing in
+  `notify` knows a harness's JSON.
+- `internal/agent/opencode.go` gets `parseOpencodeV1Event`: type = `.payload.type`; sessionID =
+  `.payload.properties.sessionID`; parentID = `.payload.properties.info.parentID`.
+- `internal/agent/opencode2.go` gets `parseOpencodeV2Event`: type = top-level `.type`; sessionID =
+  `.data.sessionID`, falling back to `.data.form.sessionID` (`form.created` nests it in `form`);
+  parentID = `.data.parentID`, falling back to `.data.info.parentID`.
+- Each profile sets `Parse` in its `EventStream()` return value. Keep the rule that a payload with
+  no type is not an event.
+- Parser table tests move from `internal/notify` to the agent package (and gain v2 fixtures).
+- The existing `reflect.DeepEqual` assertion on the spec (`opencode_test.go`) cannot compare a
+  non-nil func: compare a copy with `Parse` nilled and test the decoder separately.
+
+### 3. Tracker (`internal/notify/event.go`)
+
+The tracker consumes `agent.StreamEvent` instead of the removed local `Event`.
+
+- Add `children map[string]bool`.
+- `Handle(e)`:
+  1. If `e.SessionID != ""` and `e.Type` is in `spec.SessionEvents`, record
+     `children[e.SessionID] = true` when `e.ParentID != ""`. Do **not** early-return: a lifecycle
+     event like v1's `session.updated` is also a busy event and must keep marking busy for
+     top-level sessions.
+  2. If `children[e.SessionID]`, return `nil` (no notification) before any trigger matching.
+  3. Otherwise the existing busy/awaiting/idle/error switch is unchanged.
+- `SeedChildren(ids []string)` marks every id as a child. Called by the watcher.
+
+### 4. Seeding on (re)connect (`internal/notify/watch.go`)
+
+`watchOnce` gains the spec (it already has `sb`). Immediately after `ShellStream` opens, and before
+reading the stream, run `sb.Shell(ctx, spec.SessionListCommand)` when non-empty, parse stdout as a
+JSON array of strings, and call `tracker.SeedChildren(ids)`. Seeding is best-effort: a failure or a
+non-JSON body is ignored and does not abort the stream (the tracker still learns new children from
+`session.created`). Running it per-connect, not just once, closes the gap for a child created while
+the watcher was disconnected.
+
+### 5. Profiles (`internal/agent/opencode.go`, `internal/agent/opencode2.go`)
+
+**opencode2 — new `EventStream()`:**
+
+```go
+StreamCommand: "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event"
+BusyEvents:    {"session.execution.started"}
+AwaitingInput: {"permission.asked", "form.created"}
+IdleEvents:    {"session.execution.succeeded"}
+ErrorEvents:   {"session.error", "session.execution.failed"}
+SessionEvents: {"session.created"}
+SessionListCommand: "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " +
+    opencode2ServerURL + "/api/session | jq -c '[.data[] | select(.parentID != null) | .id]'"
+Parse: parseOpencodeV2Event
+Name:  opencode2Name
+```
+
+**opencode — unchanged behavior, plus the filter.** Keep `StreamCommand` and the four existing event
+lists verbatim; add:
+
+```go
+SessionEvents: {"session.created", "session.updated"}
+SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'"
+Parse: parseOpencodeV1Event
+```
+
+### 6. Call-site / test updates
+
+- `internal/agent/capabilities_test.go`: the assertion that only opencode implements
+  `EventStreamProvider` becomes "opencode and opencode2 do; pi and claude-code do not".
+- `internal/notify/*_test.go`: `NewTracker` specs gain the new fields; `agent.StreamEvent` replaces
+  `notify.Event`; the parser table test moves to the agent package; add child-suppression tests.
+
+## Implementation approach
+
+- `internal/agent`: add `StreamEvent`, add `Parse` to `EventStreamSpec`, add the two decoders and
+  `EventStream()` to `opencode2Profile`, extend the `opencodeProfile` spec, update tests.
+- `internal/notify`: drop the `Event` type and the JSON shape in `parseSSEBlock` (SSE framing only,
+  delegating to `spec.Parse`); use `agent.StreamEvent`; `Tracker.children` + `SeedChildren`;
+  `watchOnce` seeding; update `event_test.go`/`watch_test.go`/`watch_extra_test.go`.
+- No change to `internal/sandbox/session/run.go`: it already passes whatever spec the provider
+  returns.
+- `docs/configuration/notifications.md` and `docs/commands.md`: opencode2 is supported; document that
+  only top-level sessions notify.
+- `CHANGELOG.md`: `[Unreleased]` line.
+
+## Testing
+
+- `internal/agent`:
+  - Decoder table tests: v1 block → `{type, sessionID, parentID}`; v2 block → same; v2
+    `form.created` → sessionID from `data.form.sessionID`; v2 `{sessionID, info}` shape → parentID
+    from `info`; a typeless payload → not an event.
+  - `opencode2Profile.EventStream()` field contents (with `Parse` compared separately);
+    `opencodeProfile` spec gains the two new fields and keeps its others; capability table updated.
+- `internal/notify`:
+  - Tracker: a child's `session.execution.succeeded` after `session.execution.started` produces no
+    notification; a top-level session produces `done`; a child announced by `session.created`
+    (`parentID` set) then suppressed; `SeedChildren` suppresses without a `session.created`; a
+    top-level `session.updated` still marks busy (v1 regression guard).
+  - SSE framing: a `data:`-less block is not an event; `spec.Parse` is invoked with the extracted
+    payload.
+  - `watchOnce` seeding: seed command output marks children and the stream still processes events.
+- Existing notify/session/CLI tests keep passing; `make check` green.
+
+## Documentation & changelog
+
+- `docs/configuration/notifications.md`: replace "Only the opencode agent …" with opencode and
+  opencode2; add a line that top-level sessions notify and subagent sessions are skipped.
+- `docs/commands.md`: the `--notify` row currently says "Only applies to the opencode agent"; update.
+- `CHANGELOG.md`: `[Unreleased]` — notify now works for opencode2, and notifications are skipped for
+  subagent sessions.
+
+## Files touched (anticipated)
+
+- `internal/agent/capabilities.go` (`StreamEvent`, `Parse`), `internal/agent/opencode.go`
+  (`parseOpencodeV1Event`), `internal/agent/opencode2.go` (`parseOpencodeV2Event`, `EventStream()`)
+  (+ `capabilities_test.go`, `opencode_test.go`, `opencode2_test.go`).
+- `internal/notify/watch.go` (SSE framing only), `internal/notify/event.go` (uses
+  `agent.StreamEvent`) (+ `watch_test.go`, `watch_extra_test.go`, `event_test.go`).
+- `docs/configuration/notifications.md`, `docs/commands.md`, `CHANGELOG.md`.
+
+## Calls made (decide-and-note)
+
+- **The harness's JSON shape lives in the agent, not in `notify`.** Instead of teaching
+  `parseSSEBlock` a second envelope, the spec carries a `Parse func([]byte) (StreamEvent, bool)`
+  implemented per profile; `notify` keeps only SSE framing. A function field (rather than a second
+  capability) keeps the stream contract one cohesive value; the cost is that the spec's
+  `reflect.DeepEqual` test must exclude `Parse`.
+- **Done signal = `session.execution.succeeded`**, not `session.idle`: the latter is defined in v2 but
+  never observed on the server stream; the execution pair is the observable per-turn busy/done.
+- **`session.execution.interrupted` is not an error trigger**: a user interrupt is not a failure
+  worth a signal. It is left out; `session.error` and `session.execution.failed` cover real errors.
+- **Seed command output is a JSON array of child ids** (jq normalises the v1 array vs v2 `.data[]`
+  shape), so the Go side needs only `[]string` and no per-agent seed parser.
+- **v1 keeps its existing event lists unchanged**; only `SessionEvents`/`SessionListCommand` are
+  added. `session.idle` stays v1's done signal.
+- **Child suppression keys on the event's own `sessionID`**, verified to be the running session's id
+  (a child's execution events carried the child id). No second mechanism is needed for a subagent's
+  input/error triggers: they are session-scoped to the child.
+- **`session.execution.interrupted` is not an error trigger**: a user interrupt is not a failure
+  worth a signal. It is left out; `session.error` and `session.execution.failed` cover real errors.
+- **Seed command output is a JSON array of child ids** (jq normalises the v1 array vs v2 `.data[]`
+  shape), so the Go side needs only `[]string` and no per-agent seed parser.
+- **v1 keeps its existing event lists unchanged**; only `SessionEvents`/`SessionListCommand` are
+  added. `session.idle` stays v1's done signal.
+- **Child suppression keys on the event's own `sessionID`**, verified to be the running session's id
+  (a child's execution events carried the child id). No second mechanism is needed for a subagent's
+  input/error triggers: they are session-scoped to the child.
