@@ -144,10 +144,13 @@ command reports the bare version (e.g. `0.1.0`).
   failed with 404. It now resolves the project via `/api/location`, lists with `GET /api/worktree?projectID=`, and
   creates with `POST /api/worktree` (`projectID` in the body). For both agents a `:<base>` ref is now validated before
   a worktree is created, so an unresolvable ref fails without leaving an orphan worktree. A failed worktree listing now
-  fails the run instead of being treated as "no worktrees", so a broken or unparsable daemon listing can no longer
-  silently create a second worktree and leave the existing one unused (this applies to both agents, since the reuse
-  check is shared). The v2 worktree requests are also bounded in time and keep the daemon's HTTP error in the failure
-  message (#235).
+  fails the run instead of being treated as "no worktrees", so a broken daemon listing can no longer silently create a
+  second worktree and leave the existing one unused — the non-success abort is shared by both agents, and v2 also
+  rejects a list entry that carries no usable `directory` (e.g. a renamed or blanked field), which previously slipped
+  through the canonical-root filter and was then ignored by the reuse match. For opencode2 the detached-HEAD note is
+  printed only when a worktree is created: a reused worktree's checkout state is unknown (the user may already have run
+  the suggested `git switch -c`), so reuse no longer restates the claim. The v2 worktree requests are also bounded in
+  time and keep the daemon's HTTP error in the failure message (#235).
 - Agent upgrade: a project that already has a runner image but no recorded agent version (e.g. the first run after the
   `updater.yaml` migration) no longer silently rebuilds to the latest release on an unpinned `run`/`shell`, and no longer
   fails offline. The baseline is recovered from the existing image's `agent-version` label so the normal upgrade prompt

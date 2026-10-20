@@ -76,11 +76,15 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
   `canonical` the list's canonical-root filter would compare entries against a `null` sentinel and
   fail open, keeping the main checkout in the list.
 - **v2 lists with `GET /api/worktree?projectID=<id>`**, and the emitted list **excludes the
-  canonical root entry**: `jq -ce --arg canonical "$CANON" 'if type == "array" then
+  canonical root entry**: `jq -ce --arg canonical "$CANON" 'if type == "array" and all(.[]; type
+  == "object" and (.directory | type == "string" and length > 0)) then
   [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
   (wrapped in an array so the output stays one JSON list). Otherwise a worktree name equal
   to the repository directory name would silently "reuse" the main checkout and attach the session
-  there instead of creating a worktree.
+  there instead of creating a worktree. Every entry must carry a non-empty string `directory` for
+  the same reason: an entry whose field was renamed, blanked, or retyped would pass a canonical-root
+  filter that only compared values (`null != $canonical` is true) and then be skipped by the shared
+  base-name match, so the existing worktree would go unseen and a second one would be created.
 - **A failed or unparsable worktree list must never be read as "no worktrees".** The list command
   captures curl's response *before* piping into jq (`LIST=$(curl …) || exit 1`), so curl's own
   non-zero exit propagates instead of being swallowed by the pipe (a failed `curl -sf` piped into
@@ -104,7 +108,9 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
   directory's base name differing from the requested slug — a warning names the directory actually
   used. An agent whose daemon creates worktrees detached (opencode2) appends a detached-HEAD note via
   the optional `DetachedWorktreeReporter` capability, naming the `git switch -c <branch>` recovery;
-  v1, which keeps a branch, adds no note.
+  the note is **create-only** — a reused worktree's checkout state is unknown (the user may already
+  have run the suggested `git switch`), so reuse must not restate the claim. v1, which keeps a
+  branch, adds no note.
 - **Base handling: the base is validated *before* the create, against the target directory, for both
   providers** (`git rev-parse --verify <base>^{commit}`, no fetch — the existing
   `validateWorktreeBase`, just moved ahead of the create and pointed at the source directory). The
@@ -148,9 +154,13 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 
 - Command-string unit tests for `opencode2Profile` (resolution prelude present, list filtered by
   `.project.canonical`, create body contains `projectID`/`name`/`branch` and no `strategy`), and for
-  `opencodeProfile` (routes and body unchanged; target ignored).
+  `opencodeProfile` (routes and body unchanged; target ignored). The jq filter is also executed
+  against fixtures with real `jq`: the canonical root is dropped (including a server-suffixed
+  `name-2`), and a non-array payload or an entry without a non-empty string `directory` exits
+  non-zero.
 - `vm.ResolveTarget` tests: the target reaches both provider calls, the base is validated before the
-  create, and an unresolvable base aborts without creating.
+  create, an unresolvable base aborts without creating, the create message carries the detached-HEAD
+  note for opencode2 while a reuse does not.
 - Manual end-to-end (user-side; the dev VM cannot start microsandbox VMs):
   `agents-sandbox run --agent opencode2 --worktree feature-x` creates, attaches, and a second run
   reuses the same directory; `-w feature-x:main` checks out at `main` (detached).
