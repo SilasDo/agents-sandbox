@@ -93,6 +93,7 @@ func ensureProjectVM(
 	opts options.RunOptions,
 	info image.ImageInfo, homeVol, repoPath string,
 	k state.Key,
+	repoSlug string,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
 	if opts.DryRunVM {
@@ -145,7 +146,7 @@ func ensureProjectVM(
 	}
 	defer release()
 
-	return createOrAttachAfterLock(ctx, client, name, k, info, homeVol, repoPath, opts, ui)
+	return createOrAttachAfterLock(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
 }
 
 // replaceSandboxForReconfig destroys an existing VM whose config changed,
@@ -338,7 +339,7 @@ func createOrAttachAfterLock(
 	ctx context.Context,
 	client msb.Client,
 	name string,
-	k state.Key,
+	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
 	ui termio.UI,
@@ -351,7 +352,7 @@ func createOrAttachAfterLock(
 		return nil, vmBootConnected, fmt.Errorf("re-check sandbox %q: %w", name, err)
 	}
 
-	sb, created, err := createProjectVM(ctx, client, name, k, info, homeVol, repoPath, opts, ui)
+	sb, created, err := createProjectVM(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
 	if err != nil {
 		return nil, vmBootConnected, err
 	}
@@ -477,7 +478,7 @@ func createProjectVM(
 	ctx context.Context,
 	client msb.Client,
 	name string,
-	k state.Key,
+	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
 	ui termio.UI,
@@ -512,7 +513,10 @@ func createProjectVM(
 	optsList := []msbSdk.SandboxOption{
 		msbSdk.WithImage(info.Tag),
 		msbSdk.WithLabels(map[string]string{
-			naming.LabelProject: k.Slug,
+			// The VM name carries the checkout slug; the grouping label carries
+			// the repo slug so list --label project=<repo> groups every clone of
+			// one origin. Nothing keys ownership off this label.
+			naming.LabelProject: repoSlug,
 			naming.LabelImage:   info.Tag,
 		}),
 		msbSdk.WithMounts(mountConfigs),

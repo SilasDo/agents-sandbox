@@ -62,7 +62,7 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -151,7 +151,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -246,7 +246,7 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 
 	// The msb image cache already holds the digest image (ImageGet succeeds),
 	// so EnsureImage short-circuits before exporting/loading anything. The
@@ -354,7 +354,7 @@ func TestPrepareSandboxRunsStartupHook(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -439,7 +439,7 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -540,7 +540,7 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.ProjectSlug(), Agent: "opencode"},
+		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
 	)
 
@@ -595,7 +595,7 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -752,7 +752,7 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	createdSb := &msb.MockSandbox{
 		Name_:    projectVMName(state.Key{Slug: slug, Agent: "opencode"}),

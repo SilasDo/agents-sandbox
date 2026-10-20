@@ -31,6 +31,7 @@ type Session struct {
 	cwd           string
 	guestCWD      string
 	serveHostPort int
+	key           state.Key
 }
 
 // Cleanup releases the sandbox handle. It is safe to call on a nil session.
@@ -61,6 +62,13 @@ func (s *Session) GuestCWD() string {
 // at in serve-only mode (0 when not serving).
 func (s *Session) ServeHostPort() int {
 	return s.serveHostPort
+}
+
+// Key returns the state key the session was prepared with: the checkout-scoped
+// project slug and the agent. Callers key the notify dedup, the client lease and
+// the attach reap off it instead of re-resolving identity from the cwd.
+func (s *Session) Key() state.Key {
+	return s.key
 }
 
 // offerRuntimeHomeMigration is the session-start hook for the opt-in legacy
@@ -96,16 +104,11 @@ func PrepareSandbox(
 	if err != nil {
 		return nil, err
 	}
-
-	layout, guestCWD := resolveBindLayout(cwd, ui)
-
-	projectSlug := git.ProjectSlug()
-
-	a, ok := agent.Lookup(opts.Agent)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent %q", opts.Agent)
+	a, identity, k, err := resolveSessionIdentity(ctx, cwd, opts.Agent, opts, ui)
+	if err != nil {
+		return nil, err
 	}
-	k := state.Key{Slug: projectSlug, Agent: a.Name()}
+	guestCWD := guestWorkspacePath(identity.BindRoot, cwd)
 	// Known --dry-run gates: determineAgentVersion (skips the upgrade check and
 	// legacy fold) and prepareHomeVolume (skips the migration offer) here, plus
 	// volume.ApplyHomeAction (skips the migrate/reset action) and
@@ -125,7 +128,7 @@ func PrepareSandbox(
 	imageInfo, err := image.EnsureImage(
 		ctx,
 		a,
-		projectSlug,
+		k.Slug,
 		buildOptions(opts, agentVersion, opts.Rebuild, currentAgentSource(k) == agentSourceUser),
 		ui,
 	)
@@ -175,7 +178,7 @@ func PrepareSandbox(
 	opts.Recreate = recreate
 	opts.ServeHostPort = resolveServeHostPort(opts, serveHostPort)
 
-	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, layout.BindRoot, k, ui)
+	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +207,32 @@ func PrepareSandbox(
 		cwd:           cwd,
 		guestCWD:      guestCWD,
 		serveHostPort: opts.ServeHostPort,
+		key:           k,
 	}, nil
+}
+
+// resolveSessionIdentity looks up the agent and derives the workspace identity
+// for cwd, then adopts a legacy origin-keyed identity (#144). Adoption runs
+// before any other work so its notice explains the pause and the runner image
+// builds under the effective (checkout-scoped) tag; both dry-run gates make it
+// read-only, so the rest of the run keeps resolving against the legacy location.
+func resolveSessionIdentity(
+	ctx context.Context,
+	cwd, agentName string,
+	opts options.RunOptions,
+	ui termio.UI,
+) (agent.Agent, git.Identity, state.Key, error) {
+	a, ok := agent.Lookup(agentName)
+	if !ok {
+		return nil, git.Identity{}, state.Key{}, fmt.Errorf("unknown agent %q", agentName)
+	}
+	identity := git.ResolveIdentity(cwd)
+	apply := !opts.DryRun && !opts.DryRunVM
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), apply, ui)
+	if err != nil {
+		return nil, git.Identity{}, state.Key{}, err
+	}
+	return a, identity, state.Key{Slug: adoption.Slug, Agent: a.Name()}, nil
 }
 
 // determineAgentVersion decides the agent version for the run. A side-effect-free
@@ -261,22 +289,6 @@ func resolveWorkspacePath(dir string) (string, error) {
 		return "", fmt.Errorf("resolve symlinks in %q: %w", dir, err)
 	}
 	return resolved, nil
-}
-
-// resolveBindLayout decides which host directory to bind at /workspace and the
-// guest directory the agent should start in. A worktree outside its enclosing
-// checkout is bound as-is (keeping today's binding) with a warning, since its
-// shared git dir would not be reachable in the VM.
-func resolveBindLayout(cwd string, ui termio.UI) (git.WorkspaceLayout, string) {
-	layout := git.ResolveWorkspaceLayout(cwd)
-	if layout.OutsideWorktree {
-		ui.Warnf(
-			"worktree %q is outside its checkout %q; git may not resolve inside the VM — keep worktrees inside the checkout",
-			cwd,
-			layout.CheckoutRoot,
-		)
-	}
-	return layout, guestWorkspacePath(layout.BindRoot, cwd)
 }
 
 // guestWorkspacePath maps the host cwd to the directory the agent should start

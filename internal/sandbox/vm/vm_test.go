@@ -139,7 +139,7 @@ func TestCreateProjectVMCallsClientCreateSandbox(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
@@ -193,7 +193,7 @@ func TestCreateProjectVMLoadsImageWhenNotCached(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:abc"},
 		"test-home-vol",
 		t.TempDir(),
@@ -218,6 +218,7 @@ func TestCreateProjectVMLoadsImageWhenNotCached(t *testing.T) {
 }
 
 func TestStopProjectVMUsesClient(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	testUI := termio.NewTestMock(t)
 	ui := &testUI
 	client := &msb.MockMsbClient{}
@@ -265,6 +266,7 @@ func TestEnsureProjectVM_CreatePath(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -316,6 +318,7 @@ func TestEnsureProjectVMAppliesLabels(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -351,6 +354,7 @@ func TestEnsureProjectVM_ReconnectPath(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -398,6 +402,7 @@ func TestEnsureProjectVM_ConnectOutcomeIsInfo(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (connect): %v", err)
@@ -426,6 +431,7 @@ func TestEnsureProjectVM_StartOutcomeIsInfo(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (start): %v", err)
@@ -458,6 +464,7 @@ func TestEnsureProjectVM_CreateOutcomeIsInfo(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (create): %v", err)
@@ -492,6 +499,7 @@ func TestEnsureProjectVM_ReconnectWhenImageUnchanged(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -592,7 +600,7 @@ func TestCreateProjectVMAppliesRootDiskWhenDiskSizeSet(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
@@ -646,6 +654,7 @@ func TestEnsureProjectVM_NoReplacementWhenExistingImageUnknown(t *testing.T) {
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -696,6 +705,7 @@ func TestEnsureProjectVMRecreatesWhenFlagged(t *testing.T) {
 		"homevol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -740,6 +750,7 @@ func TestEnsureProjectVMReusesWhenNotFlagged(t *testing.T) {
 		"homevol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		ui,
 	)
 	if err != nil {
@@ -796,6 +807,7 @@ func TestExitError(t *testing.T) {
 }
 
 func TestKillProjectVMUsesClient(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	testUI := termio.NewTestMock(t)
 	ui := &testUI
 	client := &msb.MockMsbClient{}
@@ -816,6 +828,7 @@ func TestKillProjectVMUsesClient(t *testing.T) {
 }
 
 func TestStopProjectVMAlreadyStopped(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	testUI := termio.NewTestMock(t)
 	ui := &testUI
 	client := &msb.MockMsbClient{}
@@ -834,6 +847,7 @@ func TestStopProjectVMAlreadyStopped(t *testing.T) {
 }
 
 func TestStopProjectVMDryRunRemove(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	testUI := termio.NewTestMock(t)
 	ui := &testUI
 	client := &msb.MockMsbClient{}
@@ -852,6 +866,7 @@ func TestStopProjectVMDryRunRemove(t *testing.T) {
 }
 
 func TestStopProjectVMNotFound(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	testUI := termio.NewTestMock(t)
 	ui := &testUI
 	client := &msb.MockMsbClient{}

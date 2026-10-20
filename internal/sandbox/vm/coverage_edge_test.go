@@ -79,7 +79,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 	flockDir := filepath.Join(configpaths.Get().UserStateDir(), slug, "opencode")
 	if err := os.MkdirAll(filepath.Join(flockDir, "ensure-vm.lock"), 0o750); err != nil {
@@ -100,6 +100,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 		"vol",
 		"/workspace",
 		k,
+		k.Slug,
 		&ui,
 	)
 	if err == nil {

@@ -37,7 +37,7 @@ func TestPrepareSandboxImageError(t *testing.T) {
 func TestPrepareSandboxVersionResolutionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	seedHomeState(
-		state.Key{Slug: git.ProjectSlug(), Agent: "opencode"},
+		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.0.0", AgentSource: agentSourceTool},
 	)
 	origUpgradeInfo := agentLatestVersion

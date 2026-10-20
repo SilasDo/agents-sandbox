@@ -189,6 +189,7 @@ type fakePrepared struct {
 	target        string
 	serveHostPort int
 	guestCWD      string
+	key           state.Key
 }
 
 func (f *fakePrepared) Cleanup()             {}
@@ -196,6 +197,7 @@ func (f *fakePrepared) Sandbox() msb.Sandbox { return f.sb }
 func (f *fakePrepared) Target() string       { return f.target }
 func (f *fakePrepared) ServeHostPort() int   { return f.serveHostPort }
 func (f *fakePrepared) GuestCWD() string     { return f.guestCWD }
+func (f *fakePrepared) Key() state.Key       { return f.key }
 
 // --- Run: dry-run ---
 

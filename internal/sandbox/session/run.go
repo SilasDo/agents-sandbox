@@ -9,7 +9,6 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/notify"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -26,6 +25,7 @@ type preparedSandbox interface {
 	Target() string
 	ServeHostPort() int
 	GuestCWD() string
+	Key() state.Key
 }
 
 // prepareSandbox is a test seam swapped in tests to avoid real VM setup.
@@ -145,7 +145,7 @@ func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 		return nil
 	}
 
-	projectSlug := git.ProjectSlug()
+	projectSlug := ses.Key().Slug
 
 	a, _ := agent.Lookup(opts.Agent)
 	var streamSpec *agent.EventStreamSpec
@@ -222,7 +222,7 @@ func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 		return nil
 	}
 
-	projectSlug := git.ProjectSlug()
+	projectSlug := ses.Key().Slug
 	return runAttach(ctx, sb, projectSlug, ses.GuestCWD(), ui, opts, "-l")
 }
 
