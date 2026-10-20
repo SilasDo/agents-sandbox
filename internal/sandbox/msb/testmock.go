@@ -361,6 +361,8 @@ type MockSandboxHandle struct {
 	Destroyed       bool
 	Cfg             *msbSdk.SandboxConfig
 	ConfigErr       error
+	Mounts          map[string]msbSdk.MountConfig
+	MountsErr       error
 	ModifyErr       error
 	Plan            *msbSdk.SandboxModificationPlan
 	ModifiedOptions []msbSdk.ModifyOptions
@@ -438,6 +440,17 @@ func (m *MockSandboxHandle) Config() (*msbSdk.SandboxConfig, error) {
 		return nil, m.ConfigErr
 	}
 	return m.Cfg, nil
+}
+
+// ConfigMounts is seeded directly rather than derived from a persisted config
+// JSON, which the mock has no equivalent of: the real handle's wiring of
+// ParseConfigMounts over ConfigJSON() needs the FFI runtime to exercise. The
+// parser it calls carries the tests for the decode itself.
+func (m *MockSandboxHandle) ConfigMounts() (map[string]msbSdk.MountConfig, error) {
+	if m.MountsErr != nil {
+		return nil, m.MountsErr
+	}
+	return m.Mounts, nil
 }
 
 func (m *MockSandboxHandle) Modify(
