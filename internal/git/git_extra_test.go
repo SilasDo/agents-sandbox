@@ -114,6 +114,36 @@ func TestResolveGitDir(t *testing.T) {
 			t.Errorf("isLinkedWorktree(%q) = true, want false", root)
 		}
 	})
+
+	t.Run("absolute gitdir under a worktrees-named ancestor", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "proj")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		shared := filepath.Join(t.TempDir(), "worktrees", "proj", "shared.git")
+		if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+shared+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := resolveGitDir(root); got != shared {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", root, got, shared)
+		}
+		if isLinkedWorktree(root) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", root)
+		}
+	})
+
+	t.Run("worktree registration under a worktrees-named ancestor", func(t *testing.T) {
+		repo := newRepoUnderWorktreesAncestor(t)
+		wt := filepath.Join(repo, "wt")
+		testutil.RunGit(t, repo, "worktree", "add", wt)
+		want := filepath.Join(repo, ".git")
+		if got := resolveGitDir(wt); got != want {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", wt, got, want)
+		}
+		if !isLinkedWorktree(wt) {
+			t.Errorf("isLinkedWorktree(%q) = false, want true", wt)
+		}
+	})
 }
 
 func TestIsLinkedWorktree(t *testing.T) {

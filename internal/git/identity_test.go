@@ -171,6 +171,21 @@ func newSubmoduleUnderWorktreesAncestor(t *testing.T) string {
 	return filepath.Join(super, "sub")
 }
 
+// newRepoUnderWorktreesAncestor creates a real repo whose path contains a
+// component literally named "worktrees" (so its .git path does too) and returns
+// its working-tree root.
+func newRepoUnderWorktreesAncestor(t *testing.T) string {
+	t.Helper()
+	repo := filepath.Join(resolvePath(t.TempDir()), "worktrees", "repo")
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	testutil.RunGit(t, repo, "init")
+	testutil.ConfigureRepo(t, repo)
+	testutil.WriteFile(t, repo, "f", "f")
+	testutil.RunGit(t, repo, "add", ".")
+	testutil.RunGit(t, repo, "commit", "-m", "init")
+	return repo
+}
+
 // TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside pins the
 // pre-refactor order: the recorded gitdir is classified and stripped while still
 // relative, before it is joined to the worktree root. A "worktrees" component in
@@ -199,6 +214,36 @@ func TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside(t *testing.
 		require.Equal(t, root, id.CheckoutRoot)
 		require.Equal(t, root, id.BindRoot)
 	})
+
+	t.Run("absolute separate git dir", func(t *testing.T) {
+		// An absolute gitdir carries its ancestors in the recorded text, so a
+		// "worktrees" component there must not look like a worktree registration
+		// (it would strip to the ancestor and refuse the checkout).
+		root := filepath.Join(resolvePath(t.TempDir()), "proj")
+		shared := filepath.Join(resolvePath(t.TempDir()), "worktrees", "proj", "shared.git")
+		writeGitdirFile(t, root, shared)
+
+		id := ResolveIdentity(root)
+
+		require.False(t, id.OutsideWorktree)
+		require.Equal(t, root, id.CheckoutRoot)
+		require.Equal(t, root, id.BindRoot)
+	})
+}
+
+// TestResolveIdentityWorktreeUnderWorktreesAncestor keeps the linked-worktree
+// strip correct when the shared git dir itself sits under a "worktrees" path
+// component: the registration is the last /worktrees/ segment, not the ancestor.
+func TestResolveIdentityWorktreeUnderWorktreesAncestor(t *testing.T) {
+	repo := newRepoUnderWorktreesAncestor(t)
+	wt := filepath.Join(repo, "wt")
+	testutil.RunGit(t, repo, "worktree", "add", wt)
+
+	id := ResolveIdentity(wt)
+
+	require.False(t, id.OutsideWorktree)
+	require.Equal(t, repo, id.CheckoutRoot)
+	require.Equal(t, repo, id.BindRoot)
 }
 
 func TestRepoSlugOutsideWorktree(t *testing.T) {

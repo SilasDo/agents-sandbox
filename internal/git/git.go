@@ -108,11 +108,12 @@ func resolveGitDir(root string) string {
 	if !ok {
 		return ""
 	}
-	// Strip on the recorded text before making it absolute: a "worktrees"
-	// component in an ancestor of root must not be mistaken for a worktree
-	// registration (see gitdirFile).
-	if i := strings.LastIndex(dir, "/worktrees/"); i >= 0 {
-		dir = dir[:i]
+	// Strip a worktree registration before making the path absolute: the raw
+	// text still carries its ancestors when git wrote an absolute gitdir, and a
+	// "worktrees" component there is not a registration (see
+	// worktreeRegistration).
+	if shared, ok := worktreeRegistration(dir); ok {
+		dir = shared
 	}
 	if !filepath.IsAbs(dir) {
 		dir = filepath.Join(root, dir)
@@ -121,13 +122,31 @@ func resolveGitDir(root string) string {
 }
 
 // isLinkedWorktree reports whether root is a linked worktree: its .git is a file
-// pointing into a shared git dir under a worktrees/ segment. A
-// --separate-git-dir checkout and a submodule also have a .git file, but their
-// gitdir is not a worktree registration, so they are not linked worktrees and
-// are never treated as outside.
+// recording a worktree registration. A --separate-git-dir checkout and a
+// submodule also have a .git file, but their gitdir is not a registration, so
+// they are not linked worktrees and are never treated as outside.
 func isLinkedWorktree(root string) bool {
 	dir, ok := gitdirFile(root)
-	return ok && strings.Contains(dir, "/worktrees/")
+	if !ok {
+		return false
+	}
+	_, ok = worktreeRegistration(dir)
+	return ok
+}
+
+// worktreeRegistration returns the shared git dir recorded in gitdir when gitdir
+// is a linked-worktree registration, i.e. "<shared>/worktrees/<name>" with a
+// single final segment; git never lets a worktree name contain "/". Requiring
+// exactly one segment after the last "/worktrees/" keeps a "worktrees" component
+// in an ancestor — or in the shared dir path itself — from being mistaken for a
+// registration, which matters because an absolute gitdir carries its ancestors in
+// the same text.
+func worktreeRegistration(gitdir string) (string, bool) {
+	shared, name, found := strings.CutLast(gitdir, "/worktrees/")
+	if !found || name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+	return shared, true
 }
 
 // gitdirFile returns the gitdir path recorded in root/.git when that entry is a
