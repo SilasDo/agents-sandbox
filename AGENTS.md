@@ -72,6 +72,9 @@ Common development commands (run from the Go module root):
 - `make test`/`go test ./...` — run all tests.
 - `make compile-all` — compile every test binary including `integration`-tagged files without a docker daemon (catches
   tagged-only compile regressions; run by CI on every PR).
+- `make test-msb` — run the `msb`-tagged harness smoke tests, which start every registered harness to its full-screen
+  TUI in a real microsandbox VM. Host-only (needs KVM, a docker daemon, and network) and excluded from
+  `make check`/`make test` via the `msb` build tag; `make compile-all` still compiles it.
 - `make lint`/`golangci-lint run` — run the linter. ALWAYS use! DON'T use `go vet`!
 - `make fmt`/`golangci-lint fmt` — format all files. ALWAYS use! DON'T manually rewrite / use `go fmt`!
 - `go mod tidy` — sync `go.mod`/`go.sum` (run after adding/removing imports).
