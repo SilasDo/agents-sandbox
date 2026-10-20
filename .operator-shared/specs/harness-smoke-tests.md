@@ -51,6 +51,12 @@ without smoke coverage.
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
 
+- the root is created under a **short, fixed base** (`/tmp/asb-…`), not the host's `TMPDIR`: microsandbox
+  derives its sandbox control-socket path from the private home under `XDG_DATA_HOME` (`<root>/data/agents-sandbox/msb`)
+  and rejects a derived path that does not fit a Unix socket's `sun_path` (104 bytes on macOS, the tighter
+  target), so a long `TMPDIR` — macOS's default is ~49 bytes — would fail every harness before its TUI with
+  "sandbox runtime socket path is too long"; a fast unit test pins the budget (`msb` appends a fixed 50-byte
+  suffix and rejects a home above 55 bytes on Linux, microsandbox v0.7.8);
 - the child environment is built from an **allowlist**, dropping inherited `HOME`, `XDG_*`,
   `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; it sets `HOME=<root>/home`,
   `XDG_CONFIG_HOME=<root>/config`, `XDG_DATA_HOME=<root>/data`, `XDG_STATE_HOME=<root>/state`,
