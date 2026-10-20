@@ -145,15 +145,33 @@ func preflightDocker(t *testing.T, root string) {
 }
 
 // prepare creates the shared temp root and compiles the launcher into it once
-// for the whole suite, and returns both.
+// for the whole suite, and returns both. The root is registered for removal as
+// soon as it exists, so a skip (the docker preflight) or a failed build cannot
+// leave the root and its compiled binary behind. Destroying the sandboxes
+// inside the root stays separate: that needs the binary and a reachable docker
+// daemon, so it runs only after the docker preflight.
 func prepare(t *testing.T) (root, binary string) {
 	t.Helper()
 
 	prepareOnce.Do(createRootAndBuildBinary)
+	if smokeRoot != "" {
+		created := smokeRoot
+		t.Cleanup(func() { removeTempRoot(t, created) })
+	}
 	if errSmokePrepare != nil {
 		t.Fatalf("prepare harness smoke suite: %v", errSmokePrepare)
 	}
 	return smokeRoot, smokeBinary
+}
+
+// removeTempRoot deletes the suite's shared temp root. It runs in cleanup, so a
+// failure is logged, never fatal.
+func removeTempRoot(t *testing.T, root string) {
+	t.Helper()
+
+	if err := os.RemoveAll(root); err != nil {
+		t.Logf("cleanup: remove temp root %s: %v", root, err)
+	}
 }
 
 // projectDir is the throwaway project directory a harness runs in. It fixes the
@@ -224,9 +242,10 @@ func buildHarnessImages(root string) error {
 	return nil
 }
 
-// cleanupSandboxes best-effort destroys any sandbox left in the isolated home
-// before removing the temp root, so a failed harness cannot leak a VM pointing
-// at a deleted home. It logs failures and never fails the test.
+// cleanupSandboxes best-effort destroys any sandbox left in the isolated home,
+// so a failed harness cannot leak a VM pointing at a home the suite is about to
+// delete. The root's own removal is registered by prepare and runs after this.
+// It logs failures and never fails the test.
 func cleanupSandboxes(t *testing.T, root, binary string) {
 	t.Helper()
 
@@ -249,9 +268,6 @@ func cleanupSandboxes(t *testing.T, root, binary string) {
 		if removeErr != nil {
 			t.Logf("cleanup: remove sandbox %s: %v\n%s", name, removeErr, removeOut)
 		}
-	}
-	if err := os.RemoveAll(root); err != nil {
-		t.Logf("cleanup: remove temp root %s: %v", root, err)
 	}
 }
 

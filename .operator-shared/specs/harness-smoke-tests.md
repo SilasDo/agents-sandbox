@@ -85,7 +85,9 @@ that cannot run the suite never pays for it.
 
 **Teardown.** A clean quit lets the launcher stop its VM. A deferred cleanup best-effort destroys any sandbox
 left in the isolated home before the temp root is removed, so a failed subtest cannot leak a VM pointing at a
-deleted home.
+deleted home. The temp root's removal is registered as soon as the root is created, so a skip (the docker
+preflight) or a failed launcher build removes it too; the sandbox sweep stays separate because it needs the
+binary and a reachable docker daemon.
 
 ## Non-goals
 
