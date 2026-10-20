@@ -31,7 +31,11 @@ func PruneVolumes(
 		return report, err
 	}
 	exists := countVolumesByKey(handles)
-	removed := pruneHomeVolumes(ctx, handles, pruneState, dryRun, ui, &report)
+	references, err := state.HomeVolumeReferences()
+	if err != nil {
+		return report, err
+	}
+	removed := pruneHomeVolumes(ctx, handles, pruneState, references, dryRun, ui, &report)
 	if !dryRun {
 		removeStateForGoneKeys(ui, removed, exists)
 	}
@@ -55,11 +59,15 @@ func countVolumesByKey(handles []msb.VolumeHandle) map[state.Key]int {
 }
 
 // pruneHomeVolumes removes the home volumes of stale slugs and records the
-// number removed per project/agent key.
+// number removed per project/agent key. A volume still referenced by a project
+// state file is kept and warned about instead, so prune can never delete a
+// volume (for example one a pending adoption preserves) that a state file still
+// points at.
 func pruneHomeVolumes(
 	ctx context.Context,
 	handles []msb.VolumeHandle,
 	pruneState PruneState,
+	references map[string][]state.Key,
 	dryRun bool,
 	ui termio.UI,
 	report *VolumeReport,
@@ -76,6 +84,10 @@ func pruneHomeVolumes(
 		}
 		key := state.Key{Slug: volumeArtifact.Slug, Agent: volumeArtifact.Agent}
 		if _, found := pruneState.ToPrune[key]; !found {
+			continue
+		}
+		if len(references[name]) > 0 {
+			ui.Warnf("keeping home volume %s: still referenced by %s", name, state.FormatKeys(references[name]))
 			continue
 		}
 		if !dryRun {
