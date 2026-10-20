@@ -490,6 +490,49 @@ func TestResolveTargetOpencode2ReportsDetachedHead(t *testing.T) {
 	}
 }
 
+// TestResolveTargetOpencode2ReuseDoesNotClaimDetachedHead pins that the
+// detached-HEAD note stays on the create path. A reused worktree's checkout
+// state is unknown — the user may already have run `git switch -c <branch>`
+// after the create-time note — so reuse must not restate the claim.
+func TestResolveTargetOpencode2ReuseDoesNotClaimDetachedHead(t *testing.T) {
+	ui := &termio.Mock{}
+	a := opencode2Agent(t)
+	provider, ok := agent.AsWorktreeProvider(a)
+	if !ok {
+		t.Fatal("opencode2 does not implement WorktreeProvider")
+	}
+	dir := "/home/dev/.local/share/opencode/worktree/abc/feat-x"
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0,
+				`[{"directory":"`+dir+`"}]`, "", nil),
+		},
+		ShellCalls: &[]string{},
+	}
+	got, err := ResolveTarget(
+		context.Background(),
+		a,
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != dir {
+		t.Errorf("got dir %q, want the reused %q", got, dir)
+	}
+	if !infoCallContains(ui.InfoCalls, "reusing existing worktree", "feat-x", dir) {
+		t.Errorf("expected a default-visible reuse message naming the directory; got: %v", ui.InfoCalls)
+	}
+	for _, msg := range append(append([]string{}, ui.InfoCalls...), ui.WarnCalls...) {
+		if strings.Contains(msg, "detached") {
+			t.Errorf("reuse must not claim a detached HEAD: %q", msg)
+		}
+	}
+}
+
 // TestResolveTargetOpencodeDoesNotReportDetachedHead pins that v1 (which keeps a
 // branch) never claims a detached HEAD.
 func TestResolveTargetOpencodeDoesNotReportDetachedHead(t *testing.T) {

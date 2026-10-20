@@ -66,9 +66,11 @@ func findWorktreeDir(listStdout string, slug string) (string, bool) {
 	return "", false
 }
 
-// worktreeDetachedNote is the parenthetical appended to a worktree message for
+// worktreeDetachedNote is the parenthetical appended to the create message for
 // agents whose daemon leaves a new worktree on a detached HEAD (v2), naming the
-// recovery; it is empty for agents that keep a branch (v1).
+// recovery; it is empty for agents that keep a branch (v1). It is deliberately
+// not used on reuse: a reused worktree's checkout state is unknown, so claiming
+// one there would be wrong as soon as the user runs the suggested `git switch`.
 func worktreeDetachedNote(a agent.Agent) string {
 	reporter, ok := agent.AsDetachedWorktreeReporter(a)
 	if !ok || !reporter.WorktreeCreatesDetachedHead() {
@@ -123,7 +125,7 @@ func ResolveTarget(
 		if spec.Base != "" {
 			ui.Warnf("worktree %q already exists; ignoring base %q", spec.Name, spec.Base)
 		}
-		ui.Infof("reusing existing worktree %q: %s%s", spec.Name, dir, worktreeDetachedNote(a))
+		ui.Infof("reusing existing worktree %q: %s", spec.Name, dir)
 		return dir, nil
 	}
 
