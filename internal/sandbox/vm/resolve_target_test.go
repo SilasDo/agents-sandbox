@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -30,6 +31,43 @@ func TestResolveTargetListError(t *testing.T) {
 	}
 }
 
+// TestResolveTargetListNonSuccessDoesNotCreate pins that a non-success worktree
+// list fails the resolution instead of falling through to create. A transport
+// failure or a non-array payload must never be read as "no worktrees": that
+// would silently abandon an existing worktree for a new server-suffixed one and
+// hide a future route or field rename. v1's list returns a successful JSON array
+// (empty when the project has no worktrees), so a non-success result is always a
+// genuine failure and the strictness is safe to apply to both providers.
+func TestResolveTargetListNonSuccessDoesNotCreate(t *testing.T) {
+	ui := &termio.Mock{}
+	provider := mustWorktreeProvider(t)
+	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
+	calls := &[]string{}
+	sb := &msb.MockSandbox{
+		ShellCalls: calls,
+		ShellOut: map[string]msb.ShellResult{
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(
+				false, 22, "", "curl: (22) The requested URL returned error: 404", nil),
+			createCmd: msb.NewTestResult(true, 0, `{"directory":"/workspace/worktrees/feat-x"}`, "", nil),
+		},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		opencodeAgent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err == nil {
+		t.Fatal("expected error when the worktree list exits non-zero")
+	}
+	for _, call := range *calls {
+		if strings.Contains(call, "POST") {
+			t.Errorf("must not create a worktree after a failed list; calls: %v", *calls)
+		}
+	}
+}
+
 // TestResolveTargetCreateNonSuccess covers the non-success create-result branch
 // of ResolveTarget.
 func TestResolveTargetCreateNonSuccess(t *testing.T) {
@@ -38,8 +76,8 @@ func TestResolveTargetCreateNonSuccess(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
-			createCmd:                  msb.NewTestResult(false, 1, "", "failed", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			createCmd: msb.NewTestResult(false, 1, "", "failed", nil),
 		},
 	}
 	_, err := ResolveTarget(
@@ -63,8 +101,8 @@ func TestResolveTargetParseError(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
-			createCmd:                  msb.NewTestResult(true, 0, "not-json", "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			createCmd: msb.NewTestResult(true, 0, "not-json", "", nil),
 		},
 	}
 	_, err := ResolveTarget(

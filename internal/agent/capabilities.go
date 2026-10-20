@@ -21,9 +21,12 @@ type DaemonProvider interface {
 	DaemonAuthHint() string
 }
 
-// WorktreeProvider manages git worktrees through a running daemon.
+// WorktreeProvider manages git worktrees through a running daemon. WorktreeListCmd
+// takes the target — the launch directory the daemon scopes its worktree request
+// to; the create path receives it on WorktreeSpec.Target instead. Agents with
+// global routes ignore it.
 type WorktreeProvider interface {
-	WorktreeListCmd() string
+	WorktreeListCmd(target string) string
 	WorktreeCreateCmd(spec WorktreeSpec) string
 	WorktreeParseDir(stdout string) (string, bool)
 }
@@ -105,6 +108,21 @@ type ConfigDirAliaser interface {
 // AsConfigDirAliaser returns the agent's ConfigDirAliaser, if it implements one.
 func AsConfigDirAliaser(a Agent) (ConfigDirAliaser, bool) {
 	p, ok := a.(ConfigDirAliaser)
+	return p, ok
+}
+
+// DetachedWorktreeReporter declares that the agent's daemon creates worktrees on
+// a detached HEAD rather than a branch, so the launcher can warn the user to
+// create a branch before they commit (and lose the work when the guest home
+// volume goes away). Agents that keep a branch do not implement it.
+type DetachedWorktreeReporter interface {
+	WorktreeCreatesDetachedHead() bool
+}
+
+// AsDetachedWorktreeReporter returns the agent's DetachedWorktreeReporter, if it
+// implements one.
+func AsDetachedWorktreeReporter(a Agent) (DetachedWorktreeReporter, bool) {
+	p, ok := a.(DetachedWorktreeReporter)
 	return p, ok
 }
 

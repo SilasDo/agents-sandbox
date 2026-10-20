@@ -9,7 +9,9 @@ import (
 	"github.com/spf13/cobra"
 	msb "github.com/superradcompany/microsandbox/sdk/go"
 
+	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
+	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	sandboxmsb "github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -37,7 +39,9 @@ func setupRunMocks(t *testing.T, mock *sandboxmsb.MockMsbClient, sandboxToReturn
 			_ = ctx
 			_ = sb
 			_ = command
-			return `{"healthy": true}`, 0, nil
+			// A body both daemon parsers accept: v1 reads `healthy`, v2 reads a
+			// version from its ServerInfo.
+			return `{"healthy":true,"version":"0.0.0-test"}`, 0, nil
 		},
 	)
 	t.Cleanup(func() { sandbox.SetDaemonShellFunc(origShell) })
@@ -234,14 +238,14 @@ func TestRunShellWorktreeReusesExisting(t *testing.T) {
 	_ = root.Execute()
 
 	found := false
-	for _, call := range ui.VerboseCalls {
+	for _, call := range ui.InfoCalls {
 		if strings.Contains(call, "reusing existing worktree \"bugfix-exit-zero\"") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected verbose 'reusing existing worktree'; got: %v", ui.VerboseCalls)
+		t.Errorf("expected default-visible 'reusing existing worktree'; got: %v", ui.InfoCalls)
 	}
 	for _, call := range *sb.ShellCalls {
 		if strings.Contains(call, "POST") {
@@ -267,6 +271,56 @@ func TestRunShellWithCpus(t *testing.T) {
 
 	if len(mock.CreatedSandboxCalls) < 1 {
 		t.Fatalf("expected at least 1 CreateSandbox call, got %d", len(mock.CreatedSandboxCalls))
+	}
+}
+
+// TestRunShellWorktreeOpencode2ReusesExisting mirrors the v1 reuse test for
+// opencode2: the --worktree gate admits opencode2, the launcher drives v2's
+// project-scoped list command, and an existing worktree is reused without a
+// create. It fails if the gate stops admitting opencode2, the launch directory
+// stops reaching the v2 command, or the list route regresses.
+func TestRunShellWorktreeOpencode2ReusesExisting(t *testing.T) {
+	initTestProjectDir(t)
+
+	a, ok := agent.Lookup("opencode2")
+	if !ok {
+		t.Fatal("opencode2 agent not registered")
+	}
+	provider, ok := agent.AsWorktreeProvider(a)
+	if !ok {
+		t.Fatal("opencode2 does not implement WorktreeProvider")
+	}
+
+	mock := &sandboxmsb.MockMsbClient{}
+	sb := &sandboxmsb.MockSandbox{
+		AttachErr:  errors.New("fail"),
+		ShellOut:   map[string]sandboxmsb.ShellResult{},
+		ShellCalls: &[]string{},
+	}
+	sb.ShellOut[provider.WorktreeListCmd(mounts.WorkspaceMountPath)] = sandboxmsb.NewTestResult(
+		true,
+		0,
+		`[{"directory":"/home/dev/.local/share/opencode/worktree/abc/bugfix-exit-zero"}]`,
+		"",
+		nil,
+	)
+	root, ui := setupRunMocks(t, mock, sb, "run", "--agent", "opencode2", "--worktree", "bugfix-exit-zero")
+	_ = root.Execute()
+
+	found := false
+	for _, call := range ui.InfoCalls {
+		if strings.Contains(call, `reusing existing worktree "bugfix-exit-zero"`) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected default-visible 'reusing existing worktree'; got: %v", ui.InfoCalls)
+	}
+	for _, call := range *sb.ShellCalls {
+		if strings.Contains(call, "POST /api/worktree") {
+			t.Errorf("expected reuse without create, but created a new worktree: %q", call)
+		}
 	}
 }
 

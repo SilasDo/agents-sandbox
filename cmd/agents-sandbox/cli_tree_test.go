@@ -41,7 +41,7 @@ func TestTree(t *testing.T) {
 		descs := []string{
 			"Assume yes to all prompts",
 			"Minimum log level to show (error, warning, info, verbose)",
-			"(opencode only) Run in an isolated worktree named <name>, optionally starting from the local base ref <name>:<base>",
+			"(opencode, opencode2) Run in an isolated worktree named <name>, optionally starting from the local base ref <name>:<base>",
 			"Rebuild the runner image before starting",
 			"Dry run without starting anything",
 			"Number of CPUs (default: all)",

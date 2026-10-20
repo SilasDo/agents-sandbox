@@ -184,7 +184,7 @@ func TestResolveTargetCreateShellError(t *testing.T) {
 	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
 	base := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
 		},
 		ShellCalls: &[]string{},
 	}

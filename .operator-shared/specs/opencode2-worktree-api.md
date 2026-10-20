@@ -1,7 +1,7 @@
 # Contract: opencode2 worktree API (v2 routes, project scoping, base refs)
 
 Date: 2026-10-19
-Status: specified (issue #235; not implemented)
+Status: implemented on fix/opencode2-worktree-api (pending merge)
 
 ## Problem
 
@@ -72,10 +72,29 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 - **v2 resolves the project through `/api/location`**, not by scanning `/api/project`: the command
   seeds `location[directory]=<target>` (shell-quoted), and reads `.project.id`. An empty id or a
   non-2xx response must fail the command rather than send a request with an empty `projectID`.
+  `canonical` must likewise resolve to a non-empty value or the command aborts: with a missing
+  `canonical` the list's canonical-root filter would compare entries against a `null` sentinel and
+  fail open, keeping the main checkout in the list.
 - **v2 lists with `GET /api/worktree?projectID=<id>`**, and the emitted list **excludes the
-  canonical root entry**: `jq 'select(.directory != $canonical)'`. Otherwise a worktree name equal
+  canonical root entry**: `jq -ce --arg canonical "$CANON" 'if type == "array" and all(.[]; type
+  == "object" and (.directory | type == "string" and length > 0)) then
+  [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
+  (wrapped in an array so the output stays one JSON list). Otherwise a worktree name equal
   to the repository directory name would silently "reuse" the main checkout and attach the session
-  there instead of creating a worktree.
+  there instead of creating a worktree. Every entry must carry a non-empty string `directory` for
+  the same reason: an entry whose field was renamed, blanked, or retyped would pass a canonical-root
+  filter that only compared values (`null != $canonical` is true) and then be skipped by the shared
+  base-name match, so the existing worktree would go unseen and a second one would be created.
+- **A failed or unparsable worktree list must never be read as "no worktrees".** The list command
+  captures curl's response *before* piping into jq (`LIST=$(curl …) || exit 1`), so curl's own
+  non-zero exit propagates instead of being swallowed by the pipe (a failed `curl -sf` piped into
+  jq exits 0 with empty stdout); the jq filter runs with `-e` and rejects a non-array payload. The
+  shared `vm.ResolveTarget` then **aborts on a non-success list** rather than falling through to
+  create — a silent fall-through would abandon an existing worktree for a new server-suffixed one
+  (v2 never reuses a name) and hide a daemon route or field rename. The abort is shared with v1:
+  v1's global route returns a successful JSON array (`[]` when the project has no worktrees — the
+  array is only populated for worktrees OpenCode created), so a non-success result is always a
+  genuine failure, not an empty list.
 - **v2 creates with `POST /api/worktree`** and the body `{"projectID": …, "name": …}`, plus
   `"branch": <base>` when a base is given. Deliberately absent: `strategy`, `directory`, `from`,
   `startCommand`.
@@ -84,6 +103,14 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
     (`$HOME/.local/share/opencode/worktree/<short project id>/<name>`). Choosing a location is not
     part of this fix.
   - No `from`: `--worktree` has no stacked-worktree concept, and `from` is a directory, not a ref.
+- **Worktree reporting is user-visible.** On both create and reuse the resolved worktree directory is
+  reported at info level (default-visible). When the daemon auto-suffixes a name — the created
+  directory's base name differing from the requested slug — a warning names the directory actually
+  used. An agent whose daemon creates worktrees detached (opencode2) appends a detached-HEAD note via
+  the optional `DetachedWorktreeReporter` capability, naming the `git switch -c <branch>` recovery;
+  the note is **create-only** — a reused worktree's checkout state is unknown (the user may already
+  have run the suggested `git switch`), so reuse must not restate the claim. v1, which keeps a
+  branch, adds no note.
 - **Base handling: the base is validated *before* the create, against the target directory, for both
   providers** (`git rev-parse --verify <base>^{commit}`, no fetch — the existing
   `validateWorktreeBase`, just moved ahead of the create and pointed at the source directory). The
@@ -95,8 +122,15 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 - **Reuse matching is unchanged**: the shared base-name match over the list, which is exact because
   `--worktree` names are slugs (no separators; see below).
 
-## Deviations from v1 (must be reflected in docs, not hidden)
+## Deviations (must be reflected in docs, not hidden)
 
+- **Project resolution deviates from the issue's prescribed `GET /api/project` + canonical
+  matching.** The issue assumed the launcher could list projects (`GET /api/project`) and match the
+  target directory against each project's `canonical`. That cannot work: `/api/project` lists only
+  projects the server has **already seen**, and nothing registers this project before
+  `ResolveTarget` runs — registration happens on attach, which runs *after*. The command therefore
+  uses `GET /api/location?location[directory]=<target>`, which resolves and registers the project
+  in one request and returns `project.id` and `project.canonical` directly.
 - **Checkout state.** v1 leaves the worktree on its own branch with the base reset into it; v2 leaves
   a **detached HEAD** at the base ref (or at the source tip without a base). `docs/branch-sessions.md`
   currently states the v1 behavior unconditionally ("The worktree stays on its own `opencode/<name>`
@@ -120,9 +154,13 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 
 - Command-string unit tests for `opencode2Profile` (resolution prelude present, list filtered by
   `.project.canonical`, create body contains `projectID`/`name`/`branch` and no `strategy`), and for
-  `opencodeProfile` (routes and body unchanged; target ignored).
+  `opencodeProfile` (routes and body unchanged; target ignored). The jq filter is also executed
+  against fixtures with real `jq`: the canonical root is dropped (including a server-suffixed
+  `name-2`), and a non-array payload or an entry without a non-empty string `directory` exits
+  non-zero.
 - `vm.ResolveTarget` tests: the target reaches both provider calls, the base is validated before the
-  create, and an unresolvable base aborts without creating.
+  create, an unresolvable base aborts without creating, the create message carries the detached-HEAD
+  note for opencode2 while a reuse does not.
 - Manual end-to-end (user-side; the dev VM cannot start microsandbox VMs):
   `agents-sandbox run --agent opencode2 --worktree feature-x` creates, attaches, and a second run
   reuses the same directory; `-w feature-x:main` checks out at `main` (detached).

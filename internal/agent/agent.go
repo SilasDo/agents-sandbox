@@ -22,6 +22,8 @@ type Agent interface {
 
 // WorktreeSpec describes a git worktree to create in the VM. It is a minimal,
 // local type so the agent package does not depend on internal/sandbox/options.
+// Target is the launch directory (the VM's working directory) the agent daemon
+// scopes its worktree request to; agents with global routes ignore it.
 //
 //exhaustruct:ignore
 type WorktreeSpec struct {
