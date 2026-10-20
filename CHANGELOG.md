@@ -40,7 +40,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Internal: add `make test-integration` — runs every `integration`-tagged test across the module (excluded from the main
   suite), currently the docker-build tests that build a real image for every `RenderDockerfile` composition case (no
   project Dockerfile, managed base, and custom Fedora base, each with and without docker). Wired into CI as a selective
-  job (main/release/manual).
+  job: main and releases, manual dispatch, and any PR labeled `run-integration`.
+- Internal: the CI integration job (the docker-build suite) runs on a PR when a maintainer adds the `run-integration`
+  label, and `workflow_dispatch` is now a declared trigger so the job's manual-dispatch condition is reachable (a
+  manual run requires the trigger to be on the default branch).
 - Internal: add `make compile-all` — compiles every test binary including `integration`-tagged files without a docker
   daemon, and run it in the CI lint job so a tagged-only compile regression fails on PRs instead of only on main.
 - Internal: raise the `make test-integration` timeout to 60m. The docker-build suite legitimately runs ~10 minutes on a
@@ -92,6 +95,17 @@ command reports the bare version (e.g. `0.1.0`).
 - Internal: add a regression test asserting every deprecated alias in the deprecation register still resolves and emits
   exactly one warning — the CLI flags `--dind`, `--opencode-version`, `--age`/`-a`, and `sandbox list --names`, plus the
   `OPENCODE_SANDBOX_` env prefix, `AGENTS_SANDBOX_DIND`, and the `dind` config key (#202).
+- Internal: `TestEveryTestPackageInstallsItsAcyclicFailFastMocks`
+  (`internal/testutil/isolation_contract_test.go`) enforces the test-isolation contract: every package with tests must
+  install, from its `main_test.go` `TestMain`, the fail-fast seam mock for every family its tests can import without a
+  cycle. The expected set is derived from the module import graph, so there is no hand-maintained per-package exception
+  list. Two further tests keep that derivation honest: the family registry is checked against every exported
+  `InstallFailFast*` declaration in the module, and the `InitFailFastMocks` wrapper against the registry, so a new family
+  or a dropped wrapper installer fails instead of going unchecked. The per-package check credits only direct installer
+  calls that run before `m.Run()`, and covers the module root. Adds the docker fail-fast to `internal/agent` and
+  `internal/filewalk`, the last two packages without a backstop, and registers `notify` as a fifth family (installed by
+  the wrapper; the five packages notify imports mirror the wrapper body directly). The wrapper's own package now tests
+  its effect (`internal/testutil/mocks`), so the wrapper's body is covered by that package's own test binary.
 
 ### Changed
 
@@ -102,6 +116,9 @@ command reports the bare version (e.g. `0.1.0`).
   unchanged (`~/.config/opencode/`).
 - Runner image: the interactive agent-upgrade prompt now names both the available release and the version currently baked
   into the image, so the choice to rebuild or keep the current version is informed.
+- Docs: the [Deprecations](https://inoio.github.io/agents-sandbox/deprecations.html) page now states the full policy — the
+  replacement always wins, renames are shimmed while only default-behaviour changes make a clean break, and a user-facing
+  form is never removed without a deprecation cycle (#205).
 
 ### Fixed
 

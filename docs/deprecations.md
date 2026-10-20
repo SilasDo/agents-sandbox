@@ -1,6 +1,6 @@
 ---
 title: Deprecations
-description: "Every deprecated agents-sandbox flag, config key, environment variable, and project-Dockerfile spelling, with its replacement and removal target."
+description: "agents-sandbox's deprecation policy — how a flag, config key, environment variable, or project-Dockerfile spelling is retired — and every current deprecation with its replacement and removal target."
 layout: default
 nav_order: 115
 ---
@@ -13,6 +13,8 @@ working with a one-time warning before it is removed.
 
 - A renamed flag, config key, or environment variable still works with **lower precedence** than its replacement and
   prints a **one-time warning** to stderr.
+- The **replacement always wins**: a deprecated form resolves only when its replacement is unset. Setting both is not an
+  error.
 - A deprecated project-Dockerfile spelling has no replacement to resolve against, so it warns on **every** ensure that
   uses the Dockerfile (see [Project Dockerfiles](#project-dockerfiles)).
 - Deprecated forms are **hidden from `--help`** but still honored.
@@ -35,6 +37,18 @@ The list below is the current register. It is also recorded in the `Deprecated` 
 
 The removal column is an **eligibility floor, not a promise**: a removed form only disappears in a minor release, never a
 patch.
+
+## Retiring a form
+
+A **rename** is shimmed: the old flag, config key, environment variable, or subcommand stays as an alias of the new one
+for at least one minor release. A rename is never a silent break.
+
+A **clean break** is only acceptable for a change of *default behaviour*, where no alias can carry the old meaning. Such
+a change is documented as breaking in the changelog and release notes rather than shimmed — for example, the prune
+commands began confirming by default in 0.6.0, with `--yes` as the escape.
+
+A user-facing flag, config key, environment variable, or command is **never removed outright**: it is deprecated first. A
+change that drops one without a deprecation cycle is not accepted.
 
 ## Project Dockerfiles
 
