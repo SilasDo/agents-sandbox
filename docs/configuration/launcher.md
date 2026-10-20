@@ -27,7 +27,7 @@ the [XDG base directory spec](https://specifications.freedesktop.org/basedir-spe
 | `~/.config/agents-sandbox/env.secret.yaml`               | Secret environment variables (YAML/JSON, see [Secrets]({% link configuration/secrets.md %}))                     |
 | `~/.config/agents-sandbox/config.(y[a]ml\|json[(c\|5)])` | Configuration file (incl. the `home:` key; see [Home provisioning & startup hooks]({% link configuration/home-provisioning.md %}))                                                                    |
 | `~/.config/agents-sandbox/<agent>/*`                    | Agent config snippets, one subdir per agent (e.g. `opencode/`; see [Agent configuration]({% link configuration/agent.md %})) |
-| `~/.config/agents-sandbox/<slug>/config.(y[a]ml\|json[(c\|5)])` | Per-project (per-slug) configuration file (see [Per-slug configuration](#per-slug-configuration)) |
+| `~/.config/agents-sandbox/<slug>/config.(y[a]ml\|json[(c\|5)])` | Per-project (repo-slug) configuration file, shared by every clone (see [Per-slug configuration](#per-slug-configuration)) |
 
 `env` uses `KEY=value` format. `env.secret` uses `KEY=value@host` (see [Secrets]({% link configuration/secrets.md %})).
 
@@ -229,8 +229,9 @@ config file or env var.
 ## Per-slug configuration
 
 Beyond the generic user-level config, you can provide config for a **specific project** at
-`~/.config/agents-sandbox/<slug>/config.yaml` (slug = the project's git project slug). This sits between the generic
-user-level config and the project-level config in precedence:
+`~/.config/agents-sandbox/<slug>/config.yaml` (slug = the project's **repo** slug, derived from the origin remote URL, so
+every clone of one remote shares this directory). This sits between the generic user-level config and the project-level
+config in precedence:
 
 1. **Built-in / flag defaults**
 2. **User-level** — `~/.config/agents-sandbox/config.yaml`
@@ -242,6 +243,9 @@ user-level config and the project-level config in precedence:
 
 The same formats/filenames as the generic user config are supported (`config.yaml`, `config.yml`, `config.json`,
 `config.jsonc`, `config.json5`).
+
+Because the per-slug dir is keyed by the repo slug, it is shared by every clone of one remote. Run
+`agents-sandbox config paths` to print the resolved layers, the concrete per-slug dir, and the repo slug.
 
 ## Environment Variables
 

@@ -12,8 +12,8 @@ nav_order: 105
 1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image (in a
    bare checkout the project directory is the bare root next to `.git`). The image
    contains the selected coding agent, Node.js 26, and common CLI tools.
-2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<project-slug>-<timestamp>`) for the
-   project, preserving editor state, caches, and config across sessions.
+2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<checkout-slug>-<timestamp>`) for the
+   checkout, preserving editor state, caches, and config across sessions.
 3. **VM creation or reuse** — Creates a new project VM on first boot; subsequent runs connect to the existing VM (or
    restart it if it stopped).
 4. **Provisioning** — Merges your agent's config snippets into a single config in the VM home (e.g. `opencode.jsonc`),
@@ -27,6 +27,19 @@ nav_order: 105
 
 See the [Commands]({% link commands.md %}) reference for the full API and [Configuration]({% link configuration/index.md %}) for tuning
 behavior.
+
+## Project identity and migration
+
+Each checkout gets its own project identity. A **checkout-scoped** slug (the hash of the checkout's resolved git common
+dir) keys the state directory, VM name, home volume, locks, and runner image tag; a **repo-scoped** slug (the hash of the
+origin URL) keys the per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one
+remote therefore get separate VMs and home volumes and share a runner image only best-effort through the build cache; a
+checkout and the worktrees *inside* it share everything, while a worktree *outside* its checkout gets its own identity.
+
+The first run after upgrading from a version that keyed everything by the origin slug migrates automatically, with a
+warning notice rather than a prompt. It destroys the legacy origin-keyed VM first, then recursively merges the legacy
+state directory onto the checkout slug. The merge never overwrites an existing file: anything it cannot move is reported
+and left in place. A `--dry-run` does neither and keeps resolving against the legacy layout.
 
 ## System Context
 
