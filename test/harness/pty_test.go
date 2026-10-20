@@ -1,17 +1,37 @@
 package harness
 
 import (
+	"errors"
+	"math"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
+
+	"github.com/creack/pty"
 )
+
+// mustStartUnderPTY starts argv under a pseudo-terminal, failing the test if it
+// cannot start and closing the session in cleanup.
+func mustStartUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptySession {
+	t.Helper()
+
+	ses, err := startUnderPTY(dir, env, argv)
+	if err != nil {
+		t.Fatalf("start %v under pty: %v", argv, err)
+	}
+	t.Cleanup(ses.close)
+	return ses
+}
 
 func TestPTYRoundTrip(t *testing.T) {
 	// Enter the alternate screen, then wait for one byte before exiting with 0.
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", `printf '\033[?1049h'; read x; exit 0`)
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", `printf '\033[?1049h'; read x; exit 0`)
 	defer ses.close()
 
 	if err := ses.waitForTUI(5 * time.Second); err != nil {
@@ -30,7 +50,7 @@ func TestPTYRoundTrip(t *testing.T) {
 }
 
 func TestPTYWaitExitReportsNonZeroCode(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 3")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 3")
 	defer ses.close()
 
 	code, err := ses.waitExit(5 * time.Second)
@@ -43,7 +63,7 @@ func TestPTYWaitExitReportsNonZeroCode(t *testing.T) {
 }
 
 func TestPTYWaitExitTimesOutWhileProcessRuns(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
 	defer ses.close()
 
 	if _, err := ses.waitExit(200 * time.Millisecond); err == nil {
@@ -52,7 +72,7 @@ func TestPTYWaitExitTimesOutWhileProcessRuns(t *testing.T) {
 }
 
 func TestPTYWaitForTUIFailsWhenProcessExitsWithoutTUI(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "echo launcher output; exit 0")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "echo launcher output; exit 0")
 	defer ses.close()
 
 	err := ses.waitForTUI(5 * time.Second)
@@ -65,7 +85,7 @@ func TestPTYWaitForTUIFailsWhenProcessExitsWithoutTUI(t *testing.T) {
 }
 
 func TestPTYWaitForTUITimesOutWhileProcessRuns(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
 	defer ses.close()
 
 	err := ses.waitForTUI(200 * time.Millisecond)
@@ -83,7 +103,7 @@ func TestPTYWaitForTUITimesOutWhileProcessRuns(t *testing.T) {
 // quit.
 func TestPTYWaitForTUIRejectsExitedTUI(t *testing.T) {
 	// Enter the alternate screen, then exit without waiting for any input.
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", `printf '\033[?1049h'; exit 0`)
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", `printf '\033[?1049h'; exit 0`)
 	defer ses.close()
 
 	if code, err := ses.waitExit(5 * time.Second); err != nil {
@@ -99,7 +119,7 @@ func TestPTYWaitForTUIRejectsExitedTUI(t *testing.T) {
 // TestPTYCloseKillsProcessGroup pins that close kills a still-running child
 // (and its process group) and tolerates a second call.
 func TestPTYCloseKillsProcessGroup(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
 	ses.close()
 	ses.close()
 
@@ -112,10 +132,26 @@ func TestPTYCloseKillsProcessGroup(t *testing.T) {
 	}
 }
 
+// TestKillProcessGroup pins the process-group kill's outcomes: a command with
+// no started process is already done, and a signal that fails for a reason
+// other than "already gone" is reported rather than swallowed.
+func TestKillProcessGroup(t *testing.T) {
+	if err := killProcessGroup(&exec.Cmd{}); !errors.Is(err, os.ErrProcessDone) {
+		t.Errorf("killProcessGroup(command without a process) = %v, want os.ErrProcessDone", err)
+	}
+
+	original := killProcessGroupSignal
+	t.Cleanup(func() { killProcessGroupSignal = original })
+	killProcessGroupSignal = func(int, syscall.Signal) error { return errors.New("operation not permitted") }
+	if err := killProcessGroup(&exec.Cmd{Process: &os.Process{Pid: 1}}); err == nil {
+		t.Error("killProcessGroup = nil, want the signal failure")
+	}
+}
+
 // TestPTYCloseAfterExit pins that close takes the reaped path once the child
 // has already been waited for (no group signal, still idempotent).
 func TestPTYCloseAfterExit(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 0")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 0")
 	if code, err := ses.waitExit(5 * time.Second); err != nil {
 		t.Fatalf("waitExit: %v", err)
 	} else if code != 0 {
@@ -129,7 +165,7 @@ func TestPTYCloseAfterExit(t *testing.T) {
 // TestExitErrorCode pins the shared *exec.ExitError unwrapping used by the exit
 // status, wait, and tail helpers.
 func TestExitErrorCode(t *testing.T) {
-	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 7")
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 7")
 	defer ses.close()
 	if _, err := ses.waitExit(5 * time.Second); err != nil {
 		t.Fatalf("waitExit: %v", err)
@@ -141,6 +177,82 @@ func TestExitErrorCode(t *testing.T) {
 	}
 	if _, ok := exitErrorCode(nil); ok {
 		t.Error("exitErrorCode(nil) reported an exit error, want false")
+	}
+	if got := ses.exitStatus(); got != "exit code 7" {
+		t.Errorf("exitStatus = %q, want %q", got, "exit code 7")
+	}
+}
+
+// TestExitStatusAndCodeForAFailedWait pins the mappings for a wait that failed
+// outright rather than reporting a process exit: the status string, the exit
+// code, and waitExit all surface the error instead of inventing a code.
+func TestExitStatusAndCodeForAFailedWait(t *testing.T) {
+	waitFailure := errors.New("wait failed")
+	waitDone := make(chan struct{})
+	close(waitDone)
+	ses := &ptySession{waitErr: waitFailure, waitDone: waitDone}
+
+	if got := ses.exitStatus(); got != waitFailure.Error() {
+		t.Errorf("exitStatus = %q, want %q", got, waitFailure.Error())
+	}
+	if got := exitCode(waitFailure); got != -1 {
+		t.Errorf("exitCode(failed wait) = %d, want -1", got)
+	}
+	if _, err := ses.waitExit(time.Second); err == nil {
+		t.Error("waitExit = nil error, want an error for a failed wait")
+	}
+}
+
+// TestStartUnderPTYReportsAStartFailure pins that a child that cannot be
+// started yields an error instead of a half-built session.
+func TestStartUnderPTYReportsAStartFailure(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "missing-binary")
+	if _, err := startUnderPTY("", nil, []string{missing}); err == nil {
+		t.Fatal("startUnderPTY = nil error, want a start failure for a missing binary")
+	}
+}
+
+// TestTerminalSize pins how the child's terminal is sized: a real terminal's
+// size is honoured and clamped to the pty field width, while a file that is not
+// a terminal falls back to the generous default.
+func TestTerminalSize(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value int
+		want  uint16
+	}{
+		{name: "negative", value: -1, want: 0},
+		{name: "too wide", value: math.MaxUint16 + 1, want: math.MaxUint16},
+		{name: "in range", value: 80, want: 80},
+	} {
+		if got := terminalDimension(test.value); got != test.want {
+			t.Errorf("terminalDimension(%d) = %d, want %d", test.value, got, test.want)
+		}
+	}
+
+	master, slave, err := pty.Open()
+	if err != nil {
+		t.Fatalf("open pty: %v", err)
+	}
+	defer master.Close()
+	defer slave.Close()
+	if err := pty.Setsize(master, &pty.Winsize{Rows: 24, Cols: 100}); err != nil {
+		t.Fatalf("set pty size: %v", err)
+	}
+	if got := terminalSize(slave); got.Rows != 24 || got.Cols != 100 {
+		t.Errorf("terminalSize(terminal) = %dx%d, want 24x100", got.Rows, got.Cols)
+	}
+
+	readEnd, writeEnd, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("open pipe: %v", err)
+	}
+	defer readEnd.Close()
+	defer writeEnd.Close()
+	got := terminalSize(readEnd)
+	if got.Rows != fallbackTerminalRows || got.Cols != fallbackTerminalCols {
+		t.Errorf("terminalSize(non-terminal) = %dx%d, want %dx%d",
+			got.Rows, got.Cols, fallbackTerminalRows, fallbackTerminalCols)
 	}
 }
 
@@ -169,7 +281,7 @@ func TestPTYHonoursWorkingDirectoryAndEnv(t *testing.T) {
 	env := []string{"PATH=/usr/bin:/bin", "HARNESS_PTY_TEST=marker"}
 	// Unset PWD so the shell's pwd builtin asks the kernel for the real
 	// working directory instead of echoing the inherited one.
-	ses := startUnderPTY(t, dir, env, "/bin/sh", "-c",
+	ses := mustStartUnderPTY(t, dir, env, "/bin/sh", "-c",
 		`unset PWD; printf '\033[?1049h'; read x; pwd; echo "$HARNESS_PTY_TEST"; exit 0`)
 	defer ses.close()
 

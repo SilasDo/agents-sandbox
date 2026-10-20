@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"testing"
 	"time"
 
 	"github.com/creack/pty"
@@ -62,13 +61,11 @@ type ptySession struct {
 	closeOnce sync.Once
 }
 
-// startUnderPTY starts argv attached to a new pseudo-terminal and returns a
-// session for driving it. An empty dir runs the child in the test's working
-// directory; a nil env inherits the parent environment. Cleanup closes the
-// session, so callers may defer close safely.
-func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptySession {
-	t.Helper()
-
+// startUnderPTY starts argv attached to a new pseudo-terminal. An empty dir
+// runs the child in the test's working directory; a nil env inherits the parent
+// environment. The caller owns the returned session's cleanup; the tests wrap
+// this in a must-start helper that fails the test on error.
+func startUnderPTY(dir string, env []string, argv []string) (*ptySession, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	//nolint:gosec // G204: the caller names the binary to drive; no untrusted input reaches it.
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
@@ -88,10 +85,10 @@ func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptyS
 	// session also makes the child a process-group leader, so its pid doubles
 	// as its pgid and close can signal the whole group. Adding Setpgid on top
 	// would fail with EPERM: setpgid rejects a session leader.
-	master, err := pty.StartWithSize(cmd, terminalSize())
+	master, err := pty.StartWithSize(cmd, terminalSize(os.Stdin))
 	if err != nil {
 		cancel()
-		t.Fatalf("start %v under pty: %v", argv, err)
+		return nil, err
 	}
 
 	ses := &ptySession{
@@ -108,16 +105,15 @@ func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptyS
 	}
 	go ses.readOutput()
 	go ses.waitProcess()
-	t.Cleanup(ses.close)
-	return ses
+	return ses, nil
 }
 
-// terminalSize returns the window size for the child's pty: the test process's
-// own terminal when it has one, so an interactive run renders at the real
-// window size, else a generous fallback. Without a size a full-screen TUI
-// renders into a zero-column terminal.
-func terminalSize() *pty.Winsize {
-	if rows, cols, err := pty.Getsize(os.Stdin); err == nil {
+// terminalSize returns the window size for the child's pty: the given terminal
+// when it has one, so an interactive run renders at the real window size, else
+// a generous fallback. Without a size a full-screen TUI renders into a
+// zero-column terminal.
+func terminalSize(file *os.File) *pty.Winsize {
+	if rows, cols, err := pty.Getsize(file); err == nil {
 		return &pty.Winsize{
 			Rows: terminalDimension(rows),
 			Cols: terminalDimension(cols),
@@ -195,14 +191,11 @@ func (s *ptySession) write(data []byte) error {
 func (s *ptySession) waitForTUI(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
+		if tuiStarted(s.output()) && !s.hasExited() {
+			return nil
+		}
 		if s.hasExited() {
 			return s.exitedWithoutTUIError()
-		}
-		if tuiStarted(s.output()) {
-			if s.hasExited() {
-				return s.exitedWithoutTUIError()
-			}
-			return nil
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf(
@@ -271,6 +264,11 @@ func (s *ptySession) close() {
 	})
 }
 
+// killProcessGroupSignal sends a signal to a process group. It is a variable so
+// a test can exercise the failure path without needing a group it may not
+// signal.
+var killProcessGroupSignal = syscall.Kill
+
 // killProcessGroup SIGKILLs the command's process group. The child runs in its
 // own session, so its pid is also its pgid and the group covers any
 // grandchildren. It reports os.ErrProcessDone, the "no needless error" signal
@@ -280,7 +278,7 @@ func killProcessGroup(cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return os.ErrProcessDone
 	}
-	err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	err := killProcessGroupSignal(-cmd.Process.Pid, syscall.SIGKILL)
 	if err == nil || errors.Is(err, syscall.ESRCH) {
 		return os.ErrProcessDone
 	}

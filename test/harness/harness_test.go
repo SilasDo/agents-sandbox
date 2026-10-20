@@ -163,6 +163,10 @@ func TestStripANSI(t *testing.T) {
 	if got := stripANSI([]byte("\x1b[31mred\x1b[0m")); got != "red" {
 		t.Errorf("stripANSI = %q, want %q", got, "red")
 	}
+	// A sequence truncated by the end of the buffer is dropped too.
+	if got := stripANSI([]byte("red\x1b[3")); got != "red" {
+		t.Errorf("stripANSI = %q, want %q for a truncated sequence", got, "red")
+	}
 }
 
 func TestTUIStarted(t *testing.T) {

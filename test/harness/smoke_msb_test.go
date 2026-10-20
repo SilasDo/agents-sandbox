@@ -83,7 +83,7 @@ func TestHarnessSmoke(t *testing.T) {
 			network = networkNone
 		}
 		t.Run(name, func(t *testing.T) {
-			ses := startUnderPTY(
+			ses := mustStartUnderPTY(
 				t, projectDir(root, name),
 				isolatedEnv(root, os.Environ()),
 				binary, "run", "--agent", name, "--network", network,
