@@ -77,7 +77,9 @@ Quit presses are per harness, confirmed against the shipped binaries on a host:
 (`quitPressGap`), because a harness whose quit is a repeated key reads two bytes written together as a single key
 event: `opencode` never leaves its TUI with both Ctrl-D bytes in one write, while the same pair sent as two presses
 exits `0`. The gap is a human double-tap — far longer than the terminal needs to deliver the presses separately, far
-shorter than the window `claude-code`'s "press again" prompt allows.
+shorter than the window `claude-code`'s "press again" prompt allows. Every press is written before the exit wait, with
+no earlier-stop guard: writing to the pty master after the child has already exited succeeds on Linux, so such a guard
+would be dead code.
 
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
