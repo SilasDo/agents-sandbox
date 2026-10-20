@@ -71,6 +71,14 @@ Resulting cache behaviour:
   position and nothing is duplicated. This **supersedes** the earlier `/usr/local/bin` symlink stopgap (removed): the merge
   restores the full composed `PATH` rather than only the tool binaries, with precedence governed by image `PATH` order. See
   [login-shell-path.md](login-shell-path.md).
+- The build context is the rendered Dockerfile plus a set of **build-context files** (`buildContextFiles()`), each
+  installed by an invariant `COPY` in the final stage. The list is the single source of truth for both the context tar
+  and `computeDockerfileID`, which hashes every file's name, mode, and content alongside the rendered Dockerfile and the
+  agent version — so adding a file both ships it and invalidates an existing image. The files are
+  `/etc/profile.d/agents-sandbox-path.sh` (mode 644), **`/usr/local/bin/msb-trust`** (mode 755: the executable bit
+  travels in the context entry rather than a `chmod` `RUN`), and its license at
+  **`/usr/share/licenses/msb-trust/LICENSE`** (mode 644), which Apache-2.0 section 4(a) requires to travel with the
+  vendored helper. See [ca-trust-helper.md](ca-trust-helper.md).
 - `ImageSpec.InstallCommand` is responsible for landing the agent in that prefix: npm agents (pi) use
   `npm install -g --prefix /opt/agents-sandbox <pkg>@$VERSION`; every other agent copies the binary produced by its
   upstream installer to `/opt/agents-sandbox/bin` (opencode v1 and opencode2 copy the native installer's binary;

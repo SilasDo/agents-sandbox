@@ -4,17 +4,20 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/notify"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 )
 
-// InitFailFastMocks initializes all fail-fast mocks for tests, so tests that forget to define a mock fail fast instead
-// of using real implementations.
+// InitFailFastMocks initializes every fail-fast mock for tests, so tests that forget to define a mock fail fast instead
+// of using real implementations. A package notify imports back cannot import this package without an import cycle; it
+// installs the same set minus notify directly, mirroring this body.
 func InitFailFastMocks(m *testing.M) {
 	configpaths.InstallFailFastConfigPaths()
 	docker.InstallFailFastGet()
 	doctor.InstallFailFast()
 	msb.InstallFailFastGet()
+	notify.InstallFailFast()
 	m.Run()
 }

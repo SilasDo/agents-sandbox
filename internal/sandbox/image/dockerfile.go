@@ -56,6 +56,24 @@ const (
 	pathMergeDest  = "/etc/profile.d/agents-sandbox-path.sh"
 )
 
+// trustHelperAsset is the build-context file carrying the CA-trust helper;
+// trustHelperDest is where the final stage installs it inside the image.
+// /usr/local/bin is on the PATH of the standard bases, so the helper runs
+// without a shell; a custom base that drops it needs the absolute path.
+const (
+	trustHelperAsset = "msb-trust.sh"
+	trustHelperDest  = "/usr/local/bin/msb-trust"
+)
+
+// trustHelperLicenseAsset is the build-context file carrying the license of the
+// vendored CA-trust helper; trustHelperLicenseDest installs it inside the image.
+// Apache-2.0 section 4(a) requires a copy of the license to travel with the
+// helper, and /usr/share/licenses is the conventional home for it.
+const (
+	trustHelperLicenseAsset = "msb-trust.LICENSE"
+	trustHelperLicenseDest  = "/usr/share/licenses/msb-trust/LICENSE"
+)
+
 // agentLabelKey is the image label carrying the baked agent name.
 const agentLabelKey = "org.agents-sandbox.agent"
 
@@ -128,16 +146,21 @@ func valueOrNone(s string) string {
 	return s
 }
 
-// computeDockerfileID returns the content identity of a rendered runner
-// Dockerfile combined with the pinned agent version and the profile.d merge
-// script, capturing every input that affects the baked image while excluding
-// host-dependent build args. The merge script travels in the build-context tar
-// under an invariant COPY line, so its bytes must be folded in here for an edit
-// to invalidate an existing image.
+// computeDockerfileID returns the content identity of the synthetic build
+// context — the rendered runner Dockerfile and every build-context file — plus
+// the pinned agent version, capturing every input that affects the baked image
+// while excluding host-dependent build args. The files travel under invariant
+// COPY lines, so their bytes and modes must be part of the identity for an edit
+// to invalidate an existing image. The file list is shared with the tar writer
+// so a new asset cannot be missed here.
 func computeDockerfileID(rendered []byte, agentVersion string) string {
 	h := sha256.New()
 	h.Write(rendered)
-	h.Write(pathMergeScript())
+	for _, file := range buildContextFiles() {
+		h.Write([]byte(file.name))
+		h.Write([]byte(strconv.FormatInt(file.mode, 8)))
+		h.Write(file.content)
+	}
 	h.Write([]byte(agentVersion))
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -577,6 +600,8 @@ func lastFromLine(lines [][]byte) int {
 func finalizationBlock() string {
 	return fmt.Sprintf(`USER root
 COPY %s %s
+COPY %s %s
+COPY %s %s
 ARG BASE_IMAGE
 ARG DOCKERFILE_ID
 ARG IDENTITY_PROJECT_DOCKERFILE_HASH
@@ -594,7 +619,7 @@ LABEL org.agents-sandbox.dockerfile-id=$DOCKERFILE_ID
 LABEL org.agents-sandbox.identity.dockerfile-hash=$IDENTITY_PROJECT_DOCKERFILE_HASH
 LABEL org.agents-sandbox.identity.agent-version=$IDENTITY_AGENT_VERSION
 LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
-`, pathMergeAsset, pathMergeDest)
+`, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest, trustHelperLicenseAsset, trustHelperLicenseDest)
 }
 
 // RenderProjectDockerfile renders the runner Dockerfile exactly as it would be
