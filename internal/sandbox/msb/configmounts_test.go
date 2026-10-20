@@ -18,7 +18,7 @@ const persistedConfigWithMounts = `{
     {"type":"Bind","host":"/host/proj","guest":"/workspace","options":{"readonly":false},"stat_virtualization":"strict","host_permissions":"mirror","follow_root_symlinks":false,"quota_mib":16384},
     {"type":"Tmpfs","guest":"/tmp","size_mib":2048,"options":{}},
     {"type":"Owned","guest":"/data","storage":{"kind":"directory","quota_mib":512},"options":{},"stat_virtualization":"strict","host_permissions":"private"},
-    {"type":"DiskImage","host":"/images/seed.img","guest":"/disk","format":"raw","fstype":"ext4","options":{"readonly":true}}
+    {"type":"DiskImage","host":"/images/seed.img","guest":"/disk","format":"Raw","fstype":"ext4","options":{"readonly":true}}
   ]
 }`
 
@@ -60,6 +60,11 @@ func TestParseConfigMountsMapsEveryVariant(t *testing.T) {
 	disk := got["/disk"]
 	if disk.Kind() != msbSdk.MountKindDisk || disk.Disk != "/images/seed.img" || !disk.Readonly {
 		t.Errorf("disk mount = %+v, want disk /images/seed.img read-only", disk)
+	}
+	// Upstream serializes DiskImageFormat without rename_all ("Raw"), while the
+	// SDK's DiskOptions.Format hint is lowercase.
+	if disk.Format != "raw" || disk.Fstype != "ext4" {
+		t.Errorf("disk mount format/fstype = %q/%q, want raw/ext4", disk.Format, disk.Fstype)
 	}
 }
 

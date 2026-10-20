@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 )
@@ -148,7 +149,9 @@ func (m persistedMount) mountConfig() (msbSdk.MountConfig, error) {
 		}), nil
 	case "DiskImage":
 		return msbSdk.Mount.Disk(m.Host, msbSdk.DiskOptions{
-			Format:   m.Format,
+			// Upstream serializes DiskImageFormat as the bare variant name
+			// ("Raw"), while DiskOptions.Format is the lowercase hint.
+			Format:   strings.ToLower(m.Format),
 			Fstype:   m.Fstype,
 			Readonly: flags.Readonly,
 			Noexec:   flags.Noexec,
