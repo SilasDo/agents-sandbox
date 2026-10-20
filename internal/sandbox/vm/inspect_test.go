@@ -20,10 +20,6 @@ func TestInspectSandboxPopulatesDetail(t *testing.T) {
 		MaxMemoryMiB: 8192,
 		MaxCPUs:      8,
 		Labels:       map[string]string{"project": "proj"},
-		Volumes: map[string]msbSdk.MountConfig{
-			"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{}),
-			"/home/dev":  msbSdk.Mount.Named("agents-sandbox-home-proj", msbSdk.MountOptions{}),
-		},
 	}
 	mock := &msb.MockMsbClient{}
 	mock.Sandboxes = []msb.SandboxHandle{
@@ -35,6 +31,10 @@ func TestInspectSandboxPopulatesDetail(t *testing.T) {
 			CreatedAt_:   time.Date(2026, 8, 17, 10, 30, 0, 0, time.UTC),
 			UpdatedAt_:   time.Date(2026, 8, 17, 11, 0, 0, 0, time.UTC),
 			Cfg:          cfg,
+			Mounts: map[string]msbSdk.MountConfig{
+				"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{}),
+				"/home/dev":  msbSdk.Mount.Named("agents-sandbox-home-proj", msbSdk.MountOptions{}),
+			},
 		},
 	}
 	msb.WithMsbMock(t, mock)
@@ -78,6 +78,22 @@ func TestInspectSandboxConfigError(t *testing.T) {
 	_, err := InspectSandbox(context.Background(), "agents-sandbox-vm-abc")
 	if err == nil || !strings.Contains(err.Error(), "read config") {
 		t.Fatalf("InspectSandbox() error = %v, want read config error", err)
+	}
+}
+
+func TestInspectSandboxMountsError(t *testing.T) {
+	mock := &msb.MockMsbClient{}
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{
+			Name_:     "agents-sandbox-vm-abc",
+			Cfg:       &msbSdk.SandboxConfig{Image: "img:tag"},
+			MountsErr: errors.New("mounts boom"),
+		},
+	}
+	msb.WithMsbMock(t, mock)
+	_, err := InspectSandbox(context.Background(), "agents-sandbox-vm-abc")
+	if err == nil || !strings.Contains(err.Error(), "read mounts") {
+		t.Fatalf("InspectSandbox() error = %v, want read mounts error", err)
 	}
 }
 

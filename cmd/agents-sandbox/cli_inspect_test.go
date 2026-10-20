@@ -293,10 +293,10 @@ func TestSandboxInspect(t *testing.T) {
 				MaxMemoryMiB: 8192,
 				MaxCPUs:      8,
 				Labels:       map[string]string{"project": "proj"},
-				Volumes: map[string]msbSdk.MountConfig{
-					"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{Readonly: true}),
-					"/home/dev":  msbSdk.Mount.Named("agents-sandbox-home-proj", msbSdk.MountOptions{}),
-				},
+			},
+			Mounts: map[string]msbSdk.MountConfig{
+				"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{Readonly: true}),
+				"/home/dev":  msbSdk.Mount.Named("agents-sandbox-home-proj", msbSdk.MountOptions{}),
 			},
 		},
 	}
@@ -341,9 +341,9 @@ func TestSandboxInspectFormatJSON(t *testing.T) {
 			Cfg: &msbSdk.SandboxConfig{
 				Image:     "agents-sandbox/runner-proj:latest",
 				MemoryMiB: 4096,
-				Volumes: map[string]msbSdk.MountConfig{
-					"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{Readonly: true}),
-				},
+			},
+			Mounts: map[string]msbSdk.MountConfig{
+				"/workspace": msbSdk.Mount.Bind("/host/workspace", msbSdk.MountOptions{Readonly: true}),
 			},
 		},
 	}
