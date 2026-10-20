@@ -53,7 +53,7 @@ read_if: Navigating the codebase.
 - `sandbox/` — **See [sandbox subindex](sandbox.md)** (VM lifecycle, docker, image, msb, volumes, pruning, sessions, state).
 - `sysinfo/` — Platform system info (`_darwin.go`/`_linux.go`).
 - `termio/` — Terminal UI (printer, table, prompt, spinner, ansi, levels).
-- `testutil/` — Test helpers (mocks, testgit).
+- `testutil/` — Test helpers (mocks, testgit) and the test-isolation contract test (`isolation_contract_test.go`).
 - `upgrade/` — Self-upgrade (incl. Homebrew).
 - `viperconfig/` — Viper-based launcher config.
 - `yamlfmt/` — YAML formatting.
