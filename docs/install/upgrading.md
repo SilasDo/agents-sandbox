@@ -43,9 +43,10 @@ of unclear status must be removed, or when an interrupted copy must be resumed.
 The copy is crash- and concurrency-safe: progress is tracked in agents-sandbox's
 host state, so an interrupted campaign resumes exactly where it stopped, and two
 sessions cannot clobber a live copy. A volume that cannot be copied is reported
-and left in place; the post-migration notice names every legacy volume that has
-no counterpart in the private home — a failed copy, or a volume you chose not to
-migrate — so it is never silently dropped.
+and left in place; the post-migration notice names every legacy volume that was
+not verifiably copied into the private home — a failed copy, a volume you chose
+not to migrate, or one whose private counterpart's contents are unverified — so
+it is never silently dropped.
 
 The decision is required before a session can proceed, because starting would
 otherwise create a fresh home volume and overwrite the project's recorded
@@ -77,9 +78,10 @@ deleted for you.
   - `~/.microsandbox/sandboxes/agents-sandbox-task-*`
 - **Yours** — any other microsandbox data. agents-sandbox never touches it.
 
-The notice names every legacy home volume that has no counterpart in the private
-home — a failed copy, or a volume you chose not to migrate. Those volumes still
-hold data and must not be removed. While any remain, the notice withholds both
+The notice names every legacy home volume that was not verifiably copied into
+the private home — a failed copy, a volume you chose not to migrate, or one whose
+private counterpart's contents are unverified. Those volumes still hold data and
+must not be removed. While any remain, the notice withholds both
 the wholesale `rm -rf ~/.microsandbox` and the `agents-sandbox-home-*` glob,
 since both match an uncopied volume: remove the other volumes individually and
 leave the uncopied ones in place.

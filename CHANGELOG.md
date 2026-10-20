@@ -67,7 +67,8 @@ command reports the bare version (e.g. `0.1.0`).
 - After the one-time legacy home-volume migration, an interactive `run`/`shell` now shows a one-time notice that
   agents-sandbox runs its own microsandbox runtime and a system-wide microsandbox is no longer required. It names
   which parts of `~/.microsandbox` are ours and safe to remove (and gives the commands) versus your own data, warns
-  about any legacy volume not copied into the private home, is acknowledged with a keypress and never shown again, and
+  about any legacy volume that was not verifiably copied into the private home, is acknowledged with a keypress and
+  never shown again, and
   never deletes anything. A non-interactive session (including `--yes`) prints only a one-line pointer, without the
   removal commands and without recording the acknowledgment, so the full notice still appears the next time you are
   interactive (#207).
