@@ -22,13 +22,28 @@ const altScreenEnter = "\x1b[?1049h"
 // escapeByte starts an ANSI escape sequence.
 const escapeByte = 0x1b
 
-// isolatedEnvKeep lists the inherited variables the child may keep: only
-// terminal and proxy settings. Dropping HOME, XDG_*, AGENTS_SANDBOX_*,
-// OPENCODE_SANDBOX_*, and MSB_* is the point of the isolation.
+const (
+	// envTerm is the terminal type variable a full-screen TUI reads.
+	envTerm = "TERM"
+	// defaultTerm is the terminfo entry a harness runs under when the test
+	// process has no usable one.
+	defaultTerm = "xterm-256color"
+	// termDumb is the terminfo entry that suppresses terminal control
+	// sequences; a harness cannot render its TUI under it.
+	termDumb = "dumb"
+)
+
+// isolatedEnvKeep lists the inherited variables the child may keep: the
+// terminal and locale settings a TUI needs, the proxy settings any egress
+// uses, and the docker endpoint variables the runner-image build needs. The
+// docker endpoint variables carry a host endpoint, not agents-sandbox config or
+// state, so keeping them does not weaken the isolation; dropping HOME, XDG_*,
+// AGENTS_SANDBOX_*, OPENCODE_SANDBOX_*, and MSB_* is the point of it.
 var isolatedEnvKeep = []string{
 	"PATH", "TERM", "LANG", "LC_ALL", "LC_CTYPE",
 	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
 	"http_proxy", "https_proxy", "no_proxy",
+	"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG",
 }
 
 // harnessSpecs maps every registered harness to how the smoke test drives it.
@@ -51,13 +66,10 @@ type harnessSpec struct {
 }
 
 // isolatedEnv builds the child environment from inherited: it keeps only the
-// allowlisted variables (defaulting TERM), then appends a private
-// HOME/XDG_*/TMPDIR tree rooted at root, so the child reads and writes no real
-// agents-sandbox config or state.
-//
-// projectDir is unused for now; a later task scopes the child's per-project
-// config dir with it.
-func isolatedEnv(root, _ string, inherited []string) []string {
+// allowlisted variables (defaulting TERM when it is absent, empty, or "dumb"),
+// then appends a private HOME/XDG_*/TMPDIR tree rooted at root, so the child
+// reads and writes no real agents-sandbox config or state.
+func isolatedEnv(root string, inherited []string) []string {
 	inheritedByName := make(map[string]string, len(inherited))
 	for _, entry := range inherited {
 		name, value, ok := strings.Cut(entry, "=")
@@ -68,13 +80,14 @@ func isolatedEnv(root, _ string, inherited []string) []string {
 
 	env := make([]string, 0, len(isolatedEnvKeep)+7)
 	for _, name := range isolatedEnvKeep {
+		if name == envTerm {
+			continue
+		}
 		if value, ok := inheritedByName[name]; ok {
 			env = append(env, name+"="+value)
 		}
 	}
-	if _, ok := inheritedByName["TERM"]; !ok {
-		env = append(env, "TERM=xterm-256color")
-	}
+	env = append(env, envTerm+"="+usableTerm(inheritedByName[envTerm]))
 	return append(env,
 		"HOME="+filepath.Join(root, "home"),
 		"XDG_CONFIG_HOME="+filepath.Join(root, "config"),
@@ -83,6 +96,16 @@ func isolatedEnv(root, _ string, inherited []string) []string {
 		"XDG_CACHE_HOME="+filepath.Join(root, "cache"),
 		"TMPDIR="+filepath.Join(root, "tmp"),
 	)
+}
+
+// usableTerm returns the TERM to run the child under: the inherited value
+// unless it is absent, empty, or "dumb", in which case the harness is given a
+// modern terminfo entry so its full-screen TUI can render.
+func usableTerm(value string) string {
+	if value == "" || value == termDumb {
+		return defaultTerm
+	}
+	return value
 }
 
 // stripANSI removes CSI escape sequences (ESC '[' ... final byte) from b so
@@ -120,4 +143,10 @@ func isANSIFinalByte(c byte) bool {
 // over the alternate screen, the signal that its full-screen TUI came up.
 func tuiStarted(output []byte) bool {
 	return bytes.Contains(output, []byte(altScreenEnter))
+}
+
+// sawDaemonTimeout reports whether the captured output contains the launcher's
+// daemon-timeout marker; a harness whose output does never reached the TUI.
+func sawDaemonTimeout(output []byte) bool {
+	return strings.Contains(string(output), daemonTimeoutMarker)
 }

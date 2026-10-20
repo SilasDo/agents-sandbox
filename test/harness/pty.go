@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -23,6 +25,11 @@ const (
 	ptyDrainGrace = 500 * time.Millisecond
 	// ptyOutputTailLimit caps the output an error message quotes.
 	ptyOutputTailLimit = 500
+	// fallbackTerminalRows and fallbackTerminalCols size the child's terminal
+	// when the test process has none to inherit. A full-screen TUI renders
+	// into zero columns without a size, so a fallback is required.
+	fallbackTerminalRows = 40
+	fallbackTerminalCols = 120
 )
 
 // ptySession drives one child process attached to a pseudo-terminal. The
@@ -39,9 +46,15 @@ type ptySession struct {
 	mu     sync.Mutex
 	buffer bytes.Buffer
 
+	// reaped is set under mu once cmd.Wait has returned; close consults it
+	// under the same mutex before signalling the child's process group.
+	reaped bool
+
+	// waitErr is the result of cmd.Wait, valid once waitDone is closed.
+	waitErr error
+
 	// waitDone is closed once cmd.Wait has returned and waitErr is final.
 	waitDone chan struct{}
-	waitErr  error
 
 	// readDone is closed once the master read loop stopped (EOF or error).
 	readDone chan struct{}
@@ -69,13 +82,13 @@ func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptyS
 	// harness can leave grandchildren holding the pty.
 	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 
-	// pty.Start wires the child's stdio to the pty's slave side, puts it in a
-	// new session (Setsid) and makes the pty its controlling terminal, which
-	// is what lets the child's harness render full-screen. The new session
-	// also makes the child a process-group leader, so its pid doubles as its
-	// pgid and close can signal the whole group. Adding Setpgid on top would
-	// fail with EPERM: setpgid rejects a session leader.
-	master, err := pty.Start(cmd)
+	// pty.StartWithSize wires the child's stdio to the pty's slave side, puts
+	// it in a new session (Setsid) and makes the pty its controlling terminal,
+	// which is what lets the child's harness render full-screen. The new
+	// session also makes the child a process-group leader, so its pid doubles
+	// as its pgid and close can signal the whole group. Adding Setpgid on top
+	// would fail with EPERM: setpgid rejects a session leader.
+	master, err := pty.StartWithSize(cmd, terminalSize())
 	if err != nil {
 		cancel()
 		t.Fatalf("start %v under pty: %v", argv, err)
@@ -87,8 +100,9 @@ func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptyS
 		cancel:    cancel,
 		mu:        sync.Mutex{},
 		buffer:    bytes.Buffer{},
-		waitDone:  make(chan struct{}),
+		reaped:    false,
 		waitErr:   nil,
+		waitDone:  make(chan struct{}),
 		readDone:  make(chan struct{}),
 		closeOnce: sync.Once{},
 	}
@@ -96,6 +110,39 @@ func startUnderPTY(t *testing.T, dir string, env []string, argv ...string) *ptyS
 	go ses.waitProcess()
 	t.Cleanup(ses.close)
 	return ses
+}
+
+// terminalSize returns the window size for the child's pty: the test process's
+// own terminal when it has one, so an interactive run renders at the real
+// window size, else a generous fallback. Without a size a full-screen TUI
+// renders into a zero-column terminal.
+func terminalSize() *pty.Winsize {
+	if rows, cols, err := pty.Getsize(os.Stdin); err == nil {
+		return &pty.Winsize{
+			Rows: terminalDimension(rows),
+			Cols: terminalDimension(cols),
+			X:    0,
+			Y:    0,
+		}
+	}
+	return &pty.Winsize{
+		Rows: fallbackTerminalRows,
+		Cols: fallbackTerminalCols,
+		X:    0,
+		Y:    0,
+	}
+}
+
+// terminalDimension narrows a terminal dimension reported as an int to the
+// uint16 width of a pty.Winsize field.
+func terminalDimension(value int) uint16 {
+	if value < 0 {
+		return 0
+	}
+	if value > math.MaxUint16 {
+		return math.MaxUint16
+	}
+	return uint16(value)
 }
 
 // readOutput captures everything the child writes until the pty reports EOF or
@@ -118,7 +165,11 @@ func (s *ptySession) readOutput() {
 
 // waitProcess reaps the child exactly once; waitDone publishes the result.
 func (s *ptySession) waitProcess() {
-	s.waitErr = s.cmd.Wait()
+	waitErr := s.cmd.Wait()
+	s.mu.Lock()
+	s.waitErr = waitErr
+	s.reaped = true
+	s.mu.Unlock()
 	close(s.waitDone)
 }
 
@@ -176,7 +227,7 @@ func (s *ptySession) waitExit(timeout time.Duration) (int, error) {
 		return 0, fmt.Errorf("process did not exit within %s", timeout)
 	}
 	if s.waitErr != nil {
-		if _, ok := errors.AsType[*exec.ExitError](s.waitErr); !ok {
+		if _, ok := exitErrorCode(s.waitErr); !ok {
 			return 0, fmt.Errorf("wait for process: %w", s.waitErr)
 		}
 	}
@@ -187,11 +238,13 @@ func (s *ptySession) waitExit(timeout time.Duration) (int, error) {
 // pty master. It is idempotent and safe to call from a cleanup.
 func (s *ptySession) close() {
 	s.closeOnce.Do(func() {
-		// Only signal while the child is unreaped: once cmd.Wait has returned
-		// its pid could belong to an unrelated process.
-		select {
-		case <-s.waitDone:
-		default:
+		// Decide under the mutex waitProcess records the reap under: once the
+		// child is reaped its pid could belong to an unrelated process, so
+		// signalling the group would hit the wrong process.
+		s.mu.Lock()
+		reaped := s.reaped
+		s.mu.Unlock()
+		if !reaped {
 			s.cancel()
 		}
 		_ = s.master.Close()
@@ -227,29 +280,42 @@ func (s *ptySession) exitStatus() string {
 	if s.waitErr == nil {
 		return "exit code 0"
 	}
-	if exitErr, ok := errors.AsType[*exec.ExitError](s.waitErr); ok {
-		return fmt.Sprintf("exit code %d", exitErr.ExitCode())
+	if code, ok := exitErrorCode(s.waitErr); ok {
+		return fmt.Sprintf("exit code %d", code)
 	}
 	return s.waitErr.Error()
 }
 
 // outputTail renders the tail of the captured output, without escape
-// sequences, for an error message.
+// sequences, for an error message. The cut lands on a rune boundary by
+// dropping any partial rune the byte offset splits.
 func (s *ptySession) outputTail() string {
 	text := stripANSI(s.output())
 	if len(text) > ptyOutputTailLimit {
-		text = "…" + text[len(text)-ptyOutputTailLimit:]
+		text = "…" + strings.ToValidUTF8(text[len(text)-ptyOutputTailLimit:], "")
 	}
 	return fmt.Sprintf("%q", text)
 }
 
-// exitCode maps the error from cmd.Wait to a process exit code.
+// exitErrorCode returns the exit code carried by err and whether err is an
+// *exec.ExitError.
+func exitErrorCode(err error) (int, bool) {
+	exitErr, ok := errors.AsType[*exec.ExitError](err)
+	if !ok {
+		return 0, false
+	}
+	return exitErr.ExitCode(), true
+}
+
+// exitCode maps the error from cmd.Wait to a process exit code: 0 for a clean
+// exit, the process's code for an *exec.ExitError, and -1 otherwise (a process
+// killed by a signal, or a wait that failed outright).
 func exitCode(waitErr error) int {
+	if code, ok := exitErrorCode(waitErr); ok {
+		return code
+	}
 	if waitErr == nil {
 		return 0
-	}
-	if exitErr, ok := errors.AsType[*exec.ExitError](waitErr); ok {
-		return exitErr.ExitCode()
 	}
 	return -1
 }

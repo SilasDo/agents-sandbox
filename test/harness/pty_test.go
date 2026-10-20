@@ -2,9 +2,11 @@ package harness
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func TestPTYRoundTrip(t *testing.T) {
@@ -88,6 +90,56 @@ func TestPTYCloseKillsProcessGroup(t *testing.T) {
 	}
 	if code != -1 {
 		t.Errorf("exit code = %d, want -1 for a process killed by a signal", code)
+	}
+}
+
+// TestPTYCloseAfterExit pins that close takes the reaped path once the child
+// has already been waited for (no group signal, still idempotent).
+func TestPTYCloseAfterExit(t *testing.T) {
+	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 0")
+	if code, err := ses.waitExit(5 * time.Second); err != nil {
+		t.Fatalf("waitExit: %v", err)
+	} else if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	ses.close()
+	ses.close()
+}
+
+// TestExitErrorCode pins the shared *exec.ExitError unwrapping used by the exit
+// status, wait, and tail helpers.
+func TestExitErrorCode(t *testing.T) {
+	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", "exit 7")
+	defer ses.close()
+	if _, err := ses.waitExit(5 * time.Second); err != nil {
+		t.Fatalf("waitExit: %v", err)
+	}
+
+	code, ok := exitErrorCode(ses.waitErr)
+	if !ok || code != 7 {
+		t.Errorf("exitErrorCode(exit 7 wait) = (%d, %t), want (7, true)", code, ok)
+	}
+	if _, ok := exitErrorCode(nil); ok {
+		t.Error("exitErrorCode(nil) reported an exit error, want false")
+	}
+}
+
+// TestPTYOutputTailCutsOnRuneBoundary pins that outputTail never splits a
+// multi-byte rune at the byte-offset cut used to trim the tail.
+func TestPTYOutputTailCutsOnRuneBoundary(t *testing.T) {
+	ses := &ptySession{}
+	// Three-byte runes sized so the cut lands one byte into a rune: a naive
+	// byte slice would start mid-rune and yield invalid UTF-8.
+	ses.buffer.WriteString(strings.Repeat("€", ptyOutputTailLimit/3+1))
+
+	quoted := ses.outputTail()
+	text, err := strconv.Unquote(quoted)
+	if err != nil {
+		t.Fatalf("Unquote(%s): %v", quoted, err)
+	}
+	if !utf8.ValidString(text) {
+		t.Errorf("outputTail = %q, want valid UTF-8", text)
 	}
 }
 
