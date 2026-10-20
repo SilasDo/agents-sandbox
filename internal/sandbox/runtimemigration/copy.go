@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
@@ -36,14 +35,17 @@ func saveMigration(tx *state.RootTxn, m state.Migration) error {
 
 // CopyVolumes runs the legacy home-volume copy campaign under the host-only root
 // lock, recording progress in the migration registry so an interrupted campaign
-// resumes exactly and a concurrent session cannot clobber a live copy.
+// resumes exactly and a concurrent session cannot clobber a live copy. It is the
+// single copy entry point; which volumes were left uncopied is derived at
+// notice-render time from the two home listings and the retained Copied record,
+// never threaded from here.
 //
-// A terminal migration (completed or dismissed) is a no-op. Starting from
-// pending records the legacy targets already present in the private home as Kept
-// (dismissed from the migration at the user's choice), so accepting the offer
-// neither discards nor re-copies a home the user already has. A volume-scoped
-// copy failure is recorded in Excluded (with a warning) only once its partial
-// destination is confirmed removed; if the destination cannot be removed the
+// A terminal migration (completed, dismissed, or acknowledged) is a no-op.
+// Starting from pending records the legacy targets already present in the
+// private home as Kept (dismissed from the migration at the user's choice), so
+// accepting the offer neither discards nor re-copies a home the user already
+// has. A volume-scoped copy failure is recorded in Excluded (with a warning) only
+// once its partial destination is confirmed removed; if the destination cannot be removed the
 // campaign aborts, because completing would let the home resolver adopt the
 // partial. A campaign-scoped failure (the lock, the state read/write, or the home
 // listing) likewise returns the error and leaves the status copying so the next
@@ -64,7 +66,8 @@ func CopyVolumes(ctx context.Context, client msb.Client, ui termio.UI) error {
 // and lock held. It commits after each volume so an interruption resumes exactly.
 func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx *state.RootTxn) error {
 	m, _ := tx.State().Migration(MigrationName)
-	if m.Status == state.MigrationCompleted || m.Status == state.MigrationDismissed {
+	if m.Status == state.MigrationCompleted || m.Status == state.MigrationDismissed ||
+		m.Status == state.MigrationAcknowledged {
 		return nil
 	}
 
@@ -104,7 +107,7 @@ func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx 
 		}
 		ui.Infof("copied legacy home volume %q", name)
 	}
-	return finalizeMigration(tx, m, ui)
+	return finalizeMigration(tx, m)
 }
 
 // startCampaign opens the migration campaign, recording the legacy targets
@@ -119,18 +122,12 @@ func startCampaign(tx *state.RootTxn, legacyHome string) (state.Migration, error
 	return m, saveMigration(tx, m)
 }
 
-// finalizeMigration warns about the volumes the campaign could not copy (their
-// legacy data was left behind) and records the terminal completed status. The
-// transient Copied/Kept/Excluded lists are dropped by the terminal write.
-func finalizeMigration(tx *state.RootTxn, m state.Migration, ui termio.UI) error {
-	if len(m.Excluded) > 0 {
-		ui.Warnf(
-			"%d legacy home volume(s) could not be copied and were left behind: %s",
-			len(m.Excluded),
-			strings.Join(m.Excluded, ", "),
-		)
-	}
-	return saveMigration(tx, state.Migration{Status: state.MigrationCompleted})
+// finalizeMigration records the terminal completed status. The transient Kept
+// and Excluded lists are dropped; Copied is retained as the host-owned record of
+// the volumes that were fully migrated, which the post-migration notice uses to
+// tell which legacy volumes are safe to remove.
+func finalizeMigration(tx *state.RootTxn, m state.Migration) error {
+	return saveMigration(tx, state.Migration{Status: state.MigrationCompleted, Copied: m.Copied})
 }
 
 // copyVolume removes any leftover partial under the target name, creates the

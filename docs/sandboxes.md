@@ -9,6 +9,15 @@ nav_order: 70
 agents-sandbox manages sandboxes as ephemeral microsandbox VMs with persistent home volumes. This document explains
 the sandbox lifecycle and management.
 
+## Why agents-sandbox runs its own microsandbox
+
+agents-sandbox provisions its own isolated microsandbox runtime under its data directory
+(`~/.local/share/agents-sandbox/msb`, or `$XDG_DATA_HOME/agents-sandbox/msb`), so it neither depends on nor
+interferes with a microsandbox you installed yourself. A system-wide microsandbox is therefore not required, and no
+particular `msb` version has to be present. agents-sandbox never uses `~/.microsandbox` as its runtime and never writes
+to it. The only exception is the one-time legacy home-volume migration, which reads that directory to copy your old
+volumes; see [Upgrading to 0.6]({% link install/upgrading.md %}) for its mechanics.
+
 ## Lifecycle Overview
 
 Each agents-sandbox invocation follows this lifecycle:

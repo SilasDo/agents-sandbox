@@ -13,6 +13,7 @@ Install agents-sandbox, then check your system is ready.
 
 - [Prerequisites]({% link install/prerequisites.md %})
 - [Installation]({% link install/installation.md %})
+- [Upgrading to 0.6]({% link install/upgrading.md %})
 
 > **New to coding agents?** Set up your agent (opencode, pi, or claude-code) on your host first
 > using its normal setup. Then follow one of the two paths:
