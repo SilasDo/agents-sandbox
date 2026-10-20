@@ -68,8 +68,10 @@ func TestHarnessSmoke(t *testing.T) {
 	preflight(t)
 	root, binary := prepare(t)
 	preflightDocker(t, root)
-	prebuildImages(t, root)
+	// Register cleanup after the docker preflight so a skip touches nothing,
+	// but before the prebuild so a prebuild failure cannot leak the root.
 	defer cleanupSandboxes(t, root, binary)
+	prebuildImages(t, root)
 
 	for _, name := range agent.Names() {
 		spec, ok := harnessSpecs[name]
