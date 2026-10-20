@@ -217,6 +217,18 @@ func TestPrintTreeContainsStorageCommands(t *testing.T) {
 	}
 }
 
+// TestPrintTreeContainsConfigPaths pins that the tree renders the config paths
+// subcommand and its description under config.
+func TestPrintTreeContainsConfigPaths(t *testing.T) {
+	out := strings.Join(buildTree(t).InfoCalls, "\n")
+	if !strings.Contains(out, "paths") {
+		t.Errorf("expected the config paths subcommand in tree output:\n%s", out)
+	}
+	if !strings.Contains(out, "Print the config layers in precedence order") {
+		t.Errorf("expected the config paths description in tree output:\n%s", out)
+	}
+}
+
 func TestPrintTreePositionalArgsHaveDescription(t *testing.T) {
 	testUI := buildTree(t)
 	out := strings.Join(testUI.InfoCalls, "\n")

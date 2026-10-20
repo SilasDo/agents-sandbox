@@ -289,6 +289,8 @@ func buildConfigCmd(ui termio.UI) *cobra.Command {
 
 	cmd.AddCommand(buildConfigAgentCmd(ui))
 
+	cmd.AddCommand(buildConfigPathsCmd(ui))
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   cmdHome,
 		Args:  cobra.NoArgs,
@@ -321,6 +323,67 @@ func buildConfigCmd(ui termio.UI) *cobra.Command {
 	})
 
 	return cmd
+}
+
+// buildConfigPathsCmd returns the config paths subcommand: it prints the
+// launcher-config layers in precedence order and names the resolved repo slug.
+// The per-slug user config dir is keyed by the repo slug, so every clone of one
+// origin shares it; the hint explains where repo-wide settings belong.
+func buildConfigPathsCmd(ui termio.UI) *cobra.Command {
+	return &cobra.Command{
+		Use:   cmdPaths,
+		Args:  cobra.NoArgs,
+		Short: "Print the config layers in precedence order",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			slug := git.RepoSlug()
+			// The layer block goes through Outf, which the quiet printer
+			// suppresses; the hint goes through Infof so it survives --quiet.
+			if !ui.Quiet() {
+				printConfigLayers(ui, slug)
+			}
+			ui.Infof(
+				"Repo-wide settings belong in the committed project config (%s) so every clone shares them; "+
+					"machine-specific settings belong in the generic user config (%s).",
+				projectConfigDisplayPath,
+				configpaths.Get().UserConfigDir(),
+			)
+			return nil
+		},
+	}
+}
+
+// projectConfigDisplayPath is the committed project config the hint names.
+const projectConfigDisplayPath = ".agents-sandbox/config.yaml"
+
+// printConfigLayers writes the launcher-config layers lowest precedence first,
+// naming the resolved dir of each file layer and flagging the missing ones.
+func printConfigLayers(ui termio.UI, slug string) {
+	ui.Outf("config layers (lowest to highest precedence):")
+	for _, layer := range viperconfig.ConfigLayers(slug) {
+		if layer.Path == "" {
+			ui.Outf("  %s%s", layer.Name, envLayerGlob(layer.Name))
+			continue
+		}
+		missing := ""
+		if !layer.Present {
+			missing = "  (missing)"
+		}
+		ui.Outf("  %s  %s%s", layer.Name, layer.Path, missing)
+	}
+	ui.Outf("repo slug:  %s", slug)
+}
+
+// envLayerGlob returns the variable-name glob shown as the second column of an
+// env layer, or "" for the flags layer.
+func envLayerGlob(name string) string {
+	switch name {
+	case viperconfig.LayerNameLegacyEnv:
+		return "  OPENCODE_SANDBOX_*"
+	case viperconfig.LayerNameEnv:
+		return "  AGENTS_SANDBOX_*"
+	default:
+		return ""
+	}
 }
 
 // reservedHomeConfigTargets returns the home-relative VM paths the agent

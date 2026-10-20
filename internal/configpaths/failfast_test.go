@@ -20,6 +20,7 @@ func TestFailFastConfigPathsPanics(t *testing.T) {
 		fn   func()
 	}{
 		{"UserConfigDir", func() { f.UserConfigDir() }},
+		{"UserSlugConfigDir", func() { f.UserSlugConfigDir("widget-bbb") }},
 		{"UserCacheDir", func() { f.UserCacheDir() }},
 		{"UserStateDir", func() { f.UserStateDir() }},
 		{"UserAgentConfigDir", func() { f.UserAgentConfigDir(a) }},

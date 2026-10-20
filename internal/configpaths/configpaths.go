@@ -12,6 +12,7 @@ import (
 
 type ConfigPaths interface {
 	UserConfigDir() string
+	UserSlugConfigDir(slug string) string
 	UserCacheDir() string
 	UserStateDir() string
 	UserDataDir() string
@@ -46,6 +47,13 @@ var Get = func() ConfigPaths {
 // agents-sandbox, defaulting to ~/.config/agents-sandbox.
 func (c *realConfigPaths) UserConfigDir() string {
 	return filepath.Join(xdgBaseDir("XDG_CONFIG_HOME", ".config"), pathPrefix)
+}
+
+// UserSlugConfigDir returns the per-slug user-config directory: the tool's user
+// config dir joined with the project slug. It is keyed by the repo slug, so
+// every clone of one origin shares it.
+func (c *realConfigPaths) UserSlugConfigDir(slug string) string {
+	return filepath.Join(c.UserConfigDir(), slug)
 }
 
 // UserCacheDir returns the tool's cache directory: $XDG_CACHE_HOME/

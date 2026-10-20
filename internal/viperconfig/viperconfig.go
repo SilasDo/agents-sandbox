@@ -154,25 +154,73 @@ type Resolver struct {
 	dockerLegacy string
 }
 
+// ConfigLayer is one launcher-config source. The three file layers carry the
+// directory a config file would live in and whether one exists there; the env
+// and flag layers have no path.
+type ConfigLayer struct {
+	Name    string
+	Path    string
+	Present bool
+}
+
+// Config layer names, shown verbatim by `config paths`. Exported so the CLI can
+// label the env and flag layers without duplicating the strings.
+const (
+	LayerNameGenericUserConfig = "generic user config"
+	LayerNamePerSlugUserConfig = "per-project user config"
+	LayerNameProjectConfig     = "project config"
+	LayerNameLegacyEnv         = "legacy env"
+	LayerNameEnv               = "env"
+	LayerNameFlags             = "flags"
+)
+
+// ConfigLayers returns the launcher-config layers from lowest to highest
+// precedence, matching NewResolver's merge order and its documented precedence
+// (generic user dir, per-slug user dir when slug is non-empty, project dir,
+// legacy env, env, flags). NewResolver merges the file layers from this slice,
+// so the order shown to the user and the order actually merged cannot drift.
+func ConfigLayers(slug string) []ConfigLayer {
+	cfg := configpaths.Get()
+	layers := []ConfigLayer{
+		fileLayer(LayerNameGenericUserConfig, cfg.UserConfigDir()),
+	}
+	if slug != "" {
+		layers = append(layers, fileLayer(LayerNamePerSlugUserConfig, cfg.UserSlugConfigDir(slug)))
+	}
+	layers = append(layers,
+		fileLayer(LayerNameProjectConfig, cfg.ProjectConfigDir()),
+		ConfigLayer{Name: LayerNameLegacyEnv, Path: "", Present: false},
+		ConfigLayer{Name: LayerNameEnv, Path: "", Present: false},
+		ConfigLayer{Name: LayerNameFlags, Path: "", Present: false},
+	)
+	return layers
+}
+
+// fileLayer reports the directory of a config-file layer and whether a config
+// file exists there.
+func fileLayer(name, dir string) ConfigLayer {
+	_, _, present := findConfigFile(dir)
+	return ConfigLayer{Name: name, Path: dir, Present: present}
+}
+
 // NewResolver builds a Resolver, loading config files, configuring the
 // AGENTS_SANDBOX_ env prefix (with the deprecated OPENCODE_SANDBOX_ aliases as
 // a lower-precedence fallback), binding config-backed flags on cmd, and
 // validating. Config precedence (lowest to highest): generic user dir,
 // per-slug user dir (when slug is non-empty), project dir, legacy env, env,
-// flags. cmd may be nil to skip flag binding.
+// flags. The file layers and their order come from ConfigLayers so the merged
+// order matches the order ConfigLayers reports. cmd may be nil to skip flag
+// binding.
 func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 	v := viper.New()
 
-	if err := mergeDir(v, configpaths.Get().UserConfigDir()); err != nil {
-		return nil, err
-	}
-	if slug != "" {
-		if err := mergeDir(v, filepath.Join(configpaths.Get().UserConfigDir(), slug)); err != nil {
+	for _, layer := range ConfigLayers(slug) {
+		if layer.Path == "" {
+			continue
+		}
+		if err := mergeDir(v, layer.Path); err != nil {
 			return nil, err
 		}
-	}
-	if err := mergeDir(v, configpaths.Get().ProjectConfigDir()); err != nil {
-		return nil, err
 	}
 
 	v.SetEnvPrefix(envPrefix)

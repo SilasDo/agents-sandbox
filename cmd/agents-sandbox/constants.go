@@ -25,6 +25,7 @@ const (
 	cmdUpgrade    = "upgrade"
 	cmdAgent      = "agent"
 	cmdHome       = "home"
+	cmdPaths      = "paths"
 	cmdImage      = "image"
 	cmdVolume     = "volume"
 	cmdSandbox    = "sandbox"
