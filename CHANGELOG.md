@@ -47,6 +47,14 @@ command reports the bare version (e.g. `0.1.0`).
   manual run requires the trigger to be on the default branch).
 - Internal: add `make compile-all` — compiles every test binary including `integration`-tagged files without a docker
   daemon, and run it in the CI lint job so a tagged-only compile regression fails on PRs instead of only on main.
+- Internal: add the `msb`-tagged harness smoke tests (`test/harness/`) and `make test-msb`. They start every registered
+  harness (`agents-sandbox run --agent <name>`) under a pseudo-terminal in a real microsandbox VM and assert it reaches
+  its full-screen TUI and leaves it on its quit key (Ctrl-D for `opencode`/`opencode2`/`pi`), tapping the key until the
+  process goes because a TUI paints its screen seconds before it accepts input and an exit can take more than one press.
+  Host-only (needs KVM, a docker daemon, and network), excluded from `make check`/`make test` via the `msb` build tag,
+  and compiled by `make compile-all`. `claude-code` is the exception on two counts: it runs with egress, because it
+  checks in with its API before drawing anything, and its renderer keeps the terminal's normal buffer, so it is readied
+  by the launcher's start-up time rather than the alternate screen.
 - Internal: raise the `make test-integration` timeout to 60m. The docker-build suite legitimately runs ~10 minutes on a
   cold CI runner and was tripping Go's default 10m per-package limit.
 - Internal: `devUserBlock` now sets the dev login shell to the first of `bash`, `zsh`, `sh` found (falling back to
