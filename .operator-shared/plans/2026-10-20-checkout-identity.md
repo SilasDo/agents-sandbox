@@ -330,7 +330,7 @@ git commit -m "feat(vm): key state, VM and image by checkout; label by repo (#14
 - [ ] **Step 1: Write the failing tests**
 
 - `cmd/agents-sandbox/cli_volume_test.go`: `TestVolumeOpsUseCheckoutSlug` — with two clones of one origin, `volume list`/`volume reset --dry-run` in the second clone resolve to that clone's checkout slug (assert the message names the second clone's VM/volume key).
-- `cmd/agents-sandbox/cli_system_coverage_test.go`: `TestBuildUsesCheckoutSlug` and `TestBuildDryRunKeepsLegacySlugWhileMigrationPending`.
+- `cmd/agents-sandbox/cli_system_coverage_test.go`: `TestBuildUsesCheckoutSlug` and `TestBuildDryRunPrintsMigrationNoticeAndMovesNothing`. The dry-run test names what it can observe: a `build --dry-run` returns before `image.Build`, so nothing at that layer sees the effective slug — the strong dry-run slug pin is the volume-op test through the docker inspect mock.
 - `cmd/agents-sandbox/cli_*_test.go`: `TestConfigCommandsWorkOutsideWorktree` — for `config agent`, `config home` and (Task 7) `config paths`, an outside-worktree cwd must succeed and report the repo slug, which stays shared with the checkout.
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -348,7 +348,7 @@ Expected: FAIL.
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./cmd/... ./internal/... 2>&1 | tail -20`
-Expected: PASS, and `rg 'ProjectSlug|ResolveWorkspaceLayout' --glob '!*.md'` returns nothing.
+Expected: PASS, and `rg 'ProjectSlug\(|ResolveWorkspaceLayout\('` returns nothing. (Test-function names covering the still-live internal `projectSlug` may remain — the criterion is about call sites, not identifiers.)
 
 - [ ] **Step 5: Commit**
 

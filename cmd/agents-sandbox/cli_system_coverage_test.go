@@ -82,7 +82,7 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 	}
 }
 
-// TestBuildDryRunKeepsLegacySlugWhileMigrationPending pins the all-or-nothing dry
+// TestBuildDryRunPrintsMigrationNoticeAndMovesNothing pins the all-or-nothing dry
 // run for build: adoption prints the "Would migrate" notice but leaves the
 // migration pending — the legacy state survives and no checkout state appears.
 //
@@ -91,7 +91,7 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 // target tag, so neither seam could falsify a slug here. The effective-slug pin
 // is TestVolumeOpsKeepLegacySlugWhileMigrationPending, which observes the tag
 // the op ensured through a docker inspect mock.
-func TestBuildDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
+func TestBuildDryRunPrintsMigrationNoticeAndMovesNothing(t *testing.T) {
 	clone := newOriginClone(t)
 	identity := git.ResolveIdentity(clone)
 	t.Chdir(clone)
