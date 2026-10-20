@@ -184,7 +184,7 @@ func projectDir(root, name string) string {
 // createRootAndBuildBinary creates the shared root and compiles the launcher
 // into it.
 func createRootAndBuildBinary() {
-	root, err := os.MkdirTemp("", "harness-smoke-")
+	root, err := os.MkdirTemp(smokeRootBase, smokeRootPrefix)
 	if err != nil {
 		errSmokePrepare = fmt.Errorf("create temp root: %w", err)
 		return

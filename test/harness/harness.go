@@ -33,6 +33,25 @@ const (
 	termDumb = "dumb"
 )
 
+const (
+	// smokeRootBase and smokeRootPrefix place the suite's shared temp root at a
+	// short, fixed path instead of under the host's TMPDIR.
+	//
+	// microsandbox derives its sandbox control-socket path from the private home
+	// under XDG_DATA_HOME (<root>/data/agents-sandbox/msb) and rejects a derived
+	// path once it approaches a Unix socket's sun_path limit (104 bytes on
+	// macOS, the tighter of the two supported platforms). A long TMPDIR —
+	// macOS's default is already ~49 bytes — would push the derived path over
+	// the limit and fail every harness before its TUI with "sandbox runtime
+	// socket path is too long", so the root stays short.
+	smokeRootBase   = "/tmp"
+	smokeRootPrefix = "asb-"
+
+	// dataDirName is the XDG data directory isolatedEnv puts under the root; the
+	// private microsandbox home is nested inside it.
+	dataDirName = "data"
+)
+
 // isolatedEnvKeep lists the inherited variables the child may keep: the
 // terminal and locale settings a TUI needs, the proxy settings any egress
 // uses, and the docker endpoint variables the runner-image build needs. The
@@ -91,7 +110,7 @@ func isolatedEnv(root string, inherited []string) []string {
 	return append(env,
 		"HOME="+filepath.Join(root, "home"),
 		"XDG_CONFIG_HOME="+filepath.Join(root, "config"),
-		"XDG_DATA_HOME="+filepath.Join(root, "data"),
+		"XDG_DATA_HOME="+filepath.Join(root, dataDirName),
 		"XDG_STATE_HOME="+filepath.Join(root, "state"),
 		"XDG_CACHE_HOME="+filepath.Join(root, "cache"),
 		"TMPDIR="+filepath.Join(root, "tmp"),

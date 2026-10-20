@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -94,6 +95,36 @@ func TestIsolatedEnvAllowlist(t *testing.T) {
 		if _, ok := got[k]; ok {
 			t.Errorf("%s must not be inherited (got %q)", k, got[k])
 		}
+	}
+}
+
+// TestSmokeRootStaysShortEnoughForSandboxSockets pins why the suite anchors its
+// shared temp root at a short, fixed base instead of the host's TMPDIR:
+// microsandbox derives its sandbox control-socket path from the private home
+// under XDG_DATA_HOME (<root>/data/agents-sandbox/msb), and a long TMPDIR —
+// macOS's default is ~49 bytes — pushes the derived path past a Unix socket's
+// sun_path limit, failing every harness before its TUI with "sandbox runtime
+// socket path is too long".
+func TestSmokeRootStaysShortEnoughForSandboxSockets(t *testing.T) {
+	// os.MkdirTemp appends nine random characters after the pattern.
+	const mkdirTempSuffix = "123456789"
+	// The private microsandbox home agents-sandbox derives from XDG_DATA_HOME:
+	// <data>/agents-sandbox/msb (configpaths.UserDataDir plus its "msb" child).
+	home := filepath.Join(smokeRootBase, smokeRootPrefix+mkdirTempSuffix, dataDirName, "agents-sandbox", "msb")
+	// microsandbox builds the socket path by appending a fixed suffix to the
+	// home (50 bytes as of v0.7.8) and rejects one that does not fit a Unix
+	// socket's sun_path, 104 bytes on macOS, the tighter of the two targets.
+	const (
+		socketPathSuffix = 50
+		sunPathLimit     = 104
+	)
+	if derived := len(home) + socketPathSuffix; derived >= sunPathLimit {
+		t.Errorf(
+			"derived sandbox socket path for home %q is %d bytes, at or above the %d-byte sun_path limit; keep smokeRootBase and smokeRootPrefix short",
+			home,
+			derived,
+			sunPathLimit,
+		)
 	}
 }
 
