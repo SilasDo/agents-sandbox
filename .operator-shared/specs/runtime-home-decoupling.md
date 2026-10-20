@@ -1,5 +1,5 @@
 ---
-description: Design for decoupling agents-sandbox's microsandbox runtime home from any user-installed microsandbox: a private XDG data home, no user-facing msb, retired version-matching recovery (a stale runtime our own previous release left in the private home is silently force-reinstalled, partial pairs removed first), and an opt-in copy of legacy home volumes whose progress is tracked in a host-owned `migrations` registry (`runtime_home` entry with `copying`/`completed`/`dismissed` status plus transient `copied`/`kept`/`excluded` sets) in root `state.yaml`. The offer surfaces present private volumes of unclear status, and `volume remove [--force]` is the sanctioned cleanup path. A one-time, acknowledged post-migration notice tells upgraders their system-wide microsandbox is now optional (instruct-only, never deleted).
+description: Design for decoupling agents-sandbox's microsandbox runtime home from any user-installed microsandbox: a private XDG data home, no user-facing msb, retired version-matching recovery (a stale runtime our own previous release left in the private home is silently force-reinstalled, partial pairs removed first), and an opt-in copy of legacy home volumes whose progress is tracked in a host-owned `migrations` registry (`runtime_home` entry with `copying`/`completed`/`dismissed` status, a `copied` set retained at a terminal word, and transient `kept`/`excluded` sets) in root `state.yaml`. The offer surfaces present private volumes of unclear status, and `volume remove [--force]` is the sanctioned cleanup path. A one-time, acknowledged post-migration notice tells upgraders their system-wide microsandbox is now optional; it treats a legacy volume as safe to remove only when it is recorded `copied` and present in the private home, so an unverified `kept` volume is still named (instruct-only, never deleted).
 read_if: Implementing or reviewing runtime-home decoupling, the private `MSB_HOME`, removal of the runtime mismatch recovery menu or the silent stale-runtime repair, the legacy home-volume copy prompt and its persisted migration state, the ambiguous-state offer, the post-migration legacy-runtime notice, or the `volume remove` cleanup command.
 ---
 
@@ -298,7 +298,9 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
     campaign aborts (campaign-scoped, stays `copying`) rather than completing with
     a usable partial left behind.
   - A **user-chosen** keep (`kept`, from "copy the missing volumes") deliberately
-    leaves the present volume in place; it is disclosed in the option label.
+    leaves the present volume in place; it is disclosed in the option label. Its
+    contents are unverified, so the notice still warns about the legacy volume
+    behind it.
   - **Start fresh / Dismiss** removes every present target not in `copied` and not
     in `kept` (i.e. the unclear partials) before recording `dismissed`; a removal
     failure aborts the dismissal.
@@ -349,7 +351,7 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   migrations:
     runtime_home:
       status: copying        # copying | completed | dismissed
-      copied:                # present only while status: copying; fully migrated
+      copied:                # fully migrated; retained at a terminal word
         - agents-sandbox-home-1mjusbm3wikhb0
       kept:                  # present only while status: copying; user-dismissed, left in place
         - agents-sandbox-home-1mjusbm3wikhb1
@@ -368,10 +370,13 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
     stops a failed volume from being retried.
   - **completed** — campaign over, no offer, permanent.
   - **dismissed** — user chose start-fresh/dismiss, no offer, permanent.
-- `copied`, `kept`, and `excluded` are transient: written only while `copying`
-  and dropped when the campaign reaches a terminal word. Terminal words are
-  permanent with no re-arm (unlike onboarding's source-hash re-arm); after
-  `completed` or `dismissed`, agents-sandbox never re-offers and never re-probes.
+- `kept` and `excluded` are transient: written only while `copying` and dropped
+  when the campaign reaches a terminal word. `copied` is retained at the terminal
+  word as the host-owned record of the volumes that were fully migrated, which
+  the post-migration notice uses to tell which legacy volumes are safe to remove.
+  Terminal words are permanent with no re-arm (unlike onboarding's source-hash
+  re-arm); after `completed` or `dismissed`, agents-sandbox never re-offers and
+  never re-probes.
 - Concurrent sessions are serialized by a host-only advisory lock
   (`state.FlockExclusive`) held for the campaign, at a path under the private
   home (`$MSB_HOME/.agents-sandbox/migration.lock`). The flock auto-releases on
@@ -431,12 +436,19 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   migration, and runs the notice after the copy/dismiss decisions and on the terminal /
   nothing-to-copy fallthrough. The notice is best-effort — a state-read, detection, or
   acknowledgment failure warns and lets the session continue.
-- **Uncopied volumes.** Any present legacy `agents-sandbox-home-*` volume with no counterpart
-  in the private home is *uncopied* (a failed copy, or a volume the user chose not to
-  migrate). This is derived at render time from the two home listings — never from the
-  transient `Excluded` set, which is dropped at the terminal write and is unavailable on a
-  later session or on the dismiss path. The notice leads with a "do not remove" paragraph
-  naming the uncopied volumes as not copied and still holding data, left in place, and then
+- **Uncopied volumes.** A legacy volume is *uncopied* unless the migration recorded it
+  `copied` **and** its destination still exists in the private home. That covers a volume
+  with no private counterpart (a failed copy, or one never attempted) and a volume whose
+  private counterpart exists but was not recorded as `copied` — a user-chosen `kept`
+  volume, whose contents are unverified. **Presence in the private home is not proof of a
+  copy**: a `kept` volume shares its name with a present, unverified private volume, which
+  is exactly the state the ambiguous-state copy path creates. Requiring both signals is
+  what keeps the notice from advising the deletion of the only trustworthy copy. This is
+  derived at render time from the two home listings and the retained `copied` record —
+  never from the transient `kept`/`excluded` sets, which are dropped at the terminal write
+  and are unavailable on a later session or on the dismiss path. The notice leads with a
+  "do not remove" paragraph naming the uncopied volumes as not copied and still holding
+  data, left in place, and then
   suppresses every command that would delete them: both the wholesale
   `rm -rf ~/.microsandbox` and the selective `~/.microsandbox/volumes/agents-sandbox-home-*`
   glob match an uncopied volume. The safe sandbox globs are still offered, and the volumes
