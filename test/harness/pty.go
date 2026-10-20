@@ -182,22 +182,6 @@ func (s *ptySession) write(data []byte) error {
 	return err
 }
 
-// writeKeyPresses writes each key press to the child's terminal, pausing gap
-// between presses. A harness whose quit is a repeated key needs the presses to
-// arrive separately: two bytes in one write reach its input parser as a single
-// key event, so a harness that ignores one press would never quit.
-func (s *ptySession) writeKeyPresses(presses [][]byte, gap time.Duration) error {
-	for i, press := range presses {
-		if i > 0 {
-			time.Sleep(gap)
-		}
-		if err := s.write(press); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // waitForTUI blocks until the child's output shows a full-screen TUI while the
 // child is still alive, or the child exits, whichever comes first. A marker the
 // child wrote seconds before exiting is not accepted: a client that draws its

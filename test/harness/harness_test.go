@@ -15,7 +15,7 @@ func TestHarnessSpecsCoverEveryRegisteredAgent(t *testing.T) {
 	}
 	for _, name := range names {
 		if _, ok := harnessSpecs[name]; !ok {
-			t.Errorf("registered harness %q has no smoke-test spec; add its quit presses", name)
+			t.Errorf("registered harness %q has no smoke-test spec; add its quit key", name)
 		}
 	}
 	for name := range harnessSpecs {
@@ -25,15 +25,13 @@ func TestHarnessSpecsCoverEveryRegisteredAgent(t *testing.T) {
 	}
 }
 
-func TestHarnessSpecsQuitPressesNonEmpty(t *testing.T) {
+// TestHarnessSpecsQuitKeyNonEmpty pins that every harness names the key the
+// smoke test presses, including a ReactsOnly harness, whose key is pressed to
+// prove its screen paints rather than to leave it.
+func TestHarnessSpecsQuitKeyNonEmpty(t *testing.T) {
 	for name, spec := range harnessSpecs {
-		if len(spec.QuitPresses) == 0 {
-			t.Errorf("harness %q has no quit press", name)
-		}
-		for i, press := range spec.QuitPresses {
-			if len(press) == 0 {
-				t.Errorf("harness %q quit press %d is empty", name, i)
-			}
+		if len(spec.QuitKey) == 0 {
+			t.Errorf("harness %q has no key for the smoke test to press", name)
 		}
 	}
 }

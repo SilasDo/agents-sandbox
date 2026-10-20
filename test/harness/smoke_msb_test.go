@@ -23,14 +23,17 @@ const (
 	// runtime install, so this only has to absorb the VM start; the budget
 	// stays generous for a cold host.
 	tuiReadyTimeout = 180 * time.Second
-	// exitTimeout bounds how long a harness may take to exit once its quit
-	// presses are written.
-	exitTimeout = 20 * time.Second
-	// quitPressGap separates the presses of a harness that leaves its TUI on a
-	// repeated key. It is a human double-tap: far longer than the terminal
-	// needs to deliver the presses as separate key events, and far shorter than
-	// the window a "press again to exit" prompt allows.
-	quitPressGap = 300 * time.Millisecond
+	// quitAttempts and quitAttemptInterval bound the quit presses: up to
+	// quitAttempts presses, each waiting quitAttemptInterval for the harness to
+	// go. An alternate-screen harness can paint its TUI seconds before it
+	// accepts input, so the presses made in that window are ignored and a later
+	// one is what leaves. The interval is also the spacing between presses,
+	// which a harness whose exit is a repeated press needs.
+	quitAttempts        = 6
+	quitAttemptInterval = 2 * time.Second
+	// reactTimeout bounds how long a harness with no key that leaves its
+	// first-run screen may take to paint in response to the key pressed.
+	reactTimeout = 5 * time.Second
 	// settledReadyTimeout bounds the readiness wait for a harness whose TUI
 	// keeps the terminal's normal buffer, where no marker announces that its UI
 	// is up. It covers the launcher's image load and VM start — about 14s on a
@@ -66,9 +69,10 @@ var (
 
 // TestHarnessSmoke starts every registered harness the way a user does
 // (`agents-sandbox run --agent <name>`) inside a real microsandbox VM and
-// asserts it reaches its full-screen TUI, exits 0 on its quit keys, and never
-// reports a daemon timeout. It requires KVM, a docker daemon, and network; the
-// `msb` build tag keeps it out of the default test run.
+// asserts it reaches its full-screen TUI, leaves it on its quit key (`ReactsOnly`
+// harnesses instead have to paint in response to one), and never reports a
+// daemon timeout. It requires KVM, a docker daemon, and network; the `msb` build
+// tag keeps it out of the default test run.
 //
 // The checks run in order so an environment that cannot run the suite skips
 // before paying for it: the platform/`/dev/kvm` preflight first (no build), then
@@ -101,17 +105,20 @@ func TestHarnessSmoke(t *testing.T) {
 			if err := waitReady(ses, spec); err != nil {
 				t.Fatalf("harness %s did not reach its TUI: %v\n--- output ---\n%s", name, err, stripANSI(ses.output()))
 			}
-			if err := ses.writeKeyPresses(spec.QuitPresses, quitPressGap); err != nil {
-				t.Fatalf("write quit presses: %v", err)
-			}
-			code, err := ses.waitExit(exitTimeout)
-			if err != nil {
-				t.Fatalf(
-					"harness %s did not exit after quit presses %v within %s: %v\n--- output ---\n%s",
-					name, spec.QuitPresses, exitTimeout, err, stripANSI(ses.output()))
-			}
-			if code != 0 {
-				t.Fatalf("harness %s exited %d, want 0\n--- output ---\n%s", name, code, stripANSI(ses.output()))
+			if spec.ReactsOnly {
+				if err := react(ses, spec); err != nil {
+					t.Fatalf("harness %s did not react to %#x: %v\n--- output ---\n%s",
+						name, spec.QuitKey, err, stripANSI(ses.output()))
+				}
+			} else {
+				code, err := quit(ses, spec)
+				if err != nil {
+					t.Fatalf("harness %s did not exit: %v\n--- output ---\n%s",
+						name, err, stripANSI(ses.output()))
+				}
+				if code != 0 {
+					t.Fatalf("harness %s exited %d, want 0\n--- output ---\n%s", name, code, stripANSI(ses.output()))
+				}
 			}
 			if sawDaemonTimeout(ses.output()) {
 				t.Fatalf("harness %s reported a daemon timeout:\n%s", name, stripANSI(ses.output()))
@@ -120,7 +127,62 @@ func TestHarnessSmoke(t *testing.T) {
 	}
 }
 
-// waitReady blocks until the harness can be driven with its quit keys. A
+// quit presses the harness's key until the process exits and returns its exit
+// code. A harness's TUI can paint its alternate screen seconds before it accepts
+// input — opencode draws its footer while it is still loading and ignores
+// anything sent meanwhile — so one press at the marker is not enough, and
+// pressing again is what a user does. A harness whose exit is a repeated press
+// leaves on the second attempt, which lands one quitAttemptInterval later.
+func quit(ses *ptySession, spec harnessSpec) (int, error) {
+	var lastErr error
+	for attempt := range quitAttempts {
+		if attempt > 0 {
+			time.Sleep(quitAttemptInterval)
+		}
+		if err := ses.write(spec.QuitKey); err != nil {
+			return 0, err
+		}
+		code, err := ses.waitExit(quitAttemptInterval)
+		if err == nil {
+			return code, nil
+		}
+		lastErr = err
+	}
+	return 0, fmt.Errorf("no exit after %d presses of %#x: %w", quitAttempts, spec.QuitKey, lastErr)
+}
+
+// react presses the harness's key and waits for the harness to paint in
+// response. It is the assertion for a harness whose first-run screen has no key
+// that leaves it: a screen that paints on request is live and handling input,
+// where a frozen one is not.
+func react(ses *ptySession, spec harnessSpec) error {
+	before := len(ses.output())
+	if err := ses.write(spec.QuitKey); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(reactTimeout)
+	for {
+		if len(ses.output()) > before {
+			return nil
+		}
+		if ses.hasExited() {
+			code, err := ses.waitExit(time.Second)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				return fmt.Errorf("exited %d in response to %#x, want 0", code, spec.QuitKey)
+			}
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("painted nothing within %s of %#x", reactTimeout, spec.QuitKey)
+		}
+		time.Sleep(ptyPollInterval)
+	}
+}
+
+// waitReady blocks until the harness can be driven with its quit key. A
 // harness that takes over the alternate screen announces its UI is up; one that
 // keeps the terminal's normal buffer has no such marker, so it is given the
 // launcher's start-up time instead.

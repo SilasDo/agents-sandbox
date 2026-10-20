@@ -69,9 +69,9 @@ var isolatedEnvKeep = []string{
 // render runs under.
 const publicNetwork = "public"
 
-// Terminal keys that leave a harness's full-screen TUI: Ctrl-D is `opencode`'s
-// and `pi`'s documented `app_exit`/`app.exit`, and Ctrl-C is the interrupt
-// `claude-code` confirms its exit with.
+// Terminal keys the smoke test drives a harness with: Ctrl-D is `opencode`'s,
+// `opencode2`'s, and `pi`'s documented `app_exit`/`app.exit`, and Ctrl-C is the
+// interrupt `claude-code` announces as its exit ("Press Ctrl-C again to exit").
 const (
 	ctrlC = 0x03
 	ctrlD = 0x04
@@ -83,25 +83,31 @@ const (
 var harnessSpecs = map[string]harnessSpec{
 	// claude-code checks in with its API before it draws anything, so it needs
 	// egress, and its renderer keeps the terminal's normal buffer, so the
-	// alternate screen never announces that its UI is up. Its first Ctrl-C only
-	// arms the exit — its screen answers "Press Ctrl-C again to exit" and waits
-	// for a second.
-	"claude-code": {QuitPresses: [][]byte{{ctrlC}, {ctrlC}}, Network: publicNetwork, KeepsNormalBuffer: true},
-	// opencode's editor owns Ctrl-C, and its app exit key leaves it on the
-	// second press rather than the first.
-	"opencode":  {QuitPresses: [][]byte{{ctrlD}, {ctrlD}}, Network: "", KeepsNormalBuffer: false},
-	"opencode2": {QuitPresses: [][]byte{{ctrlD}, {ctrlD}}, Network: "", KeepsNormalBuffer: false},
-	// pi leaves its TUI on a single press.
-	"pi": {QuitPresses: [][]byte{{ctrlD}}, Network: "", KeepsNormalBuffer: false},
+	// alternate screen never announces that its UI is up. It is also the one
+	// harness that quits on no key from the screen a fresh install starts on:
+	// its first-run theme chooser paints in response to Ctrl-C but stays up,
+	// and Enter only advances into its login flow.
+	"claude-code": {
+		QuitKey:           []byte{ctrlC},
+		Network:           publicNetwork,
+		KeepsNormalBuffer: true,
+		ReactsOnly:        true,
+	},
+	// opencode's editor owns Ctrl-C, so its TUI leaves on Ctrl-D: once, but only
+	// after the TUI has finished coming up.
+	"opencode":  {QuitKey: []byte{ctrlD}, Network: "", KeepsNormalBuffer: false, ReactsOnly: false},
+	"opencode2": {QuitKey: []byte{ctrlD}, Network: "", KeepsNormalBuffer: false, ReactsOnly: false},
+	"pi":        {QuitKey: []byte{ctrlD}, Network: "", KeepsNormalBuffer: false, ReactsOnly: false},
 }
 
-// harnessSpec describes how to drive one harness to its TUI and quit it.
+// harnessSpec describes how to drive one harness to its TUI and out of it.
 type harnessSpec struct {
-	// QuitPresses are the key presses written to the pty to leave the
-	// full-screen TUI, one write per press with a gap between them: a harness
-	// whose quit is a repeated key needs the presses to arrive as separate key
-	// events.
-	QuitPresses [][]byte
+	// QuitKey leaves the harness's full-screen TUI. The smoke test presses it
+	// repeatedly, because a TUI can paint its alternate screen seconds before
+	// it accepts input and a press made in that window is ignored. For a
+	// ReactsOnly harness the key leaves nothing and is pressed only to prove
+	// the screen paints in response.
+	QuitKey []byte
 	// Network overrides the default `--network none` when a harness needs
 	// egress to render.
 	Network string
@@ -109,6 +115,10 @@ type harnessSpec struct {
 	// terminal's normal buffer instead of the alternate screen, so the
 	// alternate-screen marker cannot announce that its UI is up.
 	KeepsNormalBuffer bool
+	// ReactsOnly declares a harness whose first-run screen has no key that
+	// leaves it, so the smoke test asserts that QuitKey makes it paint instead
+	// of asserting an exit.
+	ReactsOnly bool
 }
 
 // isolatedEnv builds the child environment from inherited: it keeps only the
