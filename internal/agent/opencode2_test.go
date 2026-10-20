@@ -3,6 +3,7 @@ package agent_test
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -372,5 +373,31 @@ func TestOpencode2ProvisionRules(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("ProvisionRules missing .config/opencode: %+v", rules)
+	}
+}
+
+func TestOpencode2EventStream(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	provider, ok := agent.AsEventStreamProvider(a)
+	if !ok {
+		t.Fatal("opencode2 should implement EventStreamProvider")
+	}
+	got := provider.EventStream()
+	if got.Parse == nil {
+		t.Fatal("EventStream().Parse is nil")
+	}
+	got.Parse = nil
+	want := agent.EventStreamSpec{
+		StreamCommand:      "curl -N -s -u opencode:opencode http://127.0.0.1:4096/api/event",
+		BusyEvents:         []string{"session.execution.started"},
+		AwaitingInput:      []string{"permission.asked", "form.created"},
+		IdleEvents:         []string{"session.execution.succeeded"},
+		ErrorEvents:        []string{"session.error", "session.execution.failed"},
+		SessionEvents:      []string{"session.created"},
+		SessionListCommand: "curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/session | jq -c '[.data[] | select(.parentID != null) | .id]'",
+		Name:               "opencode2",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("EventStream() = %+v, want %+v", got, want)
 	}
 }

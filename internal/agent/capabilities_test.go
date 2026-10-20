@@ -18,18 +18,13 @@ func TestOpencodeImplementsWorktreeProvider(t *testing.T) {
 	}
 }
 
-func TestOnlyOpencodeImplementsEventStreamProvider(t *testing.T) {
+func TestAgentEventStreamProviders(t *testing.T) {
 	for _, name := range agent.Names() {
 		a, _ := agent.Lookup(name)
 		_, ok := agent.AsEventStreamProvider(a)
-		if name == "opencode" {
-			if !ok {
-				t.Errorf("opencode should implement EventStreamProvider")
-			}
-			continue
-		}
-		if ok {
-			t.Errorf("%s should not implement EventStreamProvider", name)
+		want := name == "opencode" || name == "opencode2"
+		if ok != want {
+			t.Errorf("%s: AsEventStreamProvider = %v, want %v", name, ok, want)
 		}
 	}
 }
