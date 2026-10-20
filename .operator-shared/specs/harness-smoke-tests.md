@@ -61,33 +61,27 @@ measurements shape that wait:
 
 Once the image prebuild has run, the harness's UI comes up about 14s after launch, so the settled wait is 25s.
 
-**Harness table completeness.** A single table maps harness name to the key the smoke test presses, an optional network
-override, a `KeepsNormalBuffer` flag, and a `ReactsOnly` flag. Fast untagged unit tests assert the table's key set equals
-`agent.Names()` and that every entry names a key, so a newly registered harness fails `make test` until it is added — a
-harness cannot be added without smoke coverage.
+**Harness table completeness.** A single table maps harness name to the key the smoke test taps, an optional network
+override, and a `KeepsNormalBuffer` flag. Fast untagged unit tests assert the table's key set equals `agent.Names()` and
+that every entry names a key, so a newly registered harness fails `make test` until it is added — a harness cannot be
+added without smoke coverage.
 
 | harness | key | how it ends |
 | --- | --- | --- |
-| `opencode`, `opencode2` | `0x04` (Ctrl-D) | their documented `app_exit`; they leave once a press lands after the TUI has finished coming up |
-| `pi` | `0x04` (Ctrl-D) | documented `app.exit`; leaves on the first press |
-| `claude-code` | `0x03` (Ctrl-C) | `ReactsOnly`: it paints in response to the key, but no key the suite can send leaves the first-run screen it starts on |
+| `opencode`, `opencode2` | `0x04` (Ctrl-D) | their documented `app_exit`; they leave once a tap lands after the TUI has finished coming up |
+| `pi` | `0x04` (Ctrl-D) | documented `app.exit`; leaves on the first tap |
+| `claude-code` | `0x03` (Ctrl-C) | repeated presses leave it — its screen announces "Press Ctrl-C again to exit", and three is what a user found |
 
-**Press until it goes, then assert the exit.** `quit` presses the harness's key, waits `quitAttemptInterval` (2s) for
-the process to exit, and presses again — up to `quitAttempts` (6) times — before asserting exit code 0. A TUI paints its
-alternate screen seconds before it accepts input: measured on a KVM host, `opencode2` leaves on a press made ~3s after
-the alternate-screen marker and ignores the same key pressed at ~0ms and ~350ms, and `opencode` leaves on the second
-press ~2s after a first press at ~3s, whose screen was still the launcher's own output. Whether those early bytes sit
-buffered in the guest and are consumed when the harness starts reading, or are delivered and ignored while it
-initialises, is not pinned down; what is measured is that retrying is what makes the timing work, and that a fixed
-readiness wait does not. No harness needs a multi-key sequence: a harness whose exit is a repeated press leaves on the
-next attempt, one interval later.
-
-**`ReactsOnly`: a harness with no key that leaves its first-run screen.** The isolated root means every harness starts
-unconfigured, so each one runs its own first-run flow. `claude-code` cannot be driven out of it: measured on a host, its
-first-run theme chooser paints in response to Ctrl-D, Ctrl-C, and Enter (+3.3KB, +3.3KB, +0.8KB) and stays up; Esc paints
-nothing; and Enter only advances it into its login flow, where a burst does exit `0` at the cost of starting an OAuth
-exchange. For such a harness the suite asserts the weaker but still meaningful property: the pressed key has to make the
-harness paint within `reactTimeout`, which a frozen or crashed screen would not. Every other harness asserts the exit.
+**Tap until it goes, then assert the exit.** `quit` taps the harness's key every `quitPressInterval` (400ms) until the
+process exits, for at most `quitTimeout` (15s), then asserts exit code 0. A fixed sequence is wrong for two measured
+reasons. A TUI paints its screen seconds before it accepts input, so taps made in that window are ignored: on a KVM host
+`opencode2` leaves on a tap ~3s after the alternate-screen marker and ignores the same key at ~0ms and ~350ms, and
+`opencode` ignores a tap at ~3s while its screen still shows the launcher's own output. Whether those early bytes sit
+buffered in the guest and are consumed once the harness reads, or are delivered and ignored while it initialises, is not
+pinned down; what is measured is that tapping on is what carries the timing, and that a fixed readiness wait does not.
+A harness can also need the key more than once — `claude-code` leaves on a repeated Ctrl-C. An early probe concluded from
+two presses that no key the suite could send left it and made it an exception that asserted only that its screen painted;
+manual testing showed three presses leave it, so the exception is gone and every harness asserts an exit.
 
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
@@ -140,8 +134,7 @@ binary and a reachable docker daemon.
 
 ## Non-goals
 
-- TUI content or behaviour beyond reaching the full-screen TUI and leaving it on its key — a harness whose first-run
-  screen offers no such key only has to react to one.
+- TUI content or behaviour beyond reaching the full-screen TUI and leaving it on its quit key.
 - Credentials, authenticated sessions, or harness network egress.
 - Replacing the mocked `internal/sandbox/vm` tests.
 - Agent version resolution, the upgrade prompt, or the image build.
@@ -149,10 +142,11 @@ binary and a reachable docker daemon.
 
 ## Risks and open items
 
-- `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up and then that a keypress
-  makes it paint; unlike the alternate-screen harnesses it does not observe the UI being drawn, and unlike them it
-  asserts no exit. A release that stops painting in response to a key fails its subtest; one that starts quitting from
-  its first-run screen would pass unnoticed, so a future probe should revisit the `ReactsOnly` flag rather than assume
-  it still holds.
+- `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up, not that its UI was
+  drawn, unlike the alternate-screen harnesses. Its exit is also the least like a single documented keybinding — a
+  repeated Ctrl-C on a first-run screen — so a change to its onboarding is the likeliest cause of a failed subtest, and
+  the log then shows the screen it was stuck on.
+- The quit tap is a bound, not a diagnosis: a harness that starts ignoring its key fails after `quitTimeout` of taps
+  rather than reporting why.
 - Four harnesses mean four runner-image builds on a cold home; the image prebuild pays for them before any
   harness's TUI window opens, and the host-only placement absorbs the cost.
