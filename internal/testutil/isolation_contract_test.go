@@ -16,11 +16,15 @@ import (
 	"testing"
 )
 
-// fullSetInstaller is the wrapper that installs every seam family at once.
-const fullSetInstaller = "InitFailFastMocks"
+// fullSetInstaller is the wrapper that installs every seam family at once,
+// declared in fullSetInstallerPackage.
+const (
+	fullSetInstaller        = "InitFailFastMocks"
+	fullSetInstallerPackage = "internal/testutil/mocks"
+)
 
 // seamFamily ties a fail-fast family to the package that owns it and the
-// exported function that installs it.
+// exported declaration that installs it.
 type seamFamily struct {
 	name        string
 	dir         string
@@ -38,6 +42,106 @@ var seamFamilies = []seamFamily{
 	{name: "docker", dir: "internal/sandbox/docker", packageName: "docker", installer: "InstallFailFastGet"},
 	{name: "doctor", dir: "internal/sandbox/doctor", packageName: "doctor", installer: "InstallFailFast"},
 	{name: "msb", dir: "internal/sandbox/msb", packageName: "msb", installer: "InstallFailFastGet"},
+	{name: "notify", dir: "internal/notify", packageName: "notify", installer: "InstallFailFast"},
+}
+
+// installerPrefix names the exported declarations that install a seam family's
+// fail-fast default. It is the convention that makes an installer discoverable,
+// so a family whose installer does not carry it must still be added to
+// seamFamilies by hand.
+const installerPrefix = "InstallFailFast"
+
+// registeredInstaller identifies a seam installer by where it is declared.
+type registeredInstaller struct {
+	dir         string
+	packageName string
+	installer   string
+}
+
+// declaredSeamInstallers returns every exported installer declaration in the
+// module's non-test sources, so a family that exists in the code but not in
+// seamFamilies fails instead of going unchecked.
+func declaredSeamInstallers(t *testing.T, root string, packages []modulePackage) []registeredInstaller {
+	t.Helper()
+	var installers []registeredInstaller
+	for _, pkg := range packages {
+		if !pkg.hasNonTest {
+			continue
+		}
+		dir := filepath.Join(root, pkg.dir)
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("read %s: %v", pkg.dir, err)
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+				continue
+			}
+			file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+			if err != nil {
+				t.Fatalf("parse %s: %v", filepath.Join(pkg.dir, name), err)
+			}
+			for _, decl := range file.Decls {
+				installers = append(installers, declaredInstallersIn(pkg.dir, file.Name.Name, decl)...)
+			}
+		}
+	}
+	sortInstallers(installers)
+	return installers
+}
+
+// declaredInstallersIn returns the installers declared by one declaration: an
+// installer is an exported top-level identifier named with installerPrefix,
+// whether a function or a package-level var, as configpaths declares it.
+func declaredInstallersIn(dir, packageName string, decl ast.Decl) []registeredInstaller {
+	switch d := decl.(type) {
+	case *ast.FuncDecl:
+		if d.Recv != nil || !strings.HasPrefix(d.Name.Name, installerPrefix) {
+			return nil
+		}
+		return []registeredInstaller{{dir: dir, packageName: packageName, installer: d.Name.Name}}
+	case *ast.GenDecl:
+		var installers []registeredInstaller
+		for _, spec := range d.Specs {
+			value, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, name := range value.Names {
+				if strings.HasPrefix(name.Name, installerPrefix) {
+					installers = append(installers, registeredInstaller{
+						dir: dir, packageName: packageName, installer: name.Name,
+					})
+				}
+			}
+		}
+		return installers
+	}
+	return nil
+}
+
+// registeredInstallers lists seamFamilies as declared installers.
+func registeredInstallers() []registeredInstaller {
+	installers := make([]registeredInstaller, 0, len(seamFamilies))
+	for _, family := range seamFamilies {
+		installers = append(installers, registeredInstaller{
+			dir: family.dir, packageName: family.packageName, installer: family.installer,
+		})
+	}
+	sortInstallers(installers)
+	return installers
+}
+
+// sortInstallers orders installers by declaration site, since the same installer
+// name is declared by more than one family (docker and msb).
+func sortInstallers(installers []registeredInstaller) {
+	sort.Slice(installers, func(i, j int) bool {
+		if installers[i].dir != installers[j].dir {
+			return installers[i].dir < installers[j].dir
+		}
+		return installers[i].installer < installers[j].installer
+	})
 }
 
 // TestEveryTestPackageInstallsItsAcyclicFailFastMocks enforces the
@@ -46,6 +150,9 @@ var seamFamilies = []seamFamily{
 // without an import cycle. The expected set is derived from the module's import
 // graph, so this test needs no hand-maintained per-package exception list: a
 // family is skipped only when importing it would close a cycle.
+//
+// The registry it reads is kept complete by TestSeamFamiliesMatchDeclaredInstallers
+// and the wrapper it credits by TestInitFailFastMocksInstallsEveryFamily.
 func TestEveryTestPackageInstallsItsAcyclicFailFastMocks(t *testing.T) {
 	root := moduleRoot(t)
 	modulePath := moduleImportPath(t, root)
@@ -73,6 +180,33 @@ func TestEveryTestPackageInstallsItsAcyclicFailFastMocks(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no test packages found; is the module root correct?")
+	}
+}
+
+// TestInitFailFastMocksInstallsEveryFamily guards the credit the contract test
+// gives to a package that calls the wrapper: the wrapper must really install
+// every registered family, or every such package silently loses a fail-fast
+// default.
+func TestInitFailFastMocksInstallsEveryFamily(t *testing.T) {
+	root := moduleRoot(t)
+	modulePath := moduleImportPath(t, root)
+
+	got := wrapperInstalledFamilies(t, root, fullSetInstallerPackage, modulePath)
+	if want := everyFamilyName(); !slices.Equal(got, want) {
+		t.Errorf("%s (%s) installs %v, want every seam family %v",
+			fullSetInstaller, fullSetInstallerPackage, got, want)
+	}
+}
+
+// TestSeamFamiliesMatchDeclaredInstallers keeps seamFamilies complete, so a new
+// seam family cannot go unchecked behind a hand-maintained list: every declared
+// installer must be registered.
+func TestSeamFamiliesMatchDeclaredInstallers(t *testing.T) {
+	root := moduleRoot(t)
+
+	declared := declaredSeamInstallers(t, root, modulePackages(t, root))
+	if registered := registeredInstallers(); !slices.Equal(declared, registered) {
+		t.Errorf("declared fail-fast installers = %v, want the seamFamilies installers %v", declared, registered)
 	}
 }
 
@@ -129,12 +263,10 @@ func modulePackages(t *testing.T, root string) []modulePackage {
 		if !entry.IsDir() {
 			return nil
 		}
-		name := entry.Name()
-		if p == root {
-			return nil
-		}
-		if name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") {
-			return filepath.SkipDir
+		if p != root {
+			if name := entry.Name(); name == "vendor" || name == "testdata" || strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
 		}
 		entries, err := os.ReadDir(p)
 		if err != nil {
@@ -245,7 +377,7 @@ func acyclicSeamFamilies(pkgDir string, transitive map[string]map[string]bool) [
 }
 
 // installedSeamFamilies parses a package's main_test.go and reports the seam
-// families its TestMain installs.
+// families its TestMain installs before the tests run.
 func installedSeamFamilies(root, pkgDir, modulePath string) ([]string, error) {
 	mainTestPath := filepath.Join(root, pkgDir, "main_test.go")
 	file, err := parser.ParseFile(token.NewFileSet(), mainTestPath, nil, 0)
@@ -255,11 +387,132 @@ func installedSeamFamilies(root, pkgDir, modulePath string) ([]string, error) {
 		}
 		return nil, fmt.Errorf("parse main_test.go: %w", err)
 	}
-	testMain := findTestMain(file)
+	testMain := findFunc(file, "TestMain")
 	if testMain == nil {
 		return nil, errors.New("main_test.go has no TestMain")
 	}
+	return installedFamiliesIn(file, testMain, modulePath), nil
+}
 
+// wrapperInstalledFamilies parses the wrapper declared in pkgDir and returns the
+// seam families its body installs.
+func wrapperInstalledFamilies(t *testing.T, root, pkgDir, modulePath string) []string {
+	t.Helper()
+	dir := filepath.Join(root, pkgDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read %s: %v", pkgDir, err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, name), nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", filepath.Join(pkgDir, name), err)
+		}
+		if wrapper := findFunc(file, fullSetInstaller); wrapper != nil {
+			return installedFamiliesIn(file, wrapper, modulePath)
+		}
+	}
+	t.Fatalf("%s declares no %s", pkgDir, fullSetInstaller)
+	return nil
+}
+
+// installedFamiliesIn reports the seam families fn installs. Only direct call
+// statements in fn's own body, before the statement that starts the tests, count:
+// an installer reached from a helper, deferred, wrapped in a closure, or placed
+// after the tests start installs nothing while the tests run. Installers must
+// therefore be called directly in TestMain, as every main_test.go already does.
+func installedFamiliesIn(file *ast.File, fn *ast.FuncDecl, modulePath string) []string {
+	imports := importedPackagesByLocalName(file)
+	testRunParam := firstParamName(fn)
+	installed := map[string]bool{}
+	for _, statement := range fn.Body.List {
+		if call, ok := directCall(statement); ok {
+			creditInstaller(call, imports, file.Name.Name, modulePath, installed)
+		}
+		if statementRunsTests(statement, testRunParam) {
+			break
+		}
+	}
+	return sortedFamilyNames(installed)
+}
+
+// creditInstaller records the seam family a call installs. The call's import
+// path (or, for a same-package installer, the declaring package) must match a
+// family, so an installer name reused elsewhere cannot credit the wrong one.
+func creditInstaller(
+	call *ast.CallExpr,
+	imports map[string]string,
+	packageName, modulePath string,
+	installed map[string]bool,
+) {
+	switch fun := call.Fun.(type) {
+	case *ast.SelectorExpr:
+		base, ok := fun.X.(*ast.Ident)
+		if !ok {
+			return
+		}
+		importPath := imports[base.Name]
+		if importPath == modulePath+"/"+fullSetInstallerPackage && fun.Sel.Name == fullSetInstaller {
+			creditEveryFamily(installed)
+			return
+		}
+		for _, family := range seamFamilies {
+			if importPath == modulePath+"/"+family.dir && fun.Sel.Name == family.installer {
+				installed[family.name] = true
+			}
+		}
+	case *ast.Ident:
+		for _, family := range seamFamilies {
+			if packageName == family.packageName && fun.Name == family.installer {
+				installed[family.name] = true
+			}
+		}
+	}
+}
+
+// directCall returns the call a statement makes directly, if it is a bare call
+// statement. Calls behind defer or go, and calls inside function literals, are
+// not direct.
+func directCall(statement ast.Stmt) (*ast.CallExpr, bool) {
+	expression, ok := statement.(*ast.ExprStmt)
+	if !ok {
+		return nil, false
+	}
+	call, ok := expression.X.(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	return call, true
+}
+
+// statementRunsTests reports whether a statement starts the tests, nested or not
+// (e.g. os.Exit(m.Run())). Every installer must already have run by then.
+func statementRunsTests(statement ast.Stmt, testRunParam string) bool {
+	runsTests := false
+	ast.Inspect(statement, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		receiver, ok := selector.X.(*ast.Ident)
+		if ok && receiver.Name == testRunParam && selector.Sel.Name == "Run" {
+			runsTests = true
+		}
+		return true
+	})
+	return runsTests
+}
+
+// importedPackagesByLocalName maps each import's local name to its full path.
+func importedPackagesByLocalName(file *ast.File) map[string]string {
 	imports := map[string]string{}
 	for _, spec := range file.Imports {
 		importPath := strings.Trim(spec.Path.Value, `"`)
@@ -269,52 +522,53 @@ func installedSeamFamilies(root, pkgDir, modulePath string) ([]string, error) {
 		}
 		imports[local] = importPath
 	}
+	return imports
+}
 
-	installed := map[string]bool{}
-	ast.Inspect(testMain.Body, func(node ast.Node) bool {
-		call, ok := node.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		switch fun := call.Fun.(type) {
-		case *ast.SelectorExpr:
-			base, ok := fun.X.(*ast.Ident)
-			if !ok {
-				return true
-			}
-			importPath := imports[base.Name]
-			if importPath == modulePath+"/internal/testutil/mocks" && fun.Sel.Name == fullSetInstaller {
-				for _, family := range seamFamilies {
-					installed[family.name] = true
-				}
-			}
-			for _, family := range seamFamilies {
-				if importPath == modulePath+"/"+family.dir && fun.Sel.Name == family.installer {
-					installed[family.name] = true
-				}
-			}
-		case *ast.Ident:
-			for _, family := range seamFamilies {
-				if file.Name.Name == family.packageName && fun.Name == family.installer {
-					installed[family.name] = true
-				}
-			}
-		}
-		return true
-	})
+// firstParamName returns the name of fn's first parameter, or "" when it has none.
+func firstParamName(fn *ast.FuncDecl) string {
+	if fn.Type.Params == nil || len(fn.Type.Params.List) == 0 {
+		return ""
+	}
+	names := fn.Type.Params.List[0].Names
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0].Name
+}
 
+// creditEveryFamily marks every registered family as installed.
+func creditEveryFamily(installed map[string]bool) {
+	for _, family := range seamFamilies {
+		installed[family.name] = true
+	}
+}
+
+// everyFamilyName returns the name of every registered family, sorted.
+func everyFamilyName() []string {
+	names := make([]string, 0, len(seamFamilies))
+	for _, family := range seamFamilies {
+		names = append(names, family.name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// sortedFamilyNames returns the installed family names, sorted.
+func sortedFamilyNames(installed map[string]bool) []string {
 	families := make([]string, 0, len(installed))
 	for name := range installed {
 		families = append(families, name)
 	}
 	sort.Strings(families)
-	return families, nil
+	return families
 }
 
-func findTestMain(file *ast.File) *ast.FuncDecl {
+// findFunc returns the package-level function named name, if declared.
+func findFunc(file *ast.File, name string) *ast.FuncDecl {
 	for _, decl := range file.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if ok && fn.Recv == nil && fn.Name.Name == "TestMain" {
+		if ok && fn.Recv == nil && fn.Name.Name == name {
 			return fn
 		}
 	}

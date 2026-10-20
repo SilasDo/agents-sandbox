@@ -71,7 +71,8 @@ Common development commands (run from the Go module root):
   (skips launching the agent)
 - `make test`/`go test ./...` — run all tests.
 - `make compile-all` — compile every test binary including `integration`-tagged files without a docker daemon (catches
-  tagged-only compile regressions; run by CI on every PR).
+  tagged-only compile regressions; run by CI on every PR). Its `-run='^$'` output reads `[no tests to run]` for every
+  package — that is compile-only, not skipped tests.
 - `make lint`/`golangci-lint run` — run the linter. ALWAYS use! DON'T use `go vet`!
 - `make fmt`/`golangci-lint fmt` — format all files. ALWAYS use! DON'T manually rewrite / use `go fmt`!
 - `go mod tidy` — sync `go.mod`/`go.sum` (run after adding/removing imports).

@@ -13,33 +13,50 @@ resolution fails loudly instead of silently touching the host.
 
 Every test package installs the fail-fast defaults in `TestMain`, for every seam family its tests can import without a
 test import cycle. The normal call is
-`termio.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all four seam families:
+`termio.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all five seam families:
 
 - `configpaths.InstallFailFastConfigPaths()`
 - `docker.InstallFailFastGet()`
 - `doctor.InstallFailFast()`
 - `msb.InstallFailFastGet()`
+- `notify.InstallFailFast()`
 
-A test that legitimately exercises a seam opts in with `WithMockConfigPaths(t)` (or the docker/msb/doctor equivalent).
+A test that legitimately exercises a seam opts in with `WithMockConfigPaths(t)` (or the docker/msb/doctor/notify
+equivalent).
 
-The set is enforced, not hand-maintained: `TestEveryTestPackageInstallsItsAcyclicFailFastMocks`
-(`internal/testutil/isolation_contract_test.go`) derives each package's expected families from the module import graph —
-a family is skipped only when the family's package imports the test package, which is exactly when importing it would
-cycle. A new test package, a dropped installer, or a new seam family fails the test until the mocks match the graph.
+The set is enforced, not hand-maintained. Three tests in `internal/testutil/isolation_contract_test.go` pin the chain:
+
+- `TestSeamFamiliesMatchDeclaredInstallers` checks the family registry against the code: every exported
+  `InstallFailFast*` declaration in the module's non-test sources must be registered, so a new family cannot go
+  unchecked.
+- `TestInitFailFastMocksInstallsEveryFamily` reads the wrapper's own body, so a dropped installer cannot leave its ~30
+  callers silently unprotected.
+- `TestEveryTestPackageInstallsItsAcyclicFailFastMocks` derives each package's expected families from the module import
+  graph: a family is skipped only when the family's package imports the test package, which is exactly when importing it
+  would cycle. A new test package, a dropped installer, or a `main_test.go` without a `TestMain` fails it.
+
+The per-package check credits only direct calls that run before `m.Run()`: installers must be called directly in
+`TestMain`, not from a helper, a `defer`, or a closure, and never after the tests start. The walk covers the module root
+too, so a package beside `go.mod` is checked like any other.
 
 Packages in the seam import chain cannot import `internal/testutil/mocks` without a test import cycle; they install the
 reachable subset directly, mirroring that body:
 
 - `configpaths` (installs configpaths + docker; doctor and msb are unreachable and would cycle)
-- `docker` (installs configpaths + docker + msb; doctor imports docker, so it would cycle)
+- `docker` (installs configpaths + docker + msb + notify; doctor imports docker, so it would cycle)
 - `msb` (installs configpaths + docker + msb; doctor imports msb, so it would cycle)
 - `termio` (installs configpaths + docker + msb; doctor imports termio, so it would cycle)
-- `doctor` (installs all four itself; importing `internal/testutil/mocks` would cycle through doctor)
-- `runtime` (installs configpaths + docker + msb; doctor imports runtime, so `InitFailFastMocks` would cycle and doctor
-  is unreachable from runtime)
-- `agent` and `filewalk` install docker only: `configpaths` imports `agent`, which imports `filewalk`, so no
-  configpaths-reachable family is importable. Neither package reaches a seam in its own code; if one ever gains such a
-  call, the seam must be reached through an injected dependency rather than a global.
+- `doctor` (installs configpaths + docker + doctor + msb + notify; importing `internal/testutil/mocks` would cycle
+  through doctor)
+- `runtime` (installs configpaths + docker + msb + notify; doctor imports runtime, so `InitFailFastMocks` would cycle
+  and doctor is unreachable from runtime)
+- `notify` (installs configpaths + docker + doctor + msb + notify; the wrapper installs notify, so importing it would
+  cycle)
+- `atomicwrite`, `mounts`, `naming`, `network`, `state` (install configpaths + docker + doctor + msb; notify imports
+  them, so they cannot import the wrapper, which installs notify)
+- `agent` and `filewalk` install docker only: `configpaths` imports `agent`, which imports `filewalk`, and `notify`
+  imports both, so docker is the only family importable. Neither package reaches a seam in its own code; if one ever
+  gains such a call, the seam must be reached through an injected dependency rather than a global.
 
 Add a `main_test.go` with such a `TestMain` to every new package that has tests; the contract test fails without one.
 
@@ -63,8 +80,9 @@ seam family is reached without its injectable factory. The remaining ambient pat
 - `os.Getuid`/`Getgid` (image build args), `os.Getwd` (workspace source), `time.Now` (names/polling/spinner), and
   `viperconfig`'s env reads are read-only or the input itself, not leaks.
 
-`agent` and `filewalk` keep the docker fail-fast as their only backstop (every other family cycles through
-`configpaths`). Keep any future host-path need in them injected, never global.
+`agent` and `filewalk` keep the docker fail-fast as their only backstop (every other family either cycles through
+`configpaths` or is declared in `notify`, which imports both). Keep any future host-path need in them injected, never
+global.
 
 ## Why (the incident this encodes)
 
