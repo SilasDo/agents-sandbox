@@ -97,6 +97,38 @@ func TestPTYWaitForTUITimesOutWhileProcessRuns(t *testing.T) {
 	}
 }
 
+// TestPTYWaitSettledReturnsOnceTheChildOutlastsTheSettle pins the readiness
+// signal for a harness whose TUI keeps the terminal's normal buffer: it is the
+// settle, because no marker announces that such a harness has drawn its UI.
+func TestPTYWaitSettledReturnsOnceTheChildOutlastsTheSettle(t *testing.T) {
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "sleep 30")
+	defer ses.close()
+
+	if err := ses.waitSettled(200 * time.Millisecond); err != nil {
+		t.Fatalf("waitSettled: %v", err)
+	}
+}
+
+// TestPTYWaitSettledReportsChildExit pins that a child stopping during the
+// settle fails the readiness wait at once, naming its exit and the output seen,
+// rather than waiting out the settle.
+func TestPTYWaitSettledReportsChildExit(t *testing.T) {
+	ses := mustStartUnderPTY(t, "", nil, "/bin/sh", "-c", "echo launcher output; exit 3")
+	defer ses.close()
+
+	start := time.Now()
+	err := ses.waitSettled(30 * time.Second)
+	if err == nil {
+		t.Fatal("waitSettled = nil, want an error for a child that exited during the settle")
+	}
+	if !strings.Contains(err.Error(), "exit code 3") || !strings.Contains(err.Error(), "launcher output") {
+		t.Errorf("waitSettled error %q, want it to name the exit and the output seen", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("waitSettled took %v, want an immediate report of the exit", elapsed)
+	}
+}
+
 // TestPTYWaitForTUIRejectsExitedTUI pins that entering the alternate screen is
 // not accepted once the child has exited: a client that draws its TUI and exits
 // on its own never handled the quit keys, so its exit must not pass as a clean

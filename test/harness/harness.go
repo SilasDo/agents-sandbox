@@ -65,14 +65,21 @@ var isolatedEnvKeep = []string{
 	"DOCKER_HOST", "DOCKER_CONTEXT", "DOCKER_CONFIG",
 }
 
+// publicNetwork is the `--network` profile a harness that needs egress to
+// render runs under.
+const publicNetwork = "public"
+
 // harnessSpecs maps every registered harness to how the smoke test drives it.
 // It must stay in sync with agent.Names(); the smoke test asserts the two key
 // sets are equal.
 var harnessSpecs = map[string]harnessSpec{
-	"claude-code": {QuitKeys: []byte{0x03}, Network: ""},
-	"opencode":    {QuitKeys: []byte{0x03}, Network: ""},
-	"opencode2":   {QuitKeys: []byte{0x03}, Network: ""},
-	"pi":          {QuitKeys: []byte{0x03}, Network: ""},
+	// claude-code checks in with its API before it draws anything, so it needs
+	// egress, and its renderer keeps the terminal's normal buffer, so the
+	// alternate screen never announces that its UI is up.
+	"claude-code": {QuitKeys: []byte{0x03}, Network: publicNetwork, KeepsNormalBuffer: true},
+	"opencode":    {QuitKeys: []byte{0x04, 0x04}, Network: "", KeepsNormalBuffer: false},
+	"opencode2":   {QuitKeys: []byte{0x04, 0x04}, Network: "", KeepsNormalBuffer: false},
+	"pi":          {QuitKeys: []byte{0x04}, Network: "", KeepsNormalBuffer: false},
 }
 
 // harnessSpec describes how to drive one harness to its TUI and quit it.
@@ -82,6 +89,10 @@ type harnessSpec struct {
 	// Network overrides the default `--network none` when a harness needs
 	// egress to render.
 	Network string
+	// KeepsNormalBuffer declares a harness whose TUI renders into the
+	// terminal's normal buffer instead of the alternate screen, so the
+	// alternate-screen marker cannot announce that its UI is up.
+	KeepsNormalBuffer bool
 }
 
 // isolatedEnv builds the child environment from inherited: it keeps only the

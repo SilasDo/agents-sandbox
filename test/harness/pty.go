@@ -226,6 +226,31 @@ func (s *ptySession) exitedWithoutTUIError() error {
 		s.exitStatus(), s.outputTail())
 }
 
+// waitSettled blocks until settle has elapsed with the child still alive, and
+// reports the child's exit as an error when it stops first. It is the readiness
+// signal for a harness that keeps the terminal's normal buffer, where no
+// terminal-level marker announces that the UI is up.
+//
+// It waits out the launcher rather than the child: before the harness runs, the
+// launcher installs or loads an image and starts a VM, and its output is silent
+// for seconds at a time while it does, so a quiet stream cannot stand in for a
+// rendered screen.
+func (s *ptySession) waitSettled(settle time.Duration) error {
+	deadline := time.Now().Add(settle)
+	for {
+		if s.hasExited() {
+			return s.exitedWithoutTUIError()
+		}
+		if !time.Now().Before(deadline) {
+			return nil
+		}
+		select {
+		case <-time.After(ptyPollInterval):
+		case <-s.waitDone:
+		}
+	}
+}
+
 // waitExit blocks until the child exits and returns its exit code. A process
 // that exited successfully yields 0; one killed by a signal, -1. Only a wait
 // that does not complete within the timeout (or fails outright) is an error.

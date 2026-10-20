@@ -26,6 +26,11 @@ const (
 	// exitTimeout bounds how long a harness may take to exit once its quit
 	// keys are written.
 	exitTimeout = 20 * time.Second
+	// settledReadyTimeout bounds the readiness wait for a harness whose TUI
+	// keeps the terminal's normal buffer, where no marker announces that its UI
+	// is up. It covers the launcher's image load and VM start — about 14s on a
+	// cold host when the image prebuild has already run — with margin.
+	settledReadyTimeout = 25 * time.Second
 	// prepareTimeout bounds the one-off launcher build and the per-harness
 	// runner-image prebuild every subtest shares.
 	prepareTimeout = 30 * time.Minute
@@ -88,7 +93,7 @@ func TestHarnessSmoke(t *testing.T) {
 				isolatedEnv(root, os.Environ()),
 				binary, "run", "--agent", name, "--network", network,
 			)
-			if err := ses.waitForTUI(tuiReadyTimeout); err != nil {
+			if err := waitReady(ses, spec); err != nil {
 				t.Fatalf("harness %s did not reach its TUI: %v\n--- output ---\n%s", name, err, stripANSI(ses.output()))
 			}
 			if err := ses.write(spec.QuitKeys); err != nil {
@@ -96,7 +101,9 @@ func TestHarnessSmoke(t *testing.T) {
 			}
 			code, err := ses.waitExit(exitTimeout)
 			if err != nil {
-				t.Fatalf("harness %s did not exit after quit keys %v: %v", name, spec.QuitKeys, err)
+				t.Fatalf(
+					"harness %s did not exit after quit keys %v within %s: %v\n--- output ---\n%s",
+					name, spec.QuitKeys, exitTimeout, err, stripANSI(ses.output()))
 			}
 			if code != 0 {
 				t.Fatalf("harness %s exited %d, want 0\n--- output ---\n%s", name, code, stripANSI(ses.output()))
@@ -106,6 +113,17 @@ func TestHarnessSmoke(t *testing.T) {
 			}
 		})
 	}
+}
+
+// waitReady blocks until the harness can be driven with its quit keys. A
+// harness that takes over the alternate screen announces its UI is up; one that
+// keeps the terminal's normal buffer has no such marker, so it is given the
+// launcher's start-up time instead.
+func waitReady(ses *ptySession, spec harnessSpec) error {
+	if spec.KeepsNormalBuffer {
+		return ses.waitSettled(settledReadyTimeout)
+	}
+	return ses.waitForTUI(tuiReadyTimeout)
 }
 
 // preflight skips the suite when the host cannot run it at all: an unsupported
