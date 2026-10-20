@@ -58,18 +58,47 @@ func TestConfigLayersOrderAndPaths(t *testing.T) {
 	}
 }
 
-// TestNewResolverMergesEveryLayer proves the resolver merges the per-slug user
-// layer: the value lives only there, so resolving it means the layer was read.
-func TestNewResolverMergesEveryLayer(t *testing.T) {
+// TestNewResolverMergesEveryFileLayer proves every file layer is merged and
+// they compose in precedence order. Each layer sets a key only it sets (so all
+// three values prove all three were read) plus a shared log-level key (so the
+// highest layer wins). The env and flag layers are not file layers; they reach
+// viper through binding, not mergeDir.
+func TestNewResolverMergesEveryFileLayer(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	testutil.WriteYAML(t, cp.UserSlugConfigDir("widget-bbb"), "config.yaml", map[string]any{"cpus": 3})
+	testutil.WriteYAML(
+		t,
+		cp.UserConfigDir(),
+		"config.yaml",
+		map[string]any{"memory": "1G", "log-level": "verbose"},
+	)
+	testutil.WriteYAML(
+		t,
+		cp.UserSlugConfigDir("widget-bbb"),
+		"config.yaml",
+		map[string]any{"cpus": 3, "log-level": "warning"},
+	)
+	testutil.WriteYAML(
+		t,
+		cp.ProjectConfigDir(),
+		"config.yaml",
+		map[string]any{"tmp-size": "4G", "log-level": "error"},
+	)
 
 	r, err := NewResolver(nil, "widget-bbb")
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
+	if r.cfg.Memory != "1G" {
+		t.Errorf("Memory = %q, want 1G (the generic user layer must be merged)", r.cfg.Memory)
+	}
 	if r.cfg.CPUs != 3 {
 		t.Errorf("CPUs = %d, want 3 (the per-slug layer must be merged)", r.cfg.CPUs)
+	}
+	if r.cfg.TmpSize != "4G" {
+		t.Errorf("TmpSize = %q, want 4G (the project layer must be merged)", r.cfg.TmpSize)
+	}
+	if r.cfg.LogLevel != "error" {
+		t.Errorf("LogLevel = %q, want error (the project layer must win)", r.cfg.LogLevel)
 	}
 }

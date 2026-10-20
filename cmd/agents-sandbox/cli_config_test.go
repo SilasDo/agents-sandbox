@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -304,6 +305,28 @@ func TestConfigCommandsWorkOutsideWorktree(t *testing.T) {
 		joined := strings.Join(ui.OutCalls, "\n")
 		if !strings.Contains(joined, "/home/dev/.gitconfig") {
 			t.Errorf("config home must list the shared user manifest, got:\n%s", joined)
+		}
+	})
+
+	// The per-slug user config dir is keyed by the repo slug, so config paths
+	// must report the repo slug (shared by every clone), not the outside
+	// worktree's own checkout slug.
+	t.Run("config paths reports the shared repo slug", func(t *testing.T) {
+		cmd, ui := setupCommandFixtures(t, cmdConfig, cmdPaths)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("config paths: %v", err)
+		}
+		out := strings.Join(ui.OutCalls, "\n")
+		if !strings.Contains(out, "repo slug:  "+identity.RepoSlug) {
+			t.Errorf("config paths must report the repo slug %q, got:\n%s", identity.RepoSlug, out)
+		}
+		perSlugDir := filepath.Join(configpaths.Get().UserConfigDir(), identity.RepoSlug)
+		if !strings.Contains(out, perSlugDir) {
+			t.Errorf("config paths must list the shared repo-slug dir %q, got:\n%s", perSlugDir, out)
+		}
+		if !slices.Contains(ui.InfoCalls, configPathsHint()) {
+			t.Errorf("config paths must print the stderr hint; InfoCalls=%q", ui.InfoCalls)
 		}
 	})
 }

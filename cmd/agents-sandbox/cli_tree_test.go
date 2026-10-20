@@ -221,8 +221,11 @@ func TestPrintTreeContainsStorageCommands(t *testing.T) {
 // subcommand and its description under config.
 func TestPrintTreeContainsConfigPaths(t *testing.T) {
 	out := strings.Join(buildTree(t).InfoCalls, "\n")
-	if !strings.Contains(out, "paths") {
-		t.Errorf("expected the config paths subcommand in tree output:\n%s", out)
+	// Assert the subcommand's own row, not a bare "paths" substring: "host
+	// paths" in the storage --verbose description would satisfy that.
+	row := "── " + cmdPaths + "  "
+	if !strings.Contains(out, row) {
+		t.Fatalf("expected a %q row in tree output:\n%s", row, out)
 	}
 	if !strings.Contains(out, "Print the config layers in precedence order") {
 		t.Errorf("expected the config paths description in tree output:\n%s", out)
