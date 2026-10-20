@@ -26,8 +26,7 @@ func TestHarnessSpecsCoverEveryRegisteredAgent(t *testing.T) {
 }
 
 // TestHarnessSpecsQuitKeyNonEmpty pins that every harness names the key the
-// smoke test presses, including a ReactsOnly harness, whose key is pressed to
-// prove its screen paints rather than to leave it.
+// smoke test taps until its process goes.
 func TestHarnessSpecsQuitKeyNonEmpty(t *testing.T) {
 	for name, spec := range harnessSpecs {
 		if len(spec.QuitKey) == 0 {
