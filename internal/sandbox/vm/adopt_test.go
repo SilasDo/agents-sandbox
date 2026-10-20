@@ -362,6 +362,9 @@ func TestAdoptLegacyIdentityLegacyVMReplacedFailsClosed(t *testing.T) {
 	if !msb.IsReplaced(err) {
 		t.Errorf("error = %v, want it to wrap ErrSandboxReplaced", err)
 	}
+	if !strings.Contains(err.Error(), "rerun to finish migrating this checkout") {
+		t.Errorf("error = %v, want the adoption action clause from destroyProjectVMHandle", err)
+	}
 	if statePresent(t, adoptCheckoutKey()) {
 		t.Error("state moved despite a replaced legacy VM")
 	}
@@ -375,7 +378,7 @@ func TestAdoptLegacyIdentityLegacyVMReplacedFailsClosed(t *testing.T) {
 // the merge refuse to overwrite it and report a skip, so the legacy state file
 // never arrives. Continuing would run under the checkout identity with no state
 // — a fresh home volume and the agent's auth silently gone — so adoption must
-// fail loudly instead.
+// fail loudly, naming what is half-done and what to clear to finish it.
 func TestAdoptLegacyIdentityStrandedStateFileFailsLoudly(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacyStateFile := seedLegacyState(t)
@@ -401,11 +404,16 @@ func TestAdoptLegacyIdentityStrandedStateFileFailsLoudly(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected a stranded state file to fail adoption")
 	}
-	if !strings.Contains(err.Error(), legacyStateFile) {
-		t.Errorf("error = %v, want it to name the legacy state file %s", err, legacyStateFile)
-	}
-	if !strings.Contains(err.Error(), adoptAgentName) {
-		t.Errorf("error = %v, want it to name the skipped entry %s", err, adoptAgentName)
+	for _, want := range []string{
+		"did not complete",
+		legacyStateFile,
+		"skipped [" + adoptAgentName + "]",
+		adoptLegacyVMName() + " is already gone",
+		checkoutSlugDir,
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q:\n%v", want, err)
+		}
 	}
 	if _, statErr := os.Stat(legacyStateFile); statErr != nil {
 		t.Errorf("legacy state file gone after a loud failure: %v", statErr)

@@ -142,15 +142,18 @@ func adoptLegacyIdentity(
 	// state file exists at the destination. If it did not arrive, continuing
 	// would run under the checkout identity with no state, silently provisioning
 	// a fresh home volume and losing the agent's auth. Failing loudly is the only
-	// outcome that cannot lose the user's volume, so never fall back here.
+	// outcome that cannot lose the user's volume, so never fall back here. The
+	// notice has already promised a move and the legacy VM is gone by now, so the
+	// error has to say what is half-done and what to clear to finish it.
 	if _, verifyErr := state.ReadState(checkoutKey); verifyErr != nil {
 		if errors.Is(verifyErr, state.ErrStateNotFound) {
 			return fmt.Errorf(
-				"adoption did not move the legacy state file %s to %s; the move skipped [%s] under %s, so resolve the conflict and rerun",
+				"migration to the checkout identity did not complete: the legacy state file %s did not arrive at %s (the move skipped [%s]); the legacy project VM %s is already gone, so clear those entries under the checkout state directory %s and rerun",
 				filepath.Join(state.KeyDir(repoKey), "state.yaml"),
 				filepath.Join(state.KeyDir(checkoutKey), "state.yaml"),
 				strings.Join(skipped, ", "),
-				state.SlugDir(identity.RepoSlug),
+				projectVMName(repoKey),
+				state.SlugDir(identity.CheckoutSlug),
 			)
 		}
 		return fmt.Errorf("verify adopted state: %w", verifyErr)
@@ -158,11 +161,11 @@ func adoptLegacyIdentity(
 	return nil
 }
 
-// destroyLegacyVM destroys the legacy origin-keyed project VM if it exists. It
-// is identity-aware and fails closed exactly as replaceSandboxForReconfig does:
-// a name that is already gone needs no destroy, but a handle whose identity was
-// replaced now refers to a sandbox this run did not create, so adopting it would
-// stop-and-remove a stranger's VM under this project's name.
+// destroyLegacyVM destroys the legacy origin-keyed project VM if it exists,
+// through the shared identity-safe teardown (destroyProjectVMHandle): a name
+// that is already gone needs no destroy, but a handle whose identity was
+// replaced belongs to a sandbox this run did not create, so adopting it would
+// destroy a stranger's VM and the adoption stops instead.
 func destroyLegacyVM(ctx context.Context, client msb.Client, repoKey state.Key, ui termio.UI) error {
 	name := projectVMName(repoKey)
 
@@ -175,19 +178,18 @@ func destroyLegacyVM(ctx context.Context, client msb.Client, repoKey state.Key, 
 		return fmt.Errorf("check legacy project VM %q: %w", name, err)
 	}
 
-	destroyErr := handle.Destroy(ctx)
-	switch {
-	case msb.IsReplaced(destroyErr):
-		return fmt.Errorf(
-			"project VM %q was replaced by a different sandbox since it was checked; rerun to reconfigure it: %w",
-			name,
-			destroyErr,
-		)
-	case msb.IsNotFound(destroyErr):
+	alreadyGone, destroyErr := destroyProjectVMHandle(
+		ctx,
+		handle,
+		name,
+		"rerun to finish migrating this checkout",
+	)
+	if destroyErr != nil {
+		return destroyErr
+	}
+	if alreadyGone {
 		ui.Verbosef("legacy project VM %s was already gone; continuing with the state move", name)
-	case destroyErr != nil:
-		return fmt.Errorf("destroy old project VM %q: %w", name, destroyErr)
-	default:
+	} else {
 		ui.Verbosef("destroyed legacy project VM %s", name)
 	}
 	return nil
