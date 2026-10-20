@@ -35,8 +35,10 @@ lossless for everything the launcher sets.
   consumer that needs mounts applies `ConfigMounts()` first (this is the one place the SDK gap is worked around).
 - `ParseConfigMounts` keys by guest path and maps the five upstream variants onto the SDK's `MountConfig` through its
   `Mount` factories: `Bind` → `quota_mib` + `options.readonly`, `Tmpfs` → `size_mib`, `Named` → `name`, `Owned` and
-  `DiskImage` for completeness. An entry whose `type` is unrecognized (a newer runtime) is skipped rather than
-  failing the whole read; a `guest`-less entry or invalid JSON is an error.
+  `DiskImage` for completeness (`DiskImage`'s `format` is lowercased, because upstream serializes `DiskImageFormat` as
+  the bare variant name — `"Raw"` — while `DiskOptions.Format` is the lowercase hint). An entry whose `type` is
+  unrecognized (a newer runtime) is skipped rather than failing the whole read; a `guest`-less entry, invalid JSON, or
+  an empty `config_json` is an error.
 - Consumers and what they read:
   - `reconfig.PlanReconfig` via `decideReconfig` — `tmpSizeChange` (`size_mib` at `/tmp`), `workspaceQuotaChange`
     (`quota_mib` at `/workspace`), `homeVolumeChange` (the `name` of the `Named` mount at `/home/dev`).
@@ -48,7 +50,7 @@ lossless for everything the launcher sets.
   of breaking a run. `vm.InspectSandbox` reports the failure like its `Config()` read does, so `sandbox inspect`
   never silently shows zero mounts for a VM that has them.
 - A missing `mounts` key is not an error — a config persisted by a runtime that does not record mounts is valid, and
-  must not read as "everything changed".
+  must not read as "everything changed". It yields an empty (non-nil) map.
 
 ## Deliberate non-goal
 

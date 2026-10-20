@@ -1,5 +1,7 @@
 # Live Mount Read-back Implementation Plan
 
+**Status:** implemented on `docs/223-reconfig-dead-detectors` (pending merge), commits `e43380e`..`92e59a0`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix the dead `cfg.Volumes` readers by reading a live VM's mounts from the persisted config JSON, so `tmp_size`/`workspace-quota`/home-volume changes are detected, home-volume recovery works, and `sandbox inspect` reports mounts.
@@ -40,7 +42,7 @@
 - Consumes: `msbSdk "github.com/superradcompany/microsandbox/sdk/go"` (`MountConfig`, `Mount.Bind/Named/Tmpfs/Owned/Disk`, `MountOptions`, `TmpfsOptions`, `OwnedVolumeOptions`, `DiskOptions`, `VolumeKindDir`, `VolumeKindDisk`).
 - Produces: `func ParseConfigMounts(configJSON string) (map[string]msbSdk.MountConfig, error)` — mounts keyed by guest path, `nil` when the JSON has no `mounts` key.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/sandbox/msb/configmounts_test.go` in `package msb`:
 
@@ -162,12 +164,12 @@ func TestParseConfigMountsRejectsMountWithoutGuest(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./internal/sandbox/msb/ -run TestParseConfigMounts -v`
 Expected: FAIL — `undefined: ParseConfigMounts`.
 
-- [ ] **Step 3: Implement `ParseConfigMounts` in `internal/sandbox/msb/configmounts.go`**
+- [x] **Step 3: Implement `ParseConfigMounts` in `internal/sandbox/msb/configmounts.go`**
 
 Decode into a private mirror of the persisted entries, then map each recognized `type` onto the SDK's `Mount` factories:
 
@@ -187,12 +189,12 @@ func ParseConfigMounts(configJSON string) (map[string]msbSdk.MountConfig, error)
 - `DiskImage` → `Mount.Disk(host, DiskOptions{Format: format, Fstype: fstype, Readonly, Noexec, Nosuid, Nodev})`.
 - `readonly`/`noexec`/`nosuid`/`nodev` come from the entry's `options` object.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `go test ./internal/sandbox/msb/ -run TestParseConfigMounts -v`
 Expected: PASS (7 tests).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sandbox/msb/configmounts.go internal/sandbox/msb/configmounts_test.go
@@ -212,7 +214,7 @@ git commit -m "fix(msb): parse a live VM's mounts from the persisted config JSON
 - Consumes: `ParseConfigMounts` from Task 1.
 - Produces: `SandboxHandle.ConfigMounts() (map[string]msbSdk.MountConfig, error)` on the seam; `MockSandboxHandle` gains `Mounts map[string]msbSdk.MountConfig` and `MountsErr error`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `internal/sandbox/msb/msb_coverage_test.go`:
 
@@ -237,12 +239,12 @@ func TestMockSandboxHandleConfigMounts(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./internal/sandbox/msb/ -run TestMockSandboxHandleConfigMounts -v`
 Expected: FAIL — `m.ConfigMounts undefined` / `unknown field Mounts`.
 
-- [ ] **Step 3: Implement the seam method**
+- [x] **Step 3: Implement the seam method**
 
 In `SandboxHandle`, add next to `Config()`:
 
@@ -277,18 +279,18 @@ Add a code comment on the mock method noting the divergence it makes explicit: t
 persisted JSON while the mock is seeded directly, because the wiring line cannot be exercised without the FFI runtime —
 the parser it calls is covered by Task 1.
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `go test ./internal/sandbox/msb/ -v`
 Expected: PASS.
 
-- [ ] **Step 5: Verify the seam change did not break the mocks' users**
+- [x] **Step 5: Verify the seam change did not break the mocks' users**
 
 Run: `go build ./... && go test ./internal/sandbox/... -run XXX`
 Expected: builds clean (any type asserting `msb.SandboxHandle` must now implement `ConfigMounts`; the mocks in
 `internal/sandbox/volume` and `internal/sandbox/vm` are the `MockSandboxHandle` type, so no other implementation exists).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/sandbox/msb/msb.go internal/sandbox/msb/testmock.go internal/sandbox/msb/msb_coverage_test.go
@@ -307,7 +309,7 @@ git commit -m "feat(msb): expose ConfigMounts on the SandboxHandle seam"
 - Consumes: `SandboxHandle.ConfigMounts()` (Task 2); `reconfig.PlanReconfig` unchanged.
 - Produces: nothing new; `decideReconfig` fills `curCfg.Volumes` before planning.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `internal/sandbox/vm/reconfig_livemounts_test.go` in `package vm`, modelled on the existing
 `TestDecideReconfigHomeQuit` harness (`internal/sandbox/vm/reconfig_quit_test.go`):
@@ -368,12 +370,12 @@ Also add `TestDecideReconfigMountsReadFailureDegrades`, reusing the same harness
 must return no error and `recreate == false` — a mount read failure degrades, it does not abort the startup (Review
 Focus).
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `go test ./internal/sandbox/vm/ -run TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts -v`
 Expected: FAIL — `recreate` is false, because `cfg.Volumes` is empty and `tmpSizeChange` returns no change.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `decideReconfig`, inside the `if handle != nil` block, after `curCfg, cfgErr = handle.Config()`, apply the live
 mounts. Add this helper to `internal/sandbox/vm/reconfig.go`:
@@ -406,18 +408,18 @@ and call it from `decideReconfig`:
 		applyLiveMounts(curCfg, handle, ui)
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [x] **Step 4: Run the test to verify it passes**
 
 Run: `go test ./internal/sandbox/vm/ -run TestDecideReconfig -v`
 Expected: PASS.
 
-- [ ] **Step 5: Run the affected packages**
+- [x] **Step 5: Run the affected packages**
 
 Run: `go test ./internal/sandbox/vm/ ./internal/sandbox/reconfig/ -count=1`
 Expected: PASS — the `reconfig` package tests build `cfg.Volumes` directly and must be unaffected (they pin
 `PlanReconfig`'s contract).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/sandbox/vm/reconfig.go internal/sandbox/vm/reconfig_livemounts_test.go
@@ -436,7 +438,7 @@ git commit -m "fix(vm): apply live VM mounts before the reconfig decision"
 - Consumes: `SandboxHandle.ConfigMounts()` (Task 2).
 - Produces: nothing new; `liveHomeVolume` reads the `Named` mount at `mounts.VMHomeDir`.
 
-- [ ] **Step 1: Update the two tests to seed mounts through the seam (they now fail by construction)**
+- [x] **Step 1: Update the two tests to seed mounts through the seam (they now fail by construction)**
 
 In `TestLiveHomeVolumeReturnsMountedVolume` and `TestPrepareHomeVolumeRecoversLostStateFromLiveVM`, the
 `MockSandboxHandle` literal currently sets `Cfg: &msbSdk.SandboxConfig{Volumes: …}`. Replace that with the mock's new
@@ -453,12 +455,12 @@ In `TestLiveHomeVolumeReturnsMountedVolume` and `TestPrepareHomeVolumeRecoversLo
 
 (For the recovery test use the existing `recovered` name instead of `home-vol`.)
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/sandbox/vm/ -run 'TestLiveHomeVolume|TestPrepareHomeVolumeRecoversLostState' -v`
 Expected: FAIL — `liveHomeVolume` still reads `cfg.Volumes` and returns `""`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Replace the tail of `liveHomeVolume` (`internal/sandbox/vm/run_orchestrate.go`):
 
@@ -475,12 +477,12 @@ Keep the surrounding handle lookup and `cfg == nil` guards; drop the now-unused 
 the `cfg == nil` branch if nothing else needs the config. Update the function comment: the mount comes from the
 persisted config's `Named` mount at `/home/dev`, not `cfg.Volumes` (`specs/live-mount-readback.md`).
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./internal/sandbox/vm/ -run 'TestLiveHomeVolume|TestPrepareHomeVolumeRecoversLostState' -v`
 Expected: PASS. `TestLiveHomeVolumeNoVM` and the "config cannot be read" case must still pass unchanged.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sandbox/vm/run_orchestrate.go internal/sandbox/vm/run_orchestrate_test.go
@@ -499,19 +501,19 @@ git commit -m "fix(vm): read the live home volume from the persisted mounts"
 - Consumes: `SandboxHandle.ConfigMounts()` (Task 2).
 - Produces: nothing new; `SandboxDetail.Mounts` is now populated for a live VM.
 
-- [ ] **Step 1: Update the tests to seed mounts through the seam**
+- [x] **Step 1: Update the tests to seed mounts through the seam**
 
 - `internal/sandbox/vm/inspect_test.go`: move the two-mount literal from `cfg.Volumes` to `MockSandboxHandle.Mounts`
   (keep the `Cfg` fields the assertions read: image, memory/cpu limits, labels).
 - `cmd/agents-sandbox/cli_inspect_test.go`: same move for the two `sandbox inspect` mocks (~lines 296 and 344). The
   expected human output (`mounts (2):` …) and JSON assertions stay as they are — they are the regression proof.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `go test ./internal/sandbox/vm/ -run TestInspectSandbox -v && go test ./cmd/agents-sandbox/ -run TestSandboxInspect -v`
 Expected: FAIL — mounts are empty, so the `len(got.Mounts) != 2` / `mounts (2):` assertions fail.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `InspectSandbox`, replace the `mounts = mountDetails(cfg.Volumes)` read (inside the `if cfg != nil` branch) with a
 seam read placed after the config read, and surface its error like the config read does:
@@ -527,12 +529,12 @@ seam read placed after the config read, and surface its error like the config re
 `mountDetails` keeps its signature; delete the now-redundant `var mounts []MountDetail` declaration so the variable is
 assigned once.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `go test ./internal/sandbox/vm/ -run TestInspectSandbox -v && go test ./cmd/agents-sandbox/ -run TestSandboxInspect -v`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add internal/sandbox/vm/inspect.go internal/sandbox/vm/inspect_test.go cmd/agents-sandbox/cli_inspect_test.go
@@ -550,7 +552,7 @@ git commit -m "fix(vm): report live mounts in sandbox inspect"
 - Consumes: nothing.
 - Produces: nothing.
 
-- [ ] **Step 1: Add the changelog line**
+- [x] **Step 1: Add the changelog line**
 
 Under `## [Unreleased]`, in the `### Fixed` list, add a line naming the user-visible effects and the issue:
 
@@ -561,19 +563,19 @@ Under `## [Unreleased]`, in the `### Fixed` list, add a line naming the user-vis
   ([#223](https://github.com/inoio/agents-sandbox/issues/223)).
 ```
 
-- [ ] **Step 2: Check the existing docs still read true**
+- [x] **Step 2: Check the existing docs still read true**
 
 `docs/commands.md` and `docs/configuration/launcher.md` already state that a `--workspace-quota` (and `tmp-size`)
 change triggers recreation, and `docs/` documents `sandbox inspect` output. These are correct only after this change —
 re-read them and change nothing unless a statement is now inaccurate.
 
-- [ ] **Step 3: Run the full check**
+- [x] **Step 3: Run the full check**
 
 Run: `make check`
 Expected: fmt, lint, and test targets pass. Then run `make compile-all` and expect compile-only output
 (`[no tests to run]` per package).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CHANGELOG.md
