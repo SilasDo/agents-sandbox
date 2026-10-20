@@ -362,8 +362,10 @@ func persistOfferedVersion(k state.Key, version string, ui termio.UI) {
 }
 
 // liveHomeVolume returns the home volume currently mounted by the project VM,
-// or "" when the project has no VM or its config cannot be read. It lets home
-// resolution recover the volume when the state file was lost (issue #219). A
+// or "" when the project has no VM or its mounts cannot be read. It lets home
+// resolution recover the volume when the state file was lost (issue #219). The
+// mount is read from the VM's persisted config, because the SDK's Config()
+// leaves cfg.Volumes empty on a read-back (specs/live-mount-readback.md). A
 // not-found VM is expected (first run); any other lookup error is logged so a
 // transient failure is visible rather than silently orphaning the volume.
 func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui termio.UI) string {
@@ -377,12 +379,12 @@ func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui term
 	if handle == nil {
 		return ""
 	}
-	cfg, err := handle.Config()
-	if err != nil || cfg == nil {
-		ui.Verbosef("reading existing VM config for home-volume recovery failed: %v (continuing)", err)
+	liveMounts, err := handle.ConfigMounts()
+	if err != nil {
+		ui.Verbosef("reading VM mounts for home-volume recovery failed: %v (continuing)", err)
 		return ""
 	}
-	return cfg.Volumes[mounts.VMHomeDir].Named
+	return liveMounts[mounts.VMHomeDir].Named
 }
 
 // resolveHomeVolume resolves the project home volume, reusing the existing one
