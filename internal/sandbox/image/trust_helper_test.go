@@ -65,6 +65,51 @@ func TestRenderDockerfileInstallsTrustHelper(t *testing.T) {
 	}
 }
 
+// TestWriteDockerfileTarShipsTrustHelperLicense covers the license asset in the
+// synthetic build context. The helper is upstream's Apache-2.0 work, so whoever
+// receives it — a built runner image, or the release binary that embeds the same
+// bytes — must also receive the license copy section 4(a) requires. The final
+// stage COPYs the context entry, so it travels as a non-executable regular file.
+func TestWriteDockerfileTarShipsTrustHelperLicense(t *testing.T) {
+	var context bytes.Buffer
+	if err := writeDockerfileTar(&context, []byte("FROM scratch\n")); err != nil {
+		t.Fatalf("writeDockerfileTar: %v", err)
+	}
+
+	entries, modes := readTarEntries(t, &context)
+
+	want, err := os.ReadFile(vendoredTrustHelperLicensePath)
+	if err != nil {
+		t.Fatalf("read vendored trust helper license: %v", err)
+	}
+	if got := entries[trustHelperLicenseAsset]; got != string(want) {
+		t.Errorf(
+			"tar entry %q carries %d bytes, want the vendored license's %d",
+			trustHelperLicenseAsset,
+			len(got),
+			len(want),
+		)
+	}
+	if got := modes[trustHelperLicenseAsset]; got != 0o644 {
+		t.Errorf("tar entry %q mode = %o, want 644 (the license is not a command)", trustHelperLicenseAsset, got)
+	}
+}
+
+// TestRenderDockerfileInstallsTrustHelperLicense covers the runner-stage wiring
+// for the license. Shipping it in the build context changes nothing until the
+// final stage installs it; a helper present without the license copy is exactly
+// the packaging Apache-2.0 section 4(a) forbids.
+func TestRenderDockerfileInstallsTrustHelperLicense(t *testing.T) {
+	a, ok := agent.Lookup("opencode")
+	if !ok {
+		t.Fatal("opencode agent not registered")
+	}
+	final := finalStage(t, mustRender(t, a, nil, true))
+	if !strings.Contains(final, "COPY "+trustHelperLicenseAsset+" "+trustHelperLicenseDest) {
+		t.Errorf("final stage must COPY %s to %s; got:\n%s", trustHelperLicenseAsset, trustHelperLicenseDest, final)
+	}
+}
+
 // readTarEntries returns the tar's entry contents and modes keyed by name.
 func readTarEntries(t *testing.T, r io.Reader) (map[string]string, map[string]int64) {
 	t.Helper()

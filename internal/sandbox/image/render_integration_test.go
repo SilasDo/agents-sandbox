@@ -374,11 +374,12 @@ func TestRenderDockerfileLoginShellHasImagePath(t *testing.T) {
 
 // TestRenderDockerfileTrustHelperRunsInImage proves the CA-trust helper lands in
 // the built image as a runnable command, which is what a Java user needs to
-// import the interception CA into a JDK trust store. The executable bit travels
-// in the build context rather than in the Dockerfile, so nothing short of a real
-// build and run shows that the installed file can be executed; asserting on the
-// guest CA path also catches a vendored script that no longer matches our guest
-// layout. Invoking the command directly (no shell) is what exercises the mode.
+// import the interception CA into a JDK trust store, and that its license lands
+// beside it. The executable bit travels in the build context rather than in the
+// Dockerfile, so nothing short of a real build and run shows that the installed
+// file can be executed; asserting on the guest CA path also catches a vendored
+// script that no longer matches our guest layout. Invoking the command directly
+// (no shell) is what exercises the mode.
 func TestRenderDockerfileTrustHelperRunsInImage(t *testing.T) {
 	origGet := docker.Get
 	docker.Get = docker.RealClient
@@ -403,6 +404,14 @@ func TestRenderDockerfileTrustHelperRunsInImage(t *testing.T) {
 	}
 	if !strings.Contains(string(out), "/.msb/tls/ca.pem") {
 		t.Errorf("helper output does not name the guest interception CA:\n%s", out)
+	}
+
+	license, err := exec.Command("docker", "run", "--rm", tag, "cat", trustHelperLicenseDest).CombinedOutput()
+	if err != nil {
+		t.Fatalf("reading the installed trust helper license failed: %v\n%s", err, license)
+	}
+	if !strings.Contains(string(license), "Apache License") {
+		t.Errorf("installed license at %s is not the vendored Apache-2.0 text:\n%s", trustHelperLicenseDest, license)
 	}
 }
 

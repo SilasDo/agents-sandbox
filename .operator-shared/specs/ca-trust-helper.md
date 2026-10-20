@@ -23,6 +23,12 @@ Gradle/Maven fails with `SunCertPathBuilderException`. The helper's handlers are
 - The script is **vendored verbatim** at `internal/sandbox/image/data/msb-trust.sh` and is never modified.
   `data/msb-trust.LICENSE` carries the upstream source, the pinned version, the SHA-256, and the re-sync command. The pin
   follows the microsandbox SDK pin (`go.mod`): a new SDK version is the trigger to re-sync and re-record the hash.
+- The helper is Apache-2.0 work, so the license travels with it: `data/msb-trust.LICENSE` is embedded in the release
+  binary and installed in the image at **`/usr/share/licenses/msb-trust/LICENSE`** (Apache-2.0 section 4(a) requires a
+  license copy with every distribution of the Work — both the release binary that embeds the script and the runner image
+  that installs it). It is one mixed file: the provenance header plus the full Apache-2.0 text, installed as-is rather
+  than split, so there is a single source of truth for the pin and the license. Like every build-context file it is
+  folded into `computeDockerfileID`, so editing it rebuilds a warm image.
 - It is installed **executable**: the 755 mode travels in the build-context tar entry and the final stage's `COPY`
   takes the permission bits from there (no `chmod` `RUN`). `buildContextFiles()` is the single source of truth for the
   context tar *and* `computeDockerfileID`, so adding or editing a file ships it and invalidates an existing image by
@@ -55,8 +61,9 @@ application that uses a separate trust store"). A `node` handler would be dead c
 
 `TestRenderDockerfileTrustHelperRunsInImage` (integration-tagged) builds the runner image and runs
 `msb-trust java --help` directly — no shell — which proves the exec bit survived the context `COPY` and that the java
-handler still documents the guest CA path (`/.msb/tls/ca.pem`). The unit tests pin the tar entry (content and mode), the
-final stage's `COPY`, and — like the profile.d merge script — that editing the helper's bytes changes
+handler still documents the guest CA path (`/.msb/tls/ca.pem`); it also reads the installed license and checks it is the
+Apache-2.0 text. The unit tests pin the tar entry (content and mode), the
+final stage's `COPY`, and — like the profile.d merge script — that editing the helper's bytes (or the license's) changes
 `computeDockerfileID`. `TestVendoredTrustHelperMatchesRecordedHash` is the verbatim-vendoring guard: the script must hash
 to the value recorded in `data/msb-trust.LICENSE`, so a hand-edit fails the build instead of silently making the license
 lie. Locally, the `java` handler was verified against a real `keytool` (import, idempotent re-run, and the non-root

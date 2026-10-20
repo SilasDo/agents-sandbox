@@ -65,7 +65,8 @@ always ends with `USER dev` and `WORKDIR /workspace`.
 
 The runner also installs microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`. It is for
 applications whose TLS trust is separate from the guest's system store — a JDK's `cacerts`, Chrome/Chromium's NSS
-store — which matters as soon as a secret turns on TLS interception. See
+store — which matters as soon as a secret turns on TLS interception. The helper is Apache-2.0 work, so its license is
+installed at `/usr/share/licenses/msb-trust/LICENSE`. See
 [Secrets]({% link configuration/secrets.md %}#trusting-the-ca-in-applications) for which applications already work, and
 the [Java recipe]({% link recipes/java-ca-trust.md %}) for a worked example.
 

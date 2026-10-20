@@ -65,6 +65,15 @@ const (
 	trustHelperDest  = "/usr/local/bin/msb-trust"
 )
 
+// trustHelperLicenseAsset is the build-context file carrying the license of the
+// vendored CA-trust helper; trustHelperLicenseDest installs it inside the image.
+// Apache-2.0 section 4(a) requires a copy of the license to travel with the
+// helper, and /usr/share/licenses is the conventional home for it.
+const (
+	trustHelperLicenseAsset = "msb-trust.LICENSE"
+	trustHelperLicenseDest  = "/usr/share/licenses/msb-trust/LICENSE"
+)
+
 // agentLabelKey is the image label carrying the baked agent name.
 const agentLabelKey = "org.agents-sandbox.agent"
 
@@ -592,6 +601,7 @@ func finalizationBlock() string {
 	return fmt.Sprintf(`USER root
 COPY %s %s
 COPY %s %s
+COPY %s %s
 ARG BASE_IMAGE
 ARG DOCKERFILE_ID
 ARG IDENTITY_PROJECT_DOCKERFILE_HASH
@@ -609,7 +619,7 @@ LABEL org.agents-sandbox.dockerfile-id=$DOCKERFILE_ID
 LABEL org.agents-sandbox.identity.dockerfile-hash=$IDENTITY_PROJECT_DOCKERFILE_HASH
 LABEL org.agents-sandbox.identity.agent-version=$IDENTITY_AGENT_VERSION
 LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
-`, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest)
+`, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest, trustHelperLicenseAsset, trustHelperLicenseDest)
 }
 
 // RenderProjectDockerfile renders the runner Dockerfile exactly as it would be
