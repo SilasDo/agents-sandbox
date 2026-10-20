@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 )
 
@@ -43,50 +42,12 @@ func HashID(input string) string {
 	return encoded
 }
 
-// ProjectSlug returns a stable, human-readable identifier for the current
-// working directory's repository, used to name sandboxes and their image
-// tags. The slug is "<repo-name>-<hash>": repo-name comes from the origin
-// remote's URL (or the checkout folder name if there is no origin), and the
-// 14-character base36 hash is derived from the full origin URL (or the
-// repository's top-level path when there is no origin). Because the hash is
-// over the origin URL, every clone and worktree of the same remote shares one
-// slug, while different hosts/forks yield different slugs.
+// ProjectSlug returns the repo slug of the current working directory; see
+// RepoSlug.
+//
+// TODO(#144): replaced by ResolveIdentity; deleted by the cmd wiring task.
 func ProjectSlug() string {
-	return projectSlugAt(".")
-}
-
-// projectSlugAt returns the project slug for the repository at cwd; see
-// ProjectSlug.
-func projectSlugAt(cwd string) string {
-	repo, err := git.PlainOpenWithOptions(cwd, &git.PlainOpenOptions{
-		DetectDotGit: true,
-	})
-	if err != nil {
-		if abs, absErr := filepath.Abs(cwd); absErr == nil {
-			return projectSlug(sanitizeFolderName(filepath.Base(abs)), abs)
-		}
-		return projectSlug("", cwd)
-	}
-	root, err := worktreeRoot(repo)
-	if err != nil {
-		if abs, absErr := filepath.Abs(cwd); absErr == nil {
-			return projectSlug(sanitizeFolderName(filepath.Base(abs)), abs)
-		}
-		return projectSlug("", cwd)
-	}
-	if url := originURL(root); url != "" {
-		return projectSlug(sanitizeFolderName(lastPathSegment(url)), url)
-	}
-	return projectSlug(sanitizeFolderName(filepath.Base(root)), root)
-}
-
-// worktreeRoot returns the working-tree root directory of an opened repository.
-func worktreeRoot(repo *git.Repository) (string, error) {
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return "", err
-	}
-	return worktree.Filesystem.Root(), nil
+	return RepoSlug()
 }
 
 // originURL returns the origin remote URL for the checkout rooted at root, or
@@ -136,28 +97,20 @@ func isBare(gitDir string) bool {
 // resolveGitDir returns the absolute git directory for the checkout rooted at
 // root. For a normal checkout that is root/.git; for a linked worktree, whose
 // root/.git is a file containing "gitdir: <shared>.git/worktrees/<name>", it
-// returns the shared <shared>.git directory. Git may write that gitdir path
-// relative to the worktree (worktree.useRelativePaths), so a relative path is
-// resolved against root. It returns "" if the checkout is not a repo.
+// returns the shared <shared>.git directory. It returns "" if the checkout is
+// not a repo.
 func resolveGitDir(root string) string {
 	path := filepath.Join(root, ".git")
-	info, err := os.Stat(path)
-	if err != nil {
-		return ""
-	}
-	if info.IsDir() {
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		return path
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return ""
-	}
-	line := strings.TrimSpace(string(data))
-	dir, ok := strings.CutPrefix(line, "gitdir:")
+	dir, ok := gitdirFile(root)
 	if !ok {
 		return ""
 	}
-	dir = strings.TrimSpace(dir)
+	// Strip on the recorded text before making it absolute: a "worktrees"
+	// component in an ancestor of root must not be mistaken for a worktree
+	// registration (see gitdirFile).
 	if i := strings.LastIndex(dir, "/worktrees/"); i >= 0 {
 		dir = dir[:i]
 	}
@@ -165,6 +118,40 @@ func resolveGitDir(root string) string {
 		dir = filepath.Join(root, dir)
 	}
 	return dir
+}
+
+// isLinkedWorktree reports whether root is a linked worktree: its .git is a file
+// pointing into a shared git dir under a worktrees/ segment. A
+// --separate-git-dir checkout and a submodule also have a .git file, but their
+// gitdir is not a worktree registration, so they are not linked worktrees and
+// are never treated as outside.
+func isLinkedWorktree(root string) bool {
+	dir, ok := gitdirFile(root)
+	return ok && strings.Contains(dir, "/worktrees/")
+}
+
+// gitdirFile returns the gitdir path recorded in root/.git when that entry is a
+// file (a linked worktree, or a --separate-git-dir or submodule checkout),
+// exactly as git wrote it: still relative when git recorded it relative
+// (worktree.useRelativePaths). Callers classify and strip on that text before
+// making it absolute, so a "worktrees" path component in an ancestor of root
+// cannot masquerade as a worktree registration. It reports false when .git is a
+// directory, missing, unreadable, or lacks the "gitdir:" prefix.
+func gitdirFile(root string) (string, bool) {
+	path := filepath.Join(root, ".git")
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	dir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(dir), true
 }
 
 // lastPathSegment returns the last path segment of a git remote URL, dropping

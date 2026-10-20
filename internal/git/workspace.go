@@ -8,6 +8,8 @@ import (
 
 // WorkspaceLayout describes which host directory a session should bind at
 // /workspace and where its checkout lives.
+//
+// TODO(#144): replaced by ResolveIdentity; deleted by the cmd wiring task.
 type WorkspaceLayout struct {
 	BindRoot        string // host dir to bind at /workspace
 	CheckoutRoot    string // enclosing checkout root; "" when cwd is not in a repo
@@ -16,51 +18,19 @@ type WorkspaceLayout struct {
 	Bare            bool   // the shared git dir is a bare repository
 }
 
-// ResolveWorkspaceLayout decides which host directory to bind at /workspace for
-// a session started at cwd. It binds the smallest enclosing checkout that
-// contains cwd, so a session in a worktree nested inside its checkout (or in a
-// worktree of a bare layout, whose worktrees live inside the bare root) always
-// exposes that worktree. A worktree outside its checkout keeps cwd as the bind
-// root and is flagged, since its shared git dir would not be reachable in the
-// VM. WorktreeRoot reports the nearest directory holding a .git entry, which for
-// a worktree inside a checkout is that worktree's root rather than cwd. The
-// layout also reports whether the shared git dir is a bare repository (see
-// isBare). Derivation is plain-file inspection (see resolveGitDir); no git
-// binary is invoked.
+// ResolveWorkspaceLayout returns the layout fields of ResolveIdentity. It is kept
+// as a shim for configpaths' bare project-config resolution (#247) until the
+// #144 wiring migrates that caller; deleted with the cmd wiring task.
+//
+// TODO(#144): replaced by ResolveIdentity; deleted by the cmd wiring task.
 func ResolveWorkspaceLayout(cwd string) WorkspaceLayout {
-	worktreeRoot := findWorktreeRoot(cwd)
-	if worktreeRoot == "" {
-		return WorkspaceLayout{BindRoot: cwd, CheckoutRoot: "", WorktreeRoot: "", OutsideWorktree: false, Bare: false}
-	}
-	commonGitDir := resolveGitDir(worktreeRoot)
-	if commonGitDir == "" {
-		return WorkspaceLayout{
-			BindRoot:        cwd,
-			CheckoutRoot:    "",
-			WorktreeRoot:    worktreeRoot,
-			OutsideWorktree: false,
-			Bare:            false,
-		}
-	}
-	checkoutRoot := filepath.Dir(commonGitDir)
-	if filepath.Base(commonGitDir) != ".git" {
-		checkoutRoot = commonGitDir
-	}
-	if within(checkoutRoot, worktreeRoot) {
-		return WorkspaceLayout{
-			BindRoot:        checkoutRoot,
-			CheckoutRoot:    checkoutRoot,
-			WorktreeRoot:    worktreeRoot,
-			OutsideWorktree: false,
-			Bare:            isBare(commonGitDir),
-		}
-	}
+	identity := ResolveIdentity(cwd)
 	return WorkspaceLayout{
-		BindRoot:        cwd,
-		CheckoutRoot:    checkoutRoot,
-		WorktreeRoot:    worktreeRoot,
-		OutsideWorktree: true,
-		Bare:            isBare(commonGitDir),
+		BindRoot:        identity.BindRoot,
+		CheckoutRoot:    identity.CheckoutRoot,
+		WorktreeRoot:    identity.WorktreeRoot,
+		OutsideWorktree: identity.OutsideWorktree,
+		Bare:            identity.Bare,
 	}
 }
 
