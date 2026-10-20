@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter` (commits `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`); awaiting PR review.
+Status: Implemented on `notify-opencode2-subagent-filter` (commits `437c869`, `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`, `af1e1e7`, `217aee3`); PR #245 open, pending merge.
 
 ## Problem
 
