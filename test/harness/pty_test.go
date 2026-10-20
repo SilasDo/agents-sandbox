@@ -77,6 +77,25 @@ func TestPTYWaitForTUITimesOutWhileProcessRuns(t *testing.T) {
 	}
 }
 
+// TestPTYWaitForTUIRejectsExitedTUI pins that entering the alternate screen is
+// not accepted once the child has exited: a client that draws its TUI and exits
+// on its own never handled the quit keys, so its exit must not pass as a clean
+// quit.
+func TestPTYWaitForTUIRejectsExitedTUI(t *testing.T) {
+	// Enter the alternate screen, then exit without waiting for any input.
+	ses := startUnderPTY(t, "", nil, "/bin/sh", "-c", `printf '\033[?1049h'; exit 0`)
+	defer ses.close()
+
+	if code, err := ses.waitExit(5 * time.Second); err != nil {
+		t.Fatalf("waitExit: %v", err)
+	} else if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if err := ses.waitForTUI(5 * time.Second); err == nil {
+		t.Fatal("waitForTUI = nil, want an error for a child that exited after entering the alternate screen")
+	}
+}
+
 // TestPTYCloseKillsProcessGroup pins that close kills a still-running child
 // (and its process group) and tolerates a second call.
 func TestPTYCloseKillsProcessGroup(t *testing.T) {

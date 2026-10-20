@@ -186,24 +186,23 @@ func (s *ptySession) write(data []byte) error {
 	return err
 }
 
-// waitForTUI blocks until the child's output shows a full-screen TUI or the
-// child exits, whichever comes first. The error names what was seen instead.
+// waitForTUI blocks until the child's output shows a full-screen TUI while the
+// child is still alive, or the child exits, whichever comes first. A marker the
+// child wrote seconds before exiting is not accepted: a client that draws its
+// TUI and immediately exits never handled input, so its exit lets it pass the
+// smoke test as if it had quit on the quit keys. The error names what was seen
+// instead.
 func (s *ptySession) waitForTUI(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		if tuiStarted(s.output()) {
-			return nil
+		if s.hasExited() {
+			return s.exitedWithoutTUIError()
 		}
-		select {
-		case <-s.waitDone:
-			s.drainOutput()
-			if tuiStarted(s.output()) {
-				return nil
+		if tuiStarted(s.output()) {
+			if s.hasExited() {
+				return s.exitedWithoutTUIError()
 			}
-			return fmt.Errorf(
-				"no full-screen TUI before the process exited (%s); output: %s",
-				s.exitStatus(), s.outputTail())
-		default:
+			return nil
 		}
 		if !time.Now().Before(deadline) {
 			return fmt.Errorf(
@@ -215,6 +214,23 @@ func (s *ptySession) waitForTUI(timeout time.Duration) error {
 		case <-s.waitDone:
 		}
 	}
+}
+
+// exitedWithoutTUIError describes a child that stopped before a full-screen TUI
+// could be observed while it was alive, draining pending output first so the
+// message can show what the child did print.
+func (s *ptySession) exitedWithoutTUIError() error {
+	s.drainOutput()
+	if tuiStarted(s.output()) {
+		return fmt.Errorf(
+			"process entered the alternate screen but had already exited (%s); a TUI seen only after exit proves nothing about handling input; output: %s",
+			s.exitStatus(),
+			s.outputTail(),
+		)
+	}
+	return fmt.Errorf(
+		"no full-screen TUI before the process exited (%s); output: %s",
+		s.exitStatus(), s.outputTail())
 }
 
 // waitExit blocks until the child exits and returns its exit code. A process
@@ -234,17 +250,21 @@ func (s *ptySession) waitExit(timeout time.Duration) (int, error) {
 	return exitCode(s.waitErr), nil
 }
 
+// hasExited reports whether the child has been reaped. It reads the flag under
+// the same mutex waitProcess records it under.
+func (s *ptySession) hasExited() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reaped
+}
+
 // close kills the child's process group if it is still running and closes the
 // pty master. It is idempotent and safe to call from a cleanup.
 func (s *ptySession) close() {
 	s.closeOnce.Do(func() {
-		// Decide under the mutex waitProcess records the reap under: once the
-		// child is reaped its pid could belong to an unrelated process, so
-		// signalling the group would hit the wrong process.
-		s.mu.Lock()
-		reaped := s.reaped
-		s.mu.Unlock()
-		if !reaped {
+		// Once the child is reaped its pid could belong to an unrelated
+		// process, so signalling the group would hit the wrong process.
+		if !s.hasExited() {
 			s.cancel()
 		}
 		_ = s.master.Close()
