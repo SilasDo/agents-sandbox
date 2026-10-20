@@ -33,8 +33,10 @@ tagged-only compile regression is caught on every PR.
 **Scope of the assertion.** For every name in `agent.Names()`, the suite starts the harness the way a user does
 (`agents-sandbox run --agent <name>` under a pseudo-terminal) and asserts:
 
-1. the attach client reached its full-screen TUI — the terminal entered the alternate screen (`ESC [ ? 1049 h`)
-   while the process was still alive, within a timeout; a first-run/login screen counts;
+1. the attach client reached its full-screen TUI, within a timeout; a first-run/login screen counts. A harness
+   whose UI takes over the alternate screen (`ESC [ ? 1049 h`) announces this while the process is still alive; one
+   that keeps the terminal's normal buffer has no such marker and is given the launcher's start-up time instead
+   (see Readiness);
 2. the process then exited `0` after the harness's quit bytes were written to the terminal; escalation
    (`SIGTERM`/`SIGKILL`) is cleanup only and fails the subtest if reached;
 3. the output never contains the daemon-timeout marker (`did not become healthy`).
@@ -43,10 +45,32 @@ It proves "the harness reached its TUI", not "the client session is functional":
 renders a connection-error screen still passes. Daemon health itself is covered because the launcher blocks in
 `ensureDaemon` before any TUI, so a broken daemon fails the TUI-wait or assertion 3.
 
-**Harness table completeness.** A single table maps harness name to its quit bytes and an optional network
-override (`Ctrl-C`, `\x03`, by default). A fast untagged unit test asserts the table's key set equals
-`agent.Names()`, so a newly registered harness fails `make test` until it is added — a harness cannot be added
-without smoke coverage.
+**Readiness.** The alternate screen is the strong signal: it means the harness's own UI has taken over the terminal.
+It is not universal. `claude-code`'s renderer keeps the terminal's normal buffer — it saves and restores the cursor
+with `ESC 7`/`ESC 8` and never emits `ESC [ ? 1049 h` — so its subtest waits out the launcher instead. Two
+measurements shape that wait:
+
+- **quiet output does not mean the harness has rendered.** The launcher loads an image and starts a VM before the
+  harness runs, printing nothing for seconds at a time while it does, so a quiescence-based fallback fires on
+  launcher output before the harness has drawn anything.
+- **input written to the pty before the harness runs is buffered, not discarded.** msb's attach client puts the host
+  terminal in raw mode with `TCSANOW` and flushes input (`TCIFLUSH`) only when it restores the terminal, so quit
+  bytes written too early are delivered to the harness as it starts rather than dropped. Retrying the quit keys
+  until the process exits therefore does not make the timing safe; waiting for readiness does.
+
+Once the image prebuild has run, the harness's UI comes up about 14s after launch, so the settled wait is 25s.
+
+**Harness table completeness.** A single table maps harness name to its quit bytes, an optional network override,
+and a `KeepsNormalBuffer` flag. A fast untagged unit test asserts the table's key set equals `agent.Names()`, so a
+newly registered harness fails `make test` until it is added — a harness cannot be added without smoke coverage.
+
+Quit bytes are per harness, confirmed against the shipped binaries on a host:
+
+| harness | quit bytes | why |
+| --- | --- | --- |
+| `opencode`, `opencode2` | `0x04` twice (Ctrl-D) | documented `app_exit` / `app.exit`; a host run confirmed the pair exits `0` while Ctrl-C — owned by the terminal editor — never did |
+| `pi` | `0x04` (Ctrl-D) | documented `app.exit`, confirmed on a single press; Ctrl-C is `app.clear` |
+| `claude-code` | `0x03` (Ctrl-C) | a host run confirmed it exits `0` from its first-run screen; Ctrl-D twice (its documented `app:exit`) did not |
 
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
@@ -81,8 +105,10 @@ cannot run it skip before paying: the platform/`/dev/kvm` preflight first, then 
 build behind a `sync.Once`, then the isolated-env docker preflight, then the per-harness image prebuild
 behind its own `sync.Once`, then the harnesses.
 
-**Network.** The child runs with `--network none` (the secure default), so no harness egress is exercised. The
-override in the harness table exists only if a harness turns out to need egress to render.
+**Network.** A harness runs with `--network none` (the secure default) unless the table overrides it, and only
+`claude-code` does, with `public`: it checks in with its API before drawing anything, so offline it exits `1`
+(`ECONNREFUSED api.anthropic.com`) without reaching any screen. The other three render identically with and without
+egress.
 
 **Preflight.** Skip, never fail, when the environment cannot run the suite: `/dev/kvm` missing on Linux, a
 non-Linux/non-darwin platform, or an unreachable docker daemon. The platform/KVM check runs before anything
@@ -105,8 +131,8 @@ binary and a reachable docker daemon.
 
 ## Risks and open items
 
-- The alt-screen marker is the "TUI started" signal; a harness that renders without it needs a fallback.
-- Quit bytes are per harness and need empirical confirmation on a host; the table is the single adjustment
-  point.
+- `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up and then exited `0`
+  on Ctrl-C; unlike the alternate-screen harnesses it does not observe the UI being drawn. A claude-code change that
+  stops exiting on Ctrl-C from its first screen shows up as a failed subtest and needs the table updated.
 - Four harnesses mean four runner-image builds on a cold home; the image prebuild pays for them before any
   harness's TUI window opens, and the host-only placement absorbs the cost.
