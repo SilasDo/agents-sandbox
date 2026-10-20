@@ -1,6 +1,7 @@
 ---
 description: Contract for the `msb`-tagged harness smoke tests that start every registered harness to its TUI in a real microsandbox VM, and the isolation that keeps them off the developer's existing agents-sandbox state.
-read_if: Adding or changing the harness smoke tests, the `msb` build tag or `make test-msb`, the harness quit-key table, or when a harness's TUI startup or quit behavior changes.
+read_if: Adding or changing the harness smoke tests, the `msb` build tag or `make test-msb`, the harness quit-press
+  table, or when a harness's TUI startup or quit behavior changes.
 ---
 
 # Harness smoke tests
@@ -37,7 +38,7 @@ tagged-only compile regression is caught on every PR.
    whose UI takes over the alternate screen (`ESC [ ? 1049 h`) announces this while the process is still alive; one
    that keeps the terminal's normal buffer has no such marker and is given the launcher's start-up time instead
    (see Readiness);
-2. the process then exited `0` after the harness's quit bytes were written to the terminal; escalation
+2. the process then exited `0` after the harness's quit presses were written to the terminal; escalation
    (`SIGTERM`/`SIGKILL`) is cleanup only and fails the subtest if reached;
 3. the output never contains the daemon-timeout marker (`did not become healthy`).
 
@@ -60,17 +61,23 @@ measurements shape that wait:
 
 Once the image prebuild has run, the harness's UI comes up about 14s after launch, so the settled wait is 25s.
 
-**Harness table completeness.** A single table maps harness name to its quit bytes, an optional network override,
+**Harness table completeness.** A single table maps harness name to its quit presses, an optional network override,
 and a `KeepsNormalBuffer` flag. A fast untagged unit test asserts the table's key set equals `agent.Names()`, so a
 newly registered harness fails `make test` until it is added — a harness cannot be added without smoke coverage.
 
-Quit bytes are per harness, confirmed against the shipped binaries on a host:
+Quit presses are per harness, confirmed against the shipped binaries on a host:
 
-| harness | quit bytes | why |
+| harness | quit presses | why |
 | --- | --- | --- |
-| `opencode`, `opencode2` | `0x04` twice (Ctrl-D) | documented `app_exit` / `app.exit`; a host run confirmed the pair exits `0` while Ctrl-C — owned by the terminal editor — never did |
+| `opencode`, `opencode2` | `0x04` twice (Ctrl-D) | documented `app_exit` / `app.exit`; the second press is what leaves it, while Ctrl-C — owned by the terminal editor — never exited |
 | `pi` | `0x04` (Ctrl-D) | documented `app.exit`, confirmed on a single press; Ctrl-C is `app.clear` |
-| `claude-code` | `0x03` (Ctrl-C) | a host run confirmed it exits `0` from its first-run screen; Ctrl-D twice (its documented `app:exit`) did not |
+| `claude-code` | `0x03` twice (Ctrl-C) | its first press only arms the exit — the screen answers "Press Ctrl-C again to exit" — while Ctrl-D twice (its documented `app:exit`) did not exit |
+
+**Presses, not bytes.** A quit is a sequence of presses, each written to the pty on its own with a gap between them
+(`quitPressGap`), because a harness whose quit is a repeated key reads two bytes written together as a single key
+event: `opencode` never leaves its TUI with both Ctrl-D bytes in one write, while the same pair sent as two presses
+exits `0`. The gap is a human double-tap — far longer than the terminal needs to deliver the presses separately, far
+shorter than the window `claude-code`'s "press again" prompt allows.
 
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
@@ -133,6 +140,8 @@ binary and a reachable docker daemon.
 
 - `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up and then exited `0`
   on Ctrl-C; unlike the alternate-screen harnesses it does not observe the UI being drawn. A claude-code change that
-  stops exiting on Ctrl-C from its first screen shows up as a failed subtest and needs the table updated.
+  stops exiting on Ctrl-C from its first screen shows up as a failed subtest and needs the table updated — and a
+  second `Ctrl-C` within the prompt's window is what actually quits it, so a table change there also has to keep the
+  press gap inside that window, which the harness does not document.
 - Four harnesses mean four runner-image builds on a cold home; the image prebuild pays for them before any
   harness's TUI window opens, and the host-only placement absorbs the cost.

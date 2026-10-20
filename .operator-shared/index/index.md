@@ -60,8 +60,8 @@ read_if: Navigating the codebase.
 
 ### `test/harness/` — `msb`-tagged harness smoke tests
 
-- `harness.go` — Harness table (quit bytes, network override, normal-buffer flag), child-env allowlist, daemon-timeout/ANSI/alt-screen helpers.
-- `pty.go` — pty driver running a command under a sized pseudo-terminal and capturing its output.
+- `harness.go` — Harness table (per-harness quit presses, network override, normal-buffer flag), child-env allowlist, daemon-timeout/ANSI/alt-screen helpers.
+- `pty.go` — pty driver running a command under a sized pseudo-terminal and capturing its output; writes a quit as separate presses (`writeKeyPresses`) since a repeated-key quit coalesces in one write.
 - `smoke_msb_test.go` — The `msb`-tagged test: platform/KVM preflight, then shared root + binary build, isolated-env docker preflight, per-harness image prebuild, then starts each harness (`agents-sandbox run --agent <name>`) in a real microsandbox VM and asserts TUI + clean quit.
 - `harness_test.go`, `pty_test.go` — Untagged unit tests (table covers every registered agent, env allowlist, pty round-trip/exit/tail).
 - `main_test.go` — Inert `TestMain` installing the fail-fast seam mocks.
