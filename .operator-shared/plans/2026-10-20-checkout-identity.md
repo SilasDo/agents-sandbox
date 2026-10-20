@@ -102,7 +102,7 @@ Derivation, in this order:
 
 `RequireCheckoutSlug` returns `fmt.Errorf("worktree %q is outside its checkout %q; keep worktrees inside the checkout so they share one project VM", i.BindRoot, i.CheckoutRoot)`.
 
-While implementing: delete `ProjectSlug`, `projectSlugAt`, `worktreeRoot`, `WorkspaceLayout`, `ResolveWorkspaceLayout`, and the now-unused `go-git/v5` root import (keep `go-git/v5/config`). Callers are migrated in Tasks 4 and 5; this task must still compile, so temporarily keep `ProjectSlug()` and `ResolveWorkspaceLayout(cwd)` as one-line delegates (`ResolveIdentity(".").RepoSlug` and the layout fields) marked `// TODO(#144): removed in the wiring task`. Migrate the existing `git_test.go`/`workspace_test.go` assertions to the new names in this task; Tasks 4 and 5 delete the delegates.
+While implementing: delete `projectSlugAt`, `worktreeRoot` and the now-unused `go-git/v5` root import (keep `go-git/v5/config`). `ProjectSlug()`, `WorkspaceLayout` and `ResolveWorkspaceLayout(cwd)` stay as thin shims while Tasks 4 and 5 migrate their callers, each marked `// Deprecated: replaced by ResolveIdentity; removed with the #144 wiring.` Task 5 deletes all three. Rewrite `git_test.go`'s and `workspace_test.go`'s cases against the new API in this task, so **no test still covers a shim** — otherwise Task 5's deletion breaks the `internal/git` suite.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -320,7 +320,7 @@ git commit -m "feat(vm): key state, VM and image by checkout; label by repo (#14
 **Files:**
 - Modify: `cmd/agents-sandbox/commands.go:110` (config resolver → `git.RepoSlug()`), `cmd/agents-sandbox/commands_system.go` (`buildVolumeOpsCmd`, `buildBuildCmd`)
 - Modify: `internal/git/git.go`, `internal/git/workspace.go` (delete the Task 1 delegates)
-- Modify: `cmd/agents-sandbox/cli_volume_test.go`, `cli_volume_rebuild_test.go`, `cli_system_coverage_test.go`, `internal/sandbox/vm/coverage_*_test.go`, `internal/sandbox/session/coverage_test.go`, `internal/sandbox/vm/run_envstate_test.go` (replace `git.ProjectSlug()`)
+- Modify: `cmd/agents-sandbox/cli_volume_test.go`, `cli_volume_rebuild_test.go`, `cli_system_coverage_test.go` (replace `git.ProjectSlug()`). Task 4 owns the `internal/sandbox/vm` and `internal/sandbox/session` test call sites; this task only touches `cmd/agents-sandbox` tests.
 
 **Interfaces:**
 - Consumes: `git.RepoSlug`, `git.ResolveIdentity`, `AdoptLegacyIdentity`.
@@ -342,7 +342,7 @@ Expected: FAIL.
 - `commands.go:110` → `launcherconfig.NewResolver(cmd, git.RepoSlug())`.
 - `buildVolumeOpsCmd`: `identity := git.ResolveIdentity(".")`; `adoption, err := vm.AdoptLegacyIdentity(c.Context(), msb.Get(), identity, a.Name(), !dryRun, ui)`; use `adoption.Slug` for both `image.EnsureImage` and the `state.Key`. (`vm` is already imported.)
 - `buildBuildCmd`: the same identity/adoption pair, using `adoption.Slug` for `image.Build`.
-- Delete `ProjectSlug`, `projectSlugAt`, `ResolveWorkspaceLayout`, `WorkspaceLayout` and their delegates; migrate every remaining test call site.
+- Delete the `ProjectSlug`, `ResolveWorkspaceLayout` and `WorkspaceLayout` shims (Task 1 already removed the internals), and migrate every remaining `cmd` test call site.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
