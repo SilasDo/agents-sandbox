@@ -466,6 +466,12 @@ func creditInstaller(
 			}
 		}
 	case *ast.Ident:
+		if fun.Name == fullSetInstaller {
+			// An unqualified call can only be the wrapper's own package calling it,
+			// since the module declares the wrapper once.
+			creditEveryFamily(installed)
+			return
+		}
 		for _, family := range seamFamilies {
 			if packageName == family.packageName && fun.Name == family.installer {
 				installed[family.name] = true

@@ -98,7 +98,8 @@ command reports the bare version (e.g. `0.1.0`).
   or a dropped wrapper installer fails instead of going unchecked. The per-package check credits only direct installer
   calls that run before `m.Run()`, and covers the module root. Adds the docker fail-fast to `internal/agent` and
   `internal/filewalk`, the last two packages without a backstop, and registers `notify` as a fifth family (installed by
-  the wrapper; the five packages notify imports mirror the wrapper body directly).
+  the wrapper; the five packages notify imports mirror the wrapper body directly). The wrapper's own package now tests
+  its effect (`internal/testutil/mocks`), so the wrapper's body is covered by that package's own test binary.
 
 ### Changed
 

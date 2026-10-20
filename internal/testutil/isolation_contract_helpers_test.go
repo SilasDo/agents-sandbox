@@ -77,6 +77,18 @@ func TestMain(m *testing.M) {
 			want: []string{"configpaths", "docker", "doctor", "msb", "notify"},
 		},
 		{
+			name: "an unqualified wrapper call in the wrapper's own package",
+			source: `package mocks
+
+import "testing"
+
+func TestMain(m *testing.M) {
+	InitFailFastMocks(m)
+}
+`,
+			want: []string{"configpaths", "docker", "doctor", "msb", "notify"},
+		},
+		{
 			name: "direct installers with an aliased import",
 			source: `package example
 

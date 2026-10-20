@@ -36,8 +36,9 @@ The set is enforced, not hand-maintained. Three tests in `internal/testutil/isol
   would cycle. A new test package, a dropped installer, or a `main_test.go` without a `TestMain` fails it.
 
 The per-package check credits only direct calls that run before `m.Run()`: installers must be called directly in
-`TestMain`, not from a helper, a `defer`, or a closure, and never after the tests start. The walk covers the module root
-too, so a package beside `go.mod` is checked like any other.
+`TestMain`, not from a helper, a `defer`, or a closure, and never after the tests start. An unqualified
+`InitFailFastMocks(m)` counts as the wrapper, so the wrapper's own package can install it without importing itself. The
+walk covers the module root too, so a package beside `go.mod` is checked like any other.
 
 Packages in the seam import chain cannot import `internal/testutil/mocks` without a test import cycle; they install the
 reachable subset directly, mirroring that body:
@@ -57,6 +58,10 @@ reachable subset directly, mirroring that body:
 - `agent` and `filewalk` install docker only: `configpaths` imports `agent`, which imports `filewalk`, and `notify`
   imports both, so docker is the only family importable. Neither package reaches a seam in its own code; if one ever
   gains such a call, the seam must be reached through an injected dependency rather than a global.
+- `internal/testutil/mocks` calls the wrapper unqualified from its `TestMain`, since a package cannot import itself.
+  `TestInstalledFailFastDefaultsPanic` asserts the wrapper's effect there — each family's fail-fast is the one in
+  effect, panic message included — which also puts the wrapper's body under that package's own coverage profile
+  (`make coverage` measures per package, so a package with no test files reports 0%).
 
 Add a `main_test.go` with such a `TestMain` to every new package that has tests; the contract test fails without one.
 
