@@ -19,10 +19,14 @@ cannot. Resolution order (`volume.Manager.ResolveHomeVolume`):
 
 1. **State** — if `state.yaml` names a volume that still resolves, reuse it (unchanged).
 2. **Live VM** — when state is absent or its recorded volume is gone, adopt the home volume the project VM still
-   mounts, if that volume still exists. The mount is read from the VM config as
-   `cfg.Volumes[mounts.VMHomeDir].Named`; the vm package supplies it via `liveHomeVolume`
-   (`client.GetSandbox(projectVMName(k))` + `handle.Config()`), because the volume package cannot import vm.
+   mounts, if that volume still exists. The mount is read from the VM's persisted config JSON as the `Named` mount at
+   `mounts.VMHomeDir` (`msb.SandboxHandle.ConfigMounts()`, `specs/live-mount-readback.md`); the vm package supplies it
+   via `liveHomeVolume` (`client.GetSandbox(projectVMName(k))`), because the volume package cannot import vm.
 3. **Fresh prefill** — otherwise `EnsureNewHome` creates a new volume, as before.
+
+`liveHomeVolume` originally read `cfg.Volumes[mounts.VMHomeDir].Named`, which the SDK always leaves empty on a
+read-back, so until #223 this branch never fired and recovery always fell through to a fresh prefill (a silent
+duplicate volume, the very failure #219 was filed for). See `plans/2026-10-20-live-mount-readback.md`.
 
 The live VM config is authoritative for which volume is *current*, unlike probing the volume list: a project can
 legitimately own several home volumes (migrate/reset keep the old one), so a name-prefix match is ambiguous. Adopting
