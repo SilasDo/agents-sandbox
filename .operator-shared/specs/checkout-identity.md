@@ -112,7 +112,12 @@ lives outside its checkout, which includes the ones opencode creates under
 `~/.local/share/opencode/worktree/` and the sibling worktrees of a bare clone.
 
 So an outside worktree becomes its own checkout: `ResolveIdentity` hashes the **worktree root** instead of
-the git common dir, binding that worktree at `/workspace` with its own state, VM, home volume and image tag.
+the git common dir, binding that worktree root at `/workspace` with its own state, VM, home volume and image
+tag. The bind root does not follow the cwd: a run from a subdirectory of the worktree binds the worktree
+root and starts the agent in the subdirectory, exactly as an inside-worktree does. #145's rule is "bind the
+smallest enclosing checkout that contains the CWD", and under this change the outside worktree is that
+checkout — binding the cwd instead would hand the agent a workspace with no repository above it, and would
+make the mount source (and so the reconfig fingerprint) depend on which directory the run started in.
 `OutsideWorktree` stays a reported fact on the identity, naming the distinction, but nothing refuses on it
 and no caller has to special-case it.
 
