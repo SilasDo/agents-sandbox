@@ -230,7 +230,7 @@ func TestStopProjectVMUsesClient(t *testing.T) {
 	msb.Get = func() msb.Client { return client }
 	defer func() { msb.Get = oldGet }()
 
-	// ProjectSlug depends on the current directory, so use a temp repo.
+	// CheckoutSlug depends on the current directory, so use a temp repo.
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
 
@@ -255,7 +255,7 @@ func TestEnsureProjectVM_CreatePath(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
 
-	// ProjectSlug depends on the current directory, so use a temp repo.
+	// CheckoutSlug depends on the current directory, so use a temp repo.
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
 
