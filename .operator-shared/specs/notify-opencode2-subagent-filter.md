@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Draft (pending review)
+Status: Implemented on `notify-opencode2-subagent-filter` (commits `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`); awaiting PR review.
 
 ## Problem
 
@@ -142,6 +142,11 @@ type EventStreamSpec struct {
     AwaitingInput []string
     IdleEvents    []string
     ErrorEvents   []string
+    // StickyErrorEvents is the subset of ErrorEvents that latches the session
+    // in the error state: no further notification fires for that session until
+    // the watcher reconnects. An error event not listed here ends only the
+    // current turn. Empty means no error event latches.
+    StickyErrorEvents []string
     // SessionEvents are lifecycle event types whose payload may identify a
     // session's parent. A non-empty parent ID marks the session as a subagent
     // (child) session; no notification ever fires for a child session.
@@ -212,6 +217,7 @@ BusyEvents:    {"session.execution.started"}
 AwaitingInput: {"permission.asked", "form.created"}
 IdleEvents:    {"session.execution.succeeded"}
 ErrorEvents:   {"session.error", "session.execution.failed"}
+StickyErrorEvents: {}  // both error events are turn-scoped
 SessionEvents: {"session.created"}
 SessionListCommand: "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " +
     opencode2ServerURL + "/api/session | jq -c '[.data[] | select(.parentID != null) | .id]'"
@@ -225,6 +231,7 @@ lists verbatim; add:
 ```go
 SessionEvents: {"session.created", "session.updated"}
 SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'"
+StickyErrorEvents: {"session.error"}
 Parse: parseOpencodeV1Event
 ```
 
@@ -301,12 +308,17 @@ Parse: parseOpencodeV1Event
 - **Child suppression keys on the event's own `sessionID`**, verified to be the running session's id
   (a child's execution events carried the child id). No second mechanism is needed for a subagent's
   input/error triggers: they are session-scoped to the child.
-- **`session.execution.interrupted` is not an error trigger**: a user interrupt is not a failure
-  worth a signal. It is left out; `session.error` and `session.execution.failed` cover real errors.
-- **Seed command output is a JSON array of child ids** (jq normalises the v1 array vs v2 `.data[]`
-  shape), so the Go side needs only `[]string` and no per-agent seed parser.
-- **v1 keeps its existing event lists unchanged**; only `SessionEvents`/`SessionListCommand` are
-  added. `session.idle` stays v1's done signal.
-- **Child suppression keys on the event's own `sessionID`**, verified to be the running session's id
-  (a child's execution events carried the child id). No second mechanism is needed for a subagent's
-  input/error triggers: they are session-scoped to the child.
+- **v2's error events are turn-scoped; only v1's `session.error` latches.** The tracker sets a
+  terminal error state on any error event, which used to permanently mute a session after its first
+  error. That is right for v1's `session.error` (a session-level error state) but wrong for v2: the
+  spec records v2's execution events as explicitly per-turn (each execution emits exactly one of
+  succeeded/failed/interrupted), so a `session.execution.failed` ends only that turn and the next
+  turn must notify again. `EventStreamSpec` gained `StickyErrorEvents`, the subset of `ErrorEvents`
+  that latches; `opencode2` leaves it empty, and its `session.error` is turn-scoped too. The choice
+  rests on `session.error`'s v2 semantics never being observed live (the probe recorded only that it
+  is *defined*), so a sticky latch risks permanent silent muting; the cost if it is wrong is an extra
+  done notification after a recovered error, the benign direction. A live failing-turn probe remains
+  unverified. A non-sticky error sets `stateIdle`, so a same-turn `succeeded`/`idle` still cannot
+  fire a false done — the idle arm requires a busy or awaiting-input state.
+- **v1's `session.error` latch is unchanged.** The latch's origin was a coverage commit (`dc360d91`),
+  not a documented contract; keeping v1 sticky preserves today's behavior exactly.

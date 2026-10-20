@@ -1,5 +1,9 @@
 # Notify for opencode2 + subagent-session filtering — Implementation Plan
 
+> **Status:** Implemented on `notify-opencode2-subagent-filter` (commits `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`); awaiting PR review.
+>
+> **Note:** The steps below are the original TDD checklist, not a verbatim record — they were not executed as written. Two controller rulings moved the v1 decoder test into `internal/agent/decoders_internal_test.go` and pinned the v2 spec-contents test to literal strings in the external test package.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the notify watcher work for the `opencode2` agent and fire only for top-level sessions, moving the harness-specific event decoding into the agent profiles so `internal/notify` stays generic.
