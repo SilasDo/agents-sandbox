@@ -60,10 +60,10 @@ read_if: Navigating the codebase.
 
 ### `test/harness/` — `msb`-tagged harness smoke tests
 
-- `harness.go` — Harness table (quit bytes, optional network override), child-env allowlist, ANSI/alt-screen helpers.
-- `pty.go` — pty driver running a command under a pseudo-terminal and capturing its output.
-- `smoke_msb_test.go` — The `msb`-tagged test: starts each harness (`agents-sandbox run --agent <name>`) in a real microsandbox VM and asserts TUI + clean quit.
-- `harness_test.go`, `pty_test.go` — Untagged unit tests (table covers every registered agent, pty round-trip).
+- `harness.go` — Harness table (quit bytes, optional network override), child-env allowlist, daemon-timeout/ANSI/alt-screen helpers.
+- `pty.go` — pty driver running a command under a sized pseudo-terminal and capturing its output.
+- `smoke_msb_test.go` — The `msb`-tagged test: `prepare` (shared root, launcher build, per-harness image prebuild) then starts each harness (`agents-sandbox run --agent <name>`) in a real microsandbox VM and asserts TUI + clean quit; preflight probes docker under the isolated env.
+- `harness_test.go`, `pty_test.go` — Untagged unit tests (table covers every registered agent, env allowlist, pty round-trip/exit/tail).
 - `main_test.go` — Inert `TestMain` installing the fail-fast seam mocks.
 
 ### `docs/` — Jekyll documentation site (just-the-docs)

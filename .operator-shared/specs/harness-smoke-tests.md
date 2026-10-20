@@ -54,16 +54,25 @@ configuration or state. Each run creates one temp root, shared by all subtests (
 - the child environment is built from an **allowlist**, dropping inherited `HOME`, `XDG_*`,
   `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; it sets `HOME=<root>/home`,
   `XDG_CONFIG_HOME=<root>/config`, `XDG_DATA_HOME=<root>/data`, `XDG_STATE_HOME=<root>/state`,
-  `XDG_CACHE_HOME=<root>/cache`, and `TMPDIR=<root>/tmp`;
+  `XDG_CACHE_HOME=<root>/cache`, and `TMPDIR=<root>/tmp`; `TERM` defaults to `xterm-256color` when the
+  inherited value is absent, empty, or `dumb`;
+- the child deliberately keeps `DOCKER_HOST`, `DOCKER_CONTEXT`, and `DOCKER_CONFIG`: they carry the host
+  docker endpoint the runner-image build needs and hold no agents-sandbox config or state, so keeping them
+  does not weaken the isolation — and the preflight `docker info` runs under the same isolated environment,
+  so it can never certify a daemon the child cannot reach;
+- the child gets a sized terminal — the parent's window when the test process has a tty, else 40×120 — so a
+  full-screen TUI does not render into a zero-column terminal;
 - the working directory is a temp project dir, so project config and the derived slug are throwaway;
 - consequently no real `~/.config/agents-sandbox`, `~/.local/{share,state}/agents-sandbox`, or
   `~/.cache/agents-sandbox` path is read or written, and the child starts from deterministic defaults.
 
 The isolated data home forces microsandbox to install its private runtime and build/load each harness's runner
-image on first run; that cost is paid once per run. The shared host docker daemon builds the runner images, as
-the existing `integration` tests already do. The suite's own process installs the fail-fast seam mocks in
-`TestMain`; `TestMain` does nothing else, so `compile-all`'s `-run=^$` stays a genuine no-op (the shared root,
-binary build, and preflight live behind a `sync.Once` in the test body).
+image on first run; that cost is paid once per run, during `prepare` rather than inside any harness's TUI
+window. The shared host docker daemon builds the runner images, as the existing `integration` tests already
+do. The suite's own process installs the fail-fast seam mocks in `TestMain`; `TestMain` does nothing else, so
+`compile-all`'s `-run=^$` stays a genuine no-op (the shared root, per-harness image prebuild, and binary build
+live behind a `sync.Once` in the test body, while `preflight` runs at the top of the test once `prepare` has
+created the shared root).
 
 **Network.** The child runs with `--network none` (the secure default), so no harness egress is exercised. The
 override in the harness table exists only if a harness turns out to need egress to render.
@@ -88,4 +97,5 @@ deleted home.
 - The alt-screen marker is the "TUI started" signal; a harness that renders without it needs a fallback.
 - Quit bytes are per harness and need empirical confirmation on a host; the table is the single adjustment
   point.
-- Four harnesses mean four runner-image builds on a cold home; the host-only placement absorbs that.
+- Four harnesses mean four runner-image builds on a cold home; `prepare` pays for them before any harness's
+  TUI window opens, and the host-only placement absorbs the cost.
