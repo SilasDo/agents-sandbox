@@ -7,14 +7,15 @@ import (
 )
 
 // WorkspaceLayout describes which host directory a session should bind at
-// /workspace and where its checkout lives.
+// /workspace and where its checkout lives. An outside worktree is scoped as its
+// own checkout, so nothing refuses on the flag.
 //
 // TODO(#144): replaced by ResolveIdentity; deleted by the cmd wiring task.
 type WorkspaceLayout struct {
 	BindRoot        string // host dir to bind at /workspace
 	CheckoutRoot    string // enclosing checkout root; "" when cwd is not in a repo
 	WorktreeRoot    string // nearest dir holding a .git entry; "" when cwd is not in a repo
-	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot
+	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot; gets its own checkout slug
 	Bare            bool   // the shared git dir is a bare repository
 }
 

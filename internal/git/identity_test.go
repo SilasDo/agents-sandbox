@@ -136,7 +136,8 @@ func TestResolveIdentityResolvesSymlinks(t *testing.T) {
 // TestResolveIdentitySeparateGitDirIsNotOutside pins the narrowing from #145:
 // a .git file whose gitdir contains no worktrees/ segment is a
 // --separate-git-dir checkout or a submodule, not a linked worktree, so it
-// keeps its own worktree as the bind root and is never refused.
+// keeps its own worktree as the bind root and hashes the common dir like any
+// checkout.
 func TestResolveIdentitySeparateGitDirIsNotOutside(t *testing.T) {
 	for name, gitdir := range map[string]string{
 		"separate git dir": "/elsewhere/repo.git",
@@ -236,7 +237,7 @@ func TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside(t *testing.
 	t.Run("absolute separate git dir", func(t *testing.T) {
 		// An absolute gitdir carries its ancestors in the recorded text, so a
 		// "worktrees" component there must not look like a worktree registration
-		// (it would strip to the ancestor and refuse the checkout).
+		// (it would strip to the ancestor and bind the wrong root).
 		root := filepath.Join(resolvePath(t.TempDir()), "proj")
 		shared := filepath.Join(resolvePath(t.TempDir()), "worktrees", "proj", "shared.git")
 		writeGitdirFile(t, root, shared)
@@ -267,8 +268,8 @@ func TestResolveIdentityWorktreeUnderWorktreesAncestor(t *testing.T) {
 // TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside pins the
 // discriminator: a --separate-git-dir checkout whose git dir is
 // "<ancestor>/worktrees/<name>.git" matches a registration's shape but has no
-// commondir marker, so it is a plain checkout and must not be stripped, refused
-// or bound to the ancestor.
+// commondir marker, so it is a plain checkout and must not be stripped or bound
+// to the ancestor.
 func TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside(t *testing.T) {
 	root, gitdir := newSeparateGitDirUnderWorktreesAncestor(t)
 
@@ -293,27 +294,33 @@ func TestRepoSlugOutsideWorktree(t *testing.T) {
 	require.Equal(t, projectSlug(sanitizeFolderName("widget"), origin), RepoSlug())
 }
 
-func TestCheckoutSlugOutsideWorktreeFailsFast(t *testing.T) {
+// TestCheckoutSlugOutsideWorktreeOwnsItsIdentity pins the outside-worktree rule:
+// such a worktree cannot share its checkout's VM (its /workspace bind can only be
+// one of the two), so it is scoped as its own checkout by hashing its worktree
+// root. It keeps the origin-derived repo slug, so it still shares the per-slug
+// user config dir with its checkout.
+func TestCheckoutSlugOutsideWorktreeOwnsItsIdentity(t *testing.T) {
+	const origin = "https://example.com/acme/widget.git"
 	repo := resolvePath(testutil.InitRepo(t))
-	outside := filepath.Join(resolvePath(t.TempDir()), "wt")
-	testutil.RunGit(t, repo, "worktree", "add", outside)
-	t.Chdir(outside)
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
+	checkout := ResolveIdentity(repo)
 
-	slug, err := CheckoutSlug()
+	base := resolvePath(t.TempDir())
+	first := filepath.Join(base, "first")
+	sibling := filepath.Join(base, "second")
+	testutil.RunGit(t, repo, "worktree", "add", first)
+	testutil.RunGit(t, repo, "worktree", "add", sibling)
+	t.Chdir(first)
 
-	require.Error(t, err)
-	require.Empty(t, slug)
-	require.Contains(t, err.Error(), outside)
-	require.Contains(t, err.Error(), repo)
-}
+	identity := ResolveIdentity(first)
+	folder := sanitizeFolderName("widget")
 
-func TestRequireCheckoutSlugReturnsCheckoutSlug(t *testing.T) {
-	root := newRepo(t, "https://example.com/acme/widget.git")
-
-	slug, err := ResolveIdentity(root).RequireCheckoutSlug()
-
-	require.NoError(t, err)
-	require.Equal(t, ResolveIdentity(root).CheckoutSlug, slug)
+	require.True(t, identity.OutsideWorktree)
+	require.Equal(t, first, identity.BindRoot)
+	require.Equal(t, projectSlug(folder, origin), RepoSlug())
+	require.Equal(t, projectSlug(folder, first), CheckoutSlug())
+	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
+	require.NotEqual(t, ResolveIdentity(sibling).CheckoutSlug, CheckoutSlug())
 }
 
 func TestRepoSlugWithoutOriginUnchanged(t *testing.T) {

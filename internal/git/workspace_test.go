@@ -98,8 +98,8 @@ func TestResolveIdentityMalformedGitFile(t *testing.T) {
 // TestResolveIdentityOutsideWorktreeOfBareGitDir builds a bare clone at
 // tmp/bare.git and adds a worktree at tmp/wt, a sibling of the bare dir. The
 // worktree is a linked worktree placed outside its checkout, so no containment
-// is possible and it is refused (RequireCheckoutSlug) rather than silently
-// sharing the checkout slug with a different /workspace bind.
+// is possible: it is reported as outside and scoped as its own checkout rather
+// than sharing the bare dir's VM with a different /workspace bind.
 func TestResolveIdentityOutsideWorktreeOfBareGitDir(t *testing.T) {
 	origin := testutil.InitRepo(t)
 	tmp := resolvePath(t.TempDir())

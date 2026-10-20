@@ -1,7 +1,6 @@
 package git
 
 import (
-	"fmt"
 	"path/filepath"
 )
 
@@ -11,26 +10,29 @@ import (
 //
 // The repo slug derives from the origin remote URL, so every clone of one remote
 // shares it; it keys the per-slug user config dir and the sandbox grouping
-// label. The checkout slug derives from the resolved git common dir, so a
-// checkout and all of its worktrees share it while two clones do not; it keys
-// state, the VM name, the home volume, locks and the runner image tag.
+// label. The checkout slug derives from the resolved git common dir for a
+// checkout and its inside-worktrees, so they share it while two clones do not;
+// it keys state, the VM name, the home volume, locks and the runner image tag. A
+// linked worktree outside its checkout cannot share that VM — its /workspace
+// bind can only be one of the two — so it is scoped as its own checkout by
+// hashing its worktree root instead.
 type Identity struct {
 	BindRoot        string // host dir to bind at /workspace
 	CheckoutRoot    string // enclosing checkout root; "" when cwd is not in a repo
 	WorktreeRoot    string // nearest dir holding a .git entry; "" when cwd is not in a repo
-	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot
+	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot; gets its own checkout slug
 	Bare            bool   // the shared git dir is a bare repository
 	RepoSlug        string // origin-derived; shared by every clone of a remote
-	CheckoutSlug    string // common-dir-derived; shared by a checkout and its worktrees
+	CheckoutSlug    string // common-dir-derived, or worktree-root-derived when outside
 }
 
 // ResolveIdentity derives the workspace layout and both project slugs for cwd in
 // a single pass. It never returns an error: a directory outside a repository, or
 // one whose .git entry is malformed, resolves to the non-repo identity (both
 // slugs derived from the resolved path). A linked worktree outside its checkout
-// is reported through OutsideWorktree, so commands that need no checkout
-// identity (config, prune, df, doctor, tree, version) keep working there; the
-// checkout-slug accessor refuses instead (see RequireCheckoutSlug).
+// is reported through OutsideWorktree and scoped as its own checkout (its
+// checkout slug hashes the worktree root), so it simply runs as its own project
+// and nothing refuses on the flag.
 //
 // Symlinks are resolved internally so every entry point (run, stop, kill, volume
 // ops, build) hashes the same physical path — otherwise /tmp and /private/tmp on
@@ -52,7 +54,14 @@ func ResolveIdentity(cwd string) Identity {
 	commonGitDir = resolvePath(commonGitDir)
 
 	checkoutRoot, bindRoot, outsideWorktree := bindLayout(resolved, worktreeRoot, commonGitDir)
-	repoSlug, checkoutSlug := identitySlugs(worktreeRoot, commonGitDir)
+	// An outside worktree hashes its own root: hashing the shared common dir
+	// would give it its checkout's slug and therefore its checkout's VM, whose
+	// /workspace bind can only be one of the two.
+	checkoutHashInput := commonGitDir
+	if outsideWorktree {
+		checkoutHashInput = worktreeRoot
+	}
+	repoSlug, checkoutSlug := identitySlugs(worktreeRoot, checkoutHashInput)
 	return Identity{
 		BindRoot:        bindRoot,
 		CheckoutRoot:    checkoutRoot,
@@ -64,33 +73,15 @@ func ResolveIdentity(cwd string) Identity {
 	}
 }
 
-// RequireCheckoutSlug returns the checkout slug, or a fail-fast error when cwd
-// is a linked worktree outside its checkout. Such a worktree shares its main
-// clone's checkout slug but can only bind one of their directories at
-// /workspace, so proceeding would reproduce the two-checkouts-one-VM collision
-// of #144. Refusing is deterministic.
-func (i Identity) RequireCheckoutSlug() (string, error) {
-	if i.OutsideWorktree {
-		return "", fmt.Errorf(
-			"worktree %q is outside its checkout %q; keep worktrees inside the checkout so they share one project VM",
-			i.BindRoot,
-			i.CheckoutRoot,
-		)
-	}
-	return i.CheckoutSlug, nil
-}
-
 // RepoSlug returns the repo slug of the current working directory: the value
 // shared by every clone of the same origin.
 func RepoSlug() string {
 	return ResolveIdentity(".").RepoSlug
 }
 
-// CheckoutSlug returns the checkout slug of the current working directory, or a
-// fail-fast error when it is a linked worktree outside its checkout; see
-// RequireCheckoutSlug.
-func CheckoutSlug() (string, error) {
-	return ResolveIdentity(".").RequireCheckoutSlug()
+// CheckoutSlug returns the checkout slug of the current working directory.
+func CheckoutSlug() string {
+	return ResolveIdentity(".").CheckoutSlug
 }
 
 // resolvePath returns path as an absolute, symlink-resolved path. Both steps
@@ -126,8 +117,8 @@ func nonRepoIdentity(resolved string) Identity {
 // enclosing checkout is. A normal checkout, a --separate-git-dir checkout and a
 // submodule keep their own worktree as the bind root; only a linked worktree
 // whose shared git dir lies outside its enclosing checkout is "outside" — it
-// shares its main clone's checkout slug but cannot share its /workspace bind, so
-// callers refuse it (see RequireCheckoutSlug).
+// cannot share its checkout's /workspace bind, so ResolveIdentity scopes it by
+// its own root instead.
 func bindLayout(resolved, worktreeRoot, commonGitDir string) (string, string, bool) {
 	if !isLinkedWorktree(worktreeRoot) {
 		return worktreeRoot, worktreeRoot, false
@@ -153,9 +144,10 @@ func checkoutRootOf(commonGitDir string) string {
 // the origin's last path segment so two clones read "foo-<hashA>"/"foo-<hashB>";
 // without an origin it falls back to the worktree's own name. The repo slug
 // hashes the origin URL (or the worktree root without one); the checkout slug
-// hashes the resolved common git dir, which is exactly what a checkout and its
-// worktrees share and two clones do not.
-func identitySlugs(worktreeRoot, commonGitDir string) (string, string) {
+// hashes checkoutHashInput — the resolved common git dir, which a checkout and
+// its inside-worktrees share and two clones do not, or the worktree root for an
+// outside worktree, which is its own checkout.
+func identitySlugs(worktreeRoot, checkoutHashInput string) (string, string) {
 	url := originURL(worktreeRoot)
 	folder := sanitizeFolderName(filepath.Base(worktreeRoot))
 	repoHash := worktreeRoot
@@ -163,5 +155,5 @@ func identitySlugs(worktreeRoot, commonGitDir string) (string, string) {
 		folder = sanitizeFolderName(lastPathSegment(url))
 		repoHash = url
 	}
-	return projectSlug(folder, repoHash), projectSlug(folder, commonGitDir)
+	return projectSlug(folder, repoHash), projectSlug(folder, checkoutHashInput)
 }
