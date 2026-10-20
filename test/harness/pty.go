@@ -213,7 +213,7 @@ func (s *ptySession) waitForTUI(timeout time.Duration) error {
 // could be observed while it was alive, draining pending output first so the
 // message can show what the child did print.
 func (s *ptySession) exitedWithoutTUIError() error {
-	s.drainOutput()
+	s.drainOutput(ptyDrainGrace)
 	if tuiStarted(s.output()) {
 		return fmt.Errorf(
 			"process entered the alternate screen but had already exited (%s); a TUI seen only after exit proves nothing about handling input; output: %s",
@@ -264,32 +264,39 @@ func (s *ptySession) close() {
 	})
 }
 
-// killProcessGroupSignal sends a signal to a process group. It is a variable so
-// a test can exercise the failure path without needing a group it may not
-// signal.
-var killProcessGroupSignal = syscall.Kill
-
 // killProcessGroup SIGKILLs the command's process group. The child runs in its
 // own session, so its pid is also its pgid and the group covers any
-// grandchildren. It reports os.ErrProcessDone, the "no needless error" signal
-// exec.Cmd.Wait understands: the process is finished either way, and reporting
-// a cancellation error would hide its real exit status.
+// grandchildren.
 func killProcessGroup(cmd *exec.Cmd) error {
+	return killProcessGroupWith(syscall.Kill, cmd)
+}
+
+// killProcessGroupWith SIGKILLs the command's process group using the given
+// signal function. The signal is a parameter rather than a package variable so
+// a test can exercise the failure paths without a shared variable the cancel
+// goroutine a timed-out session leaves behind could still be reading. It
+// reports os.ErrProcessDone, the "no needless error" signal exec.Cmd.Wait
+// understands: the process is finished either way, and reporting a
+// cancellation error would hide its real exit status.
+func killProcessGroupWith(signal func(pid int, sig syscall.Signal) error, cmd *exec.Cmd) error {
 	if cmd.Process == nil {
 		return os.ErrProcessDone
 	}
-	err := killProcessGroupSignal(-cmd.Process.Pid, syscall.SIGKILL)
+	err := signal(-cmd.Process.Pid, syscall.SIGKILL)
 	if err == nil || errors.Is(err, syscall.ESRCH) {
 		return os.ErrProcessDone
 	}
 	return err
 }
 
-// drainOutput waits for the read loop to flush output written just before exit.
-func (s *ptySession) drainOutput() {
+// drainOutput waits up to grace for the read loop to flush output written just
+// before exit. The read loop can stall past the exit, so it bounds the wait: a
+// grandchild still holding the pty keeps the master open, and the loop then
+// never sees EOF.
+func (s *ptySession) drainOutput(grace time.Duration) {
 	select {
 	case <-s.readDone:
-	case <-time.After(ptyDrainGrace):
+	case <-time.After(grace):
 	}
 }
 

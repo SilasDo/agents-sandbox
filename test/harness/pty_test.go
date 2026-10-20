@@ -133,18 +133,49 @@ func TestPTYCloseKillsProcessGroup(t *testing.T) {
 }
 
 // TestKillProcessGroup pins the process-group kill's outcomes: a command with
-// no started process is already done, and a signal that fails for a reason
-// other than "already gone" is reported rather than swallowed.
+// no started process is already done, an "already gone" signal is treated as
+// done, and a signal that fails for a reason other than "already gone" is
+// reported rather than swallowed.
 func TestKillProcessGroup(t *testing.T) {
 	if err := killProcessGroup(&exec.Cmd{}); !errors.Is(err, os.ErrProcessDone) {
 		t.Errorf("killProcessGroup(command without a process) = %v, want os.ErrProcessDone", err)
 	}
 
-	original := killProcessGroupSignal
-	t.Cleanup(func() { killProcessGroupSignal = original })
-	killProcessGroupSignal = func(int, syscall.Signal) error { return errors.New("operation not permitted") }
-	if err := killProcessGroup(&exec.Cmd{Process: &os.Process{Pid: 1}}); err == nil {
-		t.Error("killProcessGroup = nil, want the signal failure")
+	process := &exec.Cmd{Process: &os.Process{Pid: 1}}
+	if err := killProcessGroupWith(
+		func(int, syscall.Signal) error { return syscall.ESRCH },
+		process,
+	); !errors.Is(
+		err,
+		os.ErrProcessDone,
+	) {
+		t.Errorf("killProcessGroupWith(already gone) = %v, want os.ErrProcessDone", err)
+	}
+
+	signalFailure := errors.New("operation not permitted")
+	if err := killProcessGroupWith(
+		func(int, syscall.Signal) error { return signalFailure },
+		process,
+	); !errors.Is(
+		err,
+		signalFailure,
+	) {
+		t.Errorf("killProcessGroupWith(failing signal) = %v, want %v", err, signalFailure)
+	}
+}
+
+// TestPTYDrainOutputStopsAfterTheGrace pins that the drain before an
+// exited-without-TUI report does not block forever when the read loop stalls: a
+// grandchild still holding the pty keeps the master open, so the loop never
+// sees EOF and the grace must end the wait.
+func TestPTYDrainOutputStopsAfterTheGrace(t *testing.T) {
+	ses := &ptySession{readDone: make(chan struct{})}
+	const grace = 10 * time.Millisecond
+
+	start := time.Now()
+	ses.drainOutput(grace)
+	if elapsed := time.Since(start); elapsed < grace {
+		t.Errorf("drainOutput returned after %s, want it to wait out the %s grace", elapsed, grace)
 	}
 }
 
