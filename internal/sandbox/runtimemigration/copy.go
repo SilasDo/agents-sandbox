@@ -37,7 +37,8 @@ func saveMigration(tx *state.RootTxn, m state.Migration) error {
 // lock, recording progress in the migration registry so an interrupted campaign
 // resumes exactly and a concurrent session cannot clobber a live copy. It is the
 // single copy entry point; which volumes were left uncopied is derived at
-// notice-render time from the two home listings, never threaded from here.
+// notice-render time from the two home listings and the retained Copied record,
+// never threaded from here.
 //
 // A terminal migration (completed, dismissed, or acknowledged) is a no-op.
 // Starting from pending records the legacy targets already present in the
@@ -106,7 +107,7 @@ func copyVolumesLocked(ctx context.Context, client msb.Client, ui termio.UI, tx 
 		}
 		ui.Infof("copied legacy home volume %q", name)
 	}
-	return finalizeMigration(tx)
+	return finalizeMigration(tx, m)
 }
 
 // startCampaign opens the migration campaign, recording the legacy targets
@@ -121,11 +122,12 @@ func startCampaign(tx *state.RootTxn, legacyHome string) (state.Migration, error
 	return m, saveMigration(tx, m)
 }
 
-// finalizeMigration records the terminal completed status. The transient
-// Copied/Kept/Excluded lists are dropped by the terminal write; the
-// post-migration notice derives the uncopied volumes from the home listings.
-func finalizeMigration(tx *state.RootTxn) error {
-	return saveMigration(tx, state.Migration{Status: state.MigrationCompleted})
+// finalizeMigration records the terminal completed status. The transient Kept
+// and Excluded lists are dropped; Copied is retained as the host-owned record of
+// the volumes that were fully migrated, which the post-migration notice uses to
+// tell which legacy volumes are safe to remove.
+func finalizeMigration(tx *state.RootTxn, m state.Migration) error {
+	return saveMigration(tx, state.Migration{Status: state.MigrationCompleted, Copied: m.Copied})
 }
 
 // copyVolume removes any leftover partial under the target name, creates the

@@ -67,9 +67,8 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 		return nil
 	}
 	migration, _ := rootState.Migration(MigrationName)
-	_, noticeAcknowledged := rootState.Migration(LegacyRuntimeNoticeName)
 	if migration.Status == state.MigrationCompleted || migration.Status == state.MigrationDismissed {
-		return showNotice(noticeAcknowledged, ui)
+		return showNotice(ui)
 	}
 
 	names, err := necessaryVolumesFor(migration)
@@ -89,7 +88,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 				return err
 			}
 		}
-		return showNotice(noticeAcknowledged, ui)
+		return showNotice(ui)
 	}
 
 	if !ui.IsInteractive() {
@@ -123,7 +122,7 @@ func Offer(ctx context.Context, client msb.Client, ui termio.UI) error {
 	default:
 		return ErrMigrationPending
 	}
-	return showNotice(noticeAcknowledged, ui)
+	return showNotice(ui)
 }
 
 // handleOfferListingError resolves a failure to list the homes while deriving the
@@ -165,7 +164,7 @@ func finalizeCompletedCampaign() error {
 		if m.Status != state.MigrationCopying {
 			return nil
 		}
-		return finalizeMigration(tx)
+		return finalizeMigration(tx, m)
 	})
 	return err
 }
@@ -175,7 +174,9 @@ func finalizeCompletedCampaign() error {
 // overwritten. It first removes every unclear private volume: recording the
 // dismissal while a usable partial remains would let the home resolver adopt an
 // incomplete home under a permanent opt-out. Volumes that were copied or kept at
-// the user's choice are preserved. A cleanup failure aborts the dismissal.
+// the user's choice are preserved. The Copied record is retained so the
+// post-migration notice still knows which legacy volumes were fully migrated. A
+// cleanup failure aborts the dismissal.
 func dismissMigration(ctx context.Context, client msb.Client) error {
 	_, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		m, _ := tx.State().Migration(MigrationName)
@@ -185,7 +186,7 @@ func dismissMigration(ctx context.Context, client msb.Client) error {
 		if err := removeUnclearDestinations(ctx, client, m); err != nil {
 			return err
 		}
-		return saveMigration(tx, state.Migration{Status: state.MigrationDismissed})
+		return saveMigration(tx, state.Migration{Status: state.MigrationDismissed, Copied: m.Copied})
 	})
 	return err
 }

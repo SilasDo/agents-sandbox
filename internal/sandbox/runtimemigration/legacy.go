@@ -143,8 +143,8 @@ func copyingNecessaryVolumes(legacyHome string, m state.Migration) ([]string, er
 
 // presentLegacyTargets returns the legacy home volume names already present in
 // the private home. Presence under the pending status means a target was already
-// restored, so a campaign starting now records these as copied rather than
-// discarding and re-copying a home the user already has.
+// restored, so a campaign starting now records these as Kept (unverified, left in
+// place) rather than discarding and re-copying a home the user already has.
 func presentLegacyTargets(legacyHome, privateHome string) ([]string, error) {
 	targets, err := campaignLegacyVolumeNames(legacyHome)
 	if err != nil {
@@ -215,12 +215,16 @@ func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
 	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsHomeVolume, tolerateUnreadable)
 }
 
-// uncopiedLegacyVolumes returns the legacy home volume names with no counterpart
-// in the private home: volumes a campaign failed to copy, or that the user chose
-// not to migrate. Deriving it from the two home listings keeps it available on
-// the dismiss path and in later sessions, where the migration's transient
-// Excluded set has already been dropped.
-func uncopiedLegacyVolumes(legacyVolumes []string) ([]string, error) {
+// uncopiedLegacyVolumes returns the legacy home volume names that still hold the
+// only trustworthy copy: those with no counterpart in the private home and those
+// present under a legacy target name but not recorded as fully copied. A legacy
+// volume is safe to remove only when the campaign recorded it Copied and its
+// destination still exists in the private home; presence alone is not proof,
+// because a Kept volume is present yet unverified (an unclear copy the user chose
+// to leave untouched). Rendered from the two listings and the migration record,
+// it survives the dismiss path and later sessions, where the campaign's transient
+// Kept/Excluded sets have been dropped.
+func uncopiedLegacyVolumes(m state.Migration, legacyVolumes []string) ([]string, error) {
 	present, err := presentPrivateVolumeNames(runtime.PrivateHome())
 	if err != nil {
 		return nil, err
@@ -229,11 +233,16 @@ func uncopiedLegacyVolumes(legacyVolumes []string) ([]string, error) {
 	for _, name := range present {
 		presentSet[name] = true
 	}
+	copied := make(map[string]bool, len(m.Copied))
+	for _, name := range m.Copied {
+		copied[name] = true
+	}
 	var uncopied []string
 	for _, name := range legacyVolumes {
-		if !presentSet[name] {
-			uncopied = append(uncopied, name)
+		if presentSet[name] && copied[name] {
+			continue
 		}
+		uncopied = append(uncopied, name)
 	}
 	return uncopied, nil
 }

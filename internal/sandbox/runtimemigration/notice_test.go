@@ -105,7 +105,7 @@ func TestRenderNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
 func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 0 {
@@ -117,8 +117,13 @@ func TestShowNoticeSilentWhenAcknowledged(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		LegacyRuntimeNoticeName: {Status: state.MigrationAcknowledged},
+	}}); err != nil {
+		t.Fatalf("seed acknowledged notice: %v", err)
+	}
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(true, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 0 {
@@ -132,7 +137,7 @@ func TestShowNoticeNamesUncopiedVolumes(t *testing.T) {
 	uncopied := naming.HomePrefix + "uncopied"
 	addVolumeDir(t, legacy, uncopied)
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {
@@ -143,12 +148,42 @@ func TestShowNoticeNamesUncopiedVolumes(t *testing.T) {
 	}
 }
 
+// TestShowNoticeTreatsCopiedVolumeAsSafe pins the positive direction: a legacy
+// volume the campaign recorded as fully copied, with its destination still
+// present, is not named and does not suppress the destructive commands.
+func TestShowNoticeTreatsCopiedVolumeAsSafe(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	name := naming.HomePrefix + "a"
+	addVolumeDir(t, legacy, name)
+	createPrivateVolume(t, name)
+	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
+		MigrationName: {Status: state.MigrationCompleted, Copied: []string{name}},
+	}}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := showNotice(ui); err != nil {
+		t.Fatalf("showNotice() error = %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	notice := ui.AcknowledgeCalls[0]
+	if strings.Contains(notice, name) {
+		t.Errorf("notice = %q, must not name the safely copied volume %q", notice, name)
+	}
+	if !strings.Contains(notice, "rm -rf ~/.microsandbox/volumes/agents-sandbox-home-*") {
+		t.Errorf("notice = %q, want the volume-removal command for a safely copied volume", notice)
+	}
+}
+
 func TestShowNoticeInteractiveMarksAcknowledged(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {
@@ -166,7 +201,7 @@ func TestShowNoticeNonInteractivePrintsBoundedLineButDoesNotMark(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: false}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {
@@ -190,7 +225,7 @@ func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true, AcknowledgeErr: errors.New("stdin closed")}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if len(ui.WarnCalls) == 0 {
@@ -203,15 +238,16 @@ func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 }
 
 // TestShowNoticeRecordErrorWarnsAndContinues pins that a failure to persist the
-// acknowledgment (here, a corrupt root state) is best-effort: it warns and the
-// session continues without recording the notice.
+// acknowledgment is best-effort: it warns and the session continues without
+// recording the notice. The state stays readable (a missing file reads as the
+// zero state) but its directory is unwritable, so only the write fails.
 func TestShowNoticeRecordErrorWarnsAndContinues(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	addVolumeDir(t, legacy, naming.HomePrefix+"a")
-	writeCorruptRootState(t)
+	blockRootState(t)
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if !warnedAbout(ui.WarnCalls, "could not record legacy runtime notice") {
@@ -222,11 +258,26 @@ func TestShowNoticeRecordErrorWarnsAndContinues(t *testing.T) {
 func TestShowNoticeDetectionErrorWarnsAndContinues(t *testing.T) {
 	configpaths.WithMockConfigPathsHomeError(t, errors.New("home unavailable"))
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if len(ui.WarnCalls) == 0 {
 		t.Error("no warning for a detection failure")
+	}
+}
+
+// TestShowNoticeStateReadErrorWarnsAndContinues covers the notice's own
+// best-effort state read: a corrupt root state warns and lets the session
+// continue rather than blocking.
+func TestShowNoticeStateReadErrorWarnsAndContinues(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeCorruptRootState(t)
+	ui := &termio.Mock{IsInteractiveResult: true}
+	if err := showNotice(ui); err != nil {
+		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
+	}
+	if !warnedAbout(ui.WarnCalls, "skipping legacy runtime notice") {
+		t.Errorf("WarnCalls = %v, want the state-read warning", ui.WarnCalls)
 	}
 }
 
@@ -249,7 +300,7 @@ func TestShowNoticePrivateListingErrorSuppressesCommands(t *testing.T) {
 	}
 
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if !warnedAbout(ui.WarnCalls, "could not list the private home") {
@@ -272,7 +323,7 @@ func TestShowNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
 	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
 
 	ui := &termio.Mock{IsInteractiveResult: true}
-	if err := showNotice(false, ui); err != nil {
+	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
 	}
 	if len(ui.AcknowledgeCalls) != 1 {

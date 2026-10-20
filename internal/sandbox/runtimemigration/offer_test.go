@@ -464,6 +464,16 @@ func seedPartialDestination(t *testing.T, legacy, name string) {
 	}
 }
 
+// createPrivateVolume models msb materializing a directory volume under the
+// private home, so the notice's presence check sees a copied volume's
+// destination. Tests that skip it model a copy whose destination vanished.
+func createPrivateVolume(t *testing.T, name string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(runtime.PrivateHome(), "volumes", name), 0o750); err != nil {
+		t.Fatalf("create private volume %q: %v", name, err)
+	}
+}
+
 // TestOfferStartFreshRemovesUnfinishedDestination pins that choosing "start
 // fresh" after an interrupted copy cannot adopt the half-copied home: the
 // unfinished destination is removed before the dismissal is recorded, so the
@@ -1008,20 +1018,21 @@ func TestOfferNonInteractiveNoticeDoesNotMark(t *testing.T) {
 	}
 }
 
-// TestOfferNoticeNamesUncopiedVolumes pins the render-time derivation (D1): the
-// notice names a volume a campaign failed to copy by comparing the two home
-// listings, not by threading the transient Excluded set. A volume already present
-// in the private home is copied state and must not be named.
+// TestOfferNoticeNamesUncopiedVolumes pins the notice's safety rule: a legacy
+// volume is safe to remove only when the campaign recorded it as Copied and its
+// private destination still exists. A failed copy (Excluded) and a
+// present-but-unverified volume (Kept) both still hold the only trustworthy data
+// and must be named; a Copied volume whose destination exists must not be.
 func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	bad := naming.HomePrefix + "bad"
 	present := naming.HomePrefix + "present"
+	good := naming.HomePrefix + "good"
 	addVolumeDir(t, legacy, bad)
 	addVolumeDir(t, legacy, present)
-	if err := os.MkdirAll(filepath.Join(runtime.PrivateHome(), "volumes", present), 0o750); err != nil {
-		t.Fatalf("seed present private volume: %v", err)
-	}
+	addVolumeDir(t, legacy, good)
+	createPrivateVolume(t, present) // present but unverified: an unclear private home
 
 	target := t.TempDir()
 	client := &msb.MockMsbClient{
@@ -1029,6 +1040,7 @@ func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 			if name == bad {
 				return nil, errors.New("no space")
 			}
+			createPrivateVolume(t, name)
 			return &msb.MockVolumeHandle{Name_: name, Path_: target}, nil
 		},
 	}
@@ -1039,12 +1051,55 @@ func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 	if len(ui.AcknowledgeCalls) != 1 {
 		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
 	}
-	if !strings.Contains(ui.AcknowledgeCalls[0], bad) {
-		t.Errorf("notice = %q, want the uncopied volume %q named", ui.AcknowledgeCalls[0], bad)
+	notice := ui.AcknowledgeCalls[0]
+	if !strings.Contains(notice, bad) {
+		t.Errorf("notice = %q, want the uncopied volume %q named", notice, bad)
 	}
-	if strings.Contains(ui.AcknowledgeCalls[0], present) {
-		t.Errorf("notice = %q, must not name the copied volume %q", ui.AcknowledgeCalls[0], present)
+	if !strings.Contains(notice, present) {
+		t.Errorf("notice = %q, want the unverified volume %q named", notice, present)
 	}
+	if strings.Contains(notice, good) {
+		t.Errorf("notice = %q, must not name the copied volume %q", notice, good)
+	}
+}
+
+// TestOfferAmbiguousCopyNoticeKeepsUnverifiedVolume is the greptile P1
+// regression: in the ambiguous state the copy option leaves the present
+// (unverified) private volume untouched and records it as Kept, not Copied. The
+// legacy volume behind it is the only trustworthy copy, so the notice must name
+// it and withhold every destructive command, while the genuinely copied volume
+// is safe.
+func TestOfferAmbiguousCopyNoticeKeepsUnverifiedVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := installLegacyHome(t)
+	present := naming.HomePrefix + "present"
+	missing := naming.HomePrefix + "missing"
+	addVolumeDir(t, legacy, present)
+	addVolumeDir(t, legacy, missing)
+	createPrivateVolume(t, present)
+
+	target := t.TempDir()
+	client := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			createPrivateVolume(t, name)
+			return &msb.MockVolumeHandle{Name_: name, Path_: target}, nil
+		},
+	}
+	ui := noticeUI(choiceCopy)
+	if err := Offer(context.Background(), client, ui); err != nil {
+		t.Fatalf("Offer: %v", err)
+	}
+	if len(ui.AcknowledgeCalls) != 1 {
+		t.Fatalf("AcknowledgeCalls = %v, want the notice once", ui.AcknowledgeCalls)
+	}
+	notice := ui.AcknowledgeCalls[0]
+	if !strings.Contains(notice, present) {
+		t.Errorf("notice = %q, want the unverified volume %q named", notice, present)
+	}
+	if strings.Contains(notice, missing) {
+		t.Errorf("notice = %q, must not name the copied volume %q", notice, missing)
+	}
+	assertSuppressesDestructiveCommands(t, notice)
 }
 
 // TestOfferDismissSuppressesCommandsForUncopiedVolumes pins that the dismiss

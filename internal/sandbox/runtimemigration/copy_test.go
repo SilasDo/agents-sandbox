@@ -284,7 +284,8 @@ func TestCopyVolumesPreservesAlreadyPresentTarget(t *testing.T) {
 }
 
 // TestCopyVolumesRecordsProgressAndCompletes pins the terminal outcome: a clean
-// campaign collapses to a completed migration and drops the transient lists.
+// campaign collapses to a completed migration, retains Copied as the record of
+// fully-migrated volumes, and drops the transient Kept/Excluded lists.
 func TestCopyVolumesRecordsProgressAndCompletes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
@@ -306,8 +307,11 @@ func TestCopyVolumesRecordsProgressAndCompletes(t *testing.T) {
 	if m.Status != state.MigrationCompleted {
 		t.Fatalf("status = %q, want completed", m.Status)
 	}
-	if len(m.Copied) != 0 || len(m.Excluded) != 0 {
-		t.Fatalf("terminal migration kept transient lists: %+v", m)
+	if len(m.Copied) != 1 || m.Copied[0] != name {
+		t.Fatalf("terminal Copied = %v, want the migrated volume %q retained", m.Copied, name)
+	}
+	if len(m.Kept) != 0 || len(m.Excluded) != 0 {
+		t.Fatalf("terminal migration kept Kept/Excluded: %+v", m)
 	}
 }
 
@@ -347,7 +351,10 @@ func TestCopyVolumesExcludesVolumeScopedFailureAndCompletes(t *testing.T) {
 	root, _ := state.ReadRootState()
 	m, _ := root.Migration(MigrationName)
 	if m.Status != state.MigrationCompleted || len(m.Excluded) != 0 {
-		t.Fatalf("migration = %+v, want completed with transient lists dropped", m)
+		t.Fatalf("migration = %+v, want completed with Excluded dropped", m)
+	}
+	if len(m.Copied) != 1 || m.Copied[0] != good {
+		t.Fatalf("Copied = %v, want the migrated volume %q retained", m.Copied, good)
 	}
 	if len(ui.WarnCalls) == 0 {
 		t.Error("no warning for the excluded volume")

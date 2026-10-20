@@ -17,13 +17,24 @@ const LegacyRuntimeNoticeName = "legacy_runtime_notice"
 // prefix-based), and never deletes anything. An interactive session renders the
 // full notice, waits for the user, and records the acknowledgment; a
 // non-interactive session prints only a bounded one-line form and records
-// nothing, so the one-time moment is not silently consumed. The uncopied volumes
-// it warns about are derived from the two home listings at render time, so the
-// warning survives the dismiss path and later sessions.
-func showNotice(acknowledged bool, ui termio.UI) error {
-	if acknowledged {
+// nothing, so the one-time moment is not silently consumed.
+//
+// It reads the persisted state itself rather than taking a snapshot from Offer:
+// a campaign may have just reached its terminal word in this session, and a
+// stale snapshot would miss the freshly recorded Copied volumes (over-warning).
+// The uncopied volumes it warns about are derived from the two home listings and
+// that record, so the warning survives the dismiss path and later sessions.
+func showNotice(ui termio.UI) error {
+	rootState, err := state.ReadRootState()
+	if err != nil {
+		ui.Warnf("skipping legacy runtime notice: %v", err)
 		return nil
 	}
+	if _, acknowledged := rootState.Migration(LegacyRuntimeNoticeName); acknowledged {
+		return nil
+	}
+	migration, _ := rootState.Migration(MigrationName)
+
 	artifacts, err := detectLegacyArtifactsFor()
 	if err != nil {
 		ui.Warnf("skipping legacy runtime notice: %v", err)
@@ -36,7 +47,7 @@ func showNotice(acknowledged bool, ui termio.UI) error {
 		_ = ui.Acknowledge(noticeSummaryLine())
 		return nil
 	}
-	uncopied, err := uncopiedLegacyVolumes(artifacts.HomeVolumes)
+	uncopied, err := uncopiedLegacyVolumes(migration, artifacts.HomeVolumes)
 	if err != nil {
 		// Conservative: without the private listing, treat every legacy volume as
 		// uncopied so the notice never prints a command that could delete data.
