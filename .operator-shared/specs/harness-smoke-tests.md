@@ -58,8 +58,8 @@ configuration or state. Each run creates one temp root, shared by all subtests (
   inherited value is absent, empty, or `dumb`;
 - the child deliberately keeps `DOCKER_HOST`, `DOCKER_CONTEXT`, and `DOCKER_CONFIG`: they carry the host
   docker endpoint the runner-image build needs and hold no agents-sandbox config or state, so keeping them
-  does not weaken the isolation — and the preflight `docker info` runs under the same isolated environment,
-  so it can never certify a daemon the child cannot reach;
+  does not weaken the isolation — and the docker preflight runs under the same isolated environment, before
+  any image build, so it can never certify a daemon the child cannot reach;
 - the child gets a sized terminal — the parent's window when the test process has a tty, else 40×120 — so a
   full-screen TUI does not render into a zero-column terminal;
 - the working directory is a temp project dir, so project config and the derived slug are throwaway;
@@ -67,18 +67,21 @@ configuration or state. Each run creates one temp root, shared by all subtests (
   `~/.cache/agents-sandbox` path is read or written, and the child starts from deterministic defaults.
 
 The isolated data home forces microsandbox to install its private runtime and build/load each harness's runner
-image on first run; that cost is paid once per run, during `prepare` rather than inside any harness's TUI
-window. The shared host docker daemon builds the runner images, as the existing `integration` tests already
+image on first run; that cost is paid once per run, during the image prebuild rather than inside any harness's
+TUI window. The shared host docker daemon builds the runner images, as the existing `integration` tests already
 do. The suite's own process installs the fail-fast seam mocks in `TestMain`; `TestMain` does nothing else, so
-`compile-all`'s `-run=^$` stays a genuine no-op (the shared root, per-harness image prebuild, and binary build
-live behind a `sync.Once` in the test body, while `preflight` runs at the top of the test once `prepare` has
-created the shared root).
+`compile-all`'s `-run=^$` stays a genuine no-op. The suite's phases run in an order that lets a host which
+cannot run it skip before paying: the platform/`/dev/kvm` preflight first, then the shared root and binary
+build behind a `sync.Once`, then the isolated-env docker preflight, then the per-harness image prebuild
+behind its own `sync.Once`, then the harnesses.
 
 **Network.** The child runs with `--network none` (the secure default), so no harness egress is exercised. The
 override in the harness table exists only if a harness turns out to need egress to render.
 
 **Preflight.** Skip, never fail, when the environment cannot run the suite: `/dev/kvm` missing on Linux, a
-non-Linux/non-darwin platform, or an unreachable docker daemon.
+non-Linux/non-darwin platform, or an unreachable docker daemon. The platform/KVM check runs before anything
+is built (no binary, no image), and the docker check runs before the first image build, so an environment
+that cannot run the suite never pays for it.
 
 **Teardown.** A clean quit lets the launcher stop its VM. A deferred cleanup best-effort destroys any sandbox
 left in the isolated home before the temp root is removed, so a failed subtest cannot leak a VM pointing at a
@@ -97,5 +100,5 @@ deleted home.
 - The alt-screen marker is the "TUI started" signal; a harness that renders without it needs a fallback.
 - Quit bytes are per harness and need empirical confirmation on a host; the table is the single adjustment
   point.
-- Four harnesses mean four runner-image builds on a cold home; `prepare` pays for them before any harness's
-  TUI window opens, and the host-only placement absorbs the cost.
+- Four harnesses mean four runner-image builds on a cold home; the image prebuild pays for them before any
+  harness's TUI window opens, and the host-only placement absorbs the cost.

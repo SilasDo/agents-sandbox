@@ -19,9 +19,9 @@ import (
 
 const (
 	// tuiReadyTimeout bounds how long a harness may take to reach its
-	// full-screen TUI. prepare prebuilds the runner images and pays the
-	// one-off microsandbox runtime install, so this only has to absorb the
-	// VM start; the budget stays generous for a cold host.
+	// full-screen TUI. The image prebuild pays the one-off microsandbox
+	// runtime install, so this only has to absorb the VM start; the budget
+	// stays generous for a cold host.
 	tuiReadyTimeout = 180 * time.Second
 	// exitTimeout bounds how long a harness may take to exit once its quit
 	// keys are written.
@@ -41,14 +41,17 @@ const (
 	networkNone = "none"
 )
 
-// The suite builds the launcher once and shares the result across subtests.
-// prepareOnce guards the build; the stored error is reported by every caller so
-// a failed build fails each harness instead of being silently retried.
+// The suite creates one shared root, builds the launcher into it once, and
+// prebuilds every harness image once. Each phase is guarded by its own
+// sync.Once; the stored error is reported by every caller so a failed phase
+// fails each harness instead of being silently retried.
 var (
 	prepareOnce     sync.Once
+	prebuildOnce    sync.Once
 	smokeRoot       string
 	smokeBinary     string
 	errSmokePrepare error
+	errPrebuild     error
 )
 
 // TestHarnessSmoke starts every registered harness the way a user does
@@ -56,9 +59,16 @@ var (
 // asserts it reaches its full-screen TUI, exits 0 on its quit keys, and never
 // reports a daemon timeout. It requires KVM, a docker daemon, and network; the
 // `msb` build tag keeps it out of the default test run.
+//
+// The checks run in order so an environment that cannot run the suite skips
+// before paying for it: the platform/`/dev/kvm` preflight first (no build), then
+// the shared root and binary, then the isolated-env docker preflight, then the
+// image prebuild (the first docker-dependent step), then the harnesses.
 func TestHarnessSmoke(t *testing.T) {
+	preflight(t)
 	root, binary := prepare(t)
-	preflight(t, root)
+	preflightDocker(t, root)
+	prebuildImages(t, root)
 	defer cleanupSandboxes(t, root, binary)
 
 	for _, name := range agent.Names() {
@@ -96,14 +106,10 @@ func TestHarnessSmoke(t *testing.T) {
 	}
 }
 
-// preflight skips the suite when the host cannot run it: an unsupported
-// platform, Linux without KVM, or an unreachable docker daemon. It never fails.
-//
-// The docker probe runs under the same isolated environment the child gets, so
-// it can never certify a daemon the child cannot reach — a docker context the
-// child does not inherit, or a HOME the child does not share, would otherwise
-// pass here and fail every harness.
-func preflight(t *testing.T, root string) {
+// preflight skips the suite when the host cannot run it at all: an unsupported
+// platform or Linux without KVM. It never fails, needs no root, and runs before
+// anything is built, so a host that cannot run the suite pays nothing.
+func preflight(t *testing.T) {
 	t.Helper()
 
 	switch runtime.GOOS {
@@ -116,6 +122,15 @@ func preflight(t *testing.T, root string) {
 	default:
 		t.Skipf("harness smoke tests need linux or darwin, not %s", runtime.GOOS)
 	}
+}
+
+// preflightDocker skips the suite when no docker daemon is reachable. The probe
+// runs under the same isolated environment the child gets, so it can never
+// certify a daemon the child cannot reach — a docker context the child does not
+// inherit, or a HOME the child does not share, would otherwise pass here and
+// fail every harness. It never fails.
+func preflightDocker(t *testing.T, root string) {
+	t.Helper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), probeTimeout)
 	defer cancel()
@@ -127,13 +142,12 @@ func preflight(t *testing.T, root string) {
 	}
 }
 
-// prepare builds the launcher and prebuilds every harness's runner image once
-// for the whole suite, and returns the shared temp root and the binary path
-// inside it.
+// prepare creates the shared temp root and compiles the launcher into it once
+// for the whole suite, and returns both.
 func prepare(t *testing.T) (root, binary string) {
 	t.Helper()
 
-	prepareOnce.Do(prepareSmokeSuite)
+	prepareOnce.Do(createRootAndBuildBinary)
 	if errSmokePrepare != nil {
 		t.Fatalf("prepare harness smoke suite: %v", errSmokePrepare)
 	}
@@ -147,10 +161,9 @@ func projectDir(root, name string) string {
 	return filepath.Join(root, "projects", name)
 }
 
-// prepareSmokeSuite creates the shared root, compiles the launcher into it, and
-// prebuilds every harness's runner image under it, so each harness's TUI budget
-// only has to absorb its VM start rather than a cold image build.
-func prepareSmokeSuite() {
+// createRootAndBuildBinary creates the shared root and compiles the launcher
+// into it.
+func createRootAndBuildBinary() {
 	root, err := os.MkdirTemp("", "harness-smoke-")
 	if err != nil {
 		errSmokePrepare = fmt.Errorf("create temp root: %w", err)
@@ -169,18 +182,30 @@ func prepareSmokeSuite() {
 	build := exec.CommandContext(ctx, "go", "build", "-o", smokeBinary, launcherPackage)
 	if out, err := build.CombinedOutput(); err != nil {
 		errSmokePrepare = fmt.Errorf("build launcher: %w\n%s", err, out)
-		return
-	}
-	if err := prebuildImages(ctx, root); err != nil {
-		errSmokePrepare = err
 	}
 }
 
-// prebuildImages builds each registered harness's runner image in the same
+// prebuildImages builds every registered harness's runner image once, so each
+// harness's TUI budget only has to absorb its VM start rather than a cold image
+// build. It is the first docker-dependent step, so it runs only after
+// preflightDocker has confirmed the child can reach a daemon.
+func prebuildImages(t *testing.T, root string) {
+	t.Helper()
+
+	prebuildOnce.Do(func() { errPrebuild = buildHarnessImages(root) })
+	if errPrebuild != nil {
+		t.Fatalf("prebuild harness images: %v", errPrebuild)
+	}
+}
+
+// buildHarnessImages builds each registered harness's runner image in the same
 // throwaway project directory its subtest will run from, so the project slug
 // and agent identity match. The isolated home pays for the microsandbox runtime
 // install here, outside any harness's TUI budget.
-func prebuildImages(ctx context.Context, root string) error {
+func buildHarnessImages(root string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), prepareTimeout)
+	defer cancel()
+
 	env := isolatedEnv(root, os.Environ())
 	for _, name := range agent.Names() {
 		dir := projectDir(root, name)
