@@ -53,7 +53,7 @@ func ResolveIdentity(cwd string) Identity {
 	// main checkout hashes, and the worktree would not share its checkout slug.
 	commonGitDir = resolvePath(commonGitDir)
 
-	checkoutRoot, bindRoot, outsideWorktree := bindLayout(resolved, worktreeRoot, commonGitDir)
+	checkoutRoot, bindRoot, outsideWorktree := bindLayout(worktreeRoot, commonGitDir)
 	// An outside worktree hashes its own root: hashing the shared common dir
 	// would give it its checkout's slug and therefore its checkout's VM, whose
 	// /workspace bind can only be one of the two.
@@ -115,11 +115,13 @@ func nonRepoIdentity(resolved string) Identity {
 
 // bindLayout decides which host directory to bind at /workspace and where the
 // enclosing checkout is. A normal checkout, a --separate-git-dir checkout and a
-// submodule keep their own worktree as the bind root; only a linked worktree
-// whose shared git dir lies outside its enclosing checkout is "outside" — it
-// cannot share its checkout's /workspace bind, so ResolveIdentity scopes it by
-// its own root instead.
-func bindLayout(resolved, worktreeRoot, commonGitDir string) (string, string, bool) {
+// submodule bind their own worktree; a linked worktree inside its checkout binds
+// the checkout root so sibling worktrees stay visible; and a linked worktree
+// outside its checkout binds its own root, since under checkout identity the
+// worktree is the "smallest enclosing checkout that contains the CWD". A
+// subdirectory of any of these binds the same root, so the agent starts in the
+// subdirectory with the repository visible above it.
+func bindLayout(worktreeRoot, commonGitDir string) (string, string, bool) {
 	if !isLinkedWorktree(worktreeRoot) {
 		return worktreeRoot, worktreeRoot, false
 	}
@@ -127,7 +129,7 @@ func bindLayout(resolved, worktreeRoot, commonGitDir string) (string, string, bo
 	if within(checkoutRoot, worktreeRoot) {
 		return checkoutRoot, checkoutRoot, false
 	}
-	return checkoutRoot, resolved, true
+	return checkoutRoot, worktreeRoot, true
 }
 
 // checkoutRootOf returns the directory that contains the git dir and any nested

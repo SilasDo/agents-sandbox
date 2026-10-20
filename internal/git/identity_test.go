@@ -306,21 +306,51 @@ func TestCheckoutSlugOutsideWorktreeOwnsItsIdentity(t *testing.T) {
 	checkout := ResolveIdentity(repo)
 
 	base := resolvePath(t.TempDir())
-	first := filepath.Join(base, "first")
-	sibling := filepath.Join(base, "second")
-	testutil.RunGit(t, repo, "worktree", "add", first)
+	worktree := filepath.Join(base, "wt")
+	sibling := filepath.Join(base, "sibling")
+	testutil.RunGit(t, repo, "worktree", "add", worktree)
 	testutil.RunGit(t, repo, "worktree", "add", sibling)
-	t.Chdir(first)
+	t.Chdir(worktree)
 
-	identity := ResolveIdentity(first)
-	folder := sanitizeFolderName("widget")
+	identity := ResolveIdentity(worktree)
+	// Built from the hash primitive directly, not from projectSlug: a bug in that
+	// helper must not move the expectation along with the implementation.
+	wantSlug := sanitizeFolderName("widget") + "-" + HashID(worktree)
 
 	require.True(t, identity.OutsideWorktree)
-	require.Equal(t, first, identity.BindRoot)
-	require.Equal(t, projectSlug(folder, origin), RepoSlug())
-	require.Equal(t, projectSlug(folder, first), CheckoutSlug())
+	require.Equal(t, worktree, identity.BindRoot)
+	require.Equal(t, wantSlug, identity.CheckoutSlug)
+	require.Equal(t, sanitizeFolderName("widget")+"-"+HashID(origin), RepoSlug())
+	require.Equal(t, wantSlug, CheckoutSlug())
+	// Collision guard: an outside worktree must share neither its checkout's slug
+	// (one VM, wrong /workspace) nor a sibling worktree's.
 	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
 	require.NotEqual(t, ResolveIdentity(sibling).CheckoutSlug, CheckoutSlug())
+}
+
+// TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot pins that the bind
+// root does not follow the cwd: a run from inside the worktree is scoped to the
+// worktree root (keeping the repository visible above the agent) and the slug
+// hashes the worktree root, not the subdirectory.
+func TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot(t *testing.T) {
+	const origin = "https://example.com/acme/widget.git"
+	repo := resolvePath(testutil.InitRepo(t))
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
+	checkout := ResolveIdentity(repo)
+
+	worktree := filepath.Join(resolvePath(t.TempDir()), "wt")
+	testutil.RunGit(t, repo, "worktree", "add", worktree)
+	sub := filepath.Join(worktree, "sub", "dir")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	t.Chdir(sub)
+
+	identity := ResolveIdentity(sub)
+	wantSlug := sanitizeFolderName("widget") + "-" + HashID(worktree)
+
+	require.True(t, identity.OutsideWorktree)
+	require.Equal(t, worktree, identity.BindRoot)
+	require.Equal(t, wantSlug, CheckoutSlug())
+	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
 }
 
 func TestRepoSlugWithoutOriginUnchanged(t *testing.T) {
