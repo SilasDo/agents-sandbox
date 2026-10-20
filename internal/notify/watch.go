@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -125,7 +124,7 @@ func Watch(ctx context.Context, sb msb.Sandbox, spec agent.EventStreamSpec, sink
 loop:
 	for attempt := 1; ; attempt++ {
 		start := time.Now()
-		reason := watchOnce(ctx, sb, tracker, sink, spec.StreamCommand)
+		reason := watchOnce(ctx, sb, tracker, sink, spec)
 		if ctx.Err() != nil {
 			break loop
 		}
@@ -155,9 +154,9 @@ func watchOnce(
 	sb msb.Sandbox,
 	tracker *Tracker,
 	sink Backend,
-	streamCommand string,
+	spec agent.EventStreamSpec,
 ) error {
-	handle, err := sb.ShellStream(ctx, streamCommand)
+	handle, err := sb.ShellStream(ctx, spec.StreamCommand)
 	if err != nil {
 		return fmt.Errorf("opening stream: %w", err)
 	}
@@ -171,7 +170,7 @@ func watchOnce(
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
-			if e, ok := parseSSEBlock(block); ok {
+			if e, ok := parseSSEBlock(spec.Parse, block); ok {
 				handleEvent(tracker, sink, e)
 			}
 			block = nil
@@ -192,7 +191,7 @@ func watchOnce(
 // work, a sessionBusyAware sink releases its in-flight dedup claims first, so a
 // later transition for the session can notify again; then the tracker decides
 // whether the event fires a notification.
-func handleEvent(tracker *Tracker, sink Backend, e Event) {
+func handleEvent(tracker *Tracker, sink Backend, e agent.StreamEvent) {
 	if e.SessionID != "" && eventTypeIn(e.Type, tracker.spec.BusyEvents) {
 		if aware, ok := sink.(sessionBusyAware); ok {
 			aware.SessionBusy(e.SessionID)
@@ -253,10 +252,10 @@ func (r *streamReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// parseSSEBlock parses one SSE block (the lines between blank lines) into an
-// Event. opencode's /global/event stream emits a single "data:" line whose
-// JSON carries the event type under "payload.type".
-func parseSSEBlock(lines []string) (Event, bool) {
+// parseSSEBlock extracts the data payload from one SSE block (the lines
+// between blank lines) and delegates decoding to parse. Every agent's event
+// stream emits a single "data:" line; a block with none carries no event.
+func parseSSEBlock(parse func([]byte) (agent.StreamEvent, bool), lines []string) (agent.StreamEvent, bool) {
 	var payload []byte
 	for _, l := range lines {
 		if rest, ok := strings.CutPrefix(l, "data:"); ok {
@@ -264,21 +263,7 @@ func parseSSEBlock(lines []string) (Event, bool) {
 		}
 	}
 	if len(payload) == 0 {
-		return Event{}, false
+		return agent.StreamEvent{}, false
 	}
-	var raw struct {
-		Payload struct {
-			Type       string `json:"type"`
-			Properties struct {
-				SessionID string `json:"sessionID"`
-			} `json:"properties"`
-		} `json:"payload"`
-	}
-	if err := json.Unmarshal(payload, &raw); err != nil {
-		return Event{}, false
-	}
-	if raw.Payload.Type == "" {
-		return Event{}, false
-	}
-	return Event{Type: raw.Payload.Type, SessionID: raw.Payload.Properties.SessionID, Data: payload}, true
+	return parse(payload)
 }

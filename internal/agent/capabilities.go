@@ -137,6 +137,14 @@ type VersionProvider interface {
 // AsVersionProvider returns the agent's VersionProvider, if it implements one.
 func AsVersionProvider(a Agent) (VersionProvider, bool) { p, ok := a.(VersionProvider); return p, ok }
 
+// StreamEvent is a decoded daemon event: its type, the session it belongs to,
+// and that session's parent (non-empty for a subagent session).
+type StreamEvent struct {
+	Type      string
+	SessionID string
+	ParentID  string
+}
+
 // EventStreamSpec describes the SSE event stream notify watches for an agent:
 // the shell command that streams events in the VM, the event-type names that
 // drive tracker transitions, and the agent name used in notification titles.
@@ -147,6 +155,9 @@ type EventStreamSpec struct {
 	IdleEvents    []string
 	ErrorEvents   []string
 	Name          string
+	// Parse decodes one SSE data payload into a StreamEvent. ok is false when
+	// the payload carries no event.
+	Parse func(payload []byte) (StreamEvent, bool)
 }
 
 // EventStreamProvider exposes the SSE event stream an agent daemon serves.

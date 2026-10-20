@@ -281,6 +281,11 @@ func TestOpencodeEventStream(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode should implement EventStreamProvider")
 	}
+	got := provider.EventStream()
+	if got.Parse == nil {
+		t.Fatal("EventStream().Parse is nil")
+	}
+	got.Parse = nil
 	want := agent.EventStreamSpec{
 		StreamCommand: "curl -N -s http://127.0.0.1:4096/global/event",
 		BusyEvents:    []string{"message.part.updated", "session.updated"},
@@ -289,7 +294,7 @@ func TestOpencodeEventStream(t *testing.T) {
 		ErrorEvents:   []string{"session.error"},
 		Name:          "opencode",
 	}
-	if got := provider.EventStream(); !reflect.DeepEqual(got, want) {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("EventStream() = %+v, want %+v", got, want)
 	}
 }

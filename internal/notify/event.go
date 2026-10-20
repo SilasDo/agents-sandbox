@@ -6,13 +6,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
 
-// Event is a parsed SSE event.
-type Event struct {
-	Type      string
-	SessionID string
-	Data      []byte
-}
-
 // Tracker derives notification transitions from a stream of events, tracking
 // each session independently.
 type Tracker struct {
@@ -37,7 +30,7 @@ func NewTracker(spec agent.EventStreamSpec) *Tracker {
 
 // Handle feeds an event and returns a Notification when a configured
 // transition fires for that event's session, else nil.
-func (t *Tracker) Handle(e Event) *Notification {
+func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 	st := t.states[e.SessionID]
 	switch {
 	case eventTypeIn(e.Type, t.spec.BusyEvents):
@@ -78,7 +71,7 @@ func (t *Tracker) Handle(e Event) *Notification {
 
 // HandleEventType is a convenience wrapper for tests.
 func (t *Tracker) HandleEventType(typ string) *Notification {
-	return t.Handle(Event{Type: typ, SessionID: "", Data: nil})
+	return t.Handle(agent.StreamEvent{Type: typ, SessionID: "", ParentID: ""})
 }
 
 func eventTypeIn(typ string, eventTypes []string) bool {
