@@ -25,10 +25,10 @@
 
 Inputs the spec implies but no task's happy path covers. Each has a test in the owning task.
 
-1. **A `--separate-git-dir` checkout or a submodule** must not start hard-failing. `ResolveWorkspaceLayout` flags both `OutsideWorktree` today and they merely warn; the fail-fast would turn that into a refusal. Task 1 narrows the flag to linked worktrees.
+1. **A `--separate-git-dir` checkout or a submodule** must not be treated as an outside worktree. `ResolveWorkspaceLayout` flags both `OutsideWorktree` today only because their git dir is not named `.git`; Task 1 narrows the flag to real worktree registrations (a `/worktrees/<name>` gitdir carrying a `commondir` marker).
 2. **A no-origin repo reached through a symlinked path** gets a new repo slug once (because resolution is now internal), so its per-slug config dir moves. Pinned by a test, named in the spec's Known limitations.
 3. **`--dry-run` on a project with a pending migration** must not present post-migration artifacts: the remainder of the pipeline keeps the legacy identity. Task 4.
-4. **`config`, `prune`, `df`, `doctor`, `tree`, `version` in an outside worktree** must keep working — only the checkout-slug path refuses. Tasks 1, 3.
+4. **An outside worktree** gets its own identity rather than a refusal, so a cwd under this repo's own `~/.local/share/opencode/worktree/<n>/<name>` stays launchable. Task 1 derives its checkout slug from the worktree root.
 5. **An unparsable legacy state file** must fail closed: adoption never clobbers it. Tasks 2, 3.
 
 ---
@@ -44,10 +44,9 @@ Inputs the spec implies but no task's happy path covers. Each has a test in the 
 **Interfaces:**
 - Produces:
   - `type Identity struct { BindRoot string; CheckoutRoot string; OutsideWorktree bool; RepoSlug string; CheckoutSlug string }`
-  - `func ResolveIdentity(cwd string) Identity` — total; never returns an error. Reports the outside-worktree case as a flag.
-  - `func (i Identity) RequireCheckoutSlug() (string, error)` — returns `CheckoutSlug`, or the fail-fast error when `OutsideWorktree`.
+  - `func ResolveIdentity(cwd string) Identity` — total; never returns an error, and never fails on an outside worktree either: that case is reported as the flag and gets an identity of its own.
   - `func RepoSlug() string` — `ResolveIdentity(".").RepoSlug`
-  - `func CheckoutSlug() (string, error)` — `ResolveIdentity(".").RequireCheckoutSlug()`
+  - `func CheckoutSlug() string` — `ResolveIdentity(".").CheckoutSlug`
   - `HashID`, `projectSlug`, `sanitizeFolderName`, `resolveGitDir`, `originURL`, `lastPathSegment` keep their current behavior (package-internal ones stay unexported).
 - Consumes: nothing from other tasks.
 
@@ -78,7 +77,7 @@ Plus, in the same file:
 - `TestResolveIdentityNonRepoDirectory` — a temp dir with no `.git`: `RepoSlug == CheckoutSlug == projectSlug(sanitizeFolderName(base), abs)`, `OutsideWorktree` false, `BindRoot == abs`.
 - `TestResolveIdentityResolvesSymlinks` — a repo reached through a symlinked parent yields the same `RepoSlug`/`CheckoutSlug` as through the physical path.
 - `TestResolveIdentitySeparateGitDirIsNotOutside` — a `.git` file whose gitdir is **not** under a `worktrees/` segment: `OutsideWorktree` false, `CheckoutRoot == root`, `BindRoot == root`.
-- `TestRepoSlugOutsideWorktree` / `TestCheckoutSlugOutsideWorktreeFailsFast` — a worktree outside its checkout: `RepoSlug()` returns the origin slug; `CheckoutSlug()` returns an error whose message contains both the worktree path and the checkout path.
+- `TestRepoSlugOutsideWorktree` / `TestCheckoutSlugOutsideWorktreeOwnsItsIdentity` — a worktree outside its checkout: `RepoSlug()` returns the same origin slug as its checkout (they share the per-slug config dir), while `CheckoutSlug()` hashes the **worktree root**, so it equals neither its checkout's slug nor a sibling worktree's. `OutsideWorktree` stays true and `BindRoot` is the worktree root.
 - `TestRepoSlugWithoutOriginUnchanged` — the no-origin fallback still hashes the checkout root, so only symlinked paths change.
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -95,12 +94,12 @@ Derivation, in this order:
 3. `commonGitDir := resolveGitDir(worktreeRoot)`; if `""`, same non-repo identity as step 2.
 4. `linkedWorktree` = the `.git` entry at `worktreeRoot` is a **file** whose parsed gitdir contains a `/worktrees/` segment. Implement by extending `resolveGitDir` with a companion `isLinkedWorktree(root string) bool` (same file reads), or by having `resolveGitDir` return a small struct — keep `resolveGitDir`'s current signature and add the predicate.
 5. Layout:
-   - linked worktree with `within(checkoutRoot, worktreeRoot)`: `CheckoutRoot: checkoutRoot`, `BindRoot: checkoutRoot`, `OutsideWorktree: false`.
-   - linked worktree and not within: `CheckoutRoot: checkoutRoot`, `BindRoot: resolved`, `OutsideWorktree: true`.
+   - linked worktree with `within(checkoutRoot, worktreeRoot)`: `CheckoutRoot: checkoutRoot`, `BindRoot: checkoutRoot`, `OutsideWorktree: false`; the checkout slug hashes `commonGitDir`, shared with the checkout and its inside-worktrees.
+   - linked worktree and not within: `CheckoutRoot: checkoutRoot`, `BindRoot: resolved`, `OutsideWorktree: true`, and the checkout slug hashes **`worktreeRoot`** instead of `commonGitDir`. That is what stops it colliding with its checkout's VM, and it is why nothing has to refuse.
    - not a linked worktree (normal checkout, `--separate-git-dir`, submodule): `CheckoutRoot: worktreeRoot`, `BindRoot: worktreeRoot`, `OutsideWorktree: false`. `checkoutRoot` for the slug hash is still `commonGitDir`.
 6. Slugs: `folder := sanitizeFolderName(lastPathSegment(originURL(worktreeRoot)))` when `originURL` is non-empty, else `sanitizeFolderName(filepath.Base(worktreeRoot))`; `RepoSlug = projectSlug(folder, originURL-or-worktreeRoot)`; `CheckoutSlug = projectSlug(folder, commonGitDir)`.
 
-`RequireCheckoutSlug` returns `fmt.Errorf("worktree %q is outside its checkout %q; keep worktrees inside the checkout so they share one project VM", i.BindRoot, i.CheckoutRoot)`.
+There is no fail-fast accessor: `CheckoutSlug()` returns the worktree-root-derived slug, so an outside worktree simply runs as its own project.
 
 While implementing: delete `projectSlugAt`, `worktreeRoot` and the now-unused `go-git/v5` root import (keep `go-git/v5/config`). `ProjectSlug()`, `WorkspaceLayout` and `ResolveWorkspaceLayout(cwd)` stay as thin shims while Tasks 4 and 5 migrate their callers, each marked `// Deprecated: replaced by ResolveIdentity; removed with the #144 wiring.` Task 5 deletes all three. Rewrite `git_test.go`'s and `workspace_test.go`'s cases against the new API in this task, so **no test still covers a shim** — otherwise Task 5's deletion breaks the `internal/git` suite.
 
@@ -126,8 +125,8 @@ git commit -m "feat(git): resolve repo and checkout identity in one pass (#144)"
 
 **Interfaces:**
 - Produces:
-  - `func SlugDir(slug string) string` — `<state root>/<slug>`, the exported sibling of `KeyDir`.
-  - `func MoveSlugDir(fromSlug, toSlug string) (skipped []string, err error)` — moves each entry of `SlugDir(fromSlug)` into `SlugDir(toSlug)`, never overwriting an existing destination entry; removes the source directory when it is left empty. `skipped` holds the entry names left behind; it is the only mutation primitive adoption needs.
+  - `func SlugDir(slug string) string` — `<state root>/<slug>`, delegating to the package's existing unexported `slugDir` so the two cannot drift.
+  - `func MoveSlugDir(fromSlug, toSlug string) ([]string, error)` — recursively merges `SlugDir(fromSlug)` into `SlugDir(toSlug)`, never overwriting an existing file: a free destination name is renamed, both-sides-directories recurses, and a colliding file or a file/directory type mismatch is left in place and reported. Returns the source-relative paths left behind. It is the only mutation primitive adoption needs, and it must always place `<agent>/state.yaml` — the adoption predicate depends on that file arriving. Unnamed results: this package's linter forbids named ones.
 - Consumes: Task 1 is not required; this task is independent.
 
 - [ ] **Step 1: Write the failing tests** in `internal/sandbox/state/move_test.go`
@@ -151,7 +150,7 @@ func TestMoveSlugDirMovesEveryEntry(t *testing.T) {
 }
 ```
 
-Plus: `TestMoveSlugDirKeepsExistingDestinationEntry` (pre-create an empty `<new>/opencode/ensure-vm.lock`, assert it still exists after the move, that `skipped == []string{"opencode"}`, that the source `opencode/` survives, and that a sibling `claims/` still moved); `TestMoveSlugDirMissingSource` (`skipped` empty, no error, destination not created); `TestMoveSlugDirCreatesDestinationParent`.
+Plus, for the recursion: `TestMoveSlugDirMergesIntoAnExistingDestinationDirectory` (pre-create `<new>/opencode/ensure-vm.lock` and `<new>/opencode/clients/keep`, then move: assert `<new>/opencode/state.yaml` **arrived**, the pre-existing `ensure-vm.lock` and `clients/keep` survive untouched, `state.yaml` no longer exists under the old slug, `skipped` lists only `opencode/ensure-vm.lock`, and a sibling `claims/notify.claim` moved); `TestMoveSlugDirSkipsCollidingFile` (the destination already holds a *file* of an entry's name: that entry stays in the legacy location, `skipped` lists it, siblings still move); `TestMoveSlugDirSkipsTypeMismatch` (destination has a file where the source has a directory, and vice versa); `TestMoveSlugDirNoOpForSameSlug`; `TestMoveSlugDirMissingSource` (`skipped` empty, no error, destination not created); `TestMoveSlugDirCreatesDestinationParent`.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -160,7 +159,13 @@ Expected: FAIL — `undefined: SlugDir`.
 
 - [ ] **Step 3: Implement `internal/sandbox/state/move.go`**
 
-`SlugDir` mirrors `KeyDir` (see `state.go:34`). `MoveSlugDir` walks `os.ReadDir` of the source once; for each entry, `os.MkdirAll(dstDir)` then `os.Rename`; if the destination name already exists (stat succeeds), append it to `skipped` and continue; when a directory is skipped, do not descend into it. Finish with a best-effort `os.Remove(SlugDir(fromSlug))` that ignores `ENOTEMPTY`.
+`SlugDir` delegates to the package's existing `slugDir` (see `state.go:34`) rather than re-deriving the root, so the two cannot drift. `MoveSlugDir` walks one level of `os.ReadDir` on the source and merges it into the destination, recursing where both sides are directories:
+
+- destination name free → `os.MkdirAll` the destination directory, then `os.Rename`;
+- both sides directories → recurse into that entry;
+- destination name occupied by anything else (a file, or a file/directory type mismatch) → leave the source entry untouched, record its source-relative path in `skipped`, do not descend.
+
+Never overwrite: every `os.Rename` targets a name that did not exist; an existing destination directory keeps its permissions and contents, and existing destination files are never clobbered. Finish by removing each source directory the merge emptied, best-effort, ignoring `ENOTEMPTY`/`ENOENT`. Return `skipped` so the caller can warn; a skip is not an error. Use `os.Lstat` for the occupancy test so a dangling symlink counts as occupied.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -229,7 +234,7 @@ func legacyStatePending(repoKey, checkoutKey state.Key) (bool, error)
 4. `apply` false → `IdentityAdoption{Slug: identity.RepoSlug, Pending: true}`.
 5. `state.WithRootState(true, func(tx *state.RootTxn) error { ... })`:
    - `handle, err := client.GetSandbox(ctx, projectVMName(repoKey))`; on a non-not-found error return it; when found, `handle.Destroy(ctx)` and classify exactly as `replaceSandboxForReconfig` does (`vm_lifecycle.go:157-182`): `msb.IsReplaced` → fail closed with the same wording, `msb.IsNotFound` → continue, other non-nil → return.
-   - `skipped, err := state.MoveSlugDir(identity.RepoSlug, identity.CheckoutSlug)`; log `skipped` via `ui.Warnf` per entry.
+   - `skipped, err := state.MoveSlugDir(identity.RepoSlug, identity.CheckoutSlug)`; log `skipped` via `ui.Warnf` per entry. Then **verify the adoption completed**: re-read the checkout-keyed state; if it is still `state.ErrStateNotFound`, the merge left the state file behind (a directory-level collision). Return an error naming the skipped paths and the legacy state file instead of continuing — continuing would run under the checkout identity with no state, which silently provisions a fresh home volume and loses the agent's auth. Do not fall back to the legacy slug here: a loud failure is the only outcome that cannot lose the user's volume.
 6. Return `IdentityAdoption{Slug: identity.CheckoutSlug, Pending: true, Applied: true}`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -255,14 +260,14 @@ git commit -m "feat(vm): adopt a legacy origin-keyed identity (#144)"
 
 **Interfaces:**
 - Produces: `func (s *Session) Key() state.Key` — the key `PrepareSandbox` prepared the session with. `session.Run`/`Shell` use `ses.Key().Slug` for the notify dedup, the client lease and `runAttach`.
-- Consumes: `git.ResolveIdentity`, `Identity.RequireCheckoutSlug`, `git.CheckoutSlug` (Task 1); `AdoptLegacyIdentity`, `IdentityAdoption` (Task 3).
+- Consumes: `git.ResolveIdentity` and its `RepoSlug`/`CheckoutSlug` fields (Task 1); `AdoptLegacyIdentity`, `IdentityAdoption` (Task 3).
 - Corrections to the current code (all in this task): `createProjectVM` takes an added `repoSlug string` parameter so `naming.LabelProject` gets the **repo** slug while the VM name keeps `k.Slug` (`vm_lifecycle.go:482`); `ensureProjectVM` gains the same parameter and forwards it.
 
 - [ ] **Step 1: Write the failing tests**
 
 Add to `internal/sandbox/vm/`:
 - `TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel` — two temp clones of one origin (built like Task 1's fixture): the created sandbox name and image tag carry the checkout-slug hash, the label `naming.LabelProject` carries the repo slug, and the two clones' sandbox names differ.
-- `TestPrepareSandboxRefusesOutsideWorktree` — a worktree outside its checkout: `PrepareSandbox` returns the fail-fast error and never calls the client.
+- `TestPrepareSandboxOutsideWorktreeUsesItsOwnKey` — a cwd that is a worktree outside its checkout, the shape this repo's own `~/.local/share/opencode/worktree/<n>/<name>` worktrees have: `PrepareSandbox` succeeds, and the state key, VM name and image tag carry the worktree-root-derived slug rather than the checkout's.
 - `TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending` — legacy state present, `opts.DryRun == true`: the image tag the fake build records carries the **repo** slug, and the notice is printed.
 - `TestPrepareSandboxMigratesOnFirstRun` — legacy state + legacy VM present, no dry-run: the legacy VM is destroyed, the state file is under the checkout slug, and the created VM is named with the checkout slug.
 
@@ -280,10 +285,6 @@ Expected: FAIL (labels and slug assertions).
 ```go
 cwd, err := resolveWorkspaceDir()          // unchanged: EvalSymlinks for the virtiofs bind
 identity := git.ResolveIdentity(cwd)
-checkoutSlug, err := identity.RequireCheckoutSlug()
-if err != nil {
-	return nil, err
-}
 a, ok := agent.Lookup(opts.Agent)
 ...
 apply := !opts.DryRun && !opts.DryRunVM
@@ -330,7 +331,7 @@ git commit -m "feat(vm): key state, VM and image by checkout; label by repo (#14
 
 - `cmd/agents-sandbox/cli_volume_test.go`: `TestVolumeOpsUseCheckoutSlug` — with two clones of one origin, `volume list`/`volume reset --dry-run` in the second clone resolve to that clone's checkout slug (assert the message names the second clone's VM/volume key).
 - `cmd/agents-sandbox/cli_system_coverage_test.go`: `TestBuildUsesCheckoutSlug` and `TestBuildDryRunKeepsLegacySlugWhileMigrationPending`.
-- `cmd/agents-sandbox/cli_*_test.go`: `TestConfigCommandsWorkOutsideWorktree` — for `config agent`, `config home` and (Task 7) `config paths`, an outside-worktree cwd must still succeed, because the repo slug stays available.
+- `cmd/agents-sandbox/cli_*_test.go`: `TestConfigCommandsWorkOutsideWorktree` — for `config agent`, `config home` and (Task 7) `config paths`, an outside-worktree cwd must succeed and report the repo slug, which stays shared with the checkout.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 

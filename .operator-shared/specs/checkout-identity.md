@@ -1,6 +1,6 @@
 ---
-description: Contract for splitting project identity in two (issue #144): a repo-scoped slug (origin-derived) driving the per-slug user config dir and the sandbox grouping label, and a checkout-scoped slug (resolved git common dir) driving state, VM name, home volume, locks/claims, and the runner image tag. Two clones of one remote get separate VMs/volumes; a checkout and its worktrees share one. Includes the automatic, noticed migration that adopts the legacy origin-keyed identity (destroy the legacy VM, then move the state dir), the prune home-volume reference guard, the side-effect-free dry-run, and the outside-worktree fail-fast.
-read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), the repo-vs-checkout slug derivation, the runner-image tag identity, the `config paths` command, the checkout-identity migration and its notice, the prune reference guard, or the outside-worktree fail-fast.
+description: Contract for splitting project identity in two (issue #144): a repo-scoped slug (origin-derived) driving the per-slug user config dir and the sandbox grouping label, and a checkout-scoped slug (resolved git common dir) driving state, VM name, home volume, locks/claims, and the runner image tag. Two clones of one remote get separate VMs/volumes; a checkout and the worktrees inside it share one. Includes the automatic, noticed migration that adopts the legacy origin-keyed identity (destroy the legacy VM, then move the state dir), the prune home-volume reference guard, the side-effect-free dry-run, and the rule that a worktree outside its checkout gets its own identity.
+read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), the repo-vs-checkout slug derivation, the runner-image tag identity, the `config paths` command, the checkout-identity migration and its notice, the prune reference guard, or the identity of a worktree outside its checkout.
 ---
 
 # Per-checkout project identity (issue #144)
@@ -51,7 +51,7 @@ slugs keep the `<folder>-<hash>` shape they already parse.
 - **non-repo folder**: both slugs are `<folder>-<hash(cwd)>` (today's fallback); behavior unchanged.
 - **subdirectory of a checkout**: the checkout slug is the checkout root's, matching the `/workspace`
   bind root from #145.
-- **outside worktree**: fails fast (below) before any slug-sensitive work.
+- **outside worktree**: its own identity (below) — it cannot share its checkout's VM, so it gets one of its own.
 
 `ResolveWorkspaceLayout` already computes `CheckoutRoot` from `resolveGitDir`; the checkout slug reuses
 that derivation (go-git / plain-file inspection, no host `git` binary).
@@ -102,24 +102,28 @@ committed project config (`.agents-sandbox/config.yaml`) or the generic user con
 helper to create/open the per-slug `config.yaml` is optional. The ordered-multi-dir resolver machinery
 from `opencode2-config-fork.md` is available but not required, since nothing renames.
 
-## Outside worktrees: fail fast
+## Outside worktrees: their own identity
 
-Replace #145's warn-and-bind-CWD behavior for a worktree outside its checkout with a **fail-fast error**
-before any VM/volume/image work, with a UX message naming the worktree and its checkout. This is
-required for correctness under checkout identity: an outside worktree and its main clone share the
-checkout slug, so they would resolve to one VM whose `/workspace` bind can only be one of the two —
-reproducing the #144 collision. Refusing is deterministic.
+#145 warned and bound CWD for a worktree outside its checkout. Under checkout identity that is not enough:
+an outside worktree and its main clone share the same git common dir, so hashing the common dir would give
+them **one** checkout slug and therefore one VM whose `/workspace` bind can only be one of the two — the
+#144 collision. Refusing would be deterministic, but it would take the tool away from every worktree that
+lives outside its checkout, which includes the ones opencode creates under
+`~/.local/share/opencode/worktree/` and the sibling worktrees of a bare clone.
 
-The error is raised in the **shared slug resolution**, not in #145's `resolveBindLayout`, so every
-cwd-derived identity path refuses — not only `run`/`shell`, but `stop`, `kill`, the `volume …` ops,
-and `build`, which today call `git.ProjectSlug()` directly and would otherwise silently target the main
-clone's VM from an outside worktree.
+So an outside worktree becomes its own checkout: `ResolveIdentity` hashes the **worktree root** instead of
+the git common dir, binding that worktree at `/workspace` with its own state, VM, home volume and image tag.
+`OutsideWorktree` stays a reported fact on the identity, naming the distinction, but nothing refuses on it
+and no caller has to special-case it.
 
-The guard sits on the **checkout slug only**. The launcher-config resolver
-(`cmd/agents-sandbox/commands.go:110`) resolves the repo slug in `PersistentPreRunE` for *every* command, and
-`config`, `prune`, `df`, `doctor`, `tree` and `version` need no checkout identity, so they keep working
-outside a worktree. Concretely: `ResolveIdentity` returns the outside-worktree flag rather than failing, the
-repo slug is always available, and the checkout-slug accessor is what refuses.
+What this costs: an outside worktree no longer shares state or a home volume with its checkout or with its
+sibling worktrees, so it onboards and authenticates on its own. "One VM per checkout" therefore means "one
+per enclosing checkout root, or one per detached worktree". The #145 layout is still the cheaper one:
+worktrees kept *inside* the checkout share its VM, state, volume and image.
+
+An outside worktree's *legacy* identity was the origin-derived repo slug, so adoption applies to it like any
+other checkout — and it therefore suffers the same asymmetry as a second clone: whichever cwd adopts first
+takes the legacy state, and the others start fresh.
 
 ## Migration (automatic, with a notice)
 
@@ -145,10 +149,16 @@ both destroy and move.
    identity-safely if it exists (best-effort; a gone name is fine). This keeps the old VM from running
    against the shared home volume and from becoming a `ToPrune[<repoSlug>]` entry (see Prune safety).
 2. **Then move** `<state>/<repoSlug>/` to `<state>/<checkoutSlug>/` (project state, `claims/`,
-   `<agent>/clients/`) **entry by entry**, refusing to overwrite anything already at the destination. A
-   plain rename of the whole directory fails with `ENOTEMPTY` whenever an aborted run left an
-   `ensure-vm.lock` or a `clients/` entry behind — exactly the state the state-*file* predicate
-   deliberately tolerates.
+   `<agent>/clients/`) as a **recursive merge that never overwrites an existing file**: a free destination
+   name is renamed, both-sides-directories recurses, and a colliding file or a file/directory type mismatch
+   is left in the legacy location and reported. A plain rename of the whole directory fails with
+   `ENOTEMPTY` whenever an aborted run left an `ensure-vm.lock` or a `clients/` entry behind — exactly the
+   state the state-*file* predicate deliberately tolerates — and a one-level refusal is worse than that: if
+   the collision is the `<agent>/` directory itself, the legacy state file never arrives, the predicate
+   re-fires on every run, and the pipeline proceeds under the checkout identity with no state at all, which
+   means a fresh home volume and silently lost agent auth. The merge is what makes the state-file predicate
+   a real idempotence record: the state file always arrives, because the predicate guarantees none exists
+   at the destination.
 3. Home volume: unchanged. Its name is stored in the state's `home_volume`, so the preserved volume is
    re-resolved by name with no rename.
 4. VM: recreated once under the new name over the preserved home volume.
@@ -168,8 +178,11 @@ so deferring it costs nothing.
 **Notice**: emitted once, and **explicit about everything that moved, with absolute paths** — the state
 directory (old → new), the destroyed legacy VM name, the preserved home volume name, the old → new VM
 name, and the old → new image tag. The move is the idempotence record: the legacy state file is gone
-afterward, so the notice does not re-fire. When several clones exist, whichever runs first adopts the
-legacy identity; the notice says so and the others start fresh.
+afterward, so the notice does not re-fire. A legacy identity is shared by every clone of one origin, so
+whichever clone runs first adopts it; the others then find no legacy state, start with their own fresh
+state and home volume, and get **no notice at all** — from their side there was nothing to migrate. That
+asymmetry is inherent in moving one shared identity rather than copying it: warning the later clones would
+need the adoption to record something they can read.
 
 ## Prune safety
 
@@ -199,11 +212,11 @@ its absence does not block adoption, which recreates it over the preserved volum
 - Image: rebuilt once under the new tag (cache-assisted); cannot be re-tagged.
 - Non-repo folders: unchanged.
 - Nested/bare worktrees: unchanged sharing (one VM per checkout).
-- Outside worktrees: newly refused (was: warned and bound CWD).
+- Outside worktrees: own identity (was: warned and bound CWD — a worktree of a checkout no longer shares that checkout's VM, state or volume).
 
 ## Non-goals
 
-- Changing the #145 mount rule or guest-CWD derivation beyond the outside-worktree refusal.
+- Changing the #145 mount rule or guest-CWD derivation beyond giving an outside worktree its own identity.
 - An `asb worktree` command or any change to `--worktree` / daemon worktrees.
 - A git-dir identity marker: identity is path-derived (see limitations).
 
@@ -224,7 +237,7 @@ its absence does not block adoption, which recreates it over the preserved volum
 ## Settled open decisions
 
 The six questions this section used to leave open, settled 2026-10-20; the plan implements them. The
-adoption, fail-fast, dry-run and prune refinements from the same design review live in their topical
+adoption, dry-run, prune and outside-worktree refinements from the same design review live in their topical
 sections above.
 
 - **Identity API.** `git.ProjectSlug()` retires. `internal/git` gains `ResolveIdentity(cwd)` returning the
@@ -247,9 +260,11 @@ sections above.
 - **The grouping label comes from the identity, not from `state.Key`.** `vm_lifecycle.go:482` sets
   `org.agents-sandbox.project` from the same `k.Slug` that names the VM. `state.Key` keeps a single slug
   (the checkout slug); the label is passed in from the identity struct.
-- **Migration notice**: one `Warnf` block — yellow headline, plain `Infof` detail rows — emitted in a single
-  call *before* the work starts, so it explains the pause rather than confirming after the fact. The rows are
-  therefore prospective ("destroyed", "recreated"), not a receipt. `--dry-run` prints only the "would" lines.
+- **Migration notice**: one `Warnf` call carrying the whole block — yellow headline, indented detail rows,
+  exactly as below — emitted *before* the work starts, so the notice explains the pause rather than confirming
+  after the fact. The rows are therefore prospective ("destroyed", "recreated"), not a receipt. `--dry-run`
+  prints the same block under the "would" headline. `Warnf` is not quiet-suppressed, so the notice survives
+  `--quiet` — which is right for an event that changes where the project's state lives.
 
   ```
   Migrating this checkout to its own project identity (repository + checkout slugs).
