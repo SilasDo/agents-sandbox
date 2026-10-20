@@ -112,13 +112,19 @@ func (opencodeProfile) ParseVersion(stdout string) (string, error) {
 	return extractSemverFromOutput(stdout)
 }
 
+// sessionErrorEvent is the session-level error event shared by the opencode
+// profiles: v1 latches on it, v2 treats it as turn-scoped like its other
+// error event.
+const sessionErrorEvent = "session.error"
+
 func (opencodeProfile) EventStream() EventStreamSpec {
 	return EventStreamSpec{
 		StreamCommand:      "curl -N -s http://127.0.0.1:4096/global/event",
 		BusyEvents:         []string{"message.part.updated", "session.updated"},
 		AwaitingInput:      []string{"permission.asked", "question.asked"},
 		IdleEvents:         []string{"session.idle"},
-		ErrorEvents:        []string{"session.error"},
+		ErrorEvents:        []string{sessionErrorEvent},
+		StickyErrorEvents:  []string{sessionErrorEvent},
 		SessionEvents:      []string{"session.created", "session.updated"},
 		SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
 		Name:               opencodeName,

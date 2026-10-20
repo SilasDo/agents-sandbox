@@ -7,17 +7,19 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
 
-// opencodeSpec returns the EventStreamSpec the opencode profile provides, so
-// notify tests exercise the same event vocabulary production uses.
+// opencodeSpec returns a representative v1-shaped EventStreamSpec used to drive
+// the tracker: it carries the event vocabulary the opencode (v1) profile wires
+// for the transitions the tests exercise, not a copy of production's spec.
 func opencodeSpec() agent.EventStreamSpec {
 	return agent.EventStreamSpec{
-		StreamCommand: "curl -N -s http://127.0.0.1:4096/global/event",
-		BusyEvents:    []string{"message.part.updated", "session.updated"},
-		AwaitingInput: []string{"permission.updated", "question.asked"},
-		IdleEvents:    []string{"session.idle"},
-		ErrorEvents:   []string{"session.error"},
-		Name:          "opencode",
-		Parse:         parseTestEvent,
+		StreamCommand:     "curl -N -s http://127.0.0.1:4096/global/event",
+		BusyEvents:        []string{"message.part.updated", "session.updated"},
+		AwaitingInput:     []string{"permission.asked", "question.asked"},
+		IdleEvents:        []string{"session.idle"},
+		ErrorEvents:       []string{"session.error"},
+		StickyErrorEvents: []string{"session.error"},
+		Name:              "opencode",
+		Parse:             parseTestEvent,
 	}
 }
 
@@ -53,7 +55,7 @@ func TestTrackerBusyToIdleFiresDone(t *testing.T) {
 func TestTrackerAwaitingInputFiresInput(t *testing.T) {
 	tr := NewTracker(opencodeSpec())
 	tr.Handle(agent.StreamEvent{Type: "message.part.updated"}) // -> busy
-	n := tr.Handle(agent.StreamEvent{Type: "permission.updated"})
+	n := tr.Handle(agent.StreamEvent{Type: "permission.asked"})
 	if n == nil || n.Trigger != TriggerInput {
 		t.Fatalf("expected input notification, got %+v", n)
 	}
@@ -186,5 +188,71 @@ func TestTrackerHonorsCustomSpec(t *testing.T) {
 	n := tr.Handle(agent.StreamEvent{Type: "idle.evt"})
 	if n == nil || n.Trigger != TriggerDone || n.Title != "pi: done" {
 		t.Fatalf("expected 'pi: done' done notification, got %+v", n)
+	}
+}
+
+// TestTrackerErrorStickiness pins the sticky/turn-scoped split. v2's execution
+// model is per-turn, so a failed turn must not mute the session; v1's
+// session.error latches as before.
+func TestTrackerErrorStickiness(t *testing.T) {
+	turnScoped := opencodeSpec()
+	turnScoped.BusyEvents = []string{"session.execution.started"}
+	turnScoped.IdleEvents = []string{"session.execution.succeeded"}
+	turnScoped.ErrorEvents = []string{"session.error", "session.execution.failed"}
+	turnScoped.StickyErrorEvents = nil
+
+	sticky := turnScoped
+	sticky.StickyErrorEvents = []string{"session.error"}
+
+	type step struct {
+		event string
+		want  string // "input"/"done"/"error", or "" for no notification
+	}
+	tests := []struct {
+		name  string
+		spec  agent.EventStreamSpec
+		steps []step
+	}{
+		{
+			name: "turn-scoped error does not mute the next turn",
+			spec: turnScoped,
+			steps: []step{
+				{event: "session.execution.started"},
+				{event: "session.execution.failed", want: "error"},
+				{event: "session.execution.started"},
+				{event: "session.execution.succeeded", want: "done"},
+			},
+		},
+		{
+			name: "sticky error latches the session",
+			spec: sticky,
+			steps: []step{
+				{event: "session.error", want: "error"},
+				{event: "session.execution.started"},
+				{event: "session.execution.succeeded"},
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := NewTracker(tc.spec)
+			for _, s := range tc.steps {
+				n := tr.Handle(agent.StreamEvent{Type: s.event, SessionID: "ses_1"})
+				got := ""
+				if n != nil {
+					switch n.Trigger {
+					case TriggerInput:
+						got = "input"
+					case TriggerDone:
+						got = "done"
+					case TriggerError:
+						got = "error"
+					}
+				}
+				if got != s.want {
+					t.Fatalf("%s: got %q, want %q", s.event, got, s.want)
+				}
+			}
+		})
 	}
 }

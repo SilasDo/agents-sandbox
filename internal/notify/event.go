@@ -78,7 +78,11 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 			}
 		}
 	case eventTypeIn(e.Type, t.spec.ErrorEvents):
-		t.states[e.SessionID] = stateError
+		if eventTypeIn(e.Type, t.spec.StickyErrorEvents) {
+			t.states[e.SessionID] = stateError
+		} else {
+			t.states[e.SessionID] = stateIdle
+		}
 		return &Notification{
 			SessionID: e.SessionID,
 			Trigger:   TriggerError,

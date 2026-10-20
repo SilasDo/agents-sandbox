@@ -154,6 +154,12 @@ type EventStreamSpec struct {
 	AwaitingInput []string
 	IdleEvents    []string
 	ErrorEvents   []string
+	// StickyErrorEvents is the subset of ErrorEvents that latches the session
+	// in the error state: no further notification fires for that session until
+	// the watcher reconnects. An error event not listed here ends only the
+	// current turn, so the session notifies again on its next turn. Empty means
+	// no error event latches.
+	StickyErrorEvents []string
 	// SessionEvents are lifecycle event types whose payload may identify a
 	// session's parent. A non-empty parent ID marks the session as a subagent
 	// (child) session; no notification ever fires for a child session.

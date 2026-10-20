@@ -292,6 +292,7 @@ func TestOpencodeEventStream(t *testing.T) {
 		AwaitingInput:      []string{"permission.asked", "question.asked"},
 		IdleEvents:         []string{"session.idle"},
 		ErrorEvents:        []string{"session.error"},
+		StickyErrorEvents:  []string{"session.error"},
 		SessionEvents:      []string{"session.created", "session.updated"},
 		SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
 		Name:               "opencode",
