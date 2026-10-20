@@ -54,32 +54,40 @@ measurements shape that wait:
 - **quiet output does not mean the harness has rendered.** The launcher loads an image and starts a VM before the
   harness runs, printing nothing for seconds at a time while it does, so a quiescence-based fallback fires on
   launcher output before the harness has drawn anything.
-- **input written to the pty before the harness runs is buffered, not discarded.** msb's attach client puts the host
-  terminal in raw mode with `TCSANOW` and flushes input (`TCIFLUSH`) only when it restores the terminal, so quit
-  bytes written too early are delivered to the harness as it starts rather than dropped. Retrying the quit keys
-  until the process exits therefore does not make the timing safe; waiting for readiness does.
+- **input written to the pty before the attach client starts is buffered, not discarded.** msb's attach client puts
+  the host terminal in raw mode with `TCSANOW` and flushes input (`TCIFLUSH`) only when it restores the terminal. That
+  window is not what makes a quit unreliable, though: the presses that get ignored are made seconds *after* the attach
+  is live and the harness is already painting, so the loss is on the harness's side — see "Press until it goes" below.
 
 Once the image prebuild has run, the harness's UI comes up about 14s after launch, so the settled wait is 25s.
 
-**Harness table completeness.** A single table maps harness name to its quit presses, an optional network override,
-and a `KeepsNormalBuffer` flag. A fast untagged unit test asserts the table's key set equals `agent.Names()`, so a
-newly registered harness fails `make test` until it is added — a harness cannot be added without smoke coverage.
+**Harness table completeness.** A single table maps harness name to the key the smoke test presses, an optional network
+override, a `KeepsNormalBuffer` flag, and a `ReactsOnly` flag. Fast untagged unit tests assert the table's key set equals
+`agent.Names()` and that every entry names a key, so a newly registered harness fails `make test` until it is added — a
+harness cannot be added without smoke coverage.
 
-Quit presses are per harness, confirmed against the shipped binaries on a host:
-
-| harness | quit presses | why |
+| harness | key | how it ends |
 | --- | --- | --- |
-| `opencode`, `opencode2` | `0x04` twice (Ctrl-D) | documented `app_exit` / `app.exit`; the second press is what leaves it, while Ctrl-C — owned by the terminal editor — never exited |
-| `pi` | `0x04` (Ctrl-D) | documented `app.exit`, confirmed on a single press; Ctrl-C is `app.clear` |
-| `claude-code` | `0x03` twice (Ctrl-C) | its first press only arms the exit — the screen answers "Press Ctrl-C again to exit" — while Ctrl-D twice (its documented `app:exit`) did not exit |
+| `opencode`, `opencode2` | `0x04` (Ctrl-D) | their documented `app_exit`; they leave once a press lands after the TUI has finished coming up |
+| `pi` | `0x04` (Ctrl-D) | documented `app.exit`; leaves on the first press |
+| `claude-code` | `0x03` (Ctrl-C) | `ReactsOnly`: it paints in response to the key, but no key the suite can send leaves the first-run screen it starts on |
 
-**Presses, not bytes.** A quit is a sequence of presses, each written to the pty on its own with a gap between them
-(`quitPressGap`), because a harness whose quit is a repeated key reads two bytes written together as a single key
-event: `opencode` never leaves its TUI with both Ctrl-D bytes in one write, while the same pair sent as two presses
-exits `0`. The gap is a human double-tap — far longer than the terminal needs to deliver the presses separately, far
-shorter than the window `claude-code`'s "press again" prompt allows. Every press is written before the exit wait, with
-no earlier-stop guard: writing to the pty master after the child has already exited succeeds on Linux, so such a guard
-would be dead code.
+**Press until it goes, then assert the exit.** `quit` presses the harness's key, waits `quitAttemptInterval` (2s) for
+the process to exit, and presses again — up to `quitAttempts` (6) times — before asserting exit code 0. A TUI paints its
+alternate screen seconds before it accepts input: measured on a KVM host, `opencode2` leaves on a press made ~3s after
+the alternate-screen marker and ignores the same key pressed at ~0ms and ~350ms, and `opencode` leaves on the second
+press ~2s after a first press at ~3s, whose screen was still the launcher's own output. Whether those early bytes sit
+buffered in the guest and are consumed when the harness starts reading, or are delivered and ignored while it
+initialises, is not pinned down; what is measured is that retrying is what makes the timing work, and that a fixed
+readiness wait does not. No harness needs a multi-key sequence: a harness whose exit is a repeated press leaves on the
+next attempt, one interval later.
+
+**`ReactsOnly`: a harness with no key that leaves its first-run screen.** The isolated root means every harness starts
+unconfigured, so each one runs its own first-run flow. `claude-code` cannot be driven out of it: measured on a host, its
+first-run theme chooser paints in response to Ctrl-D, Ctrl-C, and Enter (+3.3KB, +3.3KB, +0.8KB) and stays up; Esc paints
+nothing; and Enter only advances it into its login flow, where a burst does exit `0` at the cost of starting an OAuth
+exchange. For such a harness the suite asserts the weaker but still meaningful property: the pressed key has to make the
+harness paint within `reactTimeout`, which a frozen or crashed screen would not. Every other harness asserts the exit.
 
 **Isolation (hard requirement).** The child never reads or writes the developer's existing agents-sandbox
 configuration or state. Each run creates one temp root, shared by all subtests (which run sequentially), and:
@@ -132,7 +140,8 @@ binary and a reachable docker daemon.
 
 ## Non-goals
 
-- TUI content or behaviour beyond reaching the full-screen TUI and quitting on its documented key.
+- TUI content or behaviour beyond reaching the full-screen TUI and leaving it on its key — a harness whose first-run
+  screen offers no such key only has to react to one.
 - Credentials, authenticated sessions, or harness network egress.
 - Replacing the mocked `internal/sandbox/vm` tests.
 - Agent version resolution, the upgrade prompt, or the image build.
@@ -140,10 +149,10 @@ binary and a reachable docker daemon.
 
 ## Risks and open items
 
-- `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up and then exited `0`
-  on Ctrl-C; unlike the alternate-screen harnesses it does not observe the UI being drawn. A claude-code change that
-  stops exiting on Ctrl-C from its first screen shows up as a failed subtest and needs the table updated — and a
-  second `Ctrl-C` within the prompt's window is what actually quits it, so a table change there also has to keep the
-  press gap inside that window, which the harness does not document.
+- `claude-code`'s settled readiness asserts that its process outlasted the launcher's start-up and then that a keypress
+  makes it paint; unlike the alternate-screen harnesses it does not observe the UI being drawn, and unlike them it
+  asserts no exit. A release that stops painting in response to a key fails its subtest; one that starts quitting from
+  its first-run screen would pass unnoticed, so a future probe should revisit the `ReactsOnly` flag rather than assume
+  it still holds.
 - Four harnesses mean four runner-image builds on a cold home; the image prebuild pays for them before any
   harness's TUI window opens, and the host-only placement absorbs the cost.
