@@ -40,7 +40,16 @@ func TestResolveGitDir(t *testing.T) {
 		if err := os.MkdirAll(wtDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		relative, err := filepath.Rel(wtDir, filepath.Join(repo, ".git", "worktrees", "wt"))
+		// A registration needs its commondir marker, so a stripped-and-joined
+		// relative gitdir is validated as genuine.
+		candidate := filepath.Join(repo, ".git", "worktrees", "wt")
+		if err := os.MkdirAll(candidate, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(candidate, "commondir"), []byte("../..\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		relative, err := filepath.Rel(wtDir, candidate)
 		if err != nil {
 			t.Fatalf("Rel: %v", err)
 		}

@@ -74,17 +74,20 @@ func TestResolveIdentityDifferentOriginsDiffer(t *testing.T) {
 }
 
 func TestResolveIdentityWorktreeSharesCheckoutSlug(t *testing.T) {
-	root := newRepo(t, "https://example.com/acme/widget.git")
-	main := ResolveIdentity(root)
+	const origin = "https://example.com/acme/widget.git"
+	repo := resolvePath(testutil.InitRepo(t))
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
+	main := ResolveIdentity(repo)
 
-	wt := filepath.Join(root, "nested", "wt")
-	writeGitdirFile(t, wt, filepath.Join(root, ".git", "worktrees", "wt"))
-	got := ResolveIdentity(wt)
+	nested := filepath.Join(repo, "nested", "wt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
+	testutil.RunGit(t, repo, "worktree", "add", nested)
+	got := ResolveIdentity(nested)
 
 	require.Equal(t, main.RepoSlug, got.RepoSlug)
 	require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
-	require.Equal(t, root, got.BindRoot)
-	require.Equal(t, root, got.CheckoutRoot)
+	require.Equal(t, repo, got.BindRoot)
+	require.Equal(t, repo, got.CheckoutRoot)
 	require.False(t, got.OutsideWorktree)
 }
 
@@ -186,6 +189,21 @@ func newRepoUnderWorktreesAncestor(t *testing.T) string {
 	return repo
 }
 
+// newSeparateGitDirUnderWorktreesAncestor creates a real --separate-git-dir
+// checkout whose git dir is "<base>/worktrees/<name>.git": the shape of a
+// worktree registration but with no commondir marker. It returns the checkout
+// root and the recorded git dir.
+func newSeparateGitDirUnderWorktreesAncestor(t *testing.T) (string, string) {
+	t.Helper()
+	base := resolvePath(t.TempDir())
+	root := filepath.Join(base, "checkout")
+	require.NoError(t, os.MkdirAll(root, 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "worktrees"), 0o755))
+	gitdir := filepath.Join(base, "worktrees", "proj.git")
+	testutil.RunGit(t, root, "init", "--separate-git-dir="+gitdir)
+	return root, gitdir
+}
+
 // TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside pins the
 // pre-refactor order: the recorded gitdir is classified and stripped while still
 // relative, before it is joined to the worktree root. A "worktrees" component in
@@ -246,20 +264,39 @@ func TestResolveIdentityWorktreeUnderWorktreesAncestor(t *testing.T) {
 	require.Equal(t, repo, id.BindRoot)
 }
 
+// TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside pins the
+// discriminator: a --separate-git-dir checkout whose git dir is
+// "<ancestor>/worktrees/<name>.git" matches a registration's shape but has no
+// commondir marker, so it is a plain checkout and must not be stripped, refused
+// or bound to the ancestor.
+func TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside(t *testing.T) {
+	root, gitdir := newSeparateGitDirUnderWorktreesAncestor(t)
+
+	require.Equal(t, gitdir, resolveGitDir(root))
+	require.False(t, isLinkedWorktree(root))
+
+	id := ResolveIdentity(root)
+
+	require.False(t, id.OutsideWorktree)
+	require.Equal(t, root, id.CheckoutRoot)
+	require.Equal(t, root, id.BindRoot)
+}
+
 func TestRepoSlugOutsideWorktree(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	root := newRepo(t, origin)
+	repo := resolvePath(testutil.InitRepo(t))
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
 	outside := filepath.Join(resolvePath(t.TempDir()), "wt")
-	writeGitdirFile(t, outside, filepath.Join(root, ".git", "worktrees", "wt"))
+	testutil.RunGit(t, repo, "worktree", "add", outside)
 	t.Chdir(outside)
 
 	require.Equal(t, projectSlug(sanitizeFolderName("widget"), origin), RepoSlug())
 }
 
 func TestCheckoutSlugOutsideWorktreeFailsFast(t *testing.T) {
-	root := newRepo(t, "https://example.com/acme/widget.git")
+	repo := resolvePath(testutil.InitRepo(t))
 	outside := filepath.Join(resolvePath(t.TempDir()), "wt")
-	writeGitdirFile(t, outside, filepath.Join(root, ".git", "worktrees", "wt"))
+	testutil.RunGit(t, repo, "worktree", "add", outside)
 	t.Chdir(outside)
 
 	slug, err := CheckoutSlug()
@@ -267,7 +304,7 @@ func TestCheckoutSlugOutsideWorktreeFailsFast(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, slug)
 	require.Contains(t, err.Error(), outside)
-	require.Contains(t, err.Error(), root)
+	require.Contains(t, err.Error(), repo)
 }
 
 func TestRequireCheckoutSlugReturnsCheckoutSlug(t *testing.T) {
