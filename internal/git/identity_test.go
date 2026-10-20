@@ -91,6 +91,49 @@ func TestResolveIdentityWorktreeSharesCheckoutSlug(t *testing.T) {
 	require.False(t, got.OutsideWorktree)
 }
 
+// TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug pins the checkout-slug
+// derivation when there is no origin: the folder comes from the checkout
+// basename, not the worktree's, so an inside-worktree shares its checkout slug.
+// The repo slug keeps its documented no-origin fallback (folder and hash both
+// from the worktree root), so the inside-worktree still has its own repo slug.
+func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
+	t.Run("plain checkout", func(t *testing.T) {
+		repo := resolvePath(testutil.InitRepo(t))
+		main := ResolveIdentity(repo)
+
+		nested := filepath.Join(repo, "nested", "wt")
+		require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
+		testutil.RunGit(t, repo, "worktree", "add", nested)
+		got := ResolveIdentity(nested)
+
+		require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
+		require.False(t, got.OutsideWorktree)
+		require.Equal(t, repo, got.BindRoot)
+		require.Equal(t, repo, got.CheckoutRoot)
+		// The repo slug's unchanged fallback derives from the worktree root, so
+		// the inside-worktree does not share its checkout's repo slug.
+		require.Equal(t, projectSlug(sanitizeFolderName("wt"), nested), got.RepoSlug)
+		require.NotEqual(t, main.RepoSlug, got.RepoSlug)
+	})
+
+	t.Run("bare root", func(t *testing.T) {
+		origin := testutil.InitRepo(t)
+		root := resolvePath(t.TempDir())
+		gitDir := filepath.Join(root, ".git")
+		testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
+		testutil.RunGit(t, gitDir, "remote", "remove", "origin")
+		testutil.RunGit(t, gitDir, "worktree", "add", "--detach", filepath.Join(root, "main"))
+
+		main := ResolveIdentity(root)
+		got := ResolveIdentity(filepath.Join(root, "main"))
+
+		require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
+		require.False(t, got.OutsideWorktree)
+		require.Equal(t, root, got.BindRoot)
+		require.Equal(t, root, got.CheckoutRoot)
+	})
+}
+
 func TestResolveIdentitySubdirectoryMatchesCheckoutRoot(t *testing.T) {
 	root := newRepo(t, "https://example.com/acme/widget.git")
 	main := ResolveIdentity(root)
