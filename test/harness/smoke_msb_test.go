@@ -24,8 +24,13 @@ const (
 	// stays generous for a cold host.
 	tuiReadyTimeout = 180 * time.Second
 	// exitTimeout bounds how long a harness may take to exit once its quit
-	// keys are written.
+	// presses are written.
 	exitTimeout = 20 * time.Second
+	// quitPressGap separates the presses of a harness that leaves its TUI on a
+	// repeated key. It is a human double-tap: far longer than the terminal
+	// needs to deliver the presses as separate key events, and far shorter than
+	// the window a "press again to exit" prompt allows.
+	quitPressGap = 300 * time.Millisecond
 	// settledReadyTimeout bounds the readiness wait for a harness whose TUI
 	// keeps the terminal's normal buffer, where no marker announces that its UI
 	// is up. It covers the launcher's image load and VM start — about 14s on a
@@ -96,14 +101,14 @@ func TestHarnessSmoke(t *testing.T) {
 			if err := waitReady(ses, spec); err != nil {
 				t.Fatalf("harness %s did not reach its TUI: %v\n--- output ---\n%s", name, err, stripANSI(ses.output()))
 			}
-			if err := ses.write(spec.QuitKeys); err != nil {
-				t.Fatalf("write quit keys: %v", err)
+			if err := ses.writeKeyPresses(spec.QuitPresses, quitPressGap); err != nil {
+				t.Fatalf("write quit presses: %v", err)
 			}
 			code, err := ses.waitExit(exitTimeout)
 			if err != nil {
 				t.Fatalf(
-					"harness %s did not exit after quit keys %v within %s: %v\n--- output ---\n%s",
-					name, spec.QuitKeys, exitTimeout, err, stripANSI(ses.output()))
+					"harness %s did not exit after quit presses %v within %s: %v\n--- output ---\n%s",
+					name, spec.QuitPresses, exitTimeout, err, stripANSI(ses.output()))
 			}
 			if code != 0 {
 				t.Fatalf("harness %s exited %d, want 0\n--- output ---\n%s", name, code, stripANSI(ses.output()))

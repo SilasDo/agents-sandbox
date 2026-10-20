@@ -69,23 +69,39 @@ var isolatedEnvKeep = []string{
 // render runs under.
 const publicNetwork = "public"
 
+// Terminal keys that leave a harness's full-screen TUI: Ctrl-D is `opencode`'s
+// and `pi`'s documented `app_exit`/`app.exit`, and Ctrl-C is the interrupt
+// `claude-code` confirms its exit with.
+const (
+	ctrlC = 0x03
+	ctrlD = 0x04
+)
+
 // harnessSpecs maps every registered harness to how the smoke test drives it.
 // It must stay in sync with agent.Names(); the smoke test asserts the two key
 // sets are equal.
 var harnessSpecs = map[string]harnessSpec{
 	// claude-code checks in with its API before it draws anything, so it needs
 	// egress, and its renderer keeps the terminal's normal buffer, so the
-	// alternate screen never announces that its UI is up.
-	"claude-code": {QuitKeys: []byte{0x03}, Network: publicNetwork, KeepsNormalBuffer: true},
-	"opencode":    {QuitKeys: []byte{0x04, 0x04}, Network: "", KeepsNormalBuffer: false},
-	"opencode2":   {QuitKeys: []byte{0x04, 0x04}, Network: "", KeepsNormalBuffer: false},
-	"pi":          {QuitKeys: []byte{0x04}, Network: "", KeepsNormalBuffer: false},
+	// alternate screen never announces that its UI is up. Its first Ctrl-C only
+	// arms the exit — its screen answers "Press Ctrl-C again to exit" and waits
+	// for a second.
+	"claude-code": {QuitPresses: [][]byte{{ctrlC}, {ctrlC}}, Network: publicNetwork, KeepsNormalBuffer: true},
+	// opencode's editor owns Ctrl-C, and its app exit key leaves it on the
+	// second press rather than the first.
+	"opencode":  {QuitPresses: [][]byte{{ctrlD}, {ctrlD}}, Network: "", KeepsNormalBuffer: false},
+	"opencode2": {QuitPresses: [][]byte{{ctrlD}, {ctrlD}}, Network: "", KeepsNormalBuffer: false},
+	// pi leaves its TUI on a single press.
+	"pi": {QuitPresses: [][]byte{{ctrlD}}, Network: "", KeepsNormalBuffer: false},
 }
 
 // harnessSpec describes how to drive one harness to its TUI and quit it.
 type harnessSpec struct {
-	// QuitKeys are written to the pty to leave the full-screen TUI.
-	QuitKeys []byte
+	// QuitPresses are the key presses written to the pty to leave the
+	// full-screen TUI, one write per press with a gap between them: a harness
+	// whose quit is a repeated key needs the presses to arrive as separate key
+	// events.
+	QuitPresses [][]byte
 	// Network overrides the default `--network none` when a harness needs
 	// egress to render.
 	Network string

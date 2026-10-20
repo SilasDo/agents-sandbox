@@ -15,7 +15,7 @@ func TestHarnessSpecsCoverEveryRegisteredAgent(t *testing.T) {
 	}
 	for _, name := range names {
 		if _, ok := harnessSpecs[name]; !ok {
-			t.Errorf("registered harness %q has no smoke-test spec; add a quit key", name)
+			t.Errorf("registered harness %q has no smoke-test spec; add its quit presses", name)
 		}
 	}
 	for name := range harnessSpecs {
@@ -25,10 +25,15 @@ func TestHarnessSpecsCoverEveryRegisteredAgent(t *testing.T) {
 	}
 }
 
-func TestHarnessSpecsQuitKeysNonEmpty(t *testing.T) {
+func TestHarnessSpecsQuitPressesNonEmpty(t *testing.T) {
 	for name, spec := range harnessSpecs {
-		if len(spec.QuitKeys) == 0 {
-			t.Errorf("harness %q has empty quit keys", name)
+		if len(spec.QuitPresses) == 0 {
+			t.Errorf("harness %q has no quit press", name)
+		}
+		for i, press := range spec.QuitPresses {
+			if len(press) == 0 {
+				t.Errorf("harness %q quit press %d is empty", name, i)
+			}
 		}
 	}
 }

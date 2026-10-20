@@ -2,6 +2,7 @@ package harness
 
 import (
 	"errors"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -46,6 +47,85 @@ func TestPTYRoundTrip(t *testing.T) {
 	}
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
+	}
+}
+
+// TestPTYWriteKeyPressesSeparatesThePresses pins why a quit that is a repeated
+// key is written one press at a time: two bytes in a single write reach a
+// harness's input parser as a single key event, so the presses are spaced by the
+// given gap and travel as two writes.
+func TestPTYWriteKeyPressesSeparatesThePresses(t *testing.T) {
+	readEnd, writeEnd, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("open pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		readEnd.Close()
+		writeEnd.Close()
+	})
+	ses := &ptySession{master: writeEnd}
+
+	// A gap far longer than the reader needs, so the check below observes the
+	// driver's pause rather than the test's own timing.
+	const (
+		// gap is the pause the driver is asked to leave between presses.
+		gap = 500 * time.Millisecond
+		// pressAbsentWindow is how long the second press must stay unreadable
+		// after the first arrives.
+		pressAbsentWindow = 50 * time.Millisecond
+		// pressArrivalTimeout bounds the wait for it, so an implementation that
+		// never writes the second press fails instead of blocking the suite.
+		pressArrivalTimeout = 5 * time.Second
+	)
+	writeErr := make(chan error, 1)
+	go func() { writeErr <- ses.writeKeyPresses([][]byte{{ctrlD}, {ctrlD}}, gap) }()
+
+	// While the driver pauses, the terminal holds only the first press; a driver
+	// that wrote both together would leave the second one readable here.
+	first := make([]byte, 1)
+	if _, err := io.ReadFull(readEnd, first); err != nil {
+		t.Fatalf("read first press: %v", err)
+	}
+	if first[0] != ctrlD {
+		t.Errorf("first press = %#x, want %#x", first[0], ctrlD)
+	}
+	if err := readEnd.SetReadDeadline(time.Now().Add(pressAbsentWindow)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+	if n, err := readEnd.Read(make([]byte, 1)); err == nil {
+		t.Fatalf("read %d bytes %s after the first press, want the second press held back by the %s gap",
+			n, pressAbsentWindow, gap)
+	}
+	if err := readEnd.SetReadDeadline(time.Now().Add(pressArrivalTimeout)); err != nil {
+		t.Fatalf("set read deadline: %v", err)
+	}
+
+	second := make([]byte, 1)
+	if _, err := io.ReadFull(readEnd, second); err != nil {
+		t.Fatalf("read second press after the gap: %v", err)
+	}
+	if second[0] != ctrlD {
+		t.Errorf("second press = %#x, want %#x", second[0], ctrlD)
+	}
+	if err := <-writeErr; err != nil {
+		t.Errorf("writeKeyPresses: %v", err)
+	}
+}
+
+// TestPTYWriteKeyPressesReportsAWriteFailure pins that a press the terminal
+// refuses is reported instead of the quit being silently truncated.
+func TestPTYWriteKeyPressesReportsAWriteFailure(t *testing.T) {
+	_, writeEnd, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("open pipe: %v", err)
+	}
+	if err := writeEnd.Close(); err != nil {
+		t.Fatalf("close pipe: %v", err)
+	}
+	ses := &ptySession{master: writeEnd}
+
+	if err := ses.writeKeyPresses([][]byte{{ctrlD}, {ctrlD}}, 0); err == nil {
+		t.Error("writeKeyPresses = nil, want the refused write reported")
 	}
 }
 
