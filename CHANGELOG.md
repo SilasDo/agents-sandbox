@@ -89,6 +89,11 @@ command reports the bare version (e.g. `0.1.0`).
 - Internal: add a regression test asserting every deprecated alias in the deprecation register still resolves and emits
   exactly one warning — the CLI flags `--dind`, `--opencode-version`, `--age`/`-a`, and `sandbox list --names`, plus the
   `OPENCODE_SANDBOX_` env prefix, `AGENTS_SANDBOX_DIND`, and the `dind` config key (#202).
+- Internal: `TestEveryTestPackageInstallsItsAcyclicFailFastMocks`
+  (`internal/testutil/isolation_contract_test.go`) enforces the test-isolation contract: every package with tests must
+  install, from its `main_test.go` `TestMain`, the fail-fast seam mock for every family its tests can import without a
+  cycle. The expected set is derived from the module import graph, so there is no hand-maintained exception list. It adds
+  the docker fail-fast to `internal/agent` and `internal/filewalk`, the last two packages without a backstop.
 
 ### Changed
 
