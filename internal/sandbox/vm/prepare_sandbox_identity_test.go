@@ -285,6 +285,16 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	if *inspectedTag != naming.RunnerImageRef(identity.CheckoutSlug, "opencode") {
 		t.Errorf("image tag = %q, want the worktree-root-derived tag", *inspectedTag)
 	}
+	// The slug is only half the identity: /workspace must bind the worktree
+	// root — not the checkout it shares a common dir with, and not the cwd.
+	worktreeRoot, err := filepath.EvalSymlinks(outside)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", outside, err)
+	}
+	mountConfig := createdProjectVMConfig(t, mock, projectVMName(key))
+	if got := mountConfig.Volumes[defaultTargetDir].Bind; got != worktreeRoot {
+		t.Errorf("%s mount source = %q, want the worktree root %q", defaultTargetDir, got, worktreeRoot)
+	}
 }
 
 // TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending pins the
