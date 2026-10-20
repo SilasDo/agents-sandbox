@@ -35,6 +35,38 @@ func TestComputeDockerfileIDFoldsMergeScript(t *testing.T) {
 	}
 }
 
+// TestComputeDockerfileIDFoldsTrustHelper asserts editing the vendored CA-trust
+// helper invalidates existing runner images, the same guarantee the merge-script
+// fold has: the helper travels in the build context under an invariant COPY, so
+// only its bytes in the identity can force a warm image to be rebuilt.
+func TestComputeDockerfileIDFoldsTrustHelper(t *testing.T) {
+	rendered := []byte("FROM scratch\n")
+	original := embeddedTrustHelperScript
+	t.Cleanup(func() { embeddedTrustHelperScript = original })
+
+	before := computeDockerfileID(rendered, "1.2.3")
+	embeddedTrustHelperScript = append(append([]byte(nil), original...), []byte("\n# changed\n")...)
+	if after := computeDockerfileID(rendered, "1.2.3"); after == before {
+		t.Error("computeDockerfileID did not change after the trust helper changed")
+	}
+}
+
+// TestComputeDockerfileIDFoldsTrustHelperLicense asserts the vendored license is
+// part of the image identity like the helper beside it: the final stage installs
+// it under an invariant COPY, so only its bytes in the identity can force a warm
+// image to be rebuilt after the license text changes.
+func TestComputeDockerfileIDFoldsTrustHelperLicense(t *testing.T) {
+	rendered := []byte("FROM scratch\n")
+	original := embeddedTrustHelperLicense
+	t.Cleanup(func() { embeddedTrustHelperLicense = original })
+
+	before := computeDockerfileID(rendered, "1.2.3")
+	embeddedTrustHelperLicense = append(append([]byte(nil), original...), []byte("\n# changed\n")...)
+	if after := computeDockerfileID(rendered, "1.2.3"); after == before {
+		t.Error("computeDockerfileID did not change after the trust helper license changed")
+	}
+}
+
 // TestEnsureImageSkipsBuildWhenDockerfileIDMatches verifies the build is skipped
 // when the existing runner image already carries a matching dockerfile-id label.
 func TestEnsureImageSkipsBuildWhenDockerfileIDMatches(t *testing.T) {
