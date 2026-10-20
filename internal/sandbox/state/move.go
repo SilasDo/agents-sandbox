@@ -15,54 +15,80 @@ func SlugDir(slug string) string {
 	return slugDir(slug)
 }
 
-// MoveSlugDir moves every entry of SlugDir(fromSlug) into SlugDir(toSlug) and
-// removes the source directory once it is left empty.
+// MoveSlugDir moves the entries of SlugDir(fromSlug) into SlugDir(toSlug) and
+// returns the source-relative path of every entry it left behind. It is the
+// state-moving half of the per-checkout identity adoption (#144).
 //
-// Entries the destination already has are neither overwritten nor merged: they
-// are left in place and their names reported in skipped. Adoption of a legacy
-// project identity (#144) needs exactly this tolerance, because the trigger
-// deliberately ignores a stray lock file or clients/ directory an aborted run
-// left at the destination — a whole-directory rename would fail there with
-// ENOTEMPTY. A skipped entry is not an error; the caller warns and continues.
+// The move is a recursive merge that never overwrites an existing file. A
+// destination name that is free is renamed; where both sides are directories the
+// merge descends and merges them; anything else — a file, a dangling symlink, or
+// a file/directory type mismatch — is left in place and reported. Every rename
+// therefore targets a name that did not exist, and an existing destination
+// directory keeps its own permissions and contents.
 //
-// A missing source directory is a no-op. Both directories live under the one
-// state root, so os.Rename cannot cross a filesystem and no copy fallback is
-// needed.
+// Refusing more coarsely is not enough. The adoption trigger deliberately
+// tolerates a stray lock file or clients/ directory an aborted run left behind,
+// and the collision can be the <agent>/ directory itself; a one-level refusal
+// would leave the legacy <agent>/state.yaml behind, re-fire the trigger on every
+// run, and let the run proceed under the checkout identity with no state, a
+// freshly provisioned home volume, and the agent's auth silently gone. Merging
+// guarantees that whenever the trigger held, <agent>/state.yaml reaches the
+// destination. A skipped entry is not an error; the caller warns and continues.
 //
-//nolint:nonamedreturns // the documented (skipped, err) signature is the contract
-func MoveSlugDir(fromSlug, toSlug string) (skipped []string, err error) {
+// A missing source directory is a no-op. Source directories the merge empties
+// are removed best-effort. Both directories live under the one state root, so
+// os.Rename cannot cross a filesystem and no copy fallback is needed.
+func MoveSlugDir(fromSlug, toSlug string) ([]string, error) {
 	if fromSlug == toSlug {
 		return nil, nil
 	}
-	fromDir, toDir := SlugDir(fromSlug), SlugDir(toSlug)
+	return mergeDir(SlugDir(fromSlug), SlugDir(toSlug), "")
+}
 
-	entries, err := os.ReadDir(fromDir)
+// mergeDir moves every entry of srcDir into dstDir, recursing where both sides
+// are directories, and removes srcDir once the merge has emptied it. rel is
+// srcDir's path relative to the slug directory being moved, and prefixes every
+// entry reported as skipped so the caller can name the file that stayed behind.
+func mergeDir(srcDir, dstDir, rel string) ([]string, error) {
+	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("read state dir %s: %w", fromDir, err)
+		return nil, fmt.Errorf("read state dir %s: %w", srcDir, err)
 	}
 
+	var skipped []string
 	for _, entry := range entries {
 		name := entry.Name()
-		dst := filepath.Join(toDir, name)
-		if _, statErr := os.Lstat(dst); statErr == nil {
-			skipped = append(skipped, name)
-			continue
-		} else if !os.IsNotExist(statErr) {
-			return skipped, fmt.Errorf("stat %s: %w", dst, statErr)
-		}
-		if err := os.MkdirAll(toDir, 0o700); err != nil {
-			return skipped, fmt.Errorf("create state dir %s: %w", toDir, err)
-		}
-		if err := os.Rename(filepath.Join(fromDir, name), dst); err != nil {
-			return skipped, fmt.Errorf("move %s to %s: %w", name, dst, err)
+		srcPath := filepath.Join(srcDir, name)
+		dstPath := filepath.Join(dstDir, name)
+		childRel := filepath.Join(rel, name)
+
+		dstInfo, statErr := os.Lstat(dstPath)
+		switch {
+		case statErr == nil && entry.IsDir() && dstInfo.IsDir():
+			childSkipped, err := mergeDir(srcPath, dstPath, childRel)
+			skipped = append(skipped, childSkipped...)
+			if err != nil {
+				return skipped, err
+			}
+		case statErr == nil:
+			skipped = append(skipped, childRel)
+		case !os.IsNotExist(statErr):
+			return skipped, fmt.Errorf("stat %s: %w", dstPath, statErr)
+		default:
+			if err := os.MkdirAll(dstDir, 0o700); err != nil {
+				return skipped, fmt.Errorf("create state dir %s: %w", dstDir, err)
+			}
+			if err := os.Rename(srcPath, dstPath); err != nil {
+				return skipped, fmt.Errorf("move %s to %s: %w", srcPath, dstPath, err)
+			}
 		}
 	}
 
-	if err := os.Remove(fromDir); err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTEMPTY) {
-		return skipped, fmt.Errorf("remove state dir %s: %w", fromDir, err)
+	if err := os.Remove(srcDir); err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTEMPTY) {
+		return skipped, fmt.Errorf("remove state dir %s: %w", srcDir, err)
 	}
 	return skipped, nil
 }
