@@ -137,6 +137,8 @@ command reports the bare version (e.g. `0.1.0`).
   `internal/filewalk`, the last two packages without a backstop, and registers `notify` as a fifth family (installed by
   the wrapper; the five packages notify imports mirror the wrapper body directly). The wrapper's own package now tests
   its effect (`internal/testutil/mocks`), so the wrapper's body is covered by that package's own test binary.
+- Notifications: notify now supports the `opencode2` agent (its v2 session event stream) in addition to `opencode`, and
+  is skipped for subagent sessions — a child session carries a non-empty `parentID`, so only top-level sessions notify.
 
 ### Changed
 
