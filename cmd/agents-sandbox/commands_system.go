@@ -17,6 +17,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/humanize"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
+	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/sandbox/reprovision"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
@@ -113,9 +114,18 @@ func buildVolumeOpsCmd(
 			if !doctor.CheckAll(c.Context(), ui) {
 				return errors.New("preflight failed")
 			}
-			projectSlug := git.ProjectSlug()
 			dryRun, _ := c.Flags().GetBool(flagDryRun)
 			a, err := resolveAgentFlag(c)
+			if err != nil {
+				return err
+			}
+			// Adopt like PrepareSandbox does, and use the adopted slug for both
+			// the image and the state key. Never re-derive it from git: adoption
+			// may have just moved the state, and a dry run deliberately returns
+			// the legacy repo slug while the migration stays pending.
+			adoption, err := sandbox.AdoptLegacyIdentity(
+				c.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+			)
 			if err != nil {
 				return err
 			}
@@ -126,7 +136,7 @@ func buildVolumeOpsCmd(
 			info, err := image.EnsureImage(
 				c.Context(),
 				a,
-				projectSlug,
+				adoption.Slug,
 				image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: docker},
 				ui,
 			)
@@ -139,7 +149,7 @@ func buildVolumeOpsCmd(
 			}
 			return fn(
 				c.Context(),
-				state.Key{Slug: projectSlug, Agent: a.Name()},
+				state.Key{Slug: adoption.Slug, Agent: a.Name()},
 				volName,
 				info,
 				*rmVar,
@@ -483,6 +493,20 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			if !cmd.Flags().Changed(flagAgentVersion) && cmd.Flags().Changed(flagOpenCodeVersion) {
 				openCodeVersion, _ = cmd.Flags().GetString(flagOpenCodeVersion)
 			}
+			a, err := resolveAgentFlag(cmd)
+			if err != nil {
+				return err
+			}
+			// Adopt like PrepareSandbox does, and use the adopted slug for the
+			// image tag. It runs before the dry-run gate so the migration notice
+			// prints; a dry run passes apply=false, so the migration stays
+			// pending and adoption returns the legacy repo slug.
+			adoption, err := sandbox.AdoptLegacyIdentity(
+				cmd.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+			)
+			if err != nil {
+				return err
+			}
 			if dryRun {
 				ui.Infof("dry-run: Would build runner image")
 				return nil
@@ -490,11 +514,7 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			if err := doctor.CheckDocker(cmd.Context()); err != nil {
 				return fmt.Errorf("docker not available: %w", err)
 			}
-			a, err := resolveAgentFlag(cmd)
-			if err != nil {
-				return err
-			}
-			return image.Build(cmd.Context(), a, git.ProjectSlug(), image.BuildOptions{
+			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: openCodeVersion, UserProvided: false, Docker: resolveBuildDocker(cmd),
 			}, ui)
 		},

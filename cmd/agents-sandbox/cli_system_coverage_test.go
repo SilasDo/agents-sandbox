@@ -5,9 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
+	"github.com/moby/moby/client"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/git"
@@ -15,11 +21,208 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	"github.com/inoio/agents-sandbox/internal/testutil"
 	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
 )
+
+// originCloneURL is the shared origin URL for the identity fixtures, so two
+// clones map to one repo slug while keeping distinct checkout slugs.
+const originCloneURL = "https://example.com/acme/widget.git"
+
+// newOriginClone builds a minimal origin-holding repo layout (a .git dir whose
+// config names the shared origin), the same fixture shape internal/git's
+// identity tests use. It returns the symlink-resolved path so assertions match
+// what ResolveIdentity derives.
+func newOriginClone(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = resolved
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	config := "[remote \"origin\"]\n\turl = " + originCloneURL + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".git", "config"), []byte(config), 0o644); err != nil {
+		t.Fatalf("write git config: %v", err)
+	}
+	return root
+}
+
+// TestBuildUsesCheckoutSlug pins that the standalone build tags the runner image
+// with the checkout slug, matching run/volume ops, so two clones of one origin
+// build distinct images.
+func TestBuildUsesCheckoutSlug(t *testing.T) {
+	firstClone := newOriginClone(t)
+	secondClone := newOriginClone(t)
+	firstIdentity := git.ResolveIdentity(firstClone)
+	secondIdentity := git.ResolveIdentity(secondClone)
+	if firstIdentity.RepoSlug != secondIdentity.RepoSlug {
+		t.Fatalf("repo slugs differ for one origin: %q vs %q", firstIdentity.RepoSlug, secondIdentity.RepoSlug)
+	}
+	if firstIdentity.CheckoutSlug == secondIdentity.CheckoutSlug {
+		t.Fatalf("checkout slugs collide across clones: %q", firstIdentity.CheckoutSlug)
+	}
+
+	t.Chdir(secondClone)
+	cmd, _ := setupCommandFixtures(t, cmdBuild)
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	want := naming.RunnerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
+	if !slices.Contains(mock.LoadedImages, want) {
+		t.Errorf("build loaded images %v, want the second clone's checkout tag %q", mock.LoadedImages, want)
+	}
+}
+
+// TestBuildDryRunKeepsLegacySlugWhileMigrationPending pins the all-or-nothing dry
+// run: adoption prints the "Would migrate" notice but leaves both the migration
+// and the effective slug on the legacy repo slug.
+func TestBuildDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+
+	cmd, ui := setupCommandFixtures(t, cmdBuild, "--dry-run")
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	repoKey := state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName}
+	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: defaultAgentName}
+	if err := seedHomeState(repoKey, state.HomeState{
+		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", identity.RepoSlug),
+	}); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("build --dry-run: %v", err)
+	}
+
+	if _, err := state.ReadState(repoKey); err != nil {
+		t.Errorf("legacy state must survive a dry run: %v", err)
+	}
+	if _, err := state.ReadState(checkoutKey); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("dry run must not create the checkout-keyed state; got %v", err)
+	}
+
+	notice := strings.Join(ui.WarnCalls, "\n")
+	if !strings.Contains(notice, "Would migrate this checkout to its own project identity") {
+		t.Errorf("expected the dry-run migration notice, got:\n%s", notice)
+	}
+	// The effective slug stays the repo slug while the migration is pending, so
+	// the notice's current runner image reference is the legacy one.
+	if !strings.Contains(notice, naming.RunnerImageRef(identity.RepoSlug, defaultAgentName)) {
+		t.Errorf("notice must keep the runner image on the repo slug, got:\n%s", notice)
+	}
+}
+
+// TestVolumeOpsUseCheckoutSlug pins that a volume op resolves the checkout slug
+// of the clone it runs in, not the repo slug shared with every clone.
+func TestVolumeOpsUseCheckoutSlug(t *testing.T) {
+	firstClone := newOriginClone(t)
+	secondClone := newOriginClone(t)
+	firstIdentity := git.ResolveIdentity(firstClone)
+	secondIdentity := git.ResolveIdentity(secondClone)
+	if firstIdentity.CheckoutSlug == secondIdentity.CheckoutSlug {
+		t.Fatalf("checkout slugs collide across clones: %q", firstIdentity.CheckoutSlug)
+	}
+
+	t.Chdir(secondClone)
+	cmd, ui := setupCommandFixtures(t, cmdVolume, cmdReset, "--dry-run")
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	key := state.Key{Slug: secondIdentity.CheckoutSlug, Agent: defaultAgentName}
+	if err := seedHomeState(key, state.HomeState{
+		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", secondIdentity.CheckoutSlug),
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("volume reset --dry-run: %v", err)
+	}
+
+	joined := strings.Join(ui.InfoCalls, "\n")
+	if !strings.Contains(joined, secondIdentity.CheckoutSlug) {
+		t.Errorf("volume reset must resolve the second clone's checkout slug %q, got:\n%s",
+			secondIdentity.CheckoutSlug, joined)
+	}
+	if strings.Contains(joined, secondIdentity.RepoSlug) {
+		t.Errorf("volume reset must not resolve the shared repo slug %q, got:\n%s",
+			secondIdentity.RepoSlug, joined)
+	}
+}
+
+// TestVolumeOpsKeepLegacySlugWhileMigrationPending pins adoption in the volume
+// ops: a pending legacy identity is noticed but left unapplied by a dry run, and
+// the op resolves against the legacy repo slug.
+func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+
+	cmd, ui := setupCommandFixtures(t, cmdVolume, cmdReset, "--dry-run")
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	// Capture the runner image the op ensured: with the migration pending it
+	// must stay on the legacy repo slug.
+	var inspectedTag string
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			inspectedTag = ref
+			return client.ImageInspectResult{Config: &dockerspec.DockerOCIImageConfig{}}, nil
+		},
+	})
+
+	repoKey := state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName}
+	if err := seedHomeState(repoKey, state.HomeState{
+		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", identity.RepoSlug),
+	}); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("volume reset --dry-run: %v", err)
+	}
+
+	wantTag := naming.RunnerImageRef(identity.RepoSlug, defaultAgentName)
+	if inspectedTag != wantTag {
+		t.Errorf("ensured runner image = %q, want the legacy repo-slug tag %q while the migration is pending",
+			inspectedTag, wantTag)
+	}
+
+	joined := strings.Join(ui.InfoCalls, "\n")
+	if !strings.Contains(joined, identity.RepoSlug) {
+		t.Errorf("a pending legacy identity must keep the op on the repo slug %q, got:\n%s",
+			identity.RepoSlug, joined)
+	}
+	if strings.Contains(joined, identity.CheckoutSlug) {
+		t.Errorf("a dry run must not resolve the checkout slug %q while the migration is pending, got:\n%s",
+			identity.CheckoutSlug, joined)
+	}
+
+	notice := strings.Join(ui.WarnCalls, "\n")
+	if !strings.Contains(notice, "Would migrate this checkout to its own project identity") {
+		t.Errorf("expected the dry-run migration notice, got:\n%s", notice)
+	}
+	if _, err := state.ReadState(
+		state.Key{Slug: identity.CheckoutSlug, Agent: defaultAgentName},
+	); !errors.Is(
+		err,
+		state.ErrStateNotFound,
+	) {
+		t.Errorf("dry run must not create the checkout-keyed state; got %v", err)
+	}
+}
 
 func TestVolumeMigrateUnknownAgent(t *testing.T) {
 	initTestProjectDir(t)
@@ -38,7 +241,7 @@ func TestVolumeMigrateWithPositionalArg(t *testing.T) {
 	doctor.MockedCheckAll(t, true)
 	image.WithMockAgentVersion(t, "0.0.0-test")
 	docker.WithNoopDockerMock(t)
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
 		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", slug),
 	})

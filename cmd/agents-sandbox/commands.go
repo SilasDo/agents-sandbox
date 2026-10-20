@@ -107,7 +107,9 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 	rootCmd := buildMinimalRootFlagsCmd()
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
-		r, err := launcherconfig.NewResolver(cmd, git.ProjectSlug())
+		// Config stays on the repo slug: the per-slug user config dir is shared by
+		// every clone of one origin, so it must not follow the checkout slug.
+		r, err := launcherconfig.NewResolver(cmd, git.RepoSlug())
 		if err != nil {
 			return err
 		}

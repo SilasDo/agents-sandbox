@@ -42,14 +42,6 @@ func HashID(input string) string {
 	return encoded
 }
 
-// ProjectSlug returns the repo slug of the current working directory; see
-// RepoSlug.
-//
-// TODO(#144): replaced by ResolveIdentity; deleted by the cmd wiring task.
-func ProjectSlug() string {
-	return RepoSlug()
-}
-
 // originURL returns the origin remote URL for the checkout rooted at root, or
 // "" if there is none. For a normal checkout it reads the repo's own config;
 // for a linked worktree (whose .git is a file pointing into a shared gitdir)
