@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test test-integration compile-all coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test test-integration test-msb compile-all coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -84,11 +84,17 @@ test:
 test-integration:
 	CGO_ENABLED=1 go test -tags integration -timeout 60m -count=1 ./...
 
+# Harness smoke tests: start every registered harness to its TUI in a real
+# microsandbox VM. Host-only (needs /dev/kvm, a docker daemon, and network);
+# excluded from test/check via the `msb` build tag.
+test-msb:
+	CGO_ENABLED=1 go test -tags msb -timeout 60m -count=1 ./test/harness/...
+
 # Compile every test binary including build-tagged files (`//go:build
-# integration`) so a regression that only breaks tagged code is caught without a
-# docker daemon. `-run=^$` matches no test, so nothing is executed.
+# integration`, `//go:build msb`) so a regression that only breaks tagged code
+# is caught without a docker daemon or VM. `-run=^$` matches no test.
 compile-all:
-	CGO_ENABLED=1 go test -tags integration -run='^$$' ./...
+	CGO_ENABLED=1 go test -tags 'integration msb' -run='^$$' ./...
 
 coverage:
 	CGO_ENABLED=1 go test -coverprofile=coverage.out ./...
