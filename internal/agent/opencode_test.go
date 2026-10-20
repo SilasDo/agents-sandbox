@@ -287,12 +287,14 @@ func TestOpencodeEventStream(t *testing.T) {
 	}
 	got.Parse = nil
 	want := agent.EventStreamSpec{
-		StreamCommand: "curl -N -s http://127.0.0.1:4096/global/event",
-		BusyEvents:    []string{"message.part.updated", "session.updated"},
-		AwaitingInput: []string{"permission.asked", "question.asked"},
-		IdleEvents:    []string{"session.idle"},
-		ErrorEvents:   []string{"session.error"},
-		Name:          "opencode",
+		StreamCommand:      "curl -N -s http://127.0.0.1:4096/global/event",
+		BusyEvents:         []string{"message.part.updated", "session.updated"},
+		AwaitingInput:      []string{"permission.asked", "question.asked"},
+		IdleEvents:         []string{"session.idle"},
+		ErrorEvents:        []string{"session.error"},
+		SessionEvents:      []string{"session.created", "session.updated"},
+		SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
+		Name:               "opencode",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("EventStream() = %+v, want %+v", got, want)

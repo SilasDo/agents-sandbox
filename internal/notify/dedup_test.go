@@ -90,8 +90,6 @@ func TestDedupBypassesWhenNoSessionID(t *testing.T) {
 }
 
 // sseBlockFor builds an SSE block carrying a sessionID, so dedup is exercised.
-//
-//nolint:unparam // sessionID is a parameter for readability though tests pass one value
 func sseBlockFor(typ, sessionID string) []byte {
 	return []byte(
 		"data: {\"directory\":\"/workspace\",\"project\":\"p\",\"payload\":{\"id\":\"evt\",\"type\":\"" + typ + "\",\"properties\":{\"sessionID\":\"" + sessionID + "\"}}}\n\n",

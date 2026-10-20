@@ -125,6 +125,53 @@ func TestTrackerPerSessionIsolation(t *testing.T) {
 	}
 }
 
+func TestTrackerSuppressesChildSessions(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionEvents = []string{"session.created", "session.updated"}
+	tr := NewTracker(spec)
+
+	// Child announced by session.created: its busy->idle turn must not notify.
+	tr.Handle(agent.StreamEvent{Type: "session.created", SessionID: "ses_child", ParentID: "ses_root"})
+	if n := tr.Handle(agent.StreamEvent{Type: "message.part.updated", SessionID: "ses_child"}); n != nil {
+		t.Fatalf("child busy notified: %+v", n)
+	}
+	if n := tr.Handle(agent.StreamEvent{Type: "session.idle", SessionID: "ses_child"}); n != nil {
+		t.Fatalf("child idle notified: %+v", n)
+	}
+
+	// Top-level in the same tracker still notifies.
+	tr.Handle(agent.StreamEvent{Type: "message.part.updated", SessionID: "ses_root"})
+	n := tr.Handle(agent.StreamEvent{Type: "session.idle", SessionID: "ses_root"})
+	if n == nil || n.Trigger != TriggerDone {
+		t.Fatalf("top-level idle did not notify: %+v", n)
+	}
+}
+
+func TestTrackerSeededChildIsSuppressed(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionEvents = []string{"session.created", "session.updated"}
+	tr := NewTracker(spec)
+	tr.SeedChildren([]string{"ses_seeded", ""})
+
+	tr.Handle(agent.StreamEvent{Type: "message.part.updated", SessionID: "ses_seeded"})
+	if n := tr.Handle(agent.StreamEvent{Type: "session.idle", SessionID: "ses_seeded"}); n != nil {
+		t.Fatalf("seeded child notified: %+v", n)
+	}
+}
+
+func TestTrackerTopLevelSessionUpdatedStillBusy(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionEvents = []string{"session.created", "session.updated"}
+	tr := NewTracker(spec)
+
+	// session.updated is both a lifecycle event and a busy event; top-level must mark busy.
+	tr.Handle(agent.StreamEvent{Type: "session.updated", SessionID: "ses_root"})
+	n := tr.Handle(agent.StreamEvent{Type: "session.idle", SessionID: "ses_root"})
+	if n == nil || n.Trigger != TriggerDone {
+		t.Fatalf("top-level session.updated did not mark busy: %+v", n)
+	}
+}
+
 func TestTrackerHonorsCustomSpec(t *testing.T) {
 	spec := agent.EventStreamSpec{
 		StreamCommand: "curl -N -s http://127.0.0.1:9999/events",

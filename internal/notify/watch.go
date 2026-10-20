@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -161,6 +162,18 @@ func watchOnce(
 		return fmt.Errorf("opening stream: %w", err)
 	}
 	defer handle.Close()
+
+	// Seed the tracker with child sessions created before this stream opened.
+	// Best-effort: an error, non-success, or non-array body is ignored and the
+	// stream proceeds, since session.created still teaches new children.
+	if spec.SessionListCommand != "" {
+		if res, err := sb.Shell(ctx, spec.SessionListCommand); err == nil && res.Success() {
+			var ids []string
+			if json.Unmarshal([]byte(res.Stdout()), &ids) == nil {
+				tracker.SeedChildren(ids)
+			}
+		}
+	}
 
 	scanner := bufio.NewScanner(&streamReader{ctx: ctx, handle: handle, chunk: make([]byte, 0), pos: 0})
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)

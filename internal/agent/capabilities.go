@@ -154,7 +154,15 @@ type EventStreamSpec struct {
 	AwaitingInput []string
 	IdleEvents    []string
 	ErrorEvents   []string
-	Name          string
+	// SessionEvents are lifecycle event types whose payload may identify a
+	// session's parent. A non-empty parent ID marks the session as a subagent
+	// (child) session; no notification ever fires for a child session.
+	SessionEvents []string
+	// SessionListCommand is a one-shot shell command printing a JSON array of
+	// child session IDs, run each time a stream opens to seed the filter with
+	// sessions created before the watcher (re)connected. Empty disables seeding.
+	SessionListCommand string
+	Name               string
 	// Parse decodes one SSE data payload into a StreamEvent. ok is false when
 	// the payload carries no event.
 	Parse func(payload []byte) (StreamEvent, bool)

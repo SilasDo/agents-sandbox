@@ -9,8 +9,9 @@ import (
 // Tracker derives notification transitions from a stream of events, tracking
 // each session independently.
 type Tracker struct {
-	spec   agent.EventStreamSpec
-	states map[string]state
+	spec     agent.EventStreamSpec
+	states   map[string]state
+	children map[string]bool
 }
 
 type state int
@@ -25,12 +26,31 @@ const (
 // NewTracker returns a Tracker starting with no known sessions and driven by
 // spec. An absent session is treated as stateIdle.
 func NewTracker(spec agent.EventStreamSpec) *Tracker {
-	return &Tracker{spec: spec, states: map[string]state{}}
+	return &Tracker{spec: spec, states: map[string]state{}, children: map[string]bool{}}
+}
+
+// SeedChildren marks each non-empty id as a child session, so a subagent
+// created before the watcher connected is suppressed. Empty ids are skipped so
+// a malformed seed can never mark the empty session id a child.
+func (t *Tracker) SeedChildren(ids []string) {
+	for _, id := range ids {
+		if id != "" {
+			t.children[id] = true
+		}
+	}
 }
 
 // Handle feeds an event and returns a Notification when a configured
-// transition fires for that event's session, else nil.
+// transition fires for that event's session, else nil. A session whose parent
+// ID is seen on a lifecycle event becomes a child; no notification ever fires
+// for a child session.
 func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
+	if e.SessionID != "" && eventTypeIn(e.Type, t.spec.SessionEvents) && e.ParentID != "" {
+		t.children[e.SessionID] = true
+	}
+	if t.children[e.SessionID] {
+		return nil
+	}
 	st := t.states[e.SessionID]
 	switch {
 	case eventTypeIn(e.Type, t.spec.BusyEvents):
