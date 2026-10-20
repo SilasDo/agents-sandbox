@@ -497,6 +497,14 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Check the Docker prerequisite before adopting, like run/shell and
+			// the volume ops do: the check does not need the slug, and a failing
+			// build must not destroy the legacy VM and move the state first.
+			if !dryRun {
+				if dockerErr := doctor.CheckDocker(cmd.Context()); dockerErr != nil {
+					return fmt.Errorf("docker not available: %w", dockerErr)
+				}
+			}
 			// Adopt like PrepareSandbox does, and use the adopted slug for the
 			// image tag. It runs before the dry-run gate so the migration notice
 			// prints; a dry run passes apply=false, so the migration stays
@@ -510,9 +518,6 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			if dryRun {
 				ui.Infof("dry-run: Would build runner image")
 				return nil
-			}
-			if err := doctor.CheckDocker(cmd.Context()); err != nil {
-				return fmt.Errorf("docker not available: %w", err)
 			}
 			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: openCodeVersion, UserProvided: false, Docker: resolveBuildDocker(cmd),

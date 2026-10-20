@@ -14,6 +14,7 @@ import (
 
 	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
 	"github.com/moby/moby/client"
+	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/git"
@@ -82,8 +83,14 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 }
 
 // TestBuildDryRunKeepsLegacySlugWhileMigrationPending pins the all-or-nothing dry
-// run: adoption prints the "Would migrate" notice but leaves both the migration
-// and the effective slug on the legacy repo slug.
+// run for build: adoption prints the "Would migrate" notice but leaves the
+// migration pending — the legacy state survives and no checkout state appears.
+//
+// It deliberately does not assert the effective slug: build --dry-run returns
+// before image.Build, and the notice always prints both the legacy and the
+// target tag, so neither seam could falsify a slug here. The effective-slug pin
+// is TestVolumeOpsKeepLegacySlugWhileMigrationPending, which observes the tag
+// the op ensured through a docker inspect mock.
 func TestBuildDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
 	clone := newOriginClone(t)
 	identity := git.ResolveIdentity(clone)
@@ -116,10 +123,52 @@ func TestBuildDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
 	if !strings.Contains(notice, "Would migrate this checkout to its own project identity") {
 		t.Errorf("expected the dry-run migration notice, got:\n%s", notice)
 	}
-	// The effective slug stays the repo slug while the migration is pending, so
-	// the notice's current runner image reference is the legacy one.
-	if !strings.Contains(notice, naming.RunnerImageRef(identity.RepoSlug, defaultAgentName)) {
-		t.Errorf("notice must keep the runner image on the repo slug, got:\n%s", notice)
+}
+
+// TestBuildChecksDockerBeforeAdoption pins that build resolves its Docker
+// prerequisite before adopting. On a host with broken Docker the command must
+// fail without destroying the legacy VM or moving the state, matching run/shell
+// and the volume ops, which all check their prerequisites before adopting.
+func TestBuildChecksDockerBeforeAdoption(t *testing.T) {
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+
+	cmd, _ := setupCommandFixtures(t, cmdBuild)
+	doctor.MockedCheckDocker(t, false)
+
+	// A running legacy VM that adoption would destroy if it ran first.
+	legacyVM := &msb.MockSandboxHandle{
+		Name_:   naming.VMPrefix + identity.RepoSlug + "-" + defaultAgentName,
+		Status_: msbSdk.SandboxStatusRunning,
+	}
+	mock := &msb.MockMsbClient{
+		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+			return legacyVM, nil
+		},
+	}
+	msb.WithMsbMock(t, mock)
+
+	repoKey := state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName}
+	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: defaultAgentName}
+	if err := seedHomeState(repoKey, state.HomeState{
+		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", identity.RepoSlug),
+	}); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "docker not available") {
+		t.Fatalf("build with broken docker: error = %v, want a 'docker not available' error", err)
+	}
+	if legacyVM.DidDestroy() {
+		t.Error("build must not destroy the legacy VM before its Docker prerequisite passes")
+	}
+	if _, err := state.ReadState(repoKey); err != nil {
+		t.Errorf("the legacy state must stay in place when the Docker check fails first: %v", err)
+	}
+	if _, err := state.ReadState(checkoutKey); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("the state must not move before the Docker check passes; checkout state = %v", err)
 	}
 }
 
@@ -221,6 +270,52 @@ func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
 		state.ErrStateNotFound,
 	) {
 		t.Errorf("dry run must not create the checkout-keyed state; got %v", err)
+	}
+}
+
+// TestVolumeOpAppliesLegacyIdentity closes the apply-path gap: a non-dry-run
+// volume op on a legacy layout must move the state onto the checkout key and do
+// its work under that key. It observes the moved key both as the state
+// directory and as the runner image the op ensured.
+func TestVolumeOpAppliesLegacyIdentity(t *testing.T) {
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+
+	cmd, _ := setupCommandFixtures(t, cmdVolume, cmdReset)
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	// Capture the runner image the op ensured, to observe the key the op worked
+	// under.
+	var inspectedTag string
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			inspectedTag = ref
+			return client.ImageInspectResult{Config: &dockerspec.DockerOCIImageConfig{}}, nil
+		},
+	})
+
+	repoKey := state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName}
+	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: defaultAgentName}
+	if err := seedHomeState(repoKey, state.HomeState{
+		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", identity.RepoSlug),
+	}); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("volume reset: %v", err)
+	}
+
+	if want := naming.RunnerImageRef(identity.CheckoutSlug, defaultAgentName); inspectedTag != want {
+		t.Errorf("ensured runner image = %q, want the moved checkout-slug tag %q", inspectedTag, want)
+	}
+	if _, err := state.ReadState(checkoutKey); err != nil {
+		t.Errorf("apply must leave the state under the checkout key: %v", err)
+	}
+	if _, err := state.ReadState(repoKey); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("apply must move the legacy state away; got %v", err)
 	}
 }
 
