@@ -346,11 +346,97 @@ func TestPruneVolumesFailsClosedOnUnreadableState(t *testing.T) {
 	_, err := PruneVolumes(context.Background(), PruneState{
 		ToPrune: map[state.Key]msb.SandboxHandle{{Slug: slug, Agent: ""}: &msb.MockSandboxHandle{}},
 	}, false, &termio.Mock{})
-	if err == nil {
-		t.Fatal("PruneVolumes() error = nil, want a fail-closed reference scan error")
+	if err == nil || !strings.Contains(err.Error(), "scan project state references") {
+		t.Fatalf("PruneVolumes() error = %v, want a fail-closed reference scan error", err)
 	}
 	if len(client.RemovedVolumes) != 0 {
 		t.Errorf("RemovedVolumes = %v, want none removed on a reference scan error", client.RemovedVolumes)
+	}
+}
+
+// staleHomeHandle returns a home volume handle old enough for prune to treat as
+// stale. Tests only.
+func staleHomeHandle(name string) msb.VolumeHandle {
+	return &msb.MockVolumeHandle{Name_: name, CreatedAt_: time.Now().Add(-15 * 24 * time.Hour)}
+}
+
+func TestPruneVolumesKeepsStateWhenReferencedVolumeSiblingRemoved(t *testing.T) {
+	// The guard holds back the referenced volume, so removed[key] == 1 while
+	// exists[key] == 2. Only the count < exists check in removeStateForGoneKeys
+	// stops RemoveHomeState from deleting the state and orphaning the referenced
+	// volume for the next prune to reclaim.
+	configpaths.WithMockConfigPaths(t)
+	const (
+		slug       = "stale-1mjusbm3wikhb0"
+		referenced = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143022"
+		sibling    = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143023"
+	)
+	if err := seedHomeState(
+		state.Key{Slug: slug, Agent: ""},
+		state.HomeState{HomeVolume: referenced},
+	); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+	client := &msb.MockMsbClient{
+		Volumes: []msb.VolumeHandle{staleHomeHandle(referenced), staleHomeHandle(sibling)},
+	}
+	msb.WithMsbMock(t, client)
+	ui := &termio.Mock{}
+	r, err := PruneVolumes(context.Background(), PruneState{
+		ToPrune: map[state.Key]msb.SandboxHandle{{Slug: slug, Agent: ""}: &msb.MockSandboxHandle{}},
+	}, false, ui)
+	if err != nil {
+		t.Fatalf("PruneVolumes: %v", err)
+	}
+	if r.VolumesPruned != 1 || len(r.Details) != 1 || r.Details[0].Name != sibling {
+		t.Errorf("report = %+v, want only %s pruned", r, sibling)
+	}
+	if len(client.RemovedVolumes) != 1 || client.RemovedVolumes[0] != sibling {
+		t.Errorf("RemovedVolumes = %v, want [%s]", client.RemovedVolumes, sibling)
+	}
+	if _, err := state.ReadState(state.Key{Slug: slug, Agent: ""}); err != nil {
+		t.Errorf(
+			"state file for %s should survive while referenced volume %s remains, got err=%v",
+			slug,
+			referenced,
+			err,
+		)
+	}
+}
+
+func TestPruneVolumesDryRunWarnsOnReferencedVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const (
+		slug       = "stale-1mjusbm3wikhb0"
+		referenced = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143022"
+		sibling    = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143023"
+	)
+	if err := seedHomeState(
+		state.Key{Slug: slug, Agent: ""},
+		state.HomeState{HomeVolume: referenced},
+	); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+	client := &msb.MockMsbClient{
+		Volumes: []msb.VolumeHandle{staleHomeHandle(referenced), staleHomeHandle(sibling)},
+	}
+	msb.WithMsbMock(t, client)
+	ui := &termio.Mock{}
+	r, err := PruneVolumes(context.Background(), PruneState{
+		ToPrune: map[state.Key]msb.SandboxHandle{{Slug: slug, Agent: ""}: &msb.MockSandboxHandle{}},
+	}, true, ui)
+	if err != nil {
+		t.Fatalf("PruneVolumes: %v", err)
+	}
+	if r.VolumesPruned != 1 || len(r.Details) != 1 || r.Details[0].Name != sibling {
+		t.Errorf("report = %+v, want only %s counted as would-prune", r, sibling)
+	}
+	if len(client.RemovedVolumes) != 0 {
+		t.Errorf("dry run removed volumes: %v", client.RemovedVolumes)
+	}
+	want := "keeping home volume " + referenced + ": still referenced by " + slug
+	if len(ui.WarnCalls) != 1 || ui.WarnCalls[0] != want {
+		t.Errorf("WarnCalls = %v, want [%q]", ui.WarnCalls, want)
 	}
 }
 
