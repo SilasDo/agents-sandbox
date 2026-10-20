@@ -150,11 +150,12 @@ func opencode2LocatePrelude(target string) string {
 }
 
 // opencode2WorktreeListFilter is the jq program that drops the project's
-// canonical root from the worktree list. It rejects a non-array payload with a
-// non-zero exit so a route or field rename fails the list instead of reading as
-// an empty one, which would abandon an existing worktree for a new
-// server-suffixed one.
-const opencode2WorktreeListFilter = `if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end`
+// canonical root from the worktree list. It accepts only an array whose entries
+// each carry a non-empty string "directory", and fails the list otherwise: a
+// non-array payload, or an entry whose directory field was renamed, blanked, or
+// retyped, must not be accepted — the base-name match would silently ignore
+// such an entry and create a second worktree beside the existing one.
+const opencode2WorktreeListFilter = `if type == "array" and all(.[]; type == "object" and (.directory | type == "string" and length > 0)) then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end`
 
 // WorktreeListCmd lists the project's worktrees through v2's project-scoped
 // route. The curl response is captured before jq runs, so curl's own failure

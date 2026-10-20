@@ -170,7 +170,7 @@ func TestOpencode2WorktreeListCmd(t *testing.T) {
 	// Exact equality (mirroring the create tests) pins the whole command: a
 	// substring check would be satisfied by the shared location prelude even if
 	// the list curl lost its credential or fell back to a v1 route.
-	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
+	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" and all(.[]; type == "object" and (.directory | type == "string" and length > 0)) then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
 	if got != want {
 		t.Errorf("WorktreeListCmd = %q, want %q", got, want)
 	}
