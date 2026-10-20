@@ -12,8 +12,10 @@ How the rendered Dockerfile is arranged into stages (so layer caching works as a
 `EnsureImageWithClient` makes two independent decisions from one input, `BuildOptions.Force`:
 
 - **Build at all:** `needsBuild = Force || !imageHasDockerfileID(...)`. The `dockerfile-id` label is the source
-  signature (rendered Dockerfile + resolved agent version + the profile.d merge script, which travels via the build
-  context rather than the Dockerfile text); a mismatch means the rendered recipe changed and triggers a build. It is a
+  signature (rendered Dockerfile + resolved agent version + every build-context file with its name, mode, and content;
+  the files travel via the build context rather than the Dockerfile text, so each is folded into the signature for an
+  edit to invalidate a warm image — see `specs/image-composition.md`); a mismatch means the rendered recipe changed and
+  triggers a build. It is a
   signature of the declared inputs, not a content identity: it deliberately excludes host-dependent inputs (the
   resolved base digest and the dev user's uid/gid), so a label match does not imply equal image bytes.
 - **Bypass cache:** `Force` is passed through to `NoCache` on the Docker build.
