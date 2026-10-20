@@ -5,7 +5,7 @@ read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), th
 
 # Per-checkout project identity (issue #144)
 
-Status: design approved, open decisions settled; not implemented.
+Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge).
 Date: 2026-10-19.
 
 ## Problem
