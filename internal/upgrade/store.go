@@ -22,10 +22,10 @@ type LauncherState struct {
 	DismissedVersions []string
 }
 
-// Store reads and writes LauncherState. The launcher injects a
-// root-state-backed implementation that keeps the state in the launcher-global
-// state.yaml document; a nil Store falls back to memoryStore, which checks
-// normally but persists nothing.
+// Store reads and writes LauncherState. The production implementation is
+// cmd/agents-sandbox's launcherStore, which keeps the state in the
+// launcher-global state.yaml document (updates.launcher); a nil Store falls
+// back to memoryStore, which checks normally but persists nothing.
 type Store interface {
 	Load() (LauncherState, error)
 	Save(LauncherState) error

@@ -68,7 +68,10 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
    `last_checked`/`dismissed_versions` not already present, delete the file on a
    successful commit, and leave it in place on a contended root lock or a failed
    write so a later run retries. A missing, empty, or corrupt file folds nothing
-   but is still removed.
+   but is still removed. The fold runs **only when a real store is injected**:
+   with a nil `Store` the check runs against an ephemeral in-memory store, so
+   folding would delete the real file after a "save" that cannot outlive the
+   process. The caller, which alone knows whether persistence is real, guards it.
 2. **Legacy top-level `state.yaml` `agents:` → `updates.agents`.** Handled in the
    pure parse step: it recognises the old key and normalises it in memory, so the
    next `Commit` writes the new shape and the old key disappears. Purely a

@@ -99,7 +99,9 @@ type Options struct {
 	UpdateFunc func(ctx context.Context, latest string) error
 }
 
-// store returns the injected Store, defaulting to an in-memory one.
+// store returns the injected Store, defaulting to an in-memory one. Callers
+// invoke it once per Check: a nil Store allocates a fresh memoryStore on each
+// call, so two calls would not share state.
 func (o Options) store() Store {
 	if o.Store == nil {
 		return &memoryStore{}
@@ -138,8 +140,14 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	store := opts.store()
-	if err := FoldLegacyState(store); err != nil {
-		opts.UI.Verbosef("upgrade state migration deferred: %v", err)
+	// Only fold the retired upgrade.json when a real store was injected. With a
+	// nil Store the check runs against an ephemeral memoryStore, so folding
+	// would delete the real file after "saving" into state that cannot outlive
+	// the process: the caller is the one that knows whether persistence is real.
+	if opts.Store != nil {
+		if err := FoldLegacyState(store); err != nil {
+			opts.UI.Verbosef("upgrade state migration deferred: %v", err)
+		}
 	}
 	st, err := store.Load()
 	if err != nil {
@@ -163,7 +171,7 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	}
 	if !newer || slices.Contains(st.DismissedVersions, latest) {
 		st.LastChecked = time.Now()
-		saveState(store, st, opts.UI)
+		persistBestEffort(store, st, opts.UI)
 		return Result{}, nil
 	}
 
@@ -172,13 +180,13 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		opts.UI.Infof("agents-sandbox updated to %s; restart to use it", latest)
 	}
 	st.LastChecked = time.Now()
-	saveState(store, st, opts.UI)
+	persistBestEffort(store, st, opts.UI)
 	return res, nil
 }
 
-// saveState persists the upgrade state, reporting a failure as a verbose note
-// rather than an error: losing the check time only means checking again.
-func saveState(store Store, st LauncherState, ui termio.UI) {
+// persistBestEffort persists the upgrade state, reporting a failure as a verbose
+// note rather than an error: losing the check time only means checking again.
+func persistBestEffort(store Store, st LauncherState, ui termio.UI) {
 	if err := store.Save(st); err != nil {
 		ui.Verbosef("could not persist upgrade state: %v", err)
 	}

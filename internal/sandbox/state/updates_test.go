@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 )
 
@@ -32,13 +34,30 @@ func TestRootStateMarshalsUpdatesKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"updates:", "launcher:", "dismissed_versions:", "agents:", "last_checked:"} {
-		if !strings.Contains(string(data), want) {
-			t.Fatalf("marshalled root state missing %q:\n%s", want, data)
-		}
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
-	if strings.Contains(string(data), "\nagents:") { // no top-level agents key
+	if _, ok := raw["agents"]; ok { // no top-level agents key
 		t.Fatalf("root state still has a top-level agents: key:\n%s", data)
+	}
+	updates, ok := raw["updates"].(map[string]any)
+	if !ok {
+		t.Fatalf("updates = %v, want a mapping:\n%s", raw["updates"], data)
+	}
+	launcher, ok := updates["launcher"].(map[string]any)
+	if !ok {
+		t.Fatalf("updates.launcher = %v, want a mapping:\n%s", updates["launcher"], data)
+	}
+	if _, ok := launcher["dismissed_versions"]; !ok {
+		t.Fatalf("updates.launcher missing dismissed_versions:\n%s", data)
+	}
+	agents, ok := updates["agents"].(map[string]any)
+	if !ok {
+		t.Fatalf("updates.agents = %v, want a mapping:\n%s", updates["agents"], data)
+	}
+	if _, ok := agents["opencode"]; !ok {
+		t.Fatalf("updates.agents missing opencode entry:\n%s", data)
 	}
 }
 

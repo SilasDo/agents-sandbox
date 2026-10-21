@@ -647,6 +647,23 @@ func TestCheckDefaultsIntervalAndStore(t *testing.T) {
 	}
 }
 
+// A nil Store keeps the check in memory, so Check must not run the legacy-file
+// fold: the fold would save into the ephemeral memory store and then delete the
+// real upgrade.json, losing the dismissals and cadence for good.
+func TestCheckNilStoreLeavesLegacyFileInPlace(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeLegacy(t, `{"dismissed_versions":["1.5.2"]}`)
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := Options{CurrentVersion: "1.0.0", Mode: ModeNotify, Interval: time.Hour, UI: &ui}
+	if _, err := Check(context.Background(), opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(legacyStatePath()); err != nil {
+		t.Fatalf("nil Store deleted the legacy upgrade.json: %v", err)
+	}
+}
+
 func TestIsNewerInvalidLatest(t *testing.T) {
 	if _, err := isNewer("1.0.0", "not-a-version"); err == nil {
 		t.Fatal("expected error for invalid latest version")
