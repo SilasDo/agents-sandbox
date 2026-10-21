@@ -319,6 +319,26 @@ func TestVolumeOpAppliesLegacyIdentity(t *testing.T) {
 	}
 }
 
+// TestVolumeOpAdoptionFailureFailsClosed pins the fail-closed adoption wiring:
+// an unreadable legacy state aborts the volume op instead of being interpreted,
+// before it ensures an image or touches a volume.
+func TestVolumeOpAdoptionFailureFailsClosed(t *testing.T) {
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+
+	cmd, _ := setupCommandFixtures(t, cmdVolume, cmdReset)
+	mock := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, mock)
+
+	writeUnparsableLegacyState(t, state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "check for a pending legacy identity") {
+		t.Fatalf("volume reset with an unreadable legacy state: error = %v, want the fail-closed predicate error", err)
+	}
+}
+
 func TestVolumeMigrateUnknownAgent(t *testing.T) {
 	initTestProjectDir(t)
 	cmd, _ := setupCommandFixtures(t, "volume", "migrate", "--agent", "bogus")

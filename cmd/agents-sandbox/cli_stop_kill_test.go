@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -9,8 +10,11 @@ import (
 	"github.com/spf13/cobra"
 	msb "github.com/superradcompany/microsandbox/sdk/go"
 
+	"github.com/inoio/agents-sandbox/internal/git"
 	sandboxmsb "github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
 // initTestProjectDir makes a fresh temp dir the working directory for the test.
@@ -390,6 +394,35 @@ func TestStopKillActionError(t *testing.T) {
 				m.SetGotSandbox(handle)
 			})
 			assertErrContains(t, cmd.Execute(), tc.wantErr)
+		})
+	}
+}
+
+// writeUnparsableLegacyState seeds a corrupt legacy state file at the key's
+// directory, the shape a fail-closed adoption must refuse to interpret.
+func writeUnparsableLegacyState(t *testing.T, key state.Key) {
+	t.Helper()
+	dir := state.KeyDir(key)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create legacy state dir: %v", err)
+	}
+	testutil.WriteFile(t, dir, "state.yaml", `": [`)
+}
+
+// TestStopKillAdoptionFailureFailsClosed pins the fail-closed adoption wiring:
+// an unreadable legacy state aborts stop/kill before they look up the VM, so a
+// first post-upgrade stop cannot act on a half-understood identity.
+func TestStopKillAdoptionFailureFailsClosed(t *testing.T) {
+	for _, cmdName := range []string{cmdStop, cmdKill} {
+		t.Run(cmdName, func(t *testing.T) {
+			initTestProjectDir(t)
+			// setupStopKillConfig installs the config-paths mock, so the seed
+			// and the command resolve the same isolated state root.
+			cmd, _ := setupStopKillConfig(t, []string{cmdName}, nil)
+			identity := git.ResolveIdentity(".")
+			writeUnparsableLegacyState(t, state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName})
+
+			assertErrContains(t, cmd.Execute(), "check for a pending legacy identity")
 		})
 	}
 }
