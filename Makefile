@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test test-integration test-msb compile-all coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test test-race test-integration test-msb compile-all vulncheck coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -11,6 +11,7 @@ GO_VERSION = $(shell cat .go-version)
 GOLANGCI_LINT_VERSION = 2.14.0
 ZIG_VERSION ?= 0.17.0
 GOTESTSUM_VERSION = 1.13.0
+GOVULNCHECK_VERSION = v1.9.0
 
 ARTIFACT = agents-sandbox-$(GOOS)-$(GOARCH)
 
@@ -76,6 +77,13 @@ bootstrap:
 test:
 	CGO_ENABLED=1 go test ./...
 
+# Race-detector run across the module. The launcher runs concurrent state
+# transactions, legacy-volume copy campaigns, daemon health polling, and
+# watchers, so a data race is a real bug; kept out of `test`/`check` because
+# it is substantially slower.
+test-race:
+	CGO_ENABLED=1 go test -race ./...
+
 # Integration tests across the module: the RenderDockerfile docker-build tests
 # in internal/sandbox/image and the real Docker-daemon delegation tests in
 # internal/sandbox/docker. Excluded from `test`/`check` via the `integration`
@@ -95,6 +103,12 @@ test-msb:
 # is caught without a docker daemon or VM. `-run=^$` matches no test.
 compile-all:
 	CGO_ENABLED=1 go test -tags 'integration msb' -run='^$$' ./...
+
+# Scan the module for reachable vulnerabilities against the Go vulnerability
+# database. Needs network access on first run (and to refresh the DB); exits
+# non-zero when a reachable vulnerability is found.
+vulncheck:
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 coverage:
 	CGO_ENABLED=1 go test -coverprofile=coverage.out ./...
@@ -119,8 +133,8 @@ run:
 
 check: fmt lint test compile-all docs-linkcheck docs-linkcheck-test
 
-# Read-only check for CI parity: fmt-check + lint + test (does not modify files).
-verify: validate-fmt lint test compile-all docs-linkcheck docs-linkcheck-test
+# Read-only check for CI parity: fmt-check + lint + test + race + vulncheck (does not modify files).
+verify: validate-fmt lint test test-race compile-all vulncheck docs-linkcheck docs-linkcheck-test
 
 all: fmt lint test docs-linkcheck docs-linkcheck-test build
 

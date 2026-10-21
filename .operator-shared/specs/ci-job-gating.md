@@ -7,7 +7,8 @@ read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml
 
 ## Contract
 
-`.github/workflows/ci.yml` runs `lint` and `test` on every push to `main`, every `v*` tag, and every PR event. The
+`.github/workflows/ci.yml` runs `lint`, `test`, `race` (`make test-race`), and `vulncheck` (`make vulncheck`) on every
+push to `main`, every `v*` tag, and every PR event — all four ungated. The
 `integration` job (`make test-integration`, the `integration`-tagged docker-build suite, ~10 minutes) is gated to four
 paths:
 
@@ -37,6 +38,9 @@ paths:
 
 ## Behavior
 
+- `release` gates on `lint`, `test`, and `integration` only. `race` and `vulncheck` run on a tag but do not block
+  publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote them into `release.needs`
+  deliberately if that trade-off changes.
 - Adding the label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.

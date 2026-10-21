@@ -48,11 +48,13 @@ Run these from the module root:
 | Command              | Purpose                                                    |
 |----------------------|------------------------------------------------------------|
 | `make test`          | Run the test suite                                         |
+| `make test-race`     | Run the test suite under the race detector                 |
+| `make vulncheck`     | Scan for reachable vulnerabilities (`govulncheck`)         |
 | `make compile-all`   | Compile all code incl. `integration`-tagged test files      |
 | `make lint`          | Run the linter                                             |
 | `make fmt`           | Format all source files                                    |
 | `make check`         | Format, lint, and test — run before finalizing any change  |
-| `make verify`        | Read-only CI-parity check: format-check, lint, test        |
+| `make verify`        | Read-only CI-parity check: format-check, lint, test, race, vulncheck |
 | `make build`         | Build the `agents-sandbox` binary                        |
 | `make coverage`      | Run tests and print the coverage total                     |
 | `make coverage-junit`| Run tests, write coverage + JUnit XML (`junit.xml`)        |
@@ -84,6 +86,9 @@ This project defaults to **test-driven development**:
 - Every new or changed CLI command or flag should be covered in `cmd/agents-sandbox/cli_*_test.go`.
 - Add focused unit tests for internal functionality with each implementation.
 - Do manual tests and run the full suite with `make check` before submitting.
+- `make verify` is the CI-parity check and additionally runs `make test-race` (race detector) and `make vulncheck`
+  (`govulncheck` against the Go vulnerability database; needs network on first run). CI runs each as its own job, so run
+  `make verify` when a change touches concurrency or dependencies.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
   there; it always runs on `main` and on releases.

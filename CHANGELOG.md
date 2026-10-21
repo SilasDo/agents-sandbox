@@ -10,6 +10,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- Internal: add `make test-race` (race detector) and `make vulncheck` (`govulncheck` against the Go vulnerability
+  database) to `make verify`, and run each as its own CI job. Both stay out of `make check` so the everyday loop stays
+  fast; `vulncheck` needs network on first run. The first scan reported nine reachable Go standard-library
+  vulnerabilities, so the pinned toolchain moves to Go 1.27.3 (`.go-version` and the dev Dockerfile), and CI now reads
+  that pin through setup-go's `go-version-file` so CI and `make verify` run the same toolchain instead of a floating
+  `1.27`.
 - Runner image: install microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`, for
   applications whose TLS trust is separate from the guest's system store. `msb-trust java` imports the interception CA
   into a JDK's `cacerts` and `msb-trust chrome` into Chrome/Chromium's NSS store; `msb-trust all` configures every

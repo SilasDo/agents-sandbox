@@ -1,7 +1,7 @@
 FROM agents-sandbox/runner-base-docker:latest
 
 # default versions, keep in sync with versions in Makefile
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.3
 ARG GOLANGCI_LINT_VERSION=2.14.0
 ARG GOTESTSUM_VERSION=1.13.0
 ARG ZIG_VERSION=0.17.0
