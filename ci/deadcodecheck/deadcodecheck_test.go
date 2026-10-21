@@ -466,9 +466,10 @@ func TestRunExitsTwoOnBrokenInput(t *testing.T) {
 	})
 	t.Run("missing source file", func(t *testing.T) {
 		r := newRig(t)
+		r.addReport(t, "default.json", "[]")
 		r.listed = []string{filepath.Join(r.sourceDir, "absent.go")}
-		if code, _, stderr := r.run(t); code != 2 || stderr == "" {
-			t.Errorf("run = (%d, %q); want 2 with a message on stderr", code, stderr)
+		if code, _, stderr := r.run(t); code != 2 || !strings.Contains(stderr, "absent.go") {
+			t.Errorf("run = (%d, %q); want 2 naming the unreadable source file", code, stderr)
 		}
 	})
 	t.Run("unknown flag", func(t *testing.T) {
