@@ -10,6 +10,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- Internal: add fuzz targets for the inputs a user or their files control — the user project Dockerfile
+  (`image.RenderDockerfile`), the `home:` manifest, `--older-than` duration parsing, and image-reference round-tripping
+  (`naming`) — plus a `make fuzz` target (`FUZZTIME`, default 30s). The seed corpus and any committed crasher run as part
+  of `make test`, so the targets double as regression tests; the fuzzing session is an on-demand activity, not a CI gate.
 - Runner image: install microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`, for
   applications whose TLS trust is separate from the guest's system store. `msb-trust java` imports the interception CA
   into a JDK's `cacerts` and `msb-trust chrome` into Chrome/Chromium's NSS store; `msb-trust all` configures every

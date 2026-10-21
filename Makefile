@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test test-integration test-msb compile-all coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test fuzz test-integration test-msb compile-all coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -75,6 +75,20 @@ bootstrap:
 
 test:
 	CGO_ENABLED=1 go test ./...
+
+# Drive the fuzz targets with generated input for a bounded time per target.
+# The seed corpus (and any committed crasher) already runs as part of `make
+# test`, so this only explores new inputs; it needs no network and no VM.
+# FUZZTIME=0 runs the seeds only. Targets are discovered from the test sources
+# because `go test -fuzz` refuses to run against more than one package at once.
+FUZZTIME ?= 30s
+fuzz:
+	@pkgs=$$(grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u); \
+	if [ -z "$$pkgs" ]; then echo "no fuzz targets found"; exit 1; fi; \
+	for pkg in $$pkgs; do \
+		echo "== fuzz $$pkg"; \
+		CGO_ENABLED=1 go test -run='^$$' -fuzz='^Fuzz' -fuzztime=$(FUZZTIME) "./$$pkg" || exit 1; \
+	done
 
 # Integration tests across the module: the RenderDockerfile docker-build tests
 # in internal/sandbox/image and the real Docker-daemon delegation tests in
