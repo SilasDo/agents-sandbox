@@ -277,6 +277,49 @@ func TestProjectConfigDirAbs(t *testing.T) {
 	}
 }
 
+// TestWithRealConfigPathsPinsCwd pins the helper's contract: opting into the
+// real resolver also pins the CWD to a controlled, layout-free directory.
+// Starting inside a bare checkout's worktree is what makes the test fail if the
+// pin is dropped — an ordinary checkout passes either way — so the regression
+// this addresses is caught by ordinary CI, not only by a bare checkout.
+func TestWithRealConfigPathsPinsCwd(t *testing.T) {
+	pinHostDirs(t)
+	root := writeBareCheckout(t)
+	worktree := filepath.Join(root, "main")
+	t.Chdir(worktree)
+
+	// Sanity: the ambient layout is exactly the one the pin must neutralize.
+	if base, _ := resolveProjectConfig(worktree); base == projectConfigDir {
+		t.Fatalf("fixture %q is not a bare checkout; the test cannot prove the pin", worktree)
+	}
+
+	WithRealConfigPaths(t)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wd == worktree {
+		t.Errorf("WithRealConfigPaths left the CWD in the bare worktree %q", worktree)
+	}
+	if got := Get().ProjectConfigDir(); got != projectConfigDir {
+		t.Errorf("ProjectConfigDir() = %q, want the relative %q after WithRealConfigPaths", got, projectConfigDir)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != filepath.Join(wd, projectConfigDir) {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q under the pinned CWD", got, filepath.Join(wd, projectConfigDir))
+	}
+}
+
+// TestPinProjectCWDPanicsInsideABareCheckout covers the helper's fail-fast: a
+// temp dir inside a bare checkout still resolves to that checkout's bare root,
+// so it cannot serve as the pinned project CWD and must not be used silently.
+func TestPinProjectCWDPanicsInsideABareCheckout(t *testing.T) {
+	pinHostDirs(t)
+	root := writeBareCheckout(t)
+
+	assertPanics(t, func() { pinProjectCWD(root) })
+}
+
 func TestProjectConfigDirAbsFallsBackWhenCwdUnreadable(t *testing.T) {
 	WithRealConfigPaths(t)
 	dir := t.TempDir()

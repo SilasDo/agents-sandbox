@@ -5,8 +5,8 @@ read_if: Implementing or reviewing the bare-layout project-config root fix, the 
 
 # Bare checkout project config root
 
-Status: implemented on the `bare-project-config-root` branch (PR pending).
-Related: [bare-worktree-layout.md](bare-worktree-layout.md) (the `/workspace` bind rule this builds on; supersedes its "project config unchanged" implication), and `checkout-identity.md` (pending #144, extends the same `configpaths` seam; not on main, so named rather than linked).
+Status: merged on main (PR #247, `bare-project-config-root`).
+Related: [bare-worktree-layout.md](bare-worktree-layout.md) (the `/workspace` bind rule this builds on; supersedes its "project config unchanged" implication). The `checkout-identity.md` extension of the same `configpaths` seam is not on main (#144's `config paths` shipped separately), so it is named rather than linked.
 
 ## Problem
 
@@ -99,7 +99,8 @@ The resolver stays pure: it exposes the ignored directory as a fact (a method). 
 `.agents-sandbox` (`git.WorkspaceLayout.WorktreeRoot`, exposed for this; the layout already computed it), not one derived
 from the CWD — so a launch from any subdirectory of the worktree still detects the copy the bare root replaces, which a
 CWD-derived check missed (PR #247 review). A `.agents-sandbox` at a deeper subdirectory is not inspected; that is the
-deferred layering extension's job. One `termio`-facing helper, `image.WarnIgnoredProjectConfig`, warns from the image path
+deferred layering extension's job. When the CWD is the bare root itself, the worktree root is empty and the ignored
+path collapses onto the base, so it is the directory being read, not an ignored copy — no warning (guard: `ignored == base`). One `termio`-facing helper, `image.WarnIgnoredProjectConfig`, warns from the image path
 every VM-bound command passes through — `image.EnsureImage` (called by `PrepareSandbox`, `run`/`shell` and the `volume …`
 ops), `image.Build` (`image build`), and `build dockerfile` — not from `PersistentPreRunE`. `config`, `doctor`, `list`,
 `version`, `prune` and `df` stay quiet, and each such command reaches exactly one call site, so the warning cannot repeat
@@ -109,7 +110,10 @@ within a run without a process-global guard.
 
 `WithMockConfigPaths` fixes the project dir and cannot express a bare base, so the four-row resolution is
 unit-tested in `configpaths` against a real temp bare repo (`t.Chdir`); the CLI acceptance for `build dockerfile`
-and `run` uses real config paths (XDG pinned for isolation) for the bare case.
+and `run` uses real config paths (XDG pinned for isolation) for the bare case. The real-resolver opt-in,
+`WithRealConfigPaths`, pins the CWD to a temp dir (see [test-isolation.md](test-isolation.md)), so a project-path
+accessor test that does not chdir cannot inherit the checkout layout the suite runs in; the bare cases chdir into
+their own fixture after opting in.
 
 ## Docs and the beta recipe
 
