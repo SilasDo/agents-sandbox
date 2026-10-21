@@ -248,9 +248,9 @@ func TestWriteRootState_ConcurrentWritesDoNotCollide(t *testing.T) {
 
 func TestRootStateAgentCheckRoundTrip(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := writeRootState(RootState{Agents: map[string]AgentCheckState{
+	if err := writeRootState(RootState{Updates: Updates{Agents: map[string]AgentCheckState{
 		"opencode": {LastChecked: time.Unix(100, 0).UTC(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("writeRootState: %v", err)
 	}
 	got, err := ReadRootState()
@@ -289,9 +289,9 @@ func TestAgentCheckDueForCheck(t *testing.T) {
 
 func TestRootStateAgentCheckWireKeys(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := writeRootState(RootState{Agents: map[string]AgentCheckState{
+	if err := writeRootState(RootState{Updates: Updates{Agents: map[string]AgentCheckState{
 		"opencode": {LastChecked: time.Unix(100, 0).UTC(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("writeRootState: %v", err)
 	}
 	data, err := os.ReadFile(rootStateFile())
@@ -302,9 +302,13 @@ func TestRootStateAgentCheckWireKeys(t *testing.T) {
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	agents, ok := raw["agents"].(map[string]any)
+	updates, ok := raw["updates"].(map[string]any)
 	if !ok {
-		t.Fatalf("agents = %v, want a mapping", raw["agents"])
+		t.Fatalf("updates = %v, want a mapping", raw["updates"])
+	}
+	agents, ok := updates["agents"].(map[string]any)
+	if !ok {
+		t.Fatalf("agents = %v, want a mapping", updates["agents"])
 	}
 	entry, ok := agents["opencode"].(map[string]any)
 	if !ok {
@@ -321,8 +325,8 @@ func TestRootStateAgentCheckWireKeys(t *testing.T) {
 func TestSetAgentCheckInitializesRegistry(t *testing.T) {
 	var s RootState
 	s.SetAgentCheck("opencode", AgentCheckState{LatestVersion: "2.0.0"})
-	if s.Agents["opencode"].LatestVersion != "2.0.0" {
-		t.Fatalf("Agents = %+v", s.Agents)
+	if s.Updates.Agents["opencode"].LatestVersion != "2.0.0" {
+		t.Fatalf("Updates.Agents = %+v", s.Updates.Agents)
 	}
 }
 

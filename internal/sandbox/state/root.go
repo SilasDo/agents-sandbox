@@ -16,8 +16,37 @@ import (
 //
 //exhaustruct:ignore
 type RootState struct {
-	Migrations map[string]Migration       `yaml:"migrations,omitempty"`
-	Agents     map[string]AgentCheckState `yaml:"agents,omitempty"`
+	Migrations map[string]Migration `yaml:"migrations,omitempty"`
+	Updates    Updates              `yaml:"updates,omitempty"`
+}
+
+// Updates groups the launcher-global update-check state: Launcher for
+// agents-sandbox itself, Agents for the tools baked into the runner image.
+//
+//exhaustruct:ignore
+type Updates struct {
+	Launcher LauncherUpdateState        `yaml:"launcher,omitempty"`
+	Agents   map[string]AgentCheckState `yaml:"agents,omitempty"`
+}
+
+// IsZero reports whether the namespace holds nothing, so yaml.v3's omitempty
+// drops the key entirely.
+func (u Updates) IsZero() bool {
+	return u.Launcher.IsZero() && len(u.Agents) == 0
+}
+
+// LauncherUpdateState is the launcher's own update-check state, formerly the
+// standalone upgrade.json file.
+//
+//exhaustruct:ignore
+type LauncherUpdateState struct {
+	LastChecked       time.Time `yaml:"last_checked"`
+	DismissedVersions []string  `yaml:"dismissed_versions,omitempty"`
+}
+
+// IsZero reports whether no launcher check has been recorded.
+func (l LauncherUpdateState) IsZero() bool {
+	return l.LastChecked.IsZero() && len(l.DismissedVersions) == 0
 }
 
 // MigrationStatus is the terminal or in-flight state of a one-time migration.
@@ -91,18 +120,31 @@ func (c AgentCheckState) DueForCheck(t time.Time) bool {
 	return c.LastChecked.IsZero() || t.Sub(c.LastChecked) >= AgentCheckInterval
 }
 
-// AgentCheck returns the named agent's check state. A missing entry is the zero
-// AgentCheckState, whose zero LastChecked is always due.
+// AgentCheck returns the named agent's check state from updates.agents. A
+// missing entry is the zero AgentCheckState, whose zero LastChecked is always
+// due.
 func (s *RootState) AgentCheck(name string) AgentCheckState {
-	return s.Agents[name]
+	return s.Updates.Agents[name]
 }
 
-// SetAgentCheck records an agent check state, initializing the registry if nil.
+// SetAgentCheck records an agent check state under updates.agents,
+// initializing the registry if nil.
 func (s *RootState) SetAgentCheck(name string, c AgentCheckState) {
-	if s.Agents == nil {
-		s.Agents = map[string]AgentCheckState{}
+	if s.Updates.Agents == nil {
+		s.Updates.Agents = map[string]AgentCheckState{}
 	}
-	s.Agents[name] = c
+	s.Updates.Agents[name] = c
+}
+
+// LauncherUpdate returns the launcher's own update-check state
+// (updates.launcher).
+func (s *RootState) LauncherUpdate() LauncherUpdateState {
+	return s.Updates.Launcher
+}
+
+// SetLauncherUpdate records the launcher's update-check state.
+func (s *RootState) SetLauncherUpdate(l LauncherUpdateState) {
+	s.Updates.Launcher = l
 }
 
 func rootStateFile() string {

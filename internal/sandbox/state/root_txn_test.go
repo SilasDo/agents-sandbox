@@ -52,9 +52,9 @@ func TestWithRootStateMissingIsNotExisting(t *testing.T) {
 
 func TestWithRootStatePresentExistsTrue(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := writeRootState(RootState{Agents: map[string]AgentCheckState{
+	if err := writeRootState(RootState{Updates: Updates{Agents: map[string]AgentCheckState{
 		"opencode": {LatestVersion: "1.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	ok, err := WithRootState(true, func(tx *RootTxn) error {
