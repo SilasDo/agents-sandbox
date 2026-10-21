@@ -517,8 +517,8 @@ Tests: `TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState` (marker persisted
 
 ### Review-fix round 2 (PR #244 review): marker follow-through
 
-The durable marker's follow-through paths still disagreed, so Greptile flagged three more P1s (the fourth,
-cross-clone marker sharing, is left for a design decision). Fixes, test-first:
+The durable marker's follow-through paths still disagreed, so Greptile flagged three more P1s, plus a
+cross-clone duplication of the marker itself. Fixes, test-first:
 
 - **Volume commands miss the pending home** (`internal/sandbox/volume/operations.go`): `volumeOp` now falls
   back to `st.RecoveredHomeVolume` when `st.HomeVolume` is empty, and clears `RecoveredHomeVolume` in the
@@ -536,3 +536,13 @@ cross-clone marker sharing, is left for a design decision). Fixes, test-first:
   is used by both `PersistentPreRunE` and `config paths` (which now prints the effective layer but keeps the
   repo-slug label). Tests: `TestBareRootReadsLegacyConfigBeforeMigration`,
   `TestBareRootConfigPathsShowsEffectiveLayer`.
+- **Two clones recover the same home volume** (`internal/sandbox/state/root.go`,
+  `internal/sandbox/vm/adopt.go`): the marker is per-checkout, so when clone A's destroy fails and clone B
+  adopts the surviving VM, both recorded the same volume. Added `RootState.AdoptedHomeVolumes` (keyed
+  `<legacySlug>/<agent>`, methods `AdoptedHomeVolume`/`ClaimAdoptedHomeVolume`/`ForgetAdoptedHomeVolume` +
+  `ClearAdoptedHomeVolume`); `adoptLegacyIdentity` now takes the `RootTxn`, claims the volume under the
+  legacy identity and commits before the destroy, and skips the marker when another checkout owns it. The
+  claim is retired (best-effort) by `clearAdoptionClaim` once the volume is folded into the project's own
+  state or replaced by a volume op. Tests: `TestAdoptLegacyIdentityClaimsSharedVolumeOnce`,
+  `TestResolveHomeVolume_ClearsAdoptionClaim`, `TestRootStateAdoptedHomeVolumeRoundTrip`,
+  `TestRootStateForgetAdoptedHomeVolumeMatchesCheckoutAndVolume`, `TestClearAdoptedHomeVolumeAbsentIsNoOp`.

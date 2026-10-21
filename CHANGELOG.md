@@ -171,7 +171,9 @@ command reports the bare version (e.g. `0.1.0`).
   layout in place. The adoption trigger skips migration rather than aborting the run when the *checkout* state is
   corrupt (so the caller's recovery path can still repair it), a bare root reads its pre-split per-slug config before
   the rename so the first post-upgrade run honours the user's saved settings, and `volume migrate`/`reset`/`edit`
-  accept a pending recovered volume as their source and clear the marker when they commit. #144.
+  accept a pending recovered volume as their source and clear the marker when they commit. A shared legacy
+  identity's recovered home volume is claimed under the legacy identity in the launcher-global root state, so a
+  second clone cannot recover the same volume. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the

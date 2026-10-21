@@ -11,7 +11,9 @@ concurrent-adopter cases and for adopting a surviving legacy VM whose state file
 fix made that lost-state adoption record the recovered volume in the checkout state before destroying the legacy
 VM, so the reference survives any caller that discards the adoption result (issue #244 review). A second review
 round made a corrupt checkout state skip rather than abort migration, made the volume ops read and clear the
-recovered-volume marker, and made a bare root's first run read its pre-split per-slug config.
+recovered-volume marker, and made a bare root's first run read its pre-split per-slug config. A shared
+legacy identity's lost-state home volume is claimed under the legacy identity in the launcher-global root
+state, so two clones cannot both recover it.
 Date: 2026-10-19.
 
 ## Problem
@@ -166,11 +168,16 @@ of minting a fresh one. While that field is set the trigger stays live, so a leg
 failed destroy is torn down on the retry (the state move is then a no-op, since no legacy state file
 exists), and a `volume migrate`/`reset`/`edit` accepts the pending volume as its source and clears the
 marker when it commits, so the first volume op is not wedged behind an unset `home_volume` and cannot undo
-itself. A corrupt or unreadable *checkout* state makes the trigger skip migration rather than abort the
-run, leaving legacy VMs and state untouched so the caller's recovery path (`RecoverHomeState`) can repair
-the document; reads of the *legacy* state and a legacy VM's mounts still fail closed. A VM whose mounts
-cannot be read fails the adoption closed rather than destroying it blind. Re-evaluated on each run until
-it fires.
+itself. A shared legacy identity has one VM and therefore one home volume, so before recording the marker
+the adopting checkout **claims** the volume under the legacy identity in the launcher-global `RootState`
+(`adopted_home_volumes`, keyed `<legacySlug>/<agent>`; committed under the same root lock and before the
+destroy, so it survives a destroy failure). A second clone that adopts the same surviving VM sees the
+claim, skips the marker, and starts with its own fresh volume instead of both recovering one volume; the
+claim is retired once the owner folds the volume into its own state. A corrupt or unreadable *checkout*
+state makes the trigger skip migration rather than abort the run, leaving legacy VMs and state untouched
+so the caller's recovery path (`RecoverHomeState`) can repair the document; reads of the *legacy* state and
+a legacy VM's mounts still fail closed. A VM whose mounts cannot be read fails the adoption closed rather
+than destroying it blind. Re-evaluated on each run until it fires.
 
 **Entry points: uniform.** Every cwd-derived command that resolves the checkout slug attempts adoption —
 `run`, `shell`, `stop`, `kill`, the `volume …` ops and `build` — not only the paths that write state. A
@@ -317,8 +324,8 @@ sections above.
   renames a state directory (`RemoveHomeState` deletes, `RecoverHomeState` rewrites in place).
 - **No `migrations` registry entry.** The directory move is the idempotence record — the legacy state file is
   gone afterwards, so adoption cannot re-fire. `state.Migration`'s `Copied`/`Kept`/`Excluded` fields are
-  copy-shaped and would sit unused. `WithRootState` stays available if `doctor`/`df` should surface adoption
-  later.
+  copy-shaped and would sit unused. The root state *is* used for the lost-state home-volume ownership claim
+  (`adopted_home_volumes`), which needs a launcher-global record a second clone can read.
 - **The grouping label comes from the identity, not from `state.Key`.** `vm_lifecycle.go:482` sets
   `org.agents-sandbox.project` from the same `k.Slug` that names the VM. `state.Key` keeps a single slug
   (the checkout slug); the label is passed in from the identity struct.
