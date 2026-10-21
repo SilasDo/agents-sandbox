@@ -7,7 +7,9 @@ read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), th
 
 Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge); rebased onto main and
 reconciled with #247's bare project-config resolver, and the migration hardened for the multi-agent and
-concurrent-adopter cases and for adopting a surviving legacy VM whose state file was lost (#219).
+concurrent-adopter cases and for adopting a surviving legacy VM whose state file was lost (#219). A post-review
+fix made that lost-state adoption record the recovered volume in the checkout state before destroying the legacy
+VM, so the reference survives any caller that discards the adoption result (issue #244 review).
 Date: 2026-10-19.
 
 ## Problem
@@ -148,9 +150,15 @@ so a stray or aborted run that creates the empty checkout directory cannot perma
 **Or** the agent's legacy **project VM** is still live under a legacy slug while no checkout-keyed state
 file exists — the lost-state case of `home-volume-recovery.md` (#219), where the VM is the only remaining
 legacy artifact. Treating that as "brand new" would mint a fresh home volume and orphan the previous one
-(credentials, files), so the VM arm adopts instead: it destroys the VM and carries its mounted home volume
-into the run (`IdentityAdoption.RecoveredHomeVolume`), which home resolution recovers into the checkout
-state. A VM whose mounts cannot be read fails the adoption closed rather than destroying it blind.
+(credentials, files), so the VM arm adopts instead. Because destroying the VM removes the only record of its
+volume, adoption first writes the mounted volume into the checkout state's `recovered_home_volume`, then
+destroys the VM; home resolution (`volume.Manager.ResolveHomeVolume`) recovers that field into `home_volume`
+with the current digest and fingerprints. The durable reference is what makes adoption safe from any entry
+point: `stop`, `kill`, `build` and the volume commands discard the adoption result, and a `run` can still
+fail after adoption but before home resolution, yet the next run recovers the volume from the state instead
+of minting a fresh one. While that field is set the trigger stays live, so a legacy VM left behind by a
+failed destroy is torn down on the retry (the state move is then a no-op, since no legacy state file
+exists). A VM whose mounts cannot be read fails the adoption closed rather than destroying it blind.
 Re-evaluated on each run until it fires.
 
 **Entry points: uniform.** Every cwd-derived command that resolves the checkout slug attempts adoption —
@@ -191,9 +199,12 @@ the incomplete-migration failure on a source that is already gone.
    a real idempotence record: the state file always arrives, because the predicate guarantees none exists
    at the destination.
 3. Home volume: unchanged. Its name is stored in the state's `home_volume`, so the preserved volume is
-   re-resolved by name with no rename. In the VM-only arm there is no state to carry the name, so the
-   volume rides in `RecoveredHomeVolume` and home resolution recovers the checkout state from it; the
-   state-file arrival check is skipped there, because there is no state file to arrive.
+   re-resolved by name with no rename. In the VM-only arm there is no legacy state to carry the name, so
+   adoption writes it into `recovered_home_volume` on the checkout state *before* the destroy, and home
+   resolution (`volume.Manager.ResolveHomeVolume`) recovers it into `home_volume` with the current digest
+   and fingerprints. That marker is the durable record: it survives an adoption result the caller discards
+   and a run that fails before home resolution. The state-file arrival check is skipped there, because
+   there is no legacy state file to arrive.
 4. VM: recreated once under the new name over the preserved home volume.
 5. Runner image: rebuilt under the new checkout tag (cache-assisted, see above).
 
@@ -234,7 +245,9 @@ treatment prune already gives a replaced sandbox (`internal/sandbox/pruning/sand
 skipped volume's key must not reach `removeStateForGoneKeys`
 (`internal/sandbox/pruning/volumes.go:100-111`), which would otherwise delete the very state adoption needs.
 An unreadable state file surfaces as a `HomeVolumeReferences()` error, which aborts the volume pass as it
-does in `volume remove`. Images already have their own removal guard. Prune cannot trigger adoption
+does in `volume remove`. `HomeVolumeReferences()` also reports a pending `recovered_home_volume` (the
+VM-only adoption arm), so prune protects the volume during the window between adoption and the first
+recovery. Images already have their own removal guard. Prune cannot trigger adoption
 (recovery needs the checkout context, which prune is cwd-agnostic about and which state files do not
 record), so the reference guard is the whole fix. Reclaiming the legacy **VM** by prune is accepted:
 its absence does not block adoption, which recreates it over the preserved volume.

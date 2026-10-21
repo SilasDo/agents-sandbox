@@ -41,6 +41,10 @@ warning notice rather than a prompt. It destroys the legacy origin-keyed VM firs
 state directory onto the checkout slug. The merge never overwrites an existing file: anything it cannot move is reported
 and left in place. A `--dry-run` does neither and keeps resolving against the legacy layout.
 
+If the legacy VM survives but its state file was lost, its mounted home volume is recorded in the checkout state before
+the VM is destroyed, and the next run reuses that volume — so a lost state file never costs the saved credentials or
+files, whichever command triggers the migration.
+
 ## System Context
 
 The following C4 container diagram shows how agents-sandbox relates the host to the microsandbox VM: your project

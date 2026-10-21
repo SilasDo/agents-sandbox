@@ -484,3 +484,31 @@ Expected: fmt, lint and tests all pass. In a worktree, run `golangci-lint cache 
 git add docs/ CHANGELOG.md .operator-shared/
 git commit -m "docs: document per-checkout identity and 'config paths' (#144)"
 ```
+
+---
+
+### Review-fix round (PR #244 review): durable recovered home volume
+
+Greptile P1: the VM-only adoption arm destroyed the legacy VM but kept its home-volume name only in
+`IdentityAdoption.RecoveredHomeVolume`, which the `stop`/`kill`/`build`/volume commands discard and which a
+`run` can lose by failing after adoption but before home resolution — leaving the user's saved home volume
+orphaned. Fix (the reviewer's "save the reference durably before destroying", test-first):
+
+- `state.HomeState` gains `RecoveredHomeVolume` (`recovered_home_volume,omitempty`): the volume a VM-only
+  adoption preserved, pending recovery into `HomeVolume`. `state.HomeVolumeReferences` reports it too, so
+  prune protects the volume in the window before recovery.
+- `vm.adoptLegacyIdentity` records it (through `state.RecoverHomeState`) *before* destroying the legacy VM;
+  `IdentityAdoption` loses its in-memory `RecoveredHomeVolume` field and `prepareHomeVolume` its
+  `legacyRecoveredVolume` parameter (the in-memory path was the bug).
+- `volume.Manager.ResolveHomeVolume` recovers a state's pending `RecoveredHomeVolume` ahead of the live-VM
+  branch; `priorOrNil` treats the marker as no prior, so recovery seeds the desired fingerprints instead of
+  copying the marker's empty ones (the #183 rule).
+- `legacyAdoptionPending` keeps the trigger live while the checkout state carries the marker, so a legacy VM
+  left behind by a failed destroy is retried.
+
+Tests: `TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState` (marker persisted),
+`TestAdoptLegacyIdentityPersistsVolumeBeforeDestroyFails` (persist-before-destroy and retry),
+`TestAdoptLegacyIdentityDryRunLiveLegacyVMIsReadOnly` (nothing recorded),
+`TestResolveHomeVolume_RecoversPersistedAdoptionVolume`,
+`TestPrepareHomeVolumeRecoversPersistedAdoptionVolume`, and
+`TestHomeVolumeReferencesProtectsPendingRecoveredVolume`.
