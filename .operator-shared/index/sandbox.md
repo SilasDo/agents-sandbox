@@ -78,7 +78,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 - `claim.go`, `clientlock.go`, `flock.go`, `state.go`, `root.go`, `fingerprint.go` (`state.go`/`root.go` hold the pure `parseHomeState`/`parseRootState` unmarshal steps the readers delegate to)
 - `references.go` — fail-closed project-state reference scan: `HomeVolumeReferences` and `ImageReferences` (the image analogue), both built on the shared `projectStateReferences` walk
-- `fuzz_test.go` — `FuzzParseState`: both state documents must never panic, classify malformed bytes as `ErrStateUnparsable`, and round-trip through the writer unchanged
+- `fuzz_test.go` — `FuzzParseState`: both state documents must never panic, classify malformed bytes as `ErrStateUnparsable`, and serialize stably (a re-read of the writer's output yields the same bytes)
 
 ### `storage/` — Private-home storage accounting seam (Slice 2; backs `df` in Slice 5)
 

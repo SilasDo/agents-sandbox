@@ -12,8 +12,9 @@ import (
 // the per-project HomeState and the launcher-global RootState. A state file is
 // hand-editable and an interrupted write can corrupt either one, so neither may
 // panic, a malformed document must be classified as ErrStateUnparsable (never a
-// bare error), and a document the parser accepts must be one the writer
-// reproduces — otherwise the reader and writer disagree about what is on disk.
+// bare error), and a document the parser accepts must serialize stably: a
+// re-read of what the writer produces yields the same bytes again, so state
+// never drifts from one rewrite to the next.
 //
 // One target for both documents: `make fuzz` runs `go test -fuzz='^Fuzz'`, and
 // Go requires that regexp to match exactly one fuzz test per package.
@@ -44,7 +45,7 @@ func FuzzParseState(f *testing.F) {
 				t.Fatalf("parseHomeState(%q) error = %v, want ErrStateUnparsable", data, err)
 			}
 		} else {
-			assertWriterReproduces(t, "parseHomeState", home, parseHomeState)
+			assertSerializesStably(t, "parseHomeState", home, parseHomeState)
 		}
 
 		root, err := parseRootState(data)
@@ -53,16 +54,18 @@ func FuzzParseState(f *testing.F) {
 				t.Fatalf("parseRootState(%q) error = %v, want ErrStateUnparsable", data, err)
 			}
 		} else {
-			assertWriterReproduces(t, "parseRootState", root, parseRootState)
+			assertSerializesStably(t, "parseRootState", root, parseRootState)
 		}
 	})
 }
 
-// assertWriterReproduces checks that a document the parser accepted is stable
-// under the writer: marshaling it and parsing the result yields a document that
-// marshals to the same bytes. The parser must never accept a document the
-// writer canonicalizes into something else.
-func assertWriterReproduces[T any](t *testing.T, name string, doc T, parse func([]byte) (T, error)) {
+// assertSerializesStably checks that a document the parser accepted serializes
+// stably: marshaling it and parsing the result yields a document that marshals
+// to the same bytes. This is stability after the first write, not preservation
+// of the input — a sparse document like `{}` is legitimately expanded to the
+// full schema on that first write. What it rules out is a reader that accepts a
+// shape the writer keeps rewriting differently.
+func assertSerializesStably[T any](t *testing.T, name string, doc T, parse func([]byte) (T, error)) {
 	t.Helper()
 	first, err := yaml.Marshal(doc)
 	if err != nil {
