@@ -22,8 +22,10 @@ import (
 //exhaustruct:ignore
 type IdentityAdoption struct {
 	// Slug is the effective project slug for the caller's remaining work: the
-	// checkout slug, or the legacy repo slug while a pending migration is left
-	// unapplied so a dry run resolves read-only against the old location.
+	// checkout slug, or, while a pending migration is left unapplied (a dry
+	// run), the legacy slug the pending state was actually found under — which a
+	// bare root may have under its path-derived identity rather than the repo
+	// slug.
 	Slug string
 	// Pending reports whether a legacy origin-keyed identity was found and
 	// needed adopting.
@@ -82,7 +84,7 @@ func AdoptLegacyIdentity(
 	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: agentName}
 	slugs := legacySlugs(identity)
 
-	legacy, pending, err := legacyStatePending(slugs, checkoutKey)
+	legacySlug, legacy, pending, err := legacyStatePending(slugs, checkoutKey)
 	if err != nil {
 		return IdentityAdoption{}, fmt.Errorf("check for a pending legacy identity: %w", err)
 	}
@@ -92,7 +94,11 @@ func AdoptLegacyIdentity(
 
 	if !apply {
 		ui.Warnf("%s", adoptionNotice(identity, agentName, legacy.HomeVolume, false))
-		return IdentityAdoption{Slug: identity.RepoSlug, Pending: true}, nil
+		// Resolve the caller's remaining work against the source the state was
+		// actually found under, not always the repo slug: for a bare root the
+		// pending state can live under the path-derived legacy slug, and a
+		// dry-run that named the repo slug would read the wrong (absent) state.
+		return IdentityAdoption{Slug: legacySlug, Pending: true}, nil
 	}
 
 	var result IdentityAdoption
@@ -105,7 +111,7 @@ func AdoptLegacyIdentity(
 		if adoptLockHook != nil {
 			adoptLockHook()
 		}
-		legacy, pending, recheckErr := legacyStatePending(slugs, checkoutKey)
+		_, legacy, pending, recheckErr := legacyStatePending(slugs, checkoutKey)
 		if recheckErr != nil {
 			return fmt.Errorf("check for a pending legacy identity: %w", recheckErr)
 		}
@@ -144,8 +150,10 @@ func legacySlugs(identity git.Identity) []string {
 }
 
 // legacyStatePending reports whether any legacy identity has a state file for the
-// agent while the checkout-keyed one does not, and returns the first legacy state
-// it read so the notice can name its home volume.
+// agent while the checkout-keyed one does not. It returns the slug the first such
+// state was found under (so a dry run can resolve read-only against the real
+// source — a bare root's state may live under its path-derived slug, not the repo
+// slug) and that state, so the notice can name its home volume.
 //
 // The predicate is state-file absence, not directory absence, so a stray or
 // aborted run that created the empty checkout directory cannot permanently skip
@@ -157,30 +165,24 @@ func legacySlugs(identity git.Identity) []string {
 // It fails closed on reads: an unparsable or otherwise unreadable state is
 // returned as an error rather than treated as absent, so an unknown document can
 // never lead to destroying a legacy VM or moving state nobody has read.
-func legacyStatePending(slugs []string, checkoutKey state.Key) (*state.HomeState, bool, error) {
+func legacyStatePending(slugs []string, checkoutKey state.Key) (string, *state.HomeState, bool, error) {
 	if _, err := state.ReadState(checkoutKey); err == nil {
-		return nil, false, nil
+		return "", nil, false, nil
 	} else if !errors.Is(err, state.ErrStateNotFound) {
-		return nil, false, err
+		return "", nil, false, err
 	}
 
-	var legacy *state.HomeState
 	for _, slug := range slugs {
 		found, err := state.ReadState(state.Key{Slug: slug, Agent: checkoutKey.Agent})
 		if err != nil {
 			if errors.Is(err, state.ErrStateNotFound) {
 				continue
 			}
-			return nil, false, err
+			return "", nil, false, err
 		}
-		if legacy == nil {
-			legacy = found
-		}
+		return slug, found, true, nil
 	}
-	if legacy == nil {
-		return nil, false, nil
-	}
-	return legacy, true, nil
+	return "", nil, false, nil
 }
 
 // adoptLegacyIdentity destroys the legacy VMs and merges every legacy state
@@ -194,11 +196,22 @@ func adoptLegacyIdentity(
 	ui termio.UI,
 ) error {
 	primary := slugs[0]
-	var skipped []string
+
+	// Destroy every legacy VM across all sources before moving any state. A
+	// destroy failure then aborts the migration with every legacy state file
+	// still in place, so the next run re-fires the trigger and resumes. Moving
+	// first would create the checkout state file and, on a later destroy
+	// failure, leave the trigger permanently satisfied: the retry would adopt
+	// the first source's home and silently strand the other source's VM, home
+	// volume and state.
 	for _, slug := range slugs {
 		if err := destroyLegacyVMs(ctx, client, slug, ui); err != nil {
 			return err
 		}
+	}
+
+	var skipped []string
+	for _, slug := range slugs {
 		sourceSkipped, err := state.MoveSlugDir(slug, identity.CheckoutSlug)
 		if err != nil {
 			return fmt.Errorf("move project state to %s: %w", state.SlugDir(identity.CheckoutSlug), err)

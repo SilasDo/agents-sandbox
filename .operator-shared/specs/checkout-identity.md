@@ -162,11 +162,16 @@ the incomplete-migration failure on a source that is already gone.
 
 **Actions**
 
-1. **Destroy the legacy VMs first.** For every legacy slug, enumerate the agents whose state lives there
-   (`state.StatefulAgentNames`) and destroy `projectVMName({Slug: legacySlug, Agent})` identity-safely
-   (best-effort; a gone name is fine). The move carries every agent's state, so a sibling agent's VM left
-   running would keep writing the shared home volume while its next run recreates it under the checkout name
-   over the same volume — and would become a `ToPrune[<legacySlug>]` entry (see Prune safety).
+1. **Destroy every legacy VM first, across all sources, before moving any state.** For every legacy slug,
+   enumerate the agents whose state lives there (`state.StatefulAgentNames`) and destroy
+   `projectVMName({Slug: legacySlug, Agent})` identity-safely (best-effort; a gone name is fine). Doing all
+   destroys before any move makes a destroy failure abort with every legacy state file still in place, so
+   the next run re-fires the trigger and resumes; moving first would create the checkout state file and, on
+   a later destroy failure, leave the trigger permanently satisfied — the retry would adopt the first
+   source's home and strand the other source's VM, home volume and state. The move carries every agent's
+   state, so a sibling agent's VM left running would keep writing the shared home volume while its next run
+   recreates it under the checkout name over the same volume — and would become a `ToPrune[<legacySlug>]`
+   entry (see Prune safety).
 2. **Then move** `<state>/<legacySlug>/` to `<state>/<checkoutSlug>/` (project state, `claims/`,
    `<agent>/clients/`) as a **recursive merge that never overwrites an existing file**: a free destination
    name is renamed, both-sides-directories recurses, and a colliding file or a file/directory type mismatch
@@ -190,9 +195,10 @@ that prune could then reclaim alongside the volume.
 **Dry run skips adoption entirely.** Both `--dry-run` and `--dry-run-vm` skip it, because it is
 all-or-nothing: a move without the destroy would orphan the legacy VM (still running against the shared home
 volume, and a `ToPrune[<repoSlug>]` entry). Dry run resolves read-only against the legacy location — the rest
-of the pipeline keeps the legacy identity, so no post-migration artifact is presented as if the migration had
-run — and prints the notice as a "would", with the destination paths. Adoption is re-evaluated on every run,
-so deferring it costs nothing.
+of the pipeline keeps the legacy identity, and the returned slug is the one the pending state was actually
+found under (a bare root's path-derived slug, not always the repo slug), so nothing is presented as if the
+migration had run against the wrong state — and prints the notice as a "would", with the destination paths.
+Adoption is re-evaluated on every run, so deferring it costs nothing.
 
 **Notice**: emitted once, and **explicit about everything that moved, with absolute paths** — the state
 directory (old → new), the destroyed legacy VM name, the preserved home volume name, the old → new VM

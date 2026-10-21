@@ -852,3 +852,101 @@ func TestAdoptLegacyIdentityConfigMoveFailurePropagates(t *testing.T) {
 		t.Errorf("error = %v, want the propagated config-move failure", err)
 	}
 }
+
+// TestAdoptLegacyIdentityDryRunReturnsFoundLegacySlug covers the dry-run slug: a
+// bare root's pending state can live under its path-derived legacy slug, so a dry
+// run must report that slug (not the repo slug) for the caller to resolve against.
+func TestAdoptLegacyIdentityDryRunReturnsFoundLegacySlug(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const legacySlug = "workspace-aaa"
+
+	identity := adoptIdentity()
+	identity.LegacyRepoSlugs = []string{legacySlug}
+	if err := seedHomeState(
+		state.Key{Slug: legacySlug, Agent: adoptAgentName},
+		state.HomeState{HomeVolume: "home-legacy"},
+	); err != nil {
+		t.Fatalf("seed bare-root legacy state: %v", err)
+	}
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		t.Errorf("GetSandbox(%q) called during a dry run", name)
+		return nil, errors.New("GetSandbox must not be called")
+	}}
+	ui := termio.NewTestMock(t)
+
+	got, err := AdoptLegacyIdentity(context.Background(), client, identity, adoptAgentName, false, &ui)
+	if err != nil {
+		t.Fatalf("AdoptLegacyIdentity: %v", err)
+	}
+	if got.Slug != legacySlug {
+		t.Errorf("dry-run Slug = %q, want the legacy slug %q that holds the state", got.Slug, legacySlug)
+	}
+	if !got.Pending || got.Applied {
+		t.Errorf("adoption = %+v, want pending and not applied", got)
+	}
+}
+
+// TestAdoptLegacyIdentityDestroyFailureLeavesStateForRetry covers resumability: a
+// bare root can have state under both the origin slug and its path slug, and if
+// one source's VM teardown fails, the migration must abort with every legacy state
+// file still in place so the next run resumes and adopts the remaining source
+// rather than stranding it.
+func TestAdoptLegacyIdentityDestroyFailureLeavesStateForRetry(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const legacySlug = "workspace-aaa"
+	identity := adoptIdentity()
+	identity.LegacyRepoSlugs = []string{legacySlug}
+
+	// The requested agent's pending state is under the origin slug; a sibling
+	// agent's state sits under the bare-root legacy slug, whose VM teardown fails.
+	if err := seedHomeState(adoptRepoKey(), state.HomeState{HomeVolume: adoptLegacyVolume}); err != nil {
+		t.Fatalf("seed origin state: %v", err)
+	}
+	piLegacyKey := state.Key{Slug: legacySlug, Agent: "pi"}
+	if err := seedHomeState(piLegacyKey, state.HomeState{HomeVolume: "home-pi"}); err != nil {
+		t.Fatalf("seed bare-root legacy state: %v", err)
+	}
+
+	failingClient := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		if strings.Contains(name, legacySlug) {
+			return nil, errors.New("teardown boom")
+		}
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	ui := termio.NewTestMock(t)
+
+	if _, err := AdoptLegacyIdentity(
+		context.Background(),
+		failingClient,
+		identity,
+		adoptAgentName,
+		true,
+		&ui,
+	); err == nil {
+		t.Fatal("expected the sibling VM teardown failure to abort the migration")
+	}
+	if statePresent(t, adoptCheckoutKey()) {
+		t.Error("a destroy failure must not have moved state: the checkout state file exists")
+	}
+	if !statePresent(t, adoptRepoKey()) || !statePresent(t, piLegacyKey) {
+		t.Error("a destroy failure must leave every legacy state file in place for retry")
+	}
+
+	// Retry with every VM gone: both sources are adopted now.
+	okClient := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	retryUI := termio.NewTestMock(t)
+
+	got, err := AdoptLegacyIdentity(context.Background(), okClient, identity, adoptAgentName, true, &retryUI)
+	if err != nil {
+		t.Fatalf("retry AdoptLegacyIdentity: %v", err)
+	}
+	if !got.Applied {
+		t.Errorf("retry = %+v, want it applied", got)
+	}
+	if !statePresent(t, adoptCheckoutKey()) || !statePresent(t, state.Key{Slug: adoptCheckoutSlug, Agent: "pi"}) {
+		t.Error("retry did not adopt every legacy source")
+	}
+}
