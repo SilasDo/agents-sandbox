@@ -474,13 +474,15 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 // loadFindings decodes every report in dir, naming each finding after the
-// configuration its report file is named for.
+// configuration its report file is named for. A directory with no reports is an
+// error: the gate must never treat a missing analysis as a clean one.
 func loadFindings(dir string) ([]Finding, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read report directory %s: %w", dir, err)
 	}
 	var findings []Finding
+	reports := 0
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
@@ -493,11 +495,15 @@ func loadFindings(dir string) ([]Finding, error) {
 		if err != nil {
 			return nil, fmt.Errorf("report %s: %w", entry.Name(), err)
 		}
+		reports++
 		source := strings.TrimSuffix(entry.Name(), ".json")
 		for _, finding := range parsed {
 			finding.Source = source
 			findings = append(findings, finding)
 		}
+	}
+	if reports == 0 {
+		return nil, fmt.Errorf("no deadcode reports in %s", dir)
 	}
 	return findings, nil
 }

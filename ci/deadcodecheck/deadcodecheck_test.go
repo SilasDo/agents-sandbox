@@ -422,6 +422,7 @@ func TestRunReportsEveryUnusableMarker(t *testing.T) {
 	r := newRig(t)
 	first := r.addSource(t, "a.go", "package main\n\n//deadcode:ignore\nfunc Dead() {}\n")
 	second := r.addSource(t, "b.go", "package main\n\n//deadcode:ignore reason=\"\"\nfunc Dead() {}\n")
+	r.addReport(t, "default.json", "[]")
 
 	code, stdout, _ := r.run(t)
 	if code != 1 {
@@ -437,6 +438,7 @@ func TestRunReportsEveryUnusableMarker(t *testing.T) {
 func TestRunScopedSkipsStaleMarkers(t *testing.T) {
 	r := newRig(t)
 	r.addSource(t, "a.go", "package main\n\n//deadcode:ignore reason=\"test seam\"\nfunc Dead() {}\n")
+	r.addReport(t, "default.json", "[]")
 
 	code, stdout, _ := r.run(t, "-scope", "single")
 	if code != 0 {
@@ -474,9 +476,17 @@ func TestRunExitsTwoOnBrokenInput(t *testing.T) {
 			t.Errorf("run exit = %d; want 2", code)
 		}
 	})
+	t.Run("no reports", func(t *testing.T) {
+		code, _, stderr := invoke([]string{"-reports", t.TempDir()}, "")
+		if code != 2 || !strings.Contains(stderr, "no deadcode reports") {
+			t.Errorf("run = (%d, %q); want 2 mentioning no reports", code, stderr)
+		}
+	})
 	t.Run("unreadable source list", func(t *testing.T) {
+		r := newRig(t)
+		r.addReport(t, "default.json", reportJSON("a.go", 1, "Dead"))
 		var stdout, stderr bytes.Buffer
-		code := run([]string{"-reports", t.TempDir()}, failingReader{}, &stdout, &stderr)
+		code := run([]string{"-reports", r.reportDir}, failingReader{}, &stdout, &stderr)
 		if code != 2 || !strings.Contains(stderr.String(), "source paths") {
 			t.Errorf("run = (%d, %q); want 2 mentioning source paths", code, stderr.String())
 		}
@@ -544,6 +554,11 @@ func TestLoadFindingsRejectsUnreadableInput(t *testing.T) {
 	t.Run("missing directory", func(t *testing.T) {
 		if _, err := loadFindings(filepath.Join(t.TempDir(), "absent")); err == nil {
 			t.Error("expected an error for a missing report directory")
+		}
+	})
+	t.Run("a directory with no reports", func(t *testing.T) {
+		if _, err := loadFindings(t.TempDir()); err == nil {
+			t.Error("expected an error for a report directory holding no reports")
 		}
 	})
 	t.Run("a nested directory is skipped", func(t *testing.T) {
