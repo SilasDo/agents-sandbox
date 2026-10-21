@@ -399,3 +399,29 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 		t.Errorf("session key = %+v, want %+v", session.Key(), checkoutKey)
 	}
 }
+
+// TestPrepareSandboxAdoptionFailureReturnsError pins the fail-closed wiring on
+// the run path: an unreadable legacy state aborts PrepareSandbox before it
+// resolves a version, ensures an image, or creates a VM.
+func TestPrepareSandboxAdoptionFailureReturnsError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	clone := newOriginClone(t)
+	identity := git.ResolveIdentity(clone)
+	t.Chdir(clone)
+	installPrepareSandboxMSBMock(t)
+
+	legacyDir := state.KeyDir(state.Key{Slug: identity.RepoSlug, Agent: "opencode"})
+	if err := os.MkdirAll(legacyDir, 0o700); err != nil {
+		t.Fatalf("create legacy state dir: %v", err)
+	}
+	testutil.WriteFile(t, legacyDir, "state.yaml", `": [`)
+
+	ui := termio.NewTestMock(t)
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil ||
+		!strings.Contains(err.Error(), "check for a pending legacy identity") {
+		t.Fatalf(
+			"PrepareSandbox with an unreadable legacy state: error = %v, want the fail-closed predicate error",
+			err,
+		)
+	}
+}
