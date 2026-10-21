@@ -164,19 +164,48 @@ type EventStreamSpec struct {
 	// session's parent. A non-empty parent ID marks the session as a subagent
 	// (child) session; no notification ever fires for a child session.
 	SessionEvents []string
-	// SessionListCommand is a one-shot shell command printing the daemon's raw
-	// session list, run each time a stream opens to seed the filter with
-	// sessions created before the watcher (re)connected. Empty disables seeding.
-	SessionListCommand string
-	// SessionListParse extracts the child session IDs from SessionListCommand's
-	// stdout. The agent owns the list's JSON shape, so the command needs no jq
-	// (or other tooling) in the runner image, which a custom base need not have.
-	SessionListParse func(payload []byte) []string
-	Name             string
+	// SessionList seeds the tracker with sessions created before the watcher
+	// (re)connected, by running one shell command and parsing its output. Nil
+	// disables seeding; a non-nil value always carries both the command and its
+	// parser, so seeding can never be disabled by an omitted parser.
+	SessionList *SessionListSpec
+	Name        string
 	// Parse decodes one SSE data payload into a StreamEvent. ok is false when
 	// the payload carries no event.
 	Parse func(payload []byte) (StreamEvent, bool)
 }
+
+// SessionListSpec is an agent's one-shot session-list command together with the
+// parser for its stdout. The two belong together: a command without a parser
+// cannot seed anything, and a nil parser once made the notify watcher silently
+// skip seeding. Build one with NewSessionList.
+type SessionListSpec struct {
+	command string
+	parse   func(payload []byte) []string
+}
+
+// NewSessionList returns the seeding spec for command, using parse to extract
+// child session IDs from its stdout. Both are required: an agent that declares
+// a session list must also declare how to read it, so an incomplete pair is a
+// programming error and fails fast. A profile that omits its parser would
+// otherwise silently lose subagent filtering. The parser owns the list's JSON
+// shape, so the command needs no jq (or other tooling) in the runner image,
+// which a custom base need not have.
+func NewSessionList(command string, parse func(payload []byte) []string) *SessionListSpec {
+	if command == "" {
+		panic("agent.NewSessionList: empty command")
+	}
+	if parse == nil {
+		panic("agent.NewSessionList: nil parser")
+	}
+	return &SessionListSpec{command: command, parse: parse}
+}
+
+// Command is the shell command that prints the daemon's raw session list.
+func (s *SessionListSpec) Command() string { return s.command }
+
+// Parse extracts the child session IDs from Command's stdout.
+func (s *SessionListSpec) Parse(payload []byte) []string { return s.parse(payload) }
 
 // EventStreamProvider exposes the SSE event stream an agent daemon serves.
 type EventStreamProvider interface {

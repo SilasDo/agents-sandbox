@@ -119,17 +119,16 @@ const sessionErrorEvent = "session.error"
 
 func (opencodeProfile) EventStream() EventStreamSpec {
 	return EventStreamSpec{
-		StreamCommand:      "curl -N -s http://127.0.0.1:4096/global/event",
-		BusyEvents:         []string{"message.part.updated", "session.updated"},
-		AwaitingInput:      []string{"permission.asked", "question.asked"},
-		IdleEvents:         []string{"session.idle"},
-		ErrorEvents:        []string{sessionErrorEvent},
-		StickyErrorEvents:  []string{sessionErrorEvent},
-		SessionEvents:      []string{"session.created", "session.updated"},
-		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session",
-		SessionListParse:   parseOpencodeV1SessionList,
-		Name:               opencodeName,
-		Parse:              parseOpencodeV1Event,
+		StreamCommand:     "curl -N -s http://127.0.0.1:4096/global/event",
+		BusyEvents:        []string{"message.part.updated", "session.updated"},
+		AwaitingInput:     []string{"permission.asked", "question.asked"},
+		IdleEvents:        []string{"session.idle"},
+		ErrorEvents:       []string{sessionErrorEvent},
+		StickyErrorEvents: []string{sessionErrorEvent},
+		SessionEvents:     []string{"session.created", "session.updated"},
+		SessionList:       NewSessionList("curl -sf -m 30 http://127.0.0.1:4096/session", parseOpencodeV1SessionList),
+		Name:              opencodeName,
+		Parse:             parseOpencodeV1Event,
 	}
 }
 

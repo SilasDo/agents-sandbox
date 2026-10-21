@@ -210,17 +210,19 @@ func (opencode2Profile) AttachCommand(target string, args []string) string {
 // permission.asked or form.created event.
 func (opencode2Profile) EventStream() EventStreamSpec {
 	return EventStreamSpec{
-		StreamCommand:      "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event",
-		BusyEvents:         []string{"session.execution.started", "session.step.started"},
-		AwaitingInput:      []string{"permission.asked", "form.created"},
-		IdleEvents:         []string{"session.execution.succeeded"},
-		ErrorEvents:        []string{sessionErrorEvent, "session.execution.failed"},
-		StickyErrorEvents:  nil,
-		SessionEvents:      []string{"session.created"},
-		SessionListCommand: "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/session",
-		SessionListParse:   parseOpencodeV2SessionList,
-		Name:               opencode2Name,
-		Parse:              parseOpencodeV2Event,
+		StreamCommand:     "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event",
+		BusyEvents:        []string{"session.execution.started", "session.step.started"},
+		AwaitingInput:     []string{"permission.asked", "form.created"},
+		IdleEvents:        []string{"session.execution.succeeded"},
+		ErrorEvents:       []string{sessionErrorEvent, "session.execution.failed"},
+		StickyErrorEvents: nil,
+		SessionEvents:     []string{"session.created"},
+		SessionList: NewSessionList(
+			"curl "+opencode2CurlFlags+" "+opencode2CurlAuth+" "+opencode2ServerURL+"/api/session",
+			parseOpencodeV2SessionList,
+		),
+		Name:  opencode2Name,
+		Parse: parseOpencodeV2Event,
 	}
 }
 

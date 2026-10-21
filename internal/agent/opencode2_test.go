@@ -387,19 +387,26 @@ func TestOpencode2EventStream(t *testing.T) {
 		t.Fatal("EventStream().Parse is nil")
 	}
 	got.Parse = nil
-	if got.SessionListParse == nil {
-		t.Fatal("EventStream().SessionListParse is nil")
+	if got.SessionList == nil {
+		t.Fatal("EventStream().SessionList is nil")
 	}
-	got.SessionListParse = nil
+	if want := "curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/session"; got.SessionList.Command() != want {
+		t.Errorf("SessionList.Command() = %q, want %q", got.SessionList.Command(), want)
+	}
+	if children := got.SessionList.Parse([]byte(
+		`{"data":[{"id":"ses_child","parentID":"ses_top"}]}`,
+	)); len(children) != 1 || children[0] != "ses_child" {
+		t.Errorf("SessionList.Parse() = %v, want [ses_child]", children)
+	}
+	got.SessionList = nil
 	want := agent.EventStreamSpec{
-		StreamCommand:      "curl -N -s -u opencode:opencode http://127.0.0.1:4096/api/event",
-		BusyEvents:         []string{"session.execution.started", "session.step.started"},
-		AwaitingInput:      []string{"permission.asked", "form.created"},
-		IdleEvents:         []string{"session.execution.succeeded"},
-		ErrorEvents:        []string{"session.error", "session.execution.failed"},
-		SessionEvents:      []string{"session.created"},
-		SessionListCommand: "curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/session",
-		Name:               "opencode2",
+		StreamCommand: "curl -N -s -u opencode:opencode http://127.0.0.1:4096/api/event",
+		BusyEvents:    []string{"session.execution.started", "session.step.started"},
+		AwaitingInput: []string{"permission.asked", "form.created"},
+		IdleEvents:    []string{"session.execution.succeeded"},
+		ErrorEvents:   []string{"session.error", "session.execution.failed"},
+		SessionEvents: []string{"session.created"},
+		Name:          "opencode2",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("EventStream() = %+v, want %+v", got, want)

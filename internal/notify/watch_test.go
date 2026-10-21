@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 )
@@ -145,13 +146,12 @@ func TestWatchDedupClearsOnBusy(t *testing.T) {
 
 func TestWatchOnceSeedsChildrenFromListCommand(t *testing.T) {
 	spec := opencodeSpec()
-	spec.SessionListCommand = "seed-cmd"
-	spec.SessionListParse = func(payload []byte) []string {
+	spec.SessionList = agent.NewSessionList("seed-cmd", func(payload []byte) []string {
 		if string(payload) != `{"data":[{"id":"ses_child","parentID":"ses_top"}]}` {
 			t.Errorf("SessionListParse got %q", payload)
 		}
 		return []string{"ses_child"}
-	}
+	})
 	stream := &streamStub{events: []msb.StreamEvent{
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("message.part.updated", "ses_child")},
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("session.idle", "ses_child")},
@@ -172,23 +172,19 @@ func TestWatchOnceSeedsChildrenFromListCommand(t *testing.T) {
 	}
 }
 
-func TestWatchOnceSeedFailureDoesNotBlockNotifications(t *testing.T) {
-	spec := opencodeSpec()
-	spec.SessionListCommand = "seed-cmd"
-	spec.SessionListParse = func([]byte) []string {
-		t.Fatal("SessionListParse ran despite the shell error")
-		return nil
-	}
-	stream := &streamStub{events: []msb.StreamEvent{
+// seedFailureStream is a top-level turn whose only notification is the closing
+// done, so any test asserting exactly one TriggerDone notification proves a
+// failed seed did not block the stream.
+func seedFailureStream() *streamStub {
+	return &streamStub{events: []msb.StreamEvent{
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("message.part.updated", "ses_top")},
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("session.idle", "ses_top")},
 		{Kind: msb.StreamEventExited, ExitCode: 0},
 	}}
-	sb := &msb.MockSandbox{
-		ShellErr:      errors.New("boom"),
-		ShellCalls:    &[]string{},
-		StreamHandle_: stream,
-	}
+}
+
+func assertOneDoneNotification(t *testing.T, sb *msb.MockSandbox, spec agent.EventStreamSpec) {
+	t.Helper()
 	backend := &recordBackend{}
 	_ = watchOnce(context.Background(), sb, NewTracker(spec), backend, spec)
 	if len(*sb.ShellCalls) != 1 || (*sb.ShellCalls)[0] != "seed-cmd" {
@@ -197,6 +193,54 @@ func TestWatchOnceSeedFailureDoesNotBlockNotifications(t *testing.T) {
 	if backend.count() != 1 || backend.notification(0).Trigger != TriggerDone {
 		t.Fatalf("expected one done notification despite seed failure, got %+v", backend.got)
 	}
+}
+
+func TestWatchOnceSeedShellErrorDoesNotBlockNotifications(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionList = agent.NewSessionList("seed-cmd", func([]byte) []string {
+		t.Fatal("SessionListParse ran despite the shell error")
+		return nil
+	})
+	sb := &msb.MockSandbox{
+		ShellErr:      errors.New("boom"),
+		ShellCalls:    &[]string{},
+		StreamHandle_: seedFailureStream(),
+	}
+	assertOneDoneNotification(t, sb, spec)
+}
+
+// A seed command that runs but exits non-zero (e.g. a missing tool in a custom
+// base, where jq's absence makes the list command fail) must not block the
+// stream either.
+func TestWatchOnceSeedNonSuccessDoesNotBlockNotifications(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionList = agent.NewSessionList("seed-cmd", func([]byte) []string {
+		t.Fatal("SessionListParse ran despite the failing command")
+		return nil
+	})
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			"seed-cmd": msb.NewTestResult(false, 1, "", "jq: command not found", nil),
+		},
+		ShellCalls:    &[]string{},
+		StreamHandle_: seedFailureStream(),
+	}
+	assertOneDoneNotification(t, sb, spec)
+}
+
+// A body the parser cannot read yields no child IDs; that must not block the
+// stream, and the empty seed must not suppress the top-level session.
+func TestWatchOnceSeedUnparsableDoesNotBlockNotifications(t *testing.T) {
+	spec := opencodeSpec()
+	spec.SessionList = agent.NewSessionList("seed-cmd", func([]byte) []string { return nil })
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			"seed-cmd": msb.NewTestResult(true, 0, "not json", "", nil),
+		},
+		ShellCalls:    &[]string{},
+		StreamHandle_: seedFailureStream(),
+	}
+	assertOneDoneNotification(t, sb, spec)
 }
 
 func TestWatchReconnectsOnStreamExit(t *testing.T) {

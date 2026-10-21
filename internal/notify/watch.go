@@ -165,9 +165,9 @@ func watchOnce(
 	// Seed the tracker with child sessions created before this stream opened.
 	// Best-effort: an error, non-success, or unparsable body is ignored and the
 	// stream proceeds, since session.created still teaches new children.
-	if spec.SessionListCommand != "" && spec.SessionListParse != nil {
-		if res, err := sb.Shell(ctx, spec.SessionListCommand); err == nil && res.Success() {
-			tracker.SeedChildren(spec.SessionListParse([]byte(res.Stdout())))
+	if spec.SessionList != nil {
+		if res, err := sb.Shell(ctx, spec.SessionList.Command()); err == nil && res.Success() {
+			tracker.SeedChildren(spec.SessionList.Parse([]byte(res.Stdout())))
 		}
 	}
 
