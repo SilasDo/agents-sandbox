@@ -29,6 +29,8 @@ func FuzzParseState(f *testing.F) {
 		"env_state:\n  hash: abc\n  names: [FOO, BAR]\n",
 		"migrations:\n  runtime_home:\n    status: completed\n    copied: [vol-a]\n",
 		"agents:\n  opencode:\n    last_checked: 2026-01-02T03:04:05Z\n    latest_version: 1.2.3\n",
+		"updates:\n  agents:\n    opencode:\n      latest_version: new\nagents:\n  opencode:\n    latest_version: old\n",
+		"updates:\n  launcher:\n    last_checked: 2026-01-02T03:04:05Z\nagents:\n  opencode:\n    latest_version: 1.2.3\n",
 		"migrations: [unterminated",
 		"home_volume: [not, a, string]\n",
 		"home:\n\tvolume: tab\n",

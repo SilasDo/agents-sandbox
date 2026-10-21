@@ -16,11 +16,36 @@ import (
 //
 //exhaustruct:ignore
 type RootState struct {
-	Migrations map[string]Migration       `yaml:"migrations,omitempty"`
-	Agents     map[string]AgentCheckState `yaml:"agents,omitempty"`
+	Migrations map[string]Migration `yaml:"migrations,omitempty"`
+	Updates    Updates              `yaml:"updates,omitempty"`
 	// AdoptedHomeVolumes records, per legacy project identity, the checkout that
 	// adopted its lost-state home volume (#144). See AdoptedHomeVolume.
 	AdoptedHomeVolumes map[string]AdoptedHomeVolume `yaml:"adopted_home_volumes,omitempty"`
+}
+
+// Updates groups the launcher-global update-check state: Launcher for
+// agents-sandbox itself, Agents for the tools baked into the runner image.
+type Updates struct {
+	Launcher LauncherUpdateState        `yaml:"launcher,omitempty"`
+	Agents   map[string]AgentCheckState `yaml:"agents,omitempty"`
+}
+
+// IsZero reports whether the namespace holds nothing, so yaml.v3's omitempty
+// drops the key entirely.
+func (u Updates) IsZero() bool {
+	return u.Launcher.IsZero() && len(u.Agents) == 0
+}
+
+// LauncherUpdateState is the launcher's own update-check state, formerly the
+// standalone upgrade.json file.
+type LauncherUpdateState struct {
+	LastChecked       time.Time `yaml:"last_checked"`
+	DismissedVersions []string  `yaml:"dismissed_versions,omitempty"`
+}
+
+// IsZero reports whether no launcher check has been recorded.
+func (l LauncherUpdateState) IsZero() bool {
+	return l.LastChecked.IsZero() && len(l.DismissedVersions) == 0
 }
 
 // MigrationStatus is the terminal or in-flight state of a one-time migration.
@@ -157,18 +182,31 @@ func (c AgentCheckState) DueForCheck(t time.Time) bool {
 	return c.LastChecked.IsZero() || t.Sub(c.LastChecked) >= AgentCheckInterval
 }
 
-// AgentCheck returns the named agent's check state. A missing entry is the zero
-// AgentCheckState, whose zero LastChecked is always due.
+// AgentCheck returns the named agent's check state from updates.agents. A
+// missing entry is the zero AgentCheckState, whose zero LastChecked is always
+// due.
 func (s *RootState) AgentCheck(name string) AgentCheckState {
-	return s.Agents[name]
+	return s.Updates.Agents[name]
 }
 
-// SetAgentCheck records an agent check state, initializing the registry if nil.
+// SetAgentCheck records an agent check state under updates.agents,
+// initializing the registry if nil.
 func (s *RootState) SetAgentCheck(name string, c AgentCheckState) {
-	if s.Agents == nil {
-		s.Agents = map[string]AgentCheckState{}
+	if s.Updates.Agents == nil {
+		s.Updates.Agents = map[string]AgentCheckState{}
 	}
-	s.Agents[name] = c
+	s.Updates.Agents[name] = c
+}
+
+// LauncherUpdate returns the launcher's own update-check state
+// (updates.launcher).
+func (s *RootState) LauncherUpdate() LauncherUpdateState {
+	return s.Updates.Launcher
+}
+
+// SetLauncherUpdate records the launcher's update-check state.
+func (s *RootState) SetLauncherUpdate(l LauncherUpdateState) {
+	s.Updates.Launcher = l
 }
 
 func rootStateFile() string {
@@ -201,10 +239,28 @@ func ReadRootState() (*RootState, error) {
 // parseRootState is the pure unmarshal step of ReadRootState: arbitrary bytes
 // in, RootState or ErrStateUnparsable-wrapped error out, no file I/O. Kept
 // separate so FuzzParseState can drive it without a filesystem.
+//
+// It also folds the legacy top-level agents: key (pre-updates: root documents)
+// into Updates.Agents, so an old document reads correctly and the next write
+// normalizes it. The new shape wins: a non-empty updates.agents is adopted as-is
+// and the legacy key ignored, while updates.launcher survives either way.
+//
+// The legacy key is decoded into its own small struct rather than a mirror of
+// RootState: a mirror silently drops any field it does not restate, so adding a
+// field to RootState would lose that field's data on every read.
 func parseRootState(data []byte) (RootState, error) {
 	var state RootState
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+	}
+	if len(state.Updates.Agents) == 0 {
+		var legacy struct {
+			Agents map[string]AgentCheckState `yaml:"agents"`
+		}
+		if err := yaml.Unmarshal(data, &legacy); err != nil {
+			return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+		}
+		state.Updates.Agents = legacy.Agents
 	}
 	return state, nil
 }

@@ -552,9 +552,9 @@ func TestResolveOpenCodeVersionSkipsCheckWhenCheckedToday(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
 	seedAgentState(t, k, "1.0.0", agentSourceTool)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("seedRootState: %v", err)
 	}
 
@@ -596,9 +596,9 @@ func TestResolveOpenCodeVersionDoesNotReOfferVersion(t *testing.T) {
 	if err := seedHomeState(k, *hs); err != nil {
 		t.Fatal(err)
 	}
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now().Add(-25 * time.Hour), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -752,9 +752,9 @@ func TestResolveOpenCodeVersionInteractiveQuit(t *testing.T) {
 func TestResolveBuildVersionPromptNamesThisProjectsVersion(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	// latest known version cached globally; this project's image baseline is 1.0.0
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now().Add(-time.Hour), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	k := state.Key{Slug: "proj", Agent: "opencode"}
@@ -856,9 +856,9 @@ func TestPendingUpgradeSuppressedWhenAlreadyOffered(t *testing.T) {
 	if err := seedHomeState(k, *hs); err != nil {
 		t.Fatal(err)
 	}
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now().Add(-time.Hour), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -882,9 +882,9 @@ func TestPendingUpgradeClaimSuppressesNextOffer(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
 	seedAgentState(t, k, "1.0.0", agentSourceTool)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("seedRootState: %v", err)
 	}
 
@@ -917,9 +917,9 @@ func TestPendingUpgradeOfferedWritePreservesFingerprints(t *testing.T) {
 	if err := seedHomeState(k, seed); err != nil {
 		t.Fatalf("seedHomeState: %v", err)
 	}
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatalf("seedRootState: %v", err)
 	}
 
@@ -1077,9 +1077,9 @@ func TestPendingUpgradeWarnsOnRootStateWriteError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
 	seedAgentState(t, k, "1.0.0", agentSourceTool)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now().Add(-25 * time.Hour), LatestVersion: "1.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	stateDir := configpaths.Get().UserStateDir()
@@ -1131,9 +1131,9 @@ func TestPendingUpgradeNoOfferWhenLatestEmpty(t *testing.T) {
 func TestPendingUpgradeWarnsOnProjectStateReadError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(
@@ -1161,9 +1161,9 @@ func TestPendingUpgradeWarnsOnProjectStateReadError(t *testing.T) {
 func TestPendingUpgradeOffersWhenProjectStateMissing(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1186,9 +1186,9 @@ func TestPendingUpgradeWarnsOnProjectStateWriteError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "proj", Agent: "opencode"}
 	seedAgentState(t, k, "1.0.0", agentSourceTool)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: now(), LatestVersion: "2.0.0"},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	keyDir := state.KeyDir(k)

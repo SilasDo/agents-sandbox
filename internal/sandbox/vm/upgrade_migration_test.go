@@ -33,9 +33,9 @@ func TestMigrateLegacyUpdaterStateFoldsLastCheckedAndDeletes(t *testing.T) {
 
 func TestMigrateLegacyUpdaterStatePresentValueWins(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: time.Unix(5000, 0).UTC()},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(
@@ -128,9 +128,9 @@ func TestMigrateLegacyUpdaterStateSkipsZeroLastChecked(t *testing.T) {
 // than rewriting it.
 func TestMigrateLegacyUpdaterStateNoOpPreservesRootDocument(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := seedRootState(state.RootState{Agents: map[string]state.AgentCheckState{
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
 		"opencode": {LastChecked: time.Unix(5000, 0).UTC()},
-	}}); err != nil {
+	}}}); err != nil {
 		t.Fatal(err)
 	}
 	before, err := state.ReadRootState()

@@ -20,8 +20,6 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 
-	"github.com/inoio/agents-sandbox/internal/atomicwrite"
-	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -37,8 +35,6 @@ const (
 	// MinInterval guards against hammering the GitHub API (which rate-limits
 	// unauthenticated requests) with absurdly frequent checks.
 	MinInterval = time.Hour
-
-	stateFileName = "upgrade.json"
 )
 
 var (
@@ -90,8 +86,12 @@ type Options struct {
 	CurrentVersion string
 	Mode           Mode
 	Interval       time.Duration
-	StatePath      string
 	UI             termio.UI
+
+	// Store persists the launcher's update-check state. When nil, the check
+	// runs against an in-memory store: it still works, but nothing outlives
+	// the process.
+	Store Store
 
 	// UpdateFunc installs the given latest version over the running binary.
 	// When nil, updateExecutable is used. Tests inject it to avoid touching
@@ -99,17 +99,14 @@ type Options struct {
 	UpdateFunc func(ctx context.Context, latest string) error
 }
 
-// state is the persisted per-user upgrade state.
-type state struct {
-	LastCheck         time.Time `json:"last_check"`
-	DismissedVersions []string  `json:"dismissed_versions,omitempty"`
-}
-
-func (o Options) statePath() string {
-	if o.StatePath != "" {
-		return o.StatePath
+// store returns the injected Store, defaulting to an in-memory one. Callers
+// invoke it once per Check: a nil Store allocates a fresh memoryStore on each
+// call, so two calls would not share state.
+func (o Options) store() Store {
+	if o.Store == nil {
+		return &memoryStore{}
 	}
-	return filepath.Join(configpaths.Get().UserStateDir(), stateFileName)
+	return o.Store
 }
 
 // Check looks for a newer agents-sandbox release than CurrentVersion and
@@ -142,9 +139,28 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		updateFunc = updateExecutable
 	}
 
-	path := opts.statePath()
-	st := loadState(path)
-	if time.Since(st.LastCheck) < interval {
+	store := opts.store()
+	// Only fold the retired upgrade.json when a real store was injected. With a
+	// nil Store the check runs against an ephemeral memoryStore, so folding
+	// would delete the real file after "writing" into state that cannot outlive
+	// the process: the caller is the one that knows whether persistence is real.
+	//
+	// A fold that fails leaves this process without the legacy timestamp and
+	// dismissals, so defer the check rather than act on a state view known to be
+	// incomplete (which could re-prompt a version the user already dismissed).
+	// The file stays in place, so the next run retries the fold and resumes.
+	if opts.Store != nil {
+		if err := FoldLegacyState(store); err != nil {
+			opts.UI.Verbosef("upgrade state migration deferred: %v", err)
+			return Result{}, nil
+		}
+	}
+	st, err := store.Load()
+	if err != nil {
+		opts.UI.Verbosef("upgrade state unavailable: %v", err)
+		return Result{}, nil
+	}
+	if time.Since(st.LastChecked) < interval {
 		return Result{}, nil
 	}
 
@@ -160,8 +176,8 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, nil
 	}
 	if !newer || slices.Contains(st.DismissedVersions, latest) {
-		st.LastCheck = time.Now()
-		_ = saveState(path, st)
+		st.LastChecked = time.Now()
+		persistBestEffort(store, st, opts.UI)
 		return Result{}, nil
 	}
 
@@ -169,9 +185,29 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	if res.Updated || res.Exit {
 		opts.UI.Infof("agents-sandbox updated to %s; restart to use it", latest)
 	}
-	st.LastCheck = time.Now()
-	_ = saveState(path, st)
+	st.LastChecked = time.Now()
+	persistBestEffort(store, st, opts.UI)
 	return res, nil
+}
+
+// persistBestEffort persists the upgrade state, reporting a failure as a verbose
+// note rather than an error: losing the check time only means checking again.
+//
+// It writes through Update and unions the dismissals, so a dismissal recorded by
+// a concurrent launcher after this process read the state survives. LastChecked
+// is set outright: this run's check is the most recent.
+func persistBestEffort(store Store, st LauncherState, ui termio.UI) {
+	err := store.Update(func(current *LauncherState) {
+		current.LastChecked = st.LastChecked
+		for _, version := range st.DismissedVersions {
+			if !slices.Contains(current.DismissedVersions, version) {
+				current.DismissedVersions = append(current.DismissedVersions, version)
+			}
+		}
+	})
+	if err != nil {
+		ui.Verbosef("could not persist upgrade state: %v", err)
+	}
 }
 
 // isNewer reports whether current is strictly older than latest, comparing
@@ -201,7 +237,7 @@ func applyMode(
 	opts Options,
 	updateFunc func(context.Context, string) error,
 	latest string,
-	st *state,
+	st *LauncherState,
 ) Result {
 	res := Result{HasUpdate: true, Latest: latest}
 	install := func() bool {
@@ -432,26 +468,4 @@ func replaceExecutable(assetPath, exePath string) error {
 		return fmt.Errorf("replace running executable: %w", err)
 	}
 	return nil
-}
-
-// loadState reads the persisted upgrade state, tolerating a missing or
-// corrupt file by returning empty state.
-func loadState(path string) state {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return state{}
-	}
-	var s state
-	_ = json.Unmarshal(data, &s)
-	return s
-}
-
-// saveState writes the upgrade state to path atomically, creating its directory
-// if needed.
-func saveState(path string, s state) error {
-	data, err := json.MarshalIndent(s, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicwrite.WriteFile(path, data)
 }

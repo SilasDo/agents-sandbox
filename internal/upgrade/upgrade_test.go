@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -40,13 +41,32 @@ func serveLatest(t *testing.T, latest string, asset []byte) {
 	})
 }
 
-func mockOptions(t testing.TB, version string, mode Mode) Options {
+// fakeStore is the in-memory Store injected by mockOptions.
+type fakeStore struct {
+	state LauncherState
+	err   error
+}
+
+func (f *fakeStore) Load() (LauncherState, error) { return f.state, f.err }
+
+func (f *fakeStore) Update(mutate func(*LauncherState)) error {
+	if f.err != nil {
+		return f.err
+	}
+	mutate(&f.state)
+	return nil
+}
+
+// mockOptions builds Options for a Check test. It isolates host config paths
+// because Check folds the retired upgrade.json from the user state directory.
+func mockOptions(t *testing.T, version string, mode Mode) Options {
 	t.Helper()
+	configpaths.WithMockConfigPaths(t)
 	return Options{
 		CurrentVersion: version,
 		Mode:           mode,
 		Interval:       time.Hour,
-		StatePath:      filepath.Join(t.TempDir(), "state.json"),
+		Store:          &fakeStore{},
 		UI:             &termio.Mock{},
 	}
 }
@@ -123,8 +143,7 @@ func TestCheckThrottled(t *testing.T) {
 	ui := termio.Mock{}
 	opts := mockOptions(t, "1.0.0", ModeNotify)
 	opts.UI = &ui
-	_ = os.MkdirAll(filepath.Dir(opts.StatePath), 0o700)
-	_ = os.WriteFile(opts.StatePath, []byte(`{"last_check":"`+time.Now().Format(time.RFC3339)+`"}`), 0o600)
+	opts.Store = &fakeStore{state: LauncherState{LastChecked: time.Now()}}
 
 	res, err := Check(context.Background(), opts)
 	if err != nil {
@@ -140,7 +159,9 @@ func TestCheckThrottled(t *testing.T) {
 
 func TestCheckNoUpdateSavesState(t *testing.T) {
 	serveLatest(t, "1.0.0", nil)
+	store := &fakeStore{}
 	opts := mockOptions(t, "1.5.0", ModeNotify)
+	opts.Store = store
 	res, err := Check(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,14 +169,64 @@ func TestCheckNoUpdateSavesState(t *testing.T) {
 	if res.HasUpdate {
 		t.Fatalf("expected no update, got %+v", res)
 	}
-	data, err := os.ReadFile(opts.StatePath)
-	if err != nil {
-		t.Fatalf("expected state file written: %v", err)
-	}
-	if len(data) == 0 {
-		t.Fatal("state file empty")
+	if store.state.LastChecked.IsZero() {
+		t.Fatalf("expected the check time persisted, got %+v", store.state)
 	}
 }
+
+func TestCheckStoreLoadErrorDefers(t *testing.T) {
+	// A contended store means the state is unreachable; the check defers
+	// silently instead of failing startup or clobbering state.
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := mockOptions(t, "1.0.0", ModeNotify)
+	opts.UI = &ui
+	opts.Store = &fakeStore{err: errors.New("state locked")}
+
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("expected the store failure to be tolerated, got %v", err)
+	}
+	if res.HasUpdate || res.Updated || res.Exit {
+		t.Fatalf("expected an empty result, got %+v", res)
+	}
+	if len(ui.InfoCalls) != 0 {
+		t.Fatalf("expected no notification, got %v", ui.InfoCalls)
+	}
+	if len(ui.VerboseCalls) == 0 {
+		t.Fatal("expected a verbose note about the unusable store")
+	}
+}
+
+func TestCheckStoreWriteErrorIsWarnedNotReturned(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := mockOptions(t, "1.0.0", ModeNotify)
+	opts.UI = &ui
+	store := &fakeStore{}
+	opts.Store = &writeFailingStore{inner: store}
+
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("expected the write failure to be swallowed, got %v", err)
+	}
+	if !res.HasUpdate {
+		t.Fatalf("expected the notification to still happen, got %+v", res)
+	}
+	if len(ui.InfoCalls) == 0 {
+		t.Fatal("expected a notification")
+	}
+	if len(ui.VerboseCalls) == 0 {
+		t.Fatal("expected a verbose note about the failed write")
+	}
+}
+
+// writeFailingStore loads from its inner store but always fails to write.
+type writeFailingStore struct{ inner Store }
+
+func (s *writeFailingStore) Load() (LauncherState, error) { return s.inner.Load() }
+
+func (s *writeFailingStore) Update(func(*LauncherState)) error { return errors.New("state locked") }
 
 func TestCheckNetworkErrorIsIgnored(t *testing.T) {
 	latestURL = "http://127.0.0.1:1/releases/latest"
@@ -282,8 +353,7 @@ func TestCheckDismissedVersion(t *testing.T) {
 	ui := termio.Mock{}
 	opts := mockOptions(t, "1.0.0", ModeNotify)
 	opts.UI = &ui
-	_ = os.MkdirAll(filepath.Dir(opts.StatePath), 0o700)
-	_ = os.WriteFile(opts.StatePath, []byte(`{"dismissed_versions":["2.0.0"]}`), 0o600)
+	opts.Store = &fakeStore{state: LauncherState{DismissedVersions: []string{"2.0.0"}}}
 	res, err := Check(context.Background(), opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -350,21 +420,21 @@ func TestReplaceExecutableDefaultsToExecutable(t *testing.T) {
 }
 
 func TestStateRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	want := state{LastCheck: time.Now().Truncate(time.Second), DismissedVersions: []string{"1.1.0"}}
-	if err := saveState(path, want); err != nil {
-		t.Fatalf("save: %v", err)
+	store := &fakeStore{}
+	want := LauncherState{
+		LastChecked:       time.Now().Truncate(time.Second),
+		DismissedVersions: []string{"1.1.0"},
 	}
-	got := loadState(path)
-	if !got.LastCheck.Equal(want.LastCheck) || len(got.DismissedVersions) != 1 || got.DismissedVersions[0] != "1.1.0" {
+	if err := store.Update(func(st *LauncherState) { *st = want }); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := store.Load()
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !got.LastChecked.Equal(want.LastChecked) || len(got.DismissedVersions) != 1 ||
+		got.DismissedVersions[0] != "1.1.0" {
 		t.Fatalf("got %+v, want %+v", got, want)
-	}
-}
-
-func TestLoadStateMissingFile(t *testing.T) {
-	s := loadState(filepath.Join(t.TempDir(), "nope.json"))
-	if !s.LastCheck.IsZero() || len(s.DismissedVersions) != 0 {
-		t.Fatalf("expected empty state, got %+v", s)
 	}
 }
 
@@ -374,6 +444,52 @@ func TestCheckSubMinIntervalFails(t *testing.T) {
 	res, err := Check(context.Background(), opts)
 	if err == nil {
 		t.Fatalf("expected error for sub-minimum interval, got %+v", res)
+	}
+}
+
+// A fold that cannot proceed is deferred, not stepped over: the process's view
+// of the launcher state is incomplete, so checking now could offer a version the
+// legacy file still dismisses. The check resumes once the fold succeeds.
+func TestCheckFoldFailureIsDeferred(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := mockOptions(t, "1.0.0", ModeNotify)
+	opts.UI = &ui
+
+	// A directory at the legacy path makes the fold's read fail.
+	if err := os.Mkdir(legacyStatePath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("a folded-state failure must not fail the check: %v", err)
+	}
+	if res.HasUpdate || res.Updated || res.Exit {
+		t.Fatalf("expected the check to be deferred, got %+v", res)
+	}
+	if len(ui.InfoCalls) != 0 {
+		t.Fatalf("expected no notification, got %v", ui.InfoCalls)
+	}
+	if len(ui.VerboseCalls) == 0 {
+		t.Fatal("expected a verbose log for the deferred migration")
+	}
+}
+
+// A dismissal recorded by a concurrent launcher must survive this process's
+// state write: persisting unions into whatever the store holds at write time
+// instead of replacing it with the snapshot this process loaded.
+func TestPersistBestEffortUnionsConcurrentDismissals(t *testing.T) {
+	store := &fakeStore{state: LauncherState{DismissedVersions: []string{"9.9.9"}}}
+	persistBestEffort(store, LauncherState{
+		LastChecked:       time.Now(),
+		DismissedVersions: []string{"1.0.0"},
+	}, &termio.Mock{})
+	if !slices.Contains(store.state.DismissedVersions, "9.9.9") {
+		t.Fatalf("persist dropped a concurrent dismissal: %+v", store.state.DismissedVersions)
+	}
+	if !slices.Contains(store.state.DismissedVersions, "1.0.0") {
+		t.Fatalf("persist dropped the local dismissal: %+v", store.state.DismissedVersions)
 	}
 }
 
@@ -564,9 +680,10 @@ func TestDownloadAssetNon200(t *testing.T) {
 	}
 }
 
-func TestCheckDefaultsIntervalAndStatePath(t *testing.T) {
-	// A zero Interval and empty StatePath exercise the default-resolution
-	// branches of Check, writing state to the mocked user state dir.
+func TestCheckDefaultsIntervalAndStore(t *testing.T) {
+	// A zero Interval and a nil Store exercise the default-resolution branches
+	// of Check: the interval falls back to DefaultInterval and the check runs
+	// against the in-memory store, writing no host state.
 	configpaths.WithMockConfigPaths(t)
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}
@@ -577,6 +694,23 @@ func TestCheckDefaultsIntervalAndStatePath(t *testing.T) {
 	}
 	if !res.HasUpdate {
 		t.Fatalf("expected an update notification, got %+v", res)
+	}
+}
+
+// A nil Store keeps the check in memory, so Check must not run the legacy-file
+// fold: the fold would save into the ephemeral memory store and then delete the
+// real upgrade.json, losing the dismissals and cadence for good.
+func TestCheckNilStoreLeavesLegacyFileInPlace(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeLegacy(t, `{"dismissed_versions":["1.5.2"]}`)
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := Options{CurrentVersion: "1.0.0", Mode: ModeNotify, Interval: time.Hour, UI: &ui}
+	if _, err := Check(context.Background(), opts); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := os.Stat(legacyStatePath()); err != nil {
+		t.Fatalf("nil Store deleted the legacy upgrade.json: %v", err)
 	}
 }
 
