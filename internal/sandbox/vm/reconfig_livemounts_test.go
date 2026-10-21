@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -98,11 +99,34 @@ func matchingHomeState(networkPolicy network.Policy) state.HomeState {
 	}
 }
 
+// assertRebuildReason fails unless the alone-rebuild log names want, proving the
+// expected mount detector drove the recreate rather than some unrelated change.
+func assertRebuildReason(t *testing.T, ui *termio.Mock, want string) {
+	t.Helper()
+	for _, line := range ui.VerboseCalls {
+		if strings.Contains(line, "rebuild reasons:") && strings.Contains(line, want) {
+			return
+		}
+	}
+	t.Errorf("rebuild reasons %v do not name %q", ui.VerboseCalls, want)
+}
+
+// assertVerbose fails unless one verbose line contains want.
+func assertVerbose(t *testing.T, ui *termio.Mock, want string) {
+	t.Helper()
+	for _, line := range ui.VerboseCalls {
+		if strings.Contains(line, want) {
+			return
+		}
+	}
+	t.Errorf("verbose calls %v do not contain %q", ui.VerboseCalls, want)
+}
+
 func TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "4G"}
-	f := newReconfigFixture(t, launcherLiveMounts(2048, 16384, "vol"), nil)
+	f := newReconfigFixture(t, launcherLiveMounts(1024, 16384, "vol"), nil)
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
@@ -111,6 +135,7 @@ func TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
 	if !recreate {
 		t.Error("expected a recreate for a tmp size change read from the live VM's mounts")
 	}
+	assertRebuildReason(t, f.ui, "/tmp tmpfs size")
 }
 
 func TestDecideReconfigNoRecreateWhenLiveMountsMatch(t *testing.T) {
@@ -126,13 +151,18 @@ func TestDecideReconfigNoRecreateWhenLiveMountsMatch(t *testing.T) {
 	if recreate {
 		t.Error("expected no recreate when the live mounts already match the options")
 	}
+	for _, line := range f.ui.VerboseCalls {
+		if strings.Contains(line, "rebuild reasons:") {
+			t.Errorf("expected no rebuild reason, got %q", line)
+		}
+	}
 }
 
 func TestDecideReconfigRecreatesOnWorkspaceQuotaChange(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "32G"}
-	f := newReconfigFixture(t, launcherLiveMounts(2048, 16384, "vol"), nil)
+	f := newReconfigFixture(t, launcherLiveMounts(2048, 8192, "vol"), nil)
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
@@ -141,6 +171,26 @@ func TestDecideReconfigRecreatesOnWorkspaceQuotaChange(t *testing.T) {
 	if !recreate {
 		t.Error("expected a recreate for a workspace quota change read from the live VM's mounts")
 	}
+	assertRebuildReason(t, f.ui, "/workspace write quota")
+}
+
+// TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts covers the third
+// detector the read-back restores: a live VM still mounting the previous home
+// volume must recreate when home resolution points at a different one.
+func TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "16G"}
+	f := newReconfigFixture(t, launcherLiveMounts(2048, 16384, "old-vol"), nil)
+
+	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
+	if err != nil {
+		t.Fatalf("decideReconfig: %v", err)
+	}
+	if !recreate {
+		t.Error("expected a recreate when the live home volume differs from the resolved one")
+	}
+	assertRebuildReason(t, f.ui, "home volume")
 }
 
 func TestDecideReconfigMountsReadFailureDegrades(t *testing.T) {
@@ -156,4 +206,5 @@ func TestDecideReconfigMountsReadFailureDegrades(t *testing.T) {
 	if recreate {
 		t.Error("expected no recreate when the mounts cannot be read")
 	}
+	assertVerbose(t, f.ui, "reading VM mounts failed")
 }
