@@ -22,13 +22,18 @@ type LauncherState struct {
 	DismissedVersions []string
 }
 
-// Store reads and writes LauncherState. The production implementation is
+// Store reads and mutates LauncherState. The production implementation is
 // cmd/agents-sandbox's launcherStore, which keeps the state in the
 // launcher-global state.yaml document (updates.launcher); a nil Store falls
 // back to memoryStore, which checks normally but persists nothing.
+//
+// Update is the only mutation. Load followed by a write is two transactions, so
+// a value derived from the loaded snapshot can land after a concurrent launcher
+// already wrote newer state and clobber it. Update applies its mutation to the
+// state as it is at write time, inside one locked transaction.
 type Store interface {
 	Load() (LauncherState, error)
-	Save(LauncherState) error
+	Update(mutate func(*LauncherState)) error
 }
 
 // memoryStore is the default Store for a caller that injects none. It keeps
@@ -40,8 +45,8 @@ type memoryStore struct {
 
 func (m *memoryStore) Load() (LauncherState, error) { return m.state, nil }
 
-func (m *memoryStore) Save(s LauncherState) error {
-	m.state = s
+func (m *memoryStore) Update(mutate func(*LauncherState)) error {
+	mutate(&m.state)
 	return nil
 }
 
@@ -94,19 +99,18 @@ func parseLegacyState(data []byte) legacyState {
 }
 
 // foldLegacyState merges the legacy state into the store, preserving anything
-// the store already holds.
+// the store already holds: an absent last_checked adopts the legacy timestamp
+// and dismissals are unioned per element. The merge runs as one Update so a
+// concurrent launcher's write between our read and our write cannot be lost.
 func foldLegacyState(s Store, legacy legacyState) error {
-	st, err := s.Load()
-	if err != nil {
-		return err
-	}
-	if st.LastChecked.IsZero() {
-		st.LastChecked = legacy.LastChecked
-	}
-	for _, version := range legacy.DismissedVersions {
-		if !slices.Contains(st.DismissedVersions, version) {
-			st.DismissedVersions = append(st.DismissedVersions, version)
+	return s.Update(func(st *LauncherState) {
+		if st.LastChecked.IsZero() {
+			st.LastChecked = legacy.LastChecked
 		}
-	}
-	return s.Save(st)
+		for _, version := range legacy.DismissedVersions {
+			if !slices.Contains(st.DismissedVersions, version) {
+				st.DismissedVersions = append(st.DismissedVersions, version)
+			}
+		}
+	})
 }

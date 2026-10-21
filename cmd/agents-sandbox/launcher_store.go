@@ -42,11 +42,17 @@ func (launcherStore) Load() (upgrade.LauncherState, error) {
 	return loaded, nil
 }
 
-func (launcherStore) Save(l upgrade.LauncherState) error {
+func (launcherStore) Update(mutate func(*upgrade.LauncherState)) error {
 	ok, err := state.WithRootState(false, func(tx *state.RootTxn) error {
+		launcher := tx.State().LauncherUpdate()
+		current := upgrade.LauncherState{
+			LastChecked:       launcher.LastChecked,
+			DismissedVersions: launcher.DismissedVersions,
+		}
+		mutate(&current)
 		tx.State().SetLauncherUpdate(state.LauncherUpdateState{
-			LastChecked:       l.LastChecked,
-			DismissedVersions: l.DismissedVersions,
+			LastChecked:       current.LastChecked,
+			DismissedVersions: current.DismissedVersions,
 		})
 		return tx.Commit()
 	})

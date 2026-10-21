@@ -1,9 +1,9 @@
 package upgrade
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -17,7 +17,7 @@ func TestMemoryStoreRoundTrips(t *testing.T) {
 		t.Fatalf("empty load = %+v, %v", got, err)
 	}
 	want := LauncherState{DismissedVersions: []string{"2.0.0"}}
-	if err := s.Save(want); err != nil {
+	if err := s.Update(func(st *LauncherState) { *st = want }); err != nil {
 		t.Fatal(err)
 	}
 	got, err = s.Load()
@@ -84,29 +84,59 @@ func TestFoldLegacyStateCorruptRemovedWithoutFolding(t *testing.T) {
 	}
 }
 
-func TestFoldLegacyStateKeepsFileOnSaveFailure(t *testing.T) {
+func TestFoldLegacyStateKeepsFileOnWriteFailure(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	writeLegacy(t, `{"dismissed_versions":["1.5.2"]}`)
-	s := &saveFailingStore{inner: &fakeStore{}}
+	s := &writeFailingStore{inner: &fakeStore{}}
 	if err := FoldLegacyState(s); err == nil {
-		t.Fatal("expected the save failure to surface")
+		t.Fatal("expected the write failure to surface")
 	}
 	if _, err := os.Stat(legacyStatePath()); err != nil {
-		t.Fatalf("legacy file removed despite save failure: %v", err)
+		t.Fatalf("legacy file removed despite write failure: %v", err)
 	}
 }
 
-// foldLegacyState must not delete the legacy file it could not read the store
-// for: a load failure leaves the file in place so a later check retries.
-func TestFoldLegacyStateKeepsFileOnLoadFailure(t *testing.T) {
+// interleavingStore simulates a concurrent launcher writing between the fold's
+// read and its write: Load hands back the pre-race snapshot, Update applies the
+// mutation after the race. The fold must use Update, so the merge sees the
+// concurrent write; a read-then-write fold would save its stale snapshot over it.
+type interleavingStore struct {
+	state LauncherState
+	raced bool
+}
+
+func (s *interleavingStore) injectRace() {
+	if s.raced {
+		return
+	}
+	s.raced = true
+	s.state.DismissedVersions = append(s.state.DismissedVersions, "9.9.9")
+}
+
+func (s *interleavingStore) Load() (LauncherState, error) {
+	snapshot := s.state
+	s.injectRace()
+	return snapshot, nil
+}
+
+func (s *interleavingStore) Update(mutate func(*LauncherState)) error {
+	s.injectRace()
+	mutate(&s.state)
+	return nil
+}
+
+func TestFoldLegacyStateDoesNotClobberAConcurrentDismissal(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	writeLegacy(t, `{"dismissed_versions":["1.5.2"]}`)
-	s := &fakeStore{err: errors.New("load boom")}
-	if err := FoldLegacyState(s); err == nil {
-		t.Fatal("expected the load failure to surface")
+	s := &interleavingStore{}
+	if err := FoldLegacyState(s); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(legacyStatePath()); err != nil {
-		t.Fatalf("legacy file removed despite load failure: %v", err)
+	if !slices.Contains(s.state.DismissedVersions, "9.9.9") {
+		t.Fatalf("fold clobbered a concurrent dismissal: %+v", s.state.DismissedVersions)
+	}
+	if !slices.Contains(s.state.DismissedVersions, "1.5.2") {
+		t.Fatalf("fold dropped the legacy dismissal: %+v", s.state.DismissedVersions)
 	}
 }
 
@@ -122,7 +152,7 @@ func TestFoldLegacyStateUnreadableFileIsRetried(t *testing.T) {
 	}
 }
 
-// storeNotTouchedStore fails the test if Load or Save is called.
+// storeNotTouchedStore fails the test if Load or Update is called.
 type storeNotTouchedStore struct{ t *testing.T }
 
 func (s *storeNotTouchedStore) Load() (LauncherState, error) {
@@ -130,8 +160,8 @@ func (s *storeNotTouchedStore) Load() (LauncherState, error) {
 	return LauncherState{}, nil
 }
 
-func (s *storeNotTouchedStore) Save(LauncherState) error {
-	s.t.Fatal("Save must not be called")
+func (s *storeNotTouchedStore) Update(func(*LauncherState)) error {
+	s.t.Fatal("Update must not be called")
 	return nil
 }
 

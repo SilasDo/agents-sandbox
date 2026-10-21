@@ -70,8 +70,11 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
    write so a later run retries. A missing, empty, or corrupt file folds nothing
    but is still removed. The fold runs **only when a real store is injected**:
    with a nil `Store` the check runs against an ephemeral in-memory store, so
-   folding would delete the real file after a "save" that cannot outlive the
+   folding would delete the real file after a "write" that cannot outlive the
    process. The caller, which alone knows whether persistence is real, guards it.
+   A fold that fails **defers the whole check**, not just the migration: the
+   process's state view is then known to be missing the legacy dismissals, and
+   checking anyway could re-offer a version the user already dismissed.
 2. **Legacy top-level `state.yaml` `agents:` → `updates.agents`.** Handled in the
    pure parse step: it recognises the old key and normalises it in memory, so the
    next `Commit` writes the new shape and the old key disappears. Purely a
@@ -87,11 +90,19 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
 
 ## `internal/upgrade` state seam
 
-`internal/upgrade` today owns its own JSON file via `Options.StatePath`
-(`internal/upgrade/upgrade.go`). Replace that with an **injected state-store
-interface** (read/write `updates.launcher`) so `internal/upgrade` does **not**
-import `internal/sandbox/state`; `cmd` wires the root-state-backed
-implementation. The unlimited test seam is preserved by injecting a fake store.
+`internal/upgrade` used to own its own JSON file via `Options.StatePath`. It now
+takes an injected `Store` (`Load`, `Update`) so it does **not** import
+`internal/sandbox/state`; `cmd` wires `launcherStore`, which maps the seam onto
+`updates.launcher` through `state.WithRootState`. A nil `Store` falls back to an
+in-memory one, preserving the unlimited test seam.
+
+`Update(mutate func(*LauncherState)) error` is the **only** mutation, and it
+applies `mutate` to the state as it exists at write time, inside one locked
+transaction. There is deliberately no `Save`: a caller that loaded a snapshot and
+wrote it back later would clobber a concurrent launcher's newer dismissal or
+check time — unrecoverable for the fold, whose legacy file is already deleted.
+Every writer (the fold's merge, the check's persist) therefore merges through
+`Update`.
 
 ## Deprecation
 

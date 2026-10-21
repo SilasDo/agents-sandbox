@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -48,9 +49,12 @@ type fakeStore struct {
 
 func (f *fakeStore) Load() (LauncherState, error) { return f.state, f.err }
 
-func (f *fakeStore) Save(s LauncherState) error {
-	f.state = s
-	return f.err
+func (f *fakeStore) Update(mutate func(*LauncherState)) error {
+	if f.err != nil {
+		return f.err
+	}
+	mutate(&f.state)
+	return nil
 }
 
 // mockOptions builds Options for a Check test. It isolates host config paths
@@ -194,17 +198,17 @@ func TestCheckStoreLoadErrorDefers(t *testing.T) {
 	}
 }
 
-func TestCheckStoreSaveErrorIsWarnedNotReturned(t *testing.T) {
+func TestCheckStoreWriteErrorIsWarnedNotReturned(t *testing.T) {
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}
 	opts := mockOptions(t, "1.0.0", ModeNotify)
 	opts.UI = &ui
 	store := &fakeStore{}
-	opts.Store = &saveFailingStore{inner: store}
+	opts.Store = &writeFailingStore{inner: store}
 
 	res, err := Check(context.Background(), opts)
 	if err != nil {
-		t.Fatalf("expected the save failure to be swallowed, got %v", err)
+		t.Fatalf("expected the write failure to be swallowed, got %v", err)
 	}
 	if !res.HasUpdate {
 		t.Fatalf("expected the notification to still happen, got %+v", res)
@@ -213,16 +217,16 @@ func TestCheckStoreSaveErrorIsWarnedNotReturned(t *testing.T) {
 		t.Fatal("expected a notification")
 	}
 	if len(ui.VerboseCalls) == 0 {
-		t.Fatal("expected a verbose note about the failed save")
+		t.Fatal("expected a verbose note about the failed write")
 	}
 }
 
-// saveFailingStore loads from its inner store but always fails to save.
-type saveFailingStore struct{ inner Store }
+// writeFailingStore loads from its inner store but always fails to write.
+type writeFailingStore struct{ inner Store }
 
-func (s *saveFailingStore) Load() (LauncherState, error) { return s.inner.Load() }
+func (s *writeFailingStore) Load() (LauncherState, error) { return s.inner.Load() }
 
-func (s *saveFailingStore) Save(LauncherState) error { return errors.New("state locked") }
+func (s *writeFailingStore) Update(func(*LauncherState)) error { return errors.New("state locked") }
 
 func TestCheckNetworkErrorIsIgnored(t *testing.T) {
 	latestURL = "http://127.0.0.1:1/releases/latest"
@@ -421,8 +425,8 @@ func TestStateRoundTrip(t *testing.T) {
 		LastChecked:       time.Now().Truncate(time.Second),
 		DismissedVersions: []string{"1.1.0"},
 	}
-	if err := store.Save(want); err != nil {
-		t.Fatalf("save: %v", err)
+	if err := store.Update(func(st *LauncherState) { *st = want }); err != nil {
+		t.Fatalf("update: %v", err)
 	}
 	got, err := store.Load()
 	if err != nil {
@@ -443,8 +447,9 @@ func TestCheckSubMinIntervalFails(t *testing.T) {
 	}
 }
 
-// A fold that cannot proceed is deferred, not fatal: the check logs it and
-// carries on with the store it already has.
+// A fold that cannot proceed is deferred, not stepped over: the process's view
+// of the launcher state is incomplete, so checking now could offer a version the
+// legacy file still dismisses. The check resumes once the fold succeeds.
 func TestCheckFoldFailureIsDeferred(t *testing.T) {
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}
@@ -460,11 +465,31 @@ func TestCheckFoldFailureIsDeferred(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a folded-state failure must not fail the check: %v", err)
 	}
-	if !res.HasUpdate {
-		t.Fatalf("expected the check to continue, got %+v", res)
+	if res.HasUpdate || res.Updated || res.Exit {
+		t.Fatalf("expected the check to be deferred, got %+v", res)
+	}
+	if len(ui.InfoCalls) != 0 {
+		t.Fatalf("expected no notification, got %v", ui.InfoCalls)
 	}
 	if len(ui.VerboseCalls) == 0 {
 		t.Fatal("expected a verbose log for the deferred migration")
+	}
+}
+
+// A dismissal recorded by a concurrent launcher must survive this process's
+// state write: persisting unions into whatever the store holds at write time
+// instead of replacing it with the snapshot this process loaded.
+func TestPersistBestEffortUnionsConcurrentDismissals(t *testing.T) {
+	store := &fakeStore{state: LauncherState{DismissedVersions: []string{"9.9.9"}}}
+	persistBestEffort(store, LauncherState{
+		LastChecked:       time.Now(),
+		DismissedVersions: []string{"1.0.0"},
+	}, &termio.Mock{})
+	if !slices.Contains(store.state.DismissedVersions, "9.9.9") {
+		t.Fatalf("persist dropped a concurrent dismissal: %+v", store.state.DismissedVersions)
+	}
+	if !slices.Contains(store.state.DismissedVersions, "1.0.0") {
+		t.Fatalf("persist dropped the local dismissal: %+v", store.state.DismissedVersions)
 	}
 }
 

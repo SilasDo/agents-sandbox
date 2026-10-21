@@ -142,11 +142,17 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	store := opts.store()
 	// Only fold the retired upgrade.json when a real store was injected. With a
 	// nil Store the check runs against an ephemeral memoryStore, so folding
-	// would delete the real file after "saving" into state that cannot outlive
+	// would delete the real file after "writing" into state that cannot outlive
 	// the process: the caller is the one that knows whether persistence is real.
+	//
+	// A fold that fails leaves this process without the legacy timestamp and
+	// dismissals, so defer the check rather than act on a state view known to be
+	// incomplete (which could re-prompt a version the user already dismissed).
+	// The file stays in place, so the next run retries the fold and resumes.
 	if opts.Store != nil {
 		if err := FoldLegacyState(store); err != nil {
 			opts.UI.Verbosef("upgrade state migration deferred: %v", err)
+			return Result{}, nil
 		}
 	}
 	st, err := store.Load()
@@ -186,8 +192,20 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 
 // persistBestEffort persists the upgrade state, reporting a failure as a verbose
 // note rather than an error: losing the check time only means checking again.
+//
+// It writes through Update and unions the dismissals, so a dismissal recorded by
+// a concurrent launcher after this process read the state survives. LastChecked
+// is set outright: this run's check is the most recent.
 func persistBestEffort(store Store, st LauncherState, ui termio.UI) {
-	if err := store.Save(st); err != nil {
+	err := store.Update(func(current *LauncherState) {
+		current.LastChecked = st.LastChecked
+		for _, version := range st.DismissedVersions {
+			if !slices.Contains(current.DismissedVersions, version) {
+				current.DismissedVersions = append(current.DismissedVersions, version)
+			}
+		}
+	})
+	if err != nil {
 		ui.Verbosef("could not persist upgrade state: %v", err)
 	}
 }

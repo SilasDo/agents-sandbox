@@ -20,7 +20,7 @@ func TestLauncherStoreRoundTripsThroughRootState(t *testing.T) {
 		t.Fatalf("empty load = %+v, %v", got, err)
 	}
 	// Seed an unrelated migrations entry so the round-trip also proves a
-	// launcherStore.Save preserves the rest of the root document.
+	// launcherStore.Update preserves the rest of the root document.
 	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
 		return tx.Commit()
@@ -30,7 +30,7 @@ func TestLauncherStoreRoundTripsThroughRootState(t *testing.T) {
 
 	checked := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	want := upgrade.LauncherState{LastChecked: checked, DismissedVersions: []string{"2.0.0"}}
-	if err := s.Save(want); err != nil {
+	if err := s.Update(func(st *upgrade.LauncherState) { *st = want }); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Load()
@@ -56,7 +56,7 @@ func TestLauncherStoreRoundTripsThroughRootState(t *testing.T) {
 }
 
 // A contended root lock must surface as errRootStateLocked from both Load and
-// Save: the non-blocking acquire returns ok=false rather than an error, and the
+// Update: the non-blocking acquire returns ok=false rather than an error, and the
 // adapter turns that into an error so upgrade.Check defers instead of reading a
 // false empty state or clobbering a concurrent writer.
 func TestLauncherStoreReportsContendedRootLock(t *testing.T) {
@@ -67,9 +67,11 @@ func TestLauncherStoreReportsContendedRootLock(t *testing.T) {
 		if _, err := (launcherStore{}).Load(); !errors.Is(err, errRootStateLocked) {
 			t.Errorf("Load under held lock = %v, want errRootStateLocked", err)
 		}
-		err := (launcherStore{}).Save(upgrade.LauncherState{DismissedVersions: []string{"2.0.0"}})
+		err := (launcherStore{}).Update(func(st *upgrade.LauncherState) {
+			st.DismissedVersions = []string{"2.0.0"}
+		})
 		if !errors.Is(err, errRootStateLocked) {
-			t.Errorf("Save under held lock = %v, want errRootStateLocked", err)
+			t.Errorf("Update under held lock = %v, want errRootStateLocked", err)
 		}
 		return errors.New("closure ran")
 	})
@@ -122,14 +124,15 @@ func TestLauncherStoreErrorsOnCorruptRootState(t *testing.T) {
 	if _, err := s.Load(); err == nil {
 		t.Fatal("expected Load to fail on a corrupt root document")
 	}
-	if err := s.Save(upgrade.LauncherState{DismissedVersions: []string{"2.0.0"}}); err == nil {
-		t.Fatal("expected Save to fail on a corrupt root document")
+	err := s.Update(func(st *upgrade.LauncherState) { st.DismissedVersions = []string{"2.0.0"} })
+	if err == nil {
+		t.Fatal("expected Update to fail on a corrupt root document")
 	}
 	remaining, err := os.ReadFile(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(remaining), "not-a-map") {
-		t.Fatalf("failed Save clobbered the corrupt document: %q", remaining)
+		t.Fatalf("failed Update clobbered the corrupt document: %q", remaining)
 	}
 }
