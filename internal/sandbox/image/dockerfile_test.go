@@ -1,6 +1,7 @@
 package image
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -36,4 +37,18 @@ func renderBytesVersion(t *testing.T, a agent.Agent, version string, project []b
 		t.Fatalf("RenderDockerfile: %v", err)
 	}
 	return out
+}
+
+// TestReadProjectDockerfileBareWorktree pins the image path to the bare-root
+// project config: readProjectDockerfile must read the bare root's Dockerfile and
+// ignore the worktree copy, which the resolver reports as ignored.
+func TestReadProjectDockerfileBareWorktree(t *testing.T) {
+	worktree := synthesizeBareWorktree(t, false)
+	root := filepath.Dir(worktree)
+	writeFileAt(t, filepath.Join(root, ".agents-sandbox", "Dockerfile"), "FROM bare-root\n")
+	writeFileAt(t, filepath.Join(worktree, ".agents-sandbox", "Dockerfile"), "FROM worktree\n")
+
+	if got := string(readProjectDockerfile()); got != "FROM bare-root\n" {
+		t.Errorf("readProjectDockerfile() = %q, want %q", got, "FROM bare-root\n")
+	}
 }
