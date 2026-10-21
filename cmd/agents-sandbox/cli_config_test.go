@@ -330,3 +330,14 @@ func TestConfigCommandsWorkOutsideWorktree(t *testing.T) {
 		}
 	})
 }
+
+// TestSlugHasUserConfigEmptySlugIsFalse covers the guard for a slug-less
+// identity: ConfigLayers omits the per-slug layer for an empty slug, so there is
+// no per-slug user config to read.
+func TestSlugHasUserConfigEmptySlugIsFalse(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if slugHasUserConfig("") {
+		t.Error("an empty slug has no per-slug user config layer")
+	}
+}

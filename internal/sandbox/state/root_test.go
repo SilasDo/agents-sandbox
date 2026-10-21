@@ -388,3 +388,39 @@ func TestClearAdoptedHomeVolumeAbsentIsNoOp(t *testing.T) {
 		t.Errorf("ClearAdoptedHomeVolume created a root state file (stat err %v)", err)
 	}
 }
+
+// TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp covers the guard for a volume-less
+// call: a recovered volume string that is empty has no claim to retire, so the
+// transaction must not run at all.
+func TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := ClearAdoptedHomeVolume("checkout-a", ""); err != nil {
+		t.Fatalf("ClearAdoptedHomeVolume: %v", err)
+	}
+	if _, err := os.Stat(rootStateFile()); !os.IsNotExist(err) {
+		t.Errorf("ClearAdoptedHomeVolume created a root state file (stat err %v)", err)
+	}
+}
+
+// TestClearAdoptedHomeVolumeCommitError covers the persistence failure: a claim
+// that is present is removed from the document, so the change is written and a
+// write failure is returned rather than silently dropped.
+func TestClearAdoptedHomeVolumeCommitError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := writeRootState(RootState{AdoptedHomeVolumes: map[string]AdoptedHomeVolume{
+		adoptedHomeVolumeKey("widget-aaa", "opencode"): {CheckoutSlug: "checkout-a", Volume: "vol-a"},
+	}}); err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+
+	wantErr := errors.New("marshal boom")
+	orig := marshalRootState
+	marshalRootState = func(any) ([]byte, error) { return nil, wantErr }
+	t.Cleanup(func() { marshalRootState = orig })
+
+	if err := ClearAdoptedHomeVolume("checkout-a", "vol-a"); !errors.Is(err, wantErr) {
+		t.Fatalf("ClearAdoptedHomeVolume() error = %v, want %v", err, wantErr)
+	}
+}
