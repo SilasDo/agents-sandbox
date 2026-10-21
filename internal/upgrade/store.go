@@ -68,7 +68,7 @@ func legacyStatePath() string {
 // common case must not take an extra root lock or rewrite state on every
 // startup. A present value wins over the legacy one and dismissals are unioned
 // per element, so folding never drops state the store already holds. Missing,
-// empty, or corrupt files fold nothing but are still removed; a read or save
+// empty, or corrupt files fold nothing but are still removed; a read or write
 // failure leaves the file in place so a later check retries, and returns the
 // error so the caller can report it.
 func FoldLegacyState(s Store) error {

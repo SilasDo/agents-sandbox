@@ -51,7 +51,7 @@ func TestLauncherStoreRoundTripsThroughRootState(t *testing.T) {
 		t.Fatalf("not persisted under updates.launcher: %+v", root.Updates)
 	}
 	if m, ok := root.Migration("runtime_home"); !ok || m.Status != state.MigrationCompleted {
-		t.Fatalf("launcherStore.Save dropped the migrations entry: %+v", root.Migrations)
+		t.Fatalf("launcherStore.Update dropped the migrations entry: %+v", root.Migrations)
 	}
 }
 

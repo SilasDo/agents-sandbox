@@ -74,7 +74,9 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
    process. The caller, which alone knows whether persistence is real, guards it.
    A fold that fails **defers the whole check**, not just the migration: the
    process's state view is then known to be missing the legacy dismissals, and
-   checking anyway could re-offer a version the user already dismissed.
+   checking anyway could re-offer a version the user already dismissed. This
+   bounds to the *automatic* check: `agents-sandbox upgrade` installs directly
+   and never folds or reads this state, so a stuck fold cannot block an upgrade.
 2. **Legacy top-level `state.yaml` `agents:` → `updates.agents`.** Handled in the
    pure parse step: it recognises the old key and normalises it in memory, so the
    next `Commit` writes the new shape and the old key disappears. Purely a
