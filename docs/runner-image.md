@@ -11,6 +11,11 @@ agents-sandbox builds a Docker image for each sandbox. The image contains the se
 CLI tools.
 Projects can extend the image with their own tooling.
 
+The image is built to rebuild quickly and stay lean. Its tools — the base CLI tools, Node, the selected agent, and the
+optional Docker engine — live in separate build stages whose layers are reused unchanged, so editing your project's
+Dockerfile body does not re-run the tool installs, and the same tool layers are shared across every project on the machine. Node
+is present only for the agent that needs it, and a custom base needs no `curl` or `tar` of its own.
+
 ## Home directory
 
 When rebuilding an image, all state in the VM's home directory (`/home/dev/`) would get lost. Therefore, the home

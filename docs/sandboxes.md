@@ -18,6 +18,9 @@ particular `msb` version has to be present. agents-sandbox never uses `~/.micros
 to it. The only exception is the one-time legacy home-volume migration, which reads that directory to copy your old
 volumes; see [Upgrading to 0.6]({% link install/upgrading.md %}) for its mechanics.
 
+Owning the runtime also means managing it: `df` (and the `storage` group) reports its storage by category, while
+`sandbox`, `volume`, and `image` `inspect`/`remove` cover the VMs, home volumes, and images it owns.
+
 ## Lifecycle Overview
 
 Each agents-sandbox invocation follows this lifecycle:
