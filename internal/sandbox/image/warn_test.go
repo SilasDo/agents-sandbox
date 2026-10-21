@@ -96,3 +96,25 @@ func TestWarnIgnoredProjectConfigSilentWithoutWorktreeConfig(t *testing.T) {
 		t.Errorf("WarnCalls = %v, want no warning", ui.WarnCalls)
 	}
 }
+
+// TestWarnIgnoredProjectConfigWarnsFromWorktreeSubdirectory pins that a launch
+// from a directory inside the worktree still warns about the worktree-root copy.
+func TestWarnIgnoredProjectConfigWarnsFromWorktreeSubdirectory(t *testing.T) {
+	worktree := synthesizeBareWorktree(t, true)
+	sub := filepath.Join(worktree, "internal")
+	if err := os.MkdirAll(sub, 0o750); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", sub, err)
+	}
+	t.Chdir(sub)
+
+	ui := &termio.Mock{}
+	WarnIgnoredProjectConfig(ui)
+
+	ignored := physicalPath(t, filepath.Join(worktree, ".agents-sandbox"))
+	if len(ui.WarnCalls) != 1 {
+		t.Fatalf("WarnCalls = %v, want exactly one warning", ui.WarnCalls)
+	}
+	if !strings.Contains(ui.WarnCalls[0], ignored) {
+		t.Errorf("warning %q does not name the ignored directory %q", ui.WarnCalls[0], ignored)
+	}
+}

@@ -10,6 +10,12 @@
 
 **Spec:** `.operator-shared/specs/project-config-root.md`
 
+**Status:** implemented on `bare-project-config-root` (PR #247). A review fix moved the ignored-worktree detection from
+the CWD to the **worktree root** (`git.WorkspaceLayout.WorktreeRoot`), so a launch from a worktree subdirectory still
+warns; additions: `TestIgnoredWorktreeConfigDirFromWorktreeSubdirectory`,
+`TestWarnIgnoredProjectConfigWarnsFromWorktreeSubdirectory`, and the `WorktreeRoot` assertions in
+`internal/git/workspace_test.go`.
+
 ## Global Constraints
 
 - Follow `AGENTS.md`: idiomatic Go, self-documenting non-abbreviated identifiers.

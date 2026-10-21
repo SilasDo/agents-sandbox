@@ -136,8 +136,9 @@ func (c *realConfigPaths) ProjectConfigDir() string { return c.projectConfigBase
 // resolveProjectConfig returns the directory project config is read from and,
 // when a bare checkout ignores a worktree-level .agents-sandbox, its path. In a
 // bare checkout the base is the absolute bare-root .agents-sandbox; the worktree
-// is inside the bare root, so a copy there is ignored. Everywhere else the base
-// is the relative constant, resolved against the CWD by the callers.
+// is inside the bare root, so a copy at the worktree root is ignored — from any
+// directory within the worktree, not just its root. Everywhere else the base is
+// the relative constant, resolved against the CWD by the callers.
 func resolveProjectConfig(cwd string) (string, string) {
 	physical, err := filepath.EvalSymlinks(cwd)
 	if err != nil {
@@ -148,7 +149,7 @@ func resolveProjectConfig(cwd string) (string, string) {
 		return projectConfigDir, ""
 	}
 	base := filepath.Join(layout.CheckoutRoot, projectConfigDir)
-	ignored := filepath.Join(physical, projectConfigDir)
+	ignored := filepath.Join(layout.WorktreeRoot, projectConfigDir)
 	if ignored == base {
 		// The CWD is the bare root itself: this is the directory the base reads,
 		// not a worktree copy that gets ignored.

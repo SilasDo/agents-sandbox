@@ -95,12 +95,15 @@ Implementation facts that shape the plan:
 
 ### The ignored-worktree warning
 
-The resolver stays pure: it exposes the ignored directory as a fact (a method). One `termio`-facing helper,
-`image.WarnIgnoredProjectConfig`, warns from the image path every VM-bound command passes through — `image.EnsureImage`
-(called by `PrepareSandbox`, `run`/`shell` and the `volume …` ops), `image.Build` (`image build`), and
-`build dockerfile` — not from `PersistentPreRunE`. `config`, `doctor`, `list`, `version`, `prune` and `df` stay quiet,
-and each such command reaches exactly one call site, so the warning cannot repeat within a run without a process-global
-guard.
+The resolver stays pure: it exposes the ignored directory as a fact (a method). The fact is the **worktree root**'s
+`.agents-sandbox` (`git.WorkspaceLayout.WorktreeRoot`, exposed for this; the layout already computed it), not one derived
+from the CWD — so a launch from any subdirectory of the worktree still detects the copy the bare root replaces, which a
+CWD-derived check missed (PR #247 review). A `.agents-sandbox` at a deeper subdirectory is not inspected; that is the
+deferred layering extension's job. One `termio`-facing helper, `image.WarnIgnoredProjectConfig`, warns from the image path
+every VM-bound command passes through — `image.EnsureImage` (called by `PrepareSandbox`, `run`/`shell` and the `volume …`
+ops), `image.Build` (`image build`), and `build dockerfile` — not from `PersistentPreRunE`. `config`, `doctor`, `list`,
+`version`, `prune` and `df` stay quiet, and each such command reaches exactly one call site, so the warning cannot repeat
+within a run without a process-global guard.
 
 ### Test seam
 

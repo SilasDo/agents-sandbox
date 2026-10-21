@@ -19,6 +19,9 @@ func TestResolveWorkspaceLayoutNonRepo(t *testing.T) {
 	if got.CheckoutRoot != "" {
 		t.Errorf("CheckoutRoot = %q, want empty", got.CheckoutRoot)
 	}
+	if got.WorktreeRoot != "" {
+		t.Errorf("WorktreeRoot = %q, want empty", got.WorktreeRoot)
+	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
 	}
@@ -37,6 +40,9 @@ func TestResolveWorkspaceLayoutRepoRoot(t *testing.T) {
 	}
 	if got.CheckoutRoot != repo {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, repo)
+	}
+	if got.WorktreeRoot != repo {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, repo)
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
@@ -61,6 +67,9 @@ func TestResolveWorkspaceLayoutRepoSubdirectory(t *testing.T) {
 	if got.CheckoutRoot != repo {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, repo)
 	}
+	if got.WorktreeRoot != repo {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, repo)
+	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
 	}
@@ -81,6 +90,9 @@ func TestResolveWorkspaceLayoutNestedWorktree(t *testing.T) {
 	}
 	if got.CheckoutRoot != repo {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, repo)
+	}
+	if got.WorktreeRoot != wt {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, wt)
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
@@ -103,6 +115,9 @@ func TestResolveWorkspaceLayoutOutsideWorktree(t *testing.T) {
 	if got.CheckoutRoot != repo {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, repo)
 	}
+	if got.WorktreeRoot != wt {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, wt)
+	}
 	if !got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = false, want true")
 	}
@@ -124,6 +139,9 @@ func TestResolveWorkspaceLayoutMalformedGitFile(t *testing.T) {
 	}
 	if got.CheckoutRoot != "" {
 		t.Errorf("CheckoutRoot = %q, want empty", got.CheckoutRoot)
+	}
+	if got.WorktreeRoot != dir {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, dir)
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
@@ -155,6 +173,9 @@ func TestResolveWorkspaceLayoutBareGitDirNotNamedDotGit(t *testing.T) {
 	if got.CheckoutRoot != bare {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, bare)
 	}
+	if got.WorktreeRoot != wt {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, wt)
+	}
 	if !got.Bare {
 		t.Errorf("Bare = false, want true")
 	}
@@ -173,6 +194,9 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		}
 		if got.CheckoutRoot != root {
 			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, root)
+		}
+		if got.WorktreeRoot != filepath.Join(root, "main") {
+			t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, filepath.Join(root, "main"))
 		}
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
@@ -194,6 +218,9 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		if got.CheckoutRoot != root {
 			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, root)
 		}
+		if got.WorktreeRoot != filepath.Join(root, "main") {
+			t.Errorf("WorktreeRoot = %q, want the worktree root %q", got.WorktreeRoot, filepath.Join(root, "main"))
+		}
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
 		}
@@ -209,6 +236,9 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		}
 		if got.CheckoutRoot != root {
 			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, root)
+		}
+		if got.WorktreeRoot != root {
+			t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, root)
 		}
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
@@ -250,6 +280,9 @@ func TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing(t *testing.T) {
 		if got.CheckoutRoot != filepath.Dir(worktree) {
 			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, filepath.Dir(worktree))
 		}
+		if got.WorktreeRoot != worktree {
+			t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, worktree)
+		}
 		if got.Bare {
 			t.Errorf("Bare = true, want false")
 		}
@@ -273,6 +306,9 @@ func TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing(t *testing.T) {
 		if got.CheckoutRoot != filepath.Dir(worktree) {
 			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, filepath.Dir(worktree))
 		}
+		if got.WorktreeRoot != worktree {
+			t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, worktree)
+		}
 		if got.Bare {
 			t.Errorf("Bare = true, want false")
 		}
@@ -290,6 +326,9 @@ func TestResolveWorkspaceLayoutRelativeGitDir(t *testing.T) {
 
 	if got.BindRoot != root {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, root)
+	}
+	if got.WorktreeRoot != filepath.Join(root, "main") {
+		t.Errorf("WorktreeRoot = %q, want %q", got.WorktreeRoot, filepath.Join(root, "main"))
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")

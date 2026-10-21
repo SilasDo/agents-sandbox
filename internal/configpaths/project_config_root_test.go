@@ -212,6 +212,30 @@ func TestIgnoredWorktreeConfigDir(t *testing.T) {
 	}
 }
 
+// TestIgnoredWorktreeConfigDirFromWorktreeSubdirectory covers a launch from a
+// directory inside the worktree: the ignored directory is still the worktree
+// root's .agents-sandbox, not one derived from the CWD.
+func TestIgnoredWorktreeConfigDirFromWorktreeSubdirectory(t *testing.T) {
+	isolateProjectConfig(t)
+	root := writeBareCheckout(t)
+	mainDir := filepath.Join(root, "main")
+	if err := os.MkdirAll(filepath.Join(mainDir, ".agents-sandbox"), 0o755); err != nil {
+		t.Fatalf("mkdir worktree config: %v", err)
+	}
+	sub := filepath.Join(mainDir, "internal")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir %s: %v", sub, err)
+	}
+	t.Chdir(sub)
+
+	assertBareProjectBase(t, root)
+
+	want := filepath.Join(physicalDir(t, mainDir), ".agents-sandbox")
+	if got := Get().IgnoredWorktreeConfigDir(); got != want {
+		t.Errorf("IgnoredWorktreeConfigDir() from a worktree subdirectory = %q, want %q", got, want)
+	}
+}
+
 // TestIgnoredWorktreeConfigDirEmptyAtBareRoot covers launching from the bare
 // root itself with <bare>/.agents-sandbox present: that directory is the base,
 // so nothing is ignored and the warning must not name it.
