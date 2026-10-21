@@ -135,53 +135,92 @@ func (opencode2Profile) DaemonAuthHint() string {
 // used by the worktree API calls.
 const opencode2ServerURL = "http://127.0.0.1:" + opencode2Port
 
-// opencode2LocatePrelude resolves the project scoped to target and exports the
-// worktree calls' inputs: LOC (the raw /api/location response), PID (the
-// project id) and CANON (the project's canonical directory — the main checkout,
-// which the worktree list must exclude). It aborts the command when the location
-// call fails, or the project id or canonical directory is missing or empty, so
-// a request is never sent with an empty projectID and the list is never filtered
-// against a literal "null".
-func opencode2LocatePrelude(target string) string {
-	return "LOC=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " --get --data-urlencode " +
-		shellQuote("location[directory]="+target) + " " + opencode2ServerURL + "/api/location) || exit 1; " +
-		"PID=$(printf '%s' \"$LOC\" | jq -re '.project.id | select(length > 0)') || exit 1; " +
-		"CANON=$(printf '%s' \"$LOC\" | jq -re '.project.canonical | select(length > 0)') || exit 1; "
+// WorktreeResolveCmd resolves the launch directory to its project through v2's
+// /api/location route, which registers the project as a side effect.
+func (opencode2Profile) WorktreeResolveCmd(target string) string {
+	return "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " --get --data-urlencode " +
+		shellQuote("location[directory]="+target) + " " + opencode2ServerURL + "/api/location"
 }
 
-// opencode2WorktreeListFilter is the jq program that drops the project's
-// canonical root from the worktree list. It accepts only an array whose entries
-// each carry a non-empty string "directory", and fails the list otherwise: a
-// non-array payload, or an entry whose directory field was renamed, blanked, or
-// retyped, must not be accepted — the base-name match would silently ignore
-// such an entry and create a second worktree beside the existing one.
-const opencode2WorktreeListFilter = `if type == "array" and all(.[]; type == "object" and (.directory | type == "string" and length > 0)) then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end`
-
-// WorktreeListCmd lists the project's worktrees through v2's project-scoped
-// route. The curl response is captured before jq runs, so curl's own failure
-// propagates (a piped-into-jq failure would exit 0 with empty stdout and read as
-// "no worktrees"); the filter then drops the canonical root entry and fails on a
-// non-array payload (see opencode2WorktreeListFilter).
-func (opencode2Profile) WorktreeListCmd(target string) string {
-	return opencode2LocatePrelude(target) +
-		"LIST=$(curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/worktree?projectID=$PID) || exit 1; " +
-		"printf '%s' \"$LIST\" | jq -ce --arg canonical \"$CANON\" " + shellQuote(opencode2WorktreeListFilter)
-}
-
-// WorktreeCreateCmd creates a worktree through v2's project-scoped route. The
-// body is Worktree.CreateInput (additionalProperties: false): the server picks
-// the directory, and the base ref travels as "branch". jq builds the body so
-// arbitrary ref names are quoted safely.
-func (opencode2Profile) WorktreeCreateCmd(spec WorktreeSpec) string {
-	args := "--arg pid \"$PID\" --arg name " + shellQuote(spec.Name)
-	object := "{projectID:$pid,name:$name}"
-	if spec.Base != "" {
-		args += " --arg branch " + shellQuote(spec.Base)
-		object = "{projectID:$pid,name:$name,branch:$branch}"
+// WorktreeParseProject decodes /api/location. Both the id and the canonical
+// directory are required: an empty id would send an invalid projectID, and an
+// empty canonical would filter the list against "" and keep the main checkout.
+func parseOpencode2WorktreeProject(stdout string) (WorktreeProject, bool) {
+	var location struct {
+		Project struct {
+			ID        string `json:"id"`
+			Canonical string `json:"canonical"`
+		} `json:"project"`
 	}
-	return opencode2LocatePrelude(spec.Target) +
-		"curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " -X POST " + opencode2ServerURL + "/api/worktree " +
-		"-H 'Content-Type: application/json' -d \"$(jq -nc " + args + " " + shellQuote(object) + ")\""
+	if err := json.Unmarshal([]byte(stdout), &location); err != nil {
+		return WorktreeProject{}, false
+	}
+	if location.Project.ID == "" || location.Project.Canonical == "" {
+		return WorktreeProject{}, false
+	}
+	return WorktreeProject{ID: location.Project.ID, Canonical: location.Project.Canonical}, true
+}
+
+func (opencode2Profile) WorktreeParseProject(stdout string) (WorktreeProject, bool) {
+	return parseOpencode2WorktreeProject(stdout)
+}
+
+// WorktreeListCmd lists the project's worktrees. The canonical root is dropped
+// by WorktreeParseList, not here.
+func (opencode2Profile) WorktreeListCmd(project WorktreeProject) string {
+	return "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " +
+		opencode2ServerURL + "/api/worktree?projectID=" + shellQuote(project.ID)
+}
+
+// WorktreeParseList decodes /api/worktree into directories, dropping the
+// canonical root. Every entry must carry a non-empty string directory: a
+// renamed, blanked, or retyped field would otherwise be skipped by the
+// base-name match and a second worktree created beside the existing one.
+func parseOpencode2WorktreeList(stdout string, canonical string) ([]string, bool) {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &entries); err != nil || entries == nil {
+		return nil, false
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		var info struct {
+			Directory string `json:"directory"`
+		}
+		if json.Unmarshal(entry, &info) != nil || info.Directory == "" {
+			return nil, false
+		}
+		if info.Directory == canonical {
+			continue
+		}
+		dirs = append(dirs, info.Directory)
+	}
+	return dirs, true
+}
+
+func (opencode2Profile) WorktreeParseList(stdout string, project WorktreeProject) ([]string, bool) {
+	return parseOpencode2WorktreeList(stdout, project.Canonical)
+}
+
+// worktreeCreateInput is v2's Worktree.CreateInput (additionalProperties:
+// false): only projectID, name, and an optional branch.
+type worktreeCreateInput struct {
+	ProjectID string `json:"projectID"`
+	Name      string `json:"name"`
+	Branch    string `json:"branch,omitempty"`
+}
+
+// WorktreeCreateCmd creates a worktree. The body is built in Go and
+// shell-quoted, so arbitrary names and refs need no guest tooling.
+func (opencode2Profile) WorktreeCreateCmd(spec WorktreeSpec, project WorktreeProject) string {
+	body, _ := json.Marshal(worktreeCreateInput{
+		ProjectID: project.ID,
+		Name:      spec.Name,
+		Branch:    spec.Base,
+	})
+	return "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " -X POST " + opencode2ServerURL + "/api/worktree " +
+		"-H 'Content-Type: application/json' -d " + shellQuote(
+		string(body),
+	)
 }
 
 func (opencode2Profile) WorktreeParseDir(stdout string) (string, bool) {

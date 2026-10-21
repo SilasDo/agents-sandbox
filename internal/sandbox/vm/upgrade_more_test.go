@@ -95,27 +95,6 @@ func TestResolveOpenCodeVersionInteractiveKeep(t *testing.T) {
 	}
 }
 
-// TestFindWorktreeDirInvalidJSON covers the invalid-JSON branch of
-// findWorktreeDir.
-func TestFindWorktreeDirInvalidJSON(t *testing.T) {
-	if _, ok := findWorktreeDir("not valid json", "slug"); ok {
-		t.Error("expected no match for invalid JSON")
-	}
-}
-
-// TestFindWorktreeDirMalformedEntry covers the malformed-entry branches of
-// findWorktreeDir (entries that cannot be unmarshalled).
-func TestFindWorktreeDirMalformedEntry(t *testing.T) {
-	// A string entry that is a malformed JSON string.
-	if _, ok := findWorktreeDir(`["unterminated`, "slug"); ok {
-		t.Error("expected no match for malformed string entry")
-	}
-	// An object entry that is malformed.
-	if _, ok := findWorktreeDir(`[{"directory":`, "slug"); ok {
-		t.Error("expected no match for malformed object entry")
-	}
-}
-
 // TestResolveBuildVersionWithoutUpgradeChecker covers the fallback branch of
 // resolveBuildVersion: an agent with no upgrade checker reuses the recorded
 // version without prompting.

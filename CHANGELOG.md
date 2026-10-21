@@ -166,6 +166,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Worktrees: `--worktree` for `opencode2` ran its worktree commands through `jq` inside the VM, so a custom runner base
+  without `jq` failed with `jq: command not found`. The launcher now parses the worktree API responses in Go, so the
+  worktree API path needs no `jq` (only `curl`). A malformed worktree list now fails the run for both `opencode` and
+  `opencode2` instead of reading as "no worktrees" and silently creating a second worktree (#257).
 - Notifications: a second permission or form request inside one turn now notifies, even when both are asked back
   to back in a single step. After the first request the session stayed in its awaiting-input state, so a later
   request in the same turn was silent; each request is now identified by its event id, so distinct requests alert

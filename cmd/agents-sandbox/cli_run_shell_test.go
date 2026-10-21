@@ -297,7 +297,15 @@ func TestRunShellWorktreeOpencode2ReusesExisting(t *testing.T) {
 		ShellOut:   map[string]sandboxmsb.ShellResult{},
 		ShellCalls: &[]string{},
 	}
-	sb.ShellOut[provider.WorktreeListCmd(mounts.WorkspaceMountPath)] = sandboxmsb.NewTestResult(
+	project := agent.WorktreeProject{ID: "abc", Canonical: "/repo"}
+	sb.ShellOut[provider.WorktreeResolveCmd(mounts.WorkspaceMountPath)] = sandboxmsb.NewTestResult(
+		true,
+		0,
+		`{"project":{"id":"abc","canonical":"/repo"}}`,
+		"",
+		nil,
+	)
+	sb.ShellOut[provider.WorktreeListCmd(project)] = sandboxmsb.NewTestResult(
 		true,
 		0,
 		`[{"directory":"/home/dev/.local/share/opencode/worktree/abc/bugfix-exit-zero"}]`,
