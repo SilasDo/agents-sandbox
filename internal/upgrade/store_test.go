@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -92,6 +93,20 @@ func TestFoldLegacyStateKeepsFileOnSaveFailure(t *testing.T) {
 	}
 	if _, err := os.Stat(legacyStatePath()); err != nil {
 		t.Fatalf("legacy file removed despite save failure: %v", err)
+	}
+}
+
+// foldLegacyState must not delete the legacy file it could not read the store
+// for: a load failure leaves the file in place so a later check retries.
+func TestFoldLegacyStateKeepsFileOnLoadFailure(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeLegacy(t, `{"dismissed_versions":["1.5.2"]}`)
+	s := &fakeStore{err: errors.New("load boom")}
+	if err := FoldLegacyState(s); err == nil {
+		t.Fatal("expected the load failure to surface")
+	}
+	if _, err := os.Stat(legacyStatePath()); err != nil {
+		t.Fatalf("legacy file removed despite load failure: %v", err)
 	}
 }
 

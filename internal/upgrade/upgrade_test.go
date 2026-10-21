@@ -443,6 +443,31 @@ func TestCheckSubMinIntervalFails(t *testing.T) {
 	}
 }
 
+// A fold that cannot proceed is deferred, not fatal: the check logs it and
+// carries on with the store it already has.
+func TestCheckFoldFailureIsDeferred(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	ui := termio.Mock{}
+	opts := mockOptions(t, "1.0.0", ModeNotify)
+	opts.UI = &ui
+
+	// A directory at the legacy path makes the fold's read fail.
+	if err := os.Mkdir(legacyStatePath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("a folded-state failure must not fail the check: %v", err)
+	}
+	if !res.HasUpdate {
+		t.Fatalf("expected the check to continue, got %+v", res)
+	}
+	if len(ui.VerboseCalls) == 0 {
+		t.Fatal("expected a verbose log for the deferred migration")
+	}
+}
+
 func TestCheckUnparsableVersionIgnored(t *testing.T) {
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}

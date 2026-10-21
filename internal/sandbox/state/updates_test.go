@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -90,6 +91,14 @@ func TestParseRootStateFoldsLegacyAgentsKey(t *testing.T) {
 	}
 	if got.Updates.Agents["opencode"].LatestVersion != "1.2.3" {
 		t.Fatalf("legacy agents key not folded: %+v", got.Updates)
+	}
+}
+
+// A malformed top-level agents: key cannot be folded, so the document is
+// unparsable rather than read as if the key were absent.
+func TestParseRootStateMalformedLegacyAgentsKeyIsUnparsable(t *testing.T) {
+	if _, err := parseRootState([]byte("agents: [1, 2]\n")); !errors.Is(err, ErrStateUnparsable) {
+		t.Fatalf("parseRootState() error = %v, want ErrStateUnparsable", err)
 	}
 }
 

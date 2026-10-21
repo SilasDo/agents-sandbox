@@ -75,7 +75,13 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
 2. **Legacy top-level `state.yaml` `agents:` → `updates.agents`.** Handled in the
    pure parse step: it recognises the old key and normalises it in memory, so the
    next `Commit` writes the new shape and the old key disappears. Purely a
-   read-side normalization; no separate migration file.
+   read-side normalization; no separate migration file. The key is decoded into
+   its own single-field struct, **never a mirror of `RootState`**: a mirror
+   silently drops every field it does not restate, which is how the
+   `adopted_home_volumes` registry (#144) would have been lost on the next write
+   when it was added to `RootState`. The new shape wins wholesale — a non-empty
+   `updates.agents` means the legacy key is ignored and never decoded, so a
+   malformed legacy value fails the read only when `updates.agents` is empty.
 3. **Retired `updater.yaml`** (already folded, #225): its fold target moves from
    the top-level `agents:` key to `updates.agents`. No new file, only a retarget.
 
