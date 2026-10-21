@@ -10,6 +10,8 @@
 
 **Spec:** `.operator-shared/specs/dead-code-gate.md` (read it; the plan argues from it). Tool survey: `.operator-shared/guides/dead-code-detection-go.md`.
 
+**Status:** implemented on the `dead-code-gate` branch (all 11 tasks). The per-task rulings — every place the code disagreed with this plan — are in the branch's `.superpowers/sdd/2026-10-21-dead-code-gate/progress.md`.
+
 **Isolation:** implement on a branch in a dedicated worktree, created with the `using-git-worktrees` skill. Do not edit `/workspace` directly.
 
 ## Global Constraints

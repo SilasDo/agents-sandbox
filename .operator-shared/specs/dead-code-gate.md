@@ -16,6 +16,8 @@ This change turns that report into a **hard gate**. The contract is not "no test
 seams are legitimate and numerous. It is: *every function unreachable from production is either deleted, or carries an
 explicit reason-bearing marker*. A function that is merely dead fails the build.
 
+Implemented on the `dead-code-gate` branch; the mechanism and rules below describe what the code does today.
+
 ## Evidence this design is built on
 
 All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.52.0`, linux/amd64, module `github.com/inoio/agents-sandbox`.
@@ -28,15 +30,15 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   (`// Code generated … DO NOT EDIT.`), which is whole-file and not abusable as a per-function lever. **Any marker scheme
   is ours to define and enforce.**
 - **`-tags integration` and `-tags msb` change nothing today.** All four configurations (none, `integration`, `msb`,
-  `integration msb`) report exactly **246** functions. The reason: every file behind those tags is a `_test.go` file
+  `integration msb`) report exactly **249** functions. The reason: every file behind those tags is a `_test.go` file
   (`internal/sandbox/docker/docker_real_test.go`, `internal/sandbox/image/render_integration_test.go`,
   `cmd/agents-sandbox/cli_doctor_test.go`, `test/harness/smoke_msb_test.go`) and deadcode skips `_test.go` files by
   default. The tags are included anyway as future-proofing (see Decisions).
-- **The baseline is 246 findings in 25 files**, and 227 of them are concentrated in ten test-support files:
-  `internal/sandbox/msb/testmock.go` (107), `internal/termio/mock.go` (31), `internal/sandbox/docker/testmock.go` (24),
-  `internal/configpaths/testmock.go` (24), `test/harness/pty.go` (20), `test/harness/harness.go` (7),
+- **The baseline is 249 findings in 26 files**, and 228 of them are concentrated in ten test-support files:
+  `internal/sandbox/msb/testmock.go` (107), `internal/termio/mock.go` (31), `internal/configpaths/testmock.go` (25),
+  `internal/sandbox/docker/testmock.go` (24), `test/harness/pty.go` (20), `test/harness/harness.go` (7),
   `internal/sandbox/doctor/testmock.go` (7), `internal/testutil/testutil.go` (3), `internal/testutil/testgit.go` (3),
-  `internal/testutil/mocks/testutil.go` (1). The remaining 19 are spread over 15 files, mostly production files holding
+  `internal/testutil/mocks/testutil.go` (1). The remaining 21 are spread over 16 files, mostly production files holding
   one or two test seams or small dead helpers.
 - **Cgo is required.** The FFI types above come from cgo-generated code: `CGO_ENABLED=0` fails identically
   (`undefined: CustomNetworkPolicy` and friends), and only `CGO_ENABLED=1` on the **host's own** GOOS produces a report.
@@ -59,7 +61,9 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   `GOMUTANTS_VERSION`, dependabot (`gomod`, `github-actions`) does not see it, so it is bumped by hand.
 - **The exit code is not the signal.** `ci/check-deadcode.sh` runs deadcode with `-json`, applies the marker and
   configuration filters, prints the remaining findings in the compiler-diagnostic form deadcode uses by default, and
-  exits non-zero when any survive. The Makefile target is a thin wrapper over that script, in the style of
+  exits non-zero when any survive. Its statuses are 0 (clean), 1 (a diagnosis — a finding no marker excuses, a marker
+  that excuses nothing, or an unusable marker), and 2 (the analysis could not be trusted); an empty finding set is never
+  inferred from a failed analysis. The Makefile target is a thin wrapper over that script, in the style of
   `ci/check-docs.sh` + `ci/test-check-docs.sh`; the script gets a matching `ci/test-check-deadcode.sh`.
 - **`//deadcode:ignore reason="…"` is our contract, in two scopes.**
   - *Declaration scope* — in the contiguous comment block immediately preceding the declaration deadcode reported, or as
@@ -96,26 +100,47 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   `needs: [lint, test, integration]`, exactly like `vulncheck`. A release tag can therefore publish past a failing
   dead-code gate; this matches the existing deliberate budget choice for `vulncheck`. The gate's enforcement point is the
   pull request.
-- **Resolved by the builder:** the `ci/` script takes deadcode's JSON through an injectable seam (stdin or an env
-  override) so `ci/test-check-deadcode.sh` feeds canned JSON plus a fixture source tree for marker resolution, and never
-  invokes the real pinned tool. The `make deadcode` recipe passes `PKG`/`TAGS` through to the script as environment, not
-  as positional arguments — the shape sketch's bare `ci/check-deadcode.sh` recipe is schematic.
+- **Resolved by the builder:** the marker finder and the verdict live in a small Go program, `ci/deadcodecheck`, built
+  once by the script and then run directly — `go run` collapses any non-zero program exit to 1, which would erase the
+  diagnosis-vs-untrusted-analysis distinction. Go, not awk, because the hard part is positional: a marker is resolved by
+  AST position, not line arithmetic. The script keeps the parts that are naturally shell: the configuration matrix, the
+  `go build`/`go run` invocations, and the `git ls-files` source list.
+- **Resolved by the builder:** two environment seams make the script testable without the tool or the network —
+  `DEADCODE_FIXTURE_DIR` (a directory of per-configuration JSON payloads) and `DEADCODE_FILES` (the source list to scan).
+  `ci/test-check-deadcode.sh` uses both, never invokes deadcode, and is wired into `check` and `verify` as
+  `deadcode-test` (mirroring `docs-linkcheck-test`), so the everyday loop stays fast and offline.
 - **Resolved by the builder:** a `PKG`-scoped run is an inspection aid, not the gate. It prints findings, skips
-  stale-marker enforcement (which needs the whole module to know what is justified), and says so in its output.
+  stale-marker enforcement (which needs the whole module to know what is justified), and says so in its output. deadcode
+  also needs at least one `main` package in the pattern — a leaf package prints "no main packages" and exits 1 — so the
+  documented narrow form is `PKG=./cmd/...`.
+- **Resolved by the builder:** the script exports `CGO_ENABLED=1`, so a host without a C compiler fails the analysis
+  (exit 2) instead of loading a package set the module is not really built from.
+- **Resolved by the builder:** spelling is `//deadcode:ignore reason="..."` — the `reason` value is double-quoted, like
+  `// gomutants:disable <TYPE> reason="..."`. A marker that is present but inert (attached to no declaration or file, or
+  carrying an empty reason) fails like a stale one; a marker that silently excuses nothing would be the "nothing to see
+  here" failure mode the anti-goals name.
 - **The baseline is resolved, not merely marked.** The gate must be green from the commit that introduces it, or it is
-  never switched on. Triaging the 19 scattered findings showed 7 are intentional test seams (`agent.Register`,
-  `viperconfig.NewResolverWithConfig`, `docker.RealClient`, `image.WithMockAgentVersion`,
-  `image.WithMockAgentVersionResolver`, `vm.SetDaemonShellFunc`, `vm.SetRuntimeHomeMigrationOffer`) and will carry a
-  reason-bearing marker, while **12 are genuinely dead and are deleted**: `homeconfig.MergeManifests`,
-  `homeconfig.BuildHomeFiles`, `homeconfig.DescribeManifest` (superseded by the production `BuildHomeFilesWithModes` /
-  `DescribeLayers` / `LoadLayers`), `runtime.InspectRuntime` (leftover of the retired version-matching recovery),
-  `upgrade.IsNewer` (a wrapper existing only for its own test), `termio.OutToVerboseRedirect` and its `Out`/`Outf`
-  (duplicated by `cmd`'s live `autoPruneOutToVerboseRedirect`), `imageIdentity.values`, `reprovision.AgentConfigPath`,
-  `state.RootTxn.Exists`, `volume.VolumeAction.String` (the live formatter is `actionLabel`), and
-  `notify.Tracker.HandleEventType` (the live entry point is `Tracker.Handle`). The ten test-support files holding the
-  other 227 findings get one file-scope marker each. Marking a genuinely dead function to silence the gate is the
-  rubber stamp the anti-goals forbid. See `plans/2026-10-21-dead-code-gate.md` for the per-symbol disposition and the
-  tests that must be retargeted rather than deleted.
+  never switched on. Triaging the 21 scattered findings showed 9 are intentional test seams (`agent.Register`,
+  `git.RepoSlug`, `git.CheckoutSlug`, `viperconfig.NewResolverWithConfig`, `docker.RealClient`,
+  `image.WithMockAgentVersion`, `image.WithMockAgentVersionResolver`, `vm.SetDaemonShellFunc`,
+  `vm.SetRuntimeHomeMigrationOffer`) and carry a reason-bearing marker, while **12 are genuinely dead and are deleted**:
+  `homeconfig.MergeManifests` / `BuildHomeFiles` / `DescribeManifest` (superseded by the production
+  `BuildHomeFilesWithModes` / `DescribeLayers` / `LoadLayers`), `upgrade.IsNewer` (a wrapper existing only for its own
+  test), `termio.OutToVerboseRedirect` and its `Out`/`Outf` (duplicated by `cmd`'s live
+  `autoPruneOutToVerboseRedirect`), `imageIdentity.values`, `reprovision.AgentConfigPath`, `state.RootTxn.Exists`,
+  `volume.VolumeAction.String` (the live formatter is `actionLabel`), and `notify.Tracker.HandleEventType` (the live
+  entry point is `Tracker.Handle`). Three of those needed their tests retargeted rather than deleted, because the
+  deleted symbol was only a *wrapper* over live logic: `runtime.InspectRuntime` (the exported one-liner; `inspectRuntime`
+  is live, as `prepareRuntime`/`repairRuntime` switch on its result), `imageIdentity.values` (the tests now build their
+  label fixture through a test-side oracle), and `RootTxn.Exists` (which took its whole substrate with it — the `exists`
+  field, `rootStatePresent`, the `statRootStateFile` seam — because `ReadRootState` already returns a zero state for a
+  missing file and an error otherwise, leaving the stat redundant). The ten test-support files holding the other 228
+  findings get one file-scope marker each. Marking a genuinely dead function to silence the gate is the rubber stamp the
+  anti-goals forbid. See `plans/2026-10-21-dead-code-gate.md` for the per-symbol disposition.
+- **The gate has flagged two more seams on code that landed after it was designed** — the dry-run preview's
+  `image.RunnerDockerfileID` (exported so higher-layer preview tests can seed a matching label) and
+  `vm.SetAgentLatestVersion` (keeps the upgrade check off the network) — both marked in the same declaration-scope
+  category, with no change to the mechanism.
 - **Resolved by the builder:** markers are additive, so if the BuildKit plan (issue #15) removes `internal/sandbox/docker`
   first, the 24 `docker/testmock.go` markers disappear with the package and the totals in this document are stale while the
   mechanism is unaffected.
@@ -164,16 +189,22 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
 DEADCODE_VERSION = v0.52.0
 
 # Hard gate: production code unreachable from any main package must be deleted or
-# carry a //deadcode:ignore marker with a reason. Never exits from deadcode itself
-# (it always exits 0) — ci/check-deadcode.sh parses the report and fails.
-#   make deadcode                 # default configuration
-#   make deadcode PKG=./internal/foo
-#   make deadcode TAGS='integration msb'
+# carry a //deadcode:ignore marker with a reason. deadcode always exits 0, so
+# ci/check-deadcode.sh (through the ci/deadcodecheck helper) makes the decision.
+#   make deadcode                       # the four-configuration matrix
+#   make deadcode PKG=./cmd/...         # inspection only; stale markers not checked
+#   make deadcode TAGS=integration      # one configuration instead of the matrix
 deadcode:
-	PKG='$(PKG)' TAGS='$(TAGS)' ci/check-deadcode.sh
+	DEADCODE_VERSION='$(DEADCODE_VERSION)' PKG='$(PKG)' $(if $(TAGS),TAGS='$(TAGS)',) ci/check-deadcode.sh
 
-verify: validate-fmt lint test test-race compile-all vulncheck deadcode docs-linkcheck docs-linkcheck-test
+# Test the gate script itself (fixtures only: never runs deadcode).
+deadcode-test:
+	ci/test-check-deadcode.sh
+
+verify: validate-fmt lint test test-race compile-all vulncheck deadcode docs-linkcheck docs-linkcheck-test deadcode-test
 ```
+
+`make check` gains only `deadcode-test` (the script's own test); the analysis itself stays out of the fast loop.
 
 CI gains a job mirroring `vulncheck`, deliberately absent from `release`'s `needs:`:
 
@@ -190,10 +221,3 @@ CI gains a job mirroring `vulncheck`, deliberately absent from `release`'s `need
       - run: make deadcode
 ```
 
-## Open items
-
-- Whether the marker regex/handling should live in `ci/check-deadcode.sh` (awk, matching `check-docs.sh`) or in a small Go
-  helper the script calls. The declaration-scope walk-back over the preceding comment block is the fiddly part; shell is
-  cheaper to wire, Go is cheaper to test.
-- Exact `//deadcode:ignore` vs `//dead-code:ignore` spelling, and whether a `reason=` value is delimited by double quotes
-  only (mirroring `// gomutants:disable <TYPE> reason="..."`).

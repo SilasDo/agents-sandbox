@@ -90,6 +90,14 @@ This project defaults to **test-driven development**:
 - `make verify` is the CI-parity check and additionally runs `make test-race` (race detector) and `make vulncheck`
   (`govulncheck` against the Go vulnerability database; needs network on first run). CI runs each as its own job, so run
   `make verify` when a change touches concurrency or dependencies.
+- `make deadcode` fails when production code cannot be reached from any `main` package — code only tests call. It
+  analyses the default, `integration`, `msb`, and `integration msb` configurations and unions the findings, so a function
+  only a tagged build reaches still fails. When unreachable code is deliberate (a test seam, an internal extension
+  point), record the reason where it lives with `//deadcode:ignore reason="..."`: in the declaration's doc comment (or as
+  a trailing comment on it), or in the comment block above its `package` clause to excuse a whole file. The reason is
+  required, and a marker that excuses nothing fails the gate, so markers cannot rot. `PKG=./cmd/...` narrows the analysis
+  for inspection and skips the stale-marker pass; the analysis needs cgo. It runs on every PR but is deliberately not a
+  release prerequisite, and `make check` runs only the gate's own script test (`make deadcode-test`).
 - `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target (`FUZZPKG` narrows it to one). The seed corpus
   and any committed crasher run under `make test`, so a crasher is a regression test first; the `fuzz` workflow explores
   the targets nightly and on merges that touch them, and nothing is gated on it, so a red run reports a crasher instead of
