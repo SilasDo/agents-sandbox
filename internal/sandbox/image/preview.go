@@ -53,6 +53,8 @@ func PreviewImage(
 // existing image's dockerfile-id label against. Exposed so callers outside this
 // package (e.g. higher-layer preview tests) can seed an image whose label
 // matches the plan this package computes.
+//
+//deadcode:ignore reason="exported for higher-layer preview tests to seed an image whose label matches this package's plan"
 func RunnerDockerfileID(a agent.Agent, agentVersion string, docker bool) (string, error) {
 	rendered, err := RenderProjectDockerfile(a, agentVersion, docker)
 	if err != nil {
