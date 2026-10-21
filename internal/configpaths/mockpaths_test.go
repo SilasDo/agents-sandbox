@@ -76,6 +76,9 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := cfgPaths.ProjectDockerfile(); got != filepath.Join(base, "projectconfig", dockerfileName) {
 		t.Errorf("ProjectDockerfile() = %q, want %q", got, filepath.Join(base, "projectconfig", dockerfileName))
 	}
+	if got := cfgPaths.IgnoredWorktreeConfigDir(); got != "" {
+		t.Errorf("IgnoredWorktreeConfigDir() = %q, want empty; the mock cannot express a bare base", got)
+	}
 }
 
 func TestMockAgentConfigDirCandidates(t *testing.T) {

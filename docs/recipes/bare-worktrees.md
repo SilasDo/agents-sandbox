@@ -7,6 +7,8 @@ nav_order: 20
 ---
 # Bare Checkout with Worktrees Inside
 
+> **Beta** — the bare-checkout layout and its configuration rules may still change.
+
 Put every worktree for a project in one place that the host and the sandbox VM see identically: a bare checkout whose
 worktrees are subdirectories. That directory is bind-mounted at `/workspace`, so the host and the agent operate on the
 same worktrees. Nothing lives on the VM's home volume, so dropping the home volume cannot lose work, and you can
@@ -82,6 +84,9 @@ agents-sandbox
   agent sees `main/`, `IDE/`, and every worktree at once, and starts in the worktree you launched from.
 - Sessions launched from any worktree of the project connect to the **same shared project VM**, each attaching to its
   own directory.
+- Project config (`.agents-sandbox/`: `Dockerfile`, `config.yaml`, `env`, `env.secret`, home sources, agent config) is
+  read from the **bare root**, next to `.git` — not from the worktree you launched from. A `.agents-sandbox/` inside a
+  worktree is ignored, and agents-sandbox warns and names it.
 - A worktree that lives *outside* its checkout is **not supported**: agents-sandbox keeps its current behavior and warns
   that the shared git dir is not reachable inside the VM. Keep worktrees inside the checkout.
 
@@ -102,5 +107,7 @@ the VM or its home volume.
 ## Compatibility
 
 - Plain non-bare checkouts and non-repo folders behave exactly as before.
-- The only change is which host directory is bound at `/workspace`: the enclosing checkout root, with the agent
-  starting in the subdirectory you launched from.
+- Two things change for a bare checkout: which host directory is bound at `/workspace` (the enclosing checkout root,
+  with the agent starting in the subdirectory you launched from) and where project config is read from (the bare root
+  next to `.git`, not the worktree). A `.agents-sandbox/` inside a launched worktree is ignored, with a warning naming
+  it.

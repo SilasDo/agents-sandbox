@@ -833,6 +833,7 @@ func (p *projectDockerfilePaths) ProjectAgentConfigDirCandidates(agent.Agent) []
 func (p *projectDockerfilePaths) ProjectEnvFile() string           { return "" }
 func (p *projectDockerfilePaths) ProjectEnvSecretFile() string     { return "" }
 func (p *projectDockerfilePaths) ProjectEnvSecretYAMLFile() string { return "" }
+func (p *projectDockerfilePaths) IgnoredWorktreeConfigDir() string { return "" }
 
 func TestRenderProjectDockerfileReadsProjectFile(t *testing.T) {
 	a, _ := agent.Lookup("opencode")

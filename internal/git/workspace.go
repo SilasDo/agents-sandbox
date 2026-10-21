@@ -11,7 +11,9 @@ import (
 type WorkspaceLayout struct {
 	BindRoot        string // host dir to bind at /workspace
 	CheckoutRoot    string // enclosing checkout root; "" when cwd is not in a repo
+	WorktreeRoot    string // nearest dir holding a .git entry; "" when cwd is not in a repo
 	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot
+	Bare            bool   // the shared git dir is a bare repository
 }
 
 // ResolveWorkspaceLayout decides which host directory to bind at /workspace for
@@ -20,25 +22,46 @@ type WorkspaceLayout struct {
 // worktree of a bare layout, whose worktrees live inside the bare root) always
 // exposes that worktree. A worktree outside its checkout keeps cwd as the bind
 // root and is flagged, since its shared git dir would not be reachable in the
-// VM. Derivation is plain-file inspection (see resolveGitDir); no git binary is
-// invoked.
+// VM. WorktreeRoot reports the nearest directory holding a .git entry, which for
+// a worktree inside a checkout is that worktree's root rather than cwd. The
+// layout also reports whether the shared git dir is a bare repository (see
+// isBare). Derivation is plain-file inspection (see resolveGitDir); no git
+// binary is invoked.
 func ResolveWorkspaceLayout(cwd string) WorkspaceLayout {
 	worktreeRoot := findWorktreeRoot(cwd)
 	if worktreeRoot == "" {
-		return WorkspaceLayout{BindRoot: cwd, CheckoutRoot: "", OutsideWorktree: false}
+		return WorkspaceLayout{BindRoot: cwd, CheckoutRoot: "", WorktreeRoot: "", OutsideWorktree: false, Bare: false}
 	}
 	commonGitDir := resolveGitDir(worktreeRoot)
 	if commonGitDir == "" {
-		return WorkspaceLayout{BindRoot: cwd, CheckoutRoot: "", OutsideWorktree: false}
+		return WorkspaceLayout{
+			BindRoot:        cwd,
+			CheckoutRoot:    "",
+			WorktreeRoot:    worktreeRoot,
+			OutsideWorktree: false,
+			Bare:            false,
+		}
 	}
 	checkoutRoot := filepath.Dir(commonGitDir)
 	if filepath.Base(commonGitDir) != ".git" {
 		checkoutRoot = commonGitDir
 	}
 	if within(checkoutRoot, worktreeRoot) {
-		return WorkspaceLayout{BindRoot: checkoutRoot, CheckoutRoot: checkoutRoot, OutsideWorktree: false}
+		return WorkspaceLayout{
+			BindRoot:        checkoutRoot,
+			CheckoutRoot:    checkoutRoot,
+			WorktreeRoot:    worktreeRoot,
+			OutsideWorktree: false,
+			Bare:            isBare(commonGitDir),
+		}
 	}
-	return WorkspaceLayout{BindRoot: cwd, CheckoutRoot: checkoutRoot, OutsideWorktree: true}
+	return WorkspaceLayout{
+		BindRoot:        cwd,
+		CheckoutRoot:    checkoutRoot,
+		WorktreeRoot:    worktreeRoot,
+		OutsideWorktree: true,
+		Bare:            isBare(commonGitDir),
+	}
 }
 
 // findWorktreeRoot returns the nearest directory at or above cwd that contains a

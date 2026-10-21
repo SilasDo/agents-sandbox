@@ -570,6 +570,7 @@ func EnsureImage(
 	buildOpts BuildOptions,
 	ui termio.UI,
 ) (ImageInfo, error) {
+	WarnIgnoredProjectConfig(ui)
 	return EnsureImageWithClient(ctx, a, readProjectDockerfile(), projectSlug, buildOpts, ui)
 }
 
@@ -584,6 +585,7 @@ func Build(
 	buildOpts BuildOptions,
 	ui termio.UI,
 ) error {
+	WarnIgnoredProjectConfig(ui)
 	info, err := EnsureImageWithClient(ctx, a, readProjectDockerfile(), projectSlug, buildOpts, ui)
 	if err != nil {
 		return err

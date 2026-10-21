@@ -353,9 +353,10 @@ func TestDeclaredSeamInstallers(t *testing.T) {
 
 func TestAcyclicSeamFamilies(t *testing.T) {
 	// The real module graph's shape among the seam packages: docker imports
-	// nothing module-local, msb imports configpaths, notify imports the sandbox
-	// packages it reports on, and doctor imports all of docker, configpaths,
-	// msb, and termio.
+	// nothing module-local, configpaths imports only internal/git (which imports
+	// no module-local package), msb imports configpaths, notify imports the
+	// sandbox packages it reports on, and doctor imports all of docker,
+	// configpaths, msb, and termio.
 	transitive := map[string]map[string]bool{
 		"internal/configpaths":    {},
 		"internal/sandbox/docker": {},
