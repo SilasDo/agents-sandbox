@@ -175,14 +175,25 @@ func TestWatchOnceSeedsChildrenFromListCommand(t *testing.T) {
 func TestWatchOnceSeedFailureDoesNotBlockNotifications(t *testing.T) {
 	spec := opencodeSpec()
 	spec.SessionListCommand = "seed-cmd"
+	spec.SessionListParse = func([]byte) []string {
+		t.Fatal("SessionListParse ran despite the shell error")
+		return nil
+	}
 	stream := &streamStub{events: []msb.StreamEvent{
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("message.part.updated", "ses_top")},
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("session.idle", "ses_top")},
 		{Kind: msb.StreamEventExited, ExitCode: 0},
 	}}
-	sb := msb.NewMockSandbox(msb.SandboxOpts{ShellErr: errors.New("boom"), StreamHandle_: stream})
+	sb := &msb.MockSandbox{
+		ShellErr:      errors.New("boom"),
+		ShellCalls:    &[]string{},
+		StreamHandle_: stream,
+	}
 	backend := &recordBackend{}
 	_ = watchOnce(context.Background(), sb, NewTracker(spec), backend, spec)
+	if len(*sb.ShellCalls) != 1 || (*sb.ShellCalls)[0] != "seed-cmd" {
+		t.Fatalf("expected the seed command to run, got %v", *sb.ShellCalls)
+	}
 	if backend.count() != 1 || backend.notification(0).Trigger != TriggerDone {
 		t.Fatalf("expected one done notification despite seed failure, got %+v", backend.got)
 	}
