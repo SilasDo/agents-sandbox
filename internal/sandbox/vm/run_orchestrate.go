@@ -146,7 +146,7 @@ func PrepareSandbox(
 	// volume's state (issue #183) and are what persistConfigHashes records.
 	fingerprints := desiredFingerprints(opts, ui)
 	client, vm, homeVol, vs, err := prepareHomeVolume(
-		ctx, k, imageInfo, opts, fingerprints, adoption.RecoveredHomeVolume, ui,
+		ctx, k, imageInfo, opts, fingerprints, ui,
 	)
 	if err != nil {
 		return nil, err
@@ -219,8 +219,9 @@ func PrepareSandbox(
 // before any other work so its notice explains the pause and the runner image
 // builds under the effective (checkout-scoped) tag; both dry-run gates make it
 // read-only, so the rest of the run keeps resolving against the legacy location.
-// It returns the adoption so the caller can use both the effective slug and any
-// home volume recovered from a legacy VM whose state file was lost.
+// It returns the adoption so the caller can use the effective slug; a home
+// volume a VM-only adoption preserved is recorded in the checkout state, not in
+// the adoption value.
 func resolveSessionIdentity(
 	ctx context.Context,
 	cwd, agentName string,
@@ -325,18 +326,16 @@ func resolveServeHostPort(opts options.RunOptions, planned int) int {
 // state. It returns the msb client and volume manager for the caller's
 // subsequent reconfig/VM steps.
 //
-// legacyRecoveredVolume is the home volume an adoption recovered from a legacy
-// VM whose state file was lost (issue #219). It is the fallback for the live
-// checkout VM's own volume, so a first post-upgrade run over a lost state reuses
-// the preserved volume instead of minting a fresh one; state, when present, still
-// wins in ResolveHomeVolume.
+// A home volume preserved by a VM-only identity adoption (#144) is not passed
+// here: adoption records it in the checkout state's RecoveredHomeVolume, which
+// ResolveHomeVolume recovers, so the reference survives any caller that discards
+// the adoption result or any step that fails before home resolution.
 func prepareHomeVolume(
 	ctx context.Context,
 	k state.Key,
 	imageInfo image.ImageInfo,
 	opts options.RunOptions,
 	fingerprints state.Fingerprints,
-	legacyRecoveredVolume string,
 	ui termio.UI,
 ) (msb.Client, *volume.Manager, string, state.HomeState, error) {
 	client := msb.Get()
@@ -355,9 +354,6 @@ func prepareHomeVolume(
 
 	vm := volume.NewManager(ui)
 	recovered := liveHomeVolume(ctx, client, k, ui)
-	if recovered == "" {
-		recovered = legacyRecoveredVolume
-	}
 	homeVol, vs, err := resolveHomeVolume(
 		ctx, vm, client, k, imageInfo, opts.DryRunVM, fingerprints, recovered, ui,
 	)

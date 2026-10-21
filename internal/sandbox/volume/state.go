@@ -16,10 +16,11 @@ import (
 // ResolveHomeVolume determines the home volume to mount for a project run.
 //
 // When the state file resolves to a volume that still exists, that volume is
-// reused. Otherwise the live VM's mounted volume (recoveredVolume) is adopted
-// if it still exists, so a lost state file does not mint a duplicate volume and
-// orphan the previous one (issue #219). When neither is available it falls back
-// to EnsureNewHome.
+// reused. When it records a pending RecoveredHomeVolume (a VM-only identity
+// adoption, #144), that volume is recovered into the state. Otherwise the live
+// VM's mounted volume (recoveredVolume) is adopted if it still exists, so a lost
+// state file does not mint a duplicate volume and orphan the previous one (issue
+// #219). When none is available it falls back to EnsureNewHome.
 func (vm *Manager) ResolveHomeVolume(
 	ctx context.Context,
 	client msb.Client,
@@ -36,6 +37,14 @@ func (vm *Manager) ResolveHomeVolume(
 			ui.Warnf("could not read state file for project %q: %v", k.Slug, err)
 		}
 		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
+	}
+
+	// A VM-only identity adoption (#144) destroyed the legacy VM and recorded its
+	// home volume here first, because the VM is then gone and cannot be read.
+	// Finish that recovery so the volume becomes the project's HomeVolume with
+	// the current digest and fingerprints.
+	if st.RecoveredHomeVolume != "" {
+		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, st.RecoveredHomeVolume, ui)
 	}
 
 	if _, err := client.GetVolume(ctx, st.HomeVolume); err != nil {
@@ -72,7 +81,7 @@ func (vm *Manager) recoverOrCreateHome(
 	}
 
 	ui.Warnf(
-		"state for project %q is missing or its volume is gone; recovering home volume %q from the running VM",
+		"state for project %q needs home-volume recovery; recovering home volume %q",
 		k.Slug,
 		recovered,
 	)
@@ -96,9 +105,13 @@ func (vm *Manager) recoverOrCreateHome(
 }
 
 // priorOrNil returns the readable prior document for carry-forward, or nil when
-// recovery is rebuilding from scratch.
+// recovery is rebuilding from scratch. An identity-adoption marker
+// (RecoveredHomeVolume set, #144) is not a real prior: it holds no fingerprints
+// or upgrade fields, so treating it as one would copy empty fingerprints forward.
+// Discarding it also seeds the desired fingerprints, the #183 rule for a state
+// whose contents were effectively lost.
 func priorOrNil(cur *state.HomeState, exists bool) *state.HomeState {
-	if !exists {
+	if !exists || cur.RecoveredHomeVolume != "" {
 		return nil
 	}
 	return cur

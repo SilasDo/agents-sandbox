@@ -52,7 +52,6 @@ func TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{DryRun: true},
 		state.Fingerprints{},
-		"",
 		&ui,
 	); err != nil {
 		t.Fatalf("prepareHomeVolume() error = %v", err)
@@ -93,7 +92,6 @@ func TestPrepareHomeVolumeDryRunVMStillOffers(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{DryRunVM: true},
 		state.Fingerprints{},
-		"",
 		&ui,
 	); err != nil {
 		t.Fatalf("prepareHomeVolume() error = %v", err)
@@ -125,7 +123,6 @@ func TestPrepareHomeVolumeOfferErrorPropagates(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{},
 		state.Fingerprints{},
-		"",
 		&ui,
 	)
 	if !errors.Is(err, wantErr) {
@@ -270,7 +267,6 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 		sandboximage.ImageInfo{Digest: "sha256:def"},
 		options.RunOptions{},
 		state.Fingerprints{},
-		"",
 		&ui,
 	)
 	if err != nil {
@@ -385,14 +381,18 @@ func TestPrepareSandboxResolveWorkspaceDirError(t *testing.T) {
 	}
 }
 
-// TestPrepareHomeVolumeReusesAdoptionRecoveredVolume covers the lost-state
-// migration path: adoption destroyed the legacy VM and handed its home volume to
-// the run, so home resolution must reuse that volume rather than mint a fresh one.
-func TestPrepareHomeVolumeReusesAdoptionRecoveredVolume(t *testing.T) {
+// TestPrepareHomeVolumeRecoversPersistedAdoptionVolume covers the lost-state
+// migration path (#144): adoption recorded the destroyed legacy VM's home volume
+// in the checkout state and the run never received it in memory, so home
+// resolution must recover it from the state rather than mint a fresh one.
+func TestPrepareHomeVolumeRecoversPersistedAdoptionVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
 	k := state.Key{Slug: adoptCheckoutSlug, Agent: adoptAgentName}
+	if err := seedHomeState(k, state.HomeState{RecoveredHomeVolume: recovered}); err != nil {
+		t.Fatalf("seed adoption-recovered state: %v", err)
+	}
 
 	mock := &msb.MockMsbClient{
 		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
@@ -422,7 +422,6 @@ func TestPrepareHomeVolumeReusesAdoptionRecoveredVolume(t *testing.T) {
 		sandboximage.ImageInfo{Digest: "sha256:def"},
 		options.RunOptions{},
 		state.Fingerprints{},
-		recovered,
 		&ui,
 	)
 	if err != nil {

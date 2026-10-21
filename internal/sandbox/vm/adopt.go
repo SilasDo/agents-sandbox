@@ -35,12 +35,6 @@ type IdentityAdoption struct {
 	// slug this call. False when nothing was pending or the caller asked for a
 	// dry run.
 	Applied bool
-	// RecoveredHomeVolume is the home volume of a live legacy VM that adoption
-	// destroyed when there was no legacy state file to carry the volume (issue
-	// #219: the state file was lost while the VM survived). The caller seeds
-	// home resolution with it so the preserved volume is reused instead of a
-	// fresh one being minted. Empty unless adoption recovered from a VM.
-	RecoveredHomeVolume string
 }
 
 // adoptLockHook is a test seam invoked inside the locked adoption, before the
@@ -74,9 +68,13 @@ var renameConfigDir = os.Rename
 // A live legacy VM is itself a legacy identity, even when its state file was
 // lost (issue #219): without adopting it the run would treat the checkout as
 // brand new, mint a fresh home volume and orphan the user's credentials and
-// files. That arm has no state file to move, so it destroys the VM and returns
-// the mounted home volume in RecoveredHomeVolume for home resolution to reuse,
-// rather than failing the arrival check that only a state-file migration needs.
+// files. That arm has no state file to move, so adoption records the mounted
+// home volume durably in the checkout state's RecoveredHomeVolume before it
+// destroys the VM, and home resolution later recovers it into HomeVolume. The
+// destroy is what makes the volume unreadable afterwards, so the reference has
+// to be written first; recording it in memory (as this once did) loses it the
+// moment the caller discards the return value, which every entry point except a
+// successful run did (issue #244 review).
 //
 // With apply=false (a dry run) it prints the notice and leaves everything in
 // place, returning the legacy slug so the rest of the pipeline keeps resolving
@@ -107,9 +105,6 @@ func AdoptLegacyIdentity(
 	}
 
 	notAdopted := IdentityAdoption{Slug: source.Slug, Pending: true}
-	if source.FromVM {
-		notAdopted.RecoveredHomeVolume = source.HomeVolume
-	}
 	if !apply {
 		ui.Warnf("%s", adoptionNotice(identity, agentName, source.HomeVolume, false))
 		// Resolve the caller's remaining work against the source the state was
@@ -142,9 +137,6 @@ func AdoptLegacyIdentity(
 			return adoptErr
 		}
 		result = IdentityAdoption{Slug: identity.CheckoutSlug, Pending: true, Applied: true}
-		if source.FromVM {
-			result.RecoveredHomeVolume = source.HomeVolume
-		}
 		return nil
 	})
 	if err != nil {
@@ -179,6 +171,25 @@ type legacyPendingSource struct {
 	FromVM     bool
 }
 
+// persistRecoveredHomeVolume records the home volume a to-be-destroyed legacy VM
+// mounted in the checkout state, so home resolution can recover it after the VM
+// (its only other reference) is gone. It flows through the recovery transaction,
+// which repairs a missing or unparsable document; the trigger guarantees no
+// settled checkout state exists yet, and a retried adoption rewrites its own
+// marker. A VM with no home mount has nothing to preserve and writes nothing.
+func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
+	if homeVolume == "" {
+		return nil
+	}
+	if err := state.RecoverHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
+		cur.RecoveredHomeVolume = homeVolume
+		return true, nil
+	}); err != nil {
+		return fmt.Errorf("record the recovered home volume for %s: %w", k.Slug, err)
+	}
+	return nil
+}
+
 // legacyAdoptionPending reports whether a legacy identity is pending: the
 // checkout-keyed state file is absent and either a legacy state file exists or a
 // live legacy project VM for the agent still exists. It returns the slug the
@@ -201,16 +212,24 @@ type legacyPendingSource struct {
 // whose mounts cannot be read, is returned as an error rather than treated as
 // absent, so an unknown document or an unreadable mount can never lead to
 // destroying a legacy VM or moving state nobody has read.
+//
+// A checkout state is normally the settled record that stops adoption. The one
+// exception is a state that carries a RecoveredHomeVolume: a prior VM-only
+// adoption wrote that reference before tearing the legacy VM down, so if the
+// destroy did not finish the trigger stays live and the next call retries it
+// (the state move is a no-op then, because there is no legacy state file).
 func legacyAdoptionPending(
 	ctx context.Context,
 	client msb.Client,
 	slugs []string,
 	checkoutKey state.Key,
 ) (legacyPendingSource, bool, error) {
-	if _, err := state.ReadState(checkoutKey); err == nil {
+	checkout, checkoutErr := state.ReadState(checkoutKey)
+	switch {
+	case checkoutErr == nil && checkout.RecoveredHomeVolume == "":
 		return legacyPendingSource{}, false, nil
-	} else if !errors.Is(err, state.ErrStateNotFound) {
-		return legacyPendingSource{}, false, err
+	case checkoutErr != nil && !errors.Is(checkoutErr, state.ErrStateNotFound):
+		return legacyPendingSource{}, false, checkoutErr
 	}
 
 	for _, slug := range slugs {
@@ -252,6 +271,18 @@ func adoptLegacyIdentity(
 	ui termio.UI,
 ) error {
 	primary := slugs[0]
+
+	// The VM-only arm destroys the only record of its home volume, so persist the
+	// recovered reference first. If the destroy (or any later step, or a caller
+	// that discards the adoption result) fails, the volume is still recoverable
+	// from the checkout state instead of being orphaned. This runs under the root
+	// lock, so a concurrent first-post-upgrade run cannot observe a half-written
+	// migration.
+	if source.FromVM {
+		if err := persistRecoveredHomeVolume(checkoutKey, source.HomeVolume); err != nil {
+			return err
+		}
+	}
 
 	// Destroy every legacy VM across all sources before moving any state. A
 	// destroy failure then aborts the migration with every legacy state file

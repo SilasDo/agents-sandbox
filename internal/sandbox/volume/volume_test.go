@@ -828,6 +828,63 @@ func TestResolveHomeVolume_RecoversLiveVMVolumeOnMissingState(t *testing.T) {
 	}
 }
 
+// TestResolveHomeVolume_RecoversPersistedAdoptionVolume covers the durable
+// VM-only identity adoption (#144): the checkout state records the home volume a
+// destroyed legacy VM mounted, and resolution finishes the recovery into
+// HomeVolume with the current digest, seeds fingerprints, and clears the marker.
+func TestResolveHomeVolume_RecoversPersistedAdoptionVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	key := state.Key{Slug: "adoptedwidget", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		if name == recovered {
+			return msb.MockVolumeHandle{Name_: name}, nil
+		}
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("volume %s not found", name)
+	}
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
+		return msb.MockVolumeHandle{Name_: name}, nil
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	volName, hs, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:new"},
+		false,
+		state.Fingerprints{Env: state.EnvState{Hash: "envhash"}},
+		"",
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if volName != recovered {
+		t.Errorf("volume = %q, want recovered %q", volName, recovered)
+	}
+	if hs.HomeVolume != recovered || hs.ImageDigest != "sha256:new" || hs.RecoveredHomeVolume != "" {
+		t.Errorf("state = %+v, want the marker recovered into HomeVolume with the digest and cleared", hs)
+	}
+	if hs.EnvState.Hash != "envhash" {
+		t.Errorf("fingerprints used to seed = %+v, want envhash", hs.EnvState)
+	}
+	persisted, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("state not written: %v", err)
+	}
+	if persisted.HomeVolume != recovered || persisted.RecoveredHomeVolume != "" {
+		t.Errorf("persisted state = %+v, want the marker cleared", persisted)
+	}
+}
+
 // TestResolveHomeVolume_RecoveredVolumeMissingStartsFresh verifies that a live
 // VM mount that no longer resolves (e.g. the volume was removed) does not wedge
 // resolution: it falls back to a fresh prefill.

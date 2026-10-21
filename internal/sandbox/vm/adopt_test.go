@@ -953,9 +953,10 @@ func TestAdoptLegacyIdentityDestroyFailureLeavesStateForRetry(t *testing.T) {
 
 // TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState covers the lost-state
 // case (issue #219): no legacy state file, but a live legacy project VM. The VM
-// is itself a legacy identity, so adoption destroys it and returns its mounted
-// home volume for home resolution to reuse, instead of treating the checkout as
-// brand new and minting a fresh volume.
+// is itself a legacy identity, so adoption destroys it and records its mounted
+// home volume durably in the checkout state before the destroy, for home
+// resolution to reuse — instead of treating the checkout as brand new and
+// minting a fresh volume.
 func TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -981,25 +982,82 @@ func TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState(t *testing.T) {
 	if !handle.Destroyed {
 		t.Error("live legacy VM was not destroyed")
 	}
-	want := IdentityAdoption{
-		Slug:                adoptCheckoutSlug,
-		Pending:             true,
-		Applied:             true,
-		RecoveredHomeVolume: legacyVolume,
-	}
+	want := IdentityAdoption{Slug: adoptCheckoutSlug, Pending: true, Applied: true}
 	if got != want {
 		t.Errorf("adoption = %+v, want %+v", got, want)
 	}
-	// There is no legacy state file to carry, so adoption must not fabricate a
-	// checkout state: home resolution writes the recovered one from the volume.
-	if statePresent(t, adoptCheckoutKey()) {
-		t.Error("adoption fabricated a checkout state without a legacy state file")
+	// The VM was the only record of its home volume and is now gone, so adoption
+	// must have persisted the volume first.
+	st, readErr := state.ReadState(adoptCheckoutKey())
+	if readErr != nil {
+		t.Fatalf("adoption did not record the recovered volume: %v", readErr)
+	}
+	if st.RecoveredHomeVolume != legacyVolume {
+		t.Errorf("RecoveredHomeVolume = %q, want %q", st.RecoveredHomeVolume, legacyVolume)
+	}
+}
+
+// TestAdoptLegacyIdentityPersistsVolumeBeforeDestroyFails pins the ordering the
+// #244 review required: the recovered volume is durable before the legacy VM is
+// destroyed, so a destroy failure (or a caller that discards the result) cannot
+// lose it — and the marker keeps the trigger live so the teardown is retried.
+func TestAdoptLegacyIdentityPersistsVolumeBeforeDestroyFails(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const legacyVolume = "agents-sandbox-home-widget-aaa-opencode-9"
+	handle := &msb.MockSandboxHandle{
+		Name_:      adoptLegacyVMName(),
+		DestroyErr: errors.New("destroy boom"),
+		Mounts: map[string]msbSdk.MountConfig{
+			mounts.VMHomeDir: msbSdk.Mount.Named(legacyVolume, msbSdk.MountOptions{}),
+		},
+	}
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		if name == adoptLegacyVMName() {
+			return handle, nil
+		}
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	ui := termio.NewTestMock(t)
+
+	if _, err := AdoptLegacyIdentity(
+		context.Background(),
+		client,
+		adoptIdentity(),
+		adoptAgentName,
+		true,
+		&ui,
+	); err == nil {
+		t.Fatal("expected the destroy failure to abort adoption")
+	}
+	st, readErr := state.ReadState(adoptCheckoutKey())
+	if readErr != nil || st.RecoveredHomeVolume != legacyVolume {
+		t.Fatalf("volume not persisted before the destroy: %+v (err %v)", st, readErr)
+	}
+
+	// Retry with a working destroy: the marker keeps the trigger live, so the
+	// leftover legacy VM is torn down and the marker survives for recovery.
+	handle.DestroyErr = nil
+	retryUI := termio.NewTestMock(t)
+	retry, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &retryUI)
+	if err != nil {
+		t.Fatalf("retry AdoptLegacyIdentity: %v", err)
+	}
+	if !handle.Destroyed {
+		t.Error("retry did not destroy the leftover legacy VM")
+	}
+	if !retry.Pending || !retry.Applied {
+		t.Errorf("retry adoption = %+v, want pending and applied", retry)
+	}
+	st, readErr = state.ReadState(adoptCheckoutKey())
+	if readErr != nil || st.RecoveredHomeVolume != legacyVolume {
+		t.Errorf("recovered volume lost on retry: %+v (err %v)", st, readErr)
 	}
 }
 
 // TestAdoptLegacyIdentityDryRunLiveLegacyVMIsReadOnly pins the dry run over a
 // live legacy VM: the notice names the VM's home volume, nothing is destroyed,
-// and the caller keeps the legacy slug with the volume to resolve against.
+// nothing is recorded, and the caller keeps the legacy slug to resolve against.
 func TestAdoptLegacyIdentityDryRunLiveLegacyVMIsReadOnly(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -1026,9 +1084,12 @@ func TestAdoptLegacyIdentityDryRunLiveLegacyVMIsReadOnly(t *testing.T) {
 	if !strings.Contains(notice, "Would migrate") || !strings.Contains(notice, legacyVolume) {
 		t.Errorf("dry-run notice missing the would-headline or the volume:\n%s", notice)
 	}
-	want := IdentityAdoption{Slug: adoptRepoSlug, Pending: true, RecoveredHomeVolume: legacyVolume}
+	want := IdentityAdoption{Slug: adoptRepoSlug, Pending: true}
 	if got != want {
 		t.Errorf("adoption = %+v, want %+v", got, want)
+	}
+	if statePresent(t, adoptCheckoutKey()) {
+		t.Error("a dry run must not record a checkout state")
 	}
 }
 
