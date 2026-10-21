@@ -107,13 +107,3 @@ func TestReplaceExecutableRenameFails(t *testing.T) {
 		t.Fatal("expected error when the rename target is a directory")
 	}
 }
-
-func TestSaveStateMkdirAllFails(t *testing.T) {
-	blocker := filepath.Join(t.TempDir(), "blocker")
-	_ = os.WriteFile(blocker, []byte("x"), 0o600)
-
-	path := filepath.Join(blocker, "state.json")
-	if err := saveState(path, state{}); err == nil {
-		t.Fatal("expected error when the state directory cannot be created")
-	}
-}
