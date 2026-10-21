@@ -138,6 +138,9 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	store := opts.store()
+	if err := FoldLegacyState(store); err != nil {
+		opts.UI.Verbosef("upgrade state migration deferred: %v", err)
+	}
 	st, err := store.Load()
 	if err != nil {
 		opts.UI.Verbosef("upgrade state unavailable: %v", err)

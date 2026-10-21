@@ -53,8 +53,11 @@ func (f *fakeStore) Save(s LauncherState) error {
 	return f.err
 }
 
-func mockOptions(t testing.TB, version string, mode Mode) Options {
+// mockOptions builds Options for a Check test. It isolates host config paths
+// because Check folds the retired upgrade.json from the user state directory.
+func mockOptions(t *testing.T, version string, mode Mode) Options {
 	t.Helper()
+	configpaths.WithMockConfigPaths(t)
 	return Options{
 		CurrentVersion: version,
 		Mode:           mode,
