@@ -129,3 +129,23 @@ func TestParseConfigMountsRejectsMountWithoutGuest(t *testing.T) {
 		t.Error("ParseConfigMounts() error = nil, want an error for a mount without a guest path")
 	}
 }
+
+// TestParseConfigMountsOwnedDiskKind covers the disk branch of the Owned
+// storage-kind mapping: upstream spells the directory kind "directory" while
+// the SDK constant is "dir", so the disk spelling is easy to conflate or drop.
+func TestParseConfigMountsOwnedDiskKind(t *testing.T) {
+	raw := `{"mounts":[
+	  {"type":"Owned","guest":"/data","storage":{"kind":"disk","capacity_mib":1024,"quota_mib":512},"options":{}}
+	]}`
+	got, err := ParseConfigMounts(raw)
+	if err != nil {
+		t.Fatalf("ParseConfigMounts() error = %v", err)
+	}
+	owned := got["/data"]
+	if owned.Kind() != msbSdk.MountKindOwned || owned.Owned != string(msbSdk.VolumeKindDisk) {
+		t.Errorf("owned mount = %+v, want owned kind disk", owned)
+	}
+	if owned.SizeMiB != 1024 || owned.QuotaMiB != 512 {
+		t.Errorf("owned mount size/quota = %d/%d, want capacity_mib/quota_mib 1024/512", owned.SizeMiB, owned.QuotaMiB)
+	}
+}
