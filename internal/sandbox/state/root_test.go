@@ -142,8 +142,8 @@ func TestReadRootState_ParseError(t *testing.T) {
 		t.Fatalf("write corrupt root state: %v", err)
 	}
 
-	if _, err := ReadRootState(); err == nil {
-		t.Fatal("ReadRootState() error = nil, want a parse error")
+	if _, err := ReadRootState(); !errors.Is(err, ErrStateUnparsable) {
+		t.Fatalf("ReadRootState() error = %v, want ErrStateUnparsable", err)
 	}
 }
 

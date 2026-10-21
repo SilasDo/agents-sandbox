@@ -26,6 +26,12 @@ command reports the bare version (e.g. `0.1.0`).
   (`naming`) — plus a `make fuzz` target (`FUZZTIME`, default 30s; `FUZZPKG` for a single target). The seed corpus and
   any committed crasher run as part of `make test`, and a `fuzz` workflow explores the targets nightly and on merges that
   touch them, uploading a crasher it finds as an artifact. Nothing is gated on it.
+- Internal: fuzz the hand-editable persisted state files. `ReadState` and `ReadRootState` now delegate their unmarshal
+  step to pure `parseHomeState`/`parseRootState` functions, and a corrupt launcher-global `state.yaml` is now classified
+  by the existing `ErrStateUnparsable` sentinel (it previously surfaced as a bare parse error). New fuzz targets cover
+  both state documents (`state`), size and `--worktree` specs (`options`), configured mount-target validation (`mounts`),
+  and the retired `updater.yaml` (`vm`). The `fuzz` workflow now discovers its targets from the sources exactly as
+  `make fuzz` does, so a new target joins the CI matrix with no workflow edit.
 - Runner image: install microsandbox's application certificate trust helper as `/usr/local/bin/msb-trust`, for
   applications whose TLS trust is separate from the guest's system store. `msb-trust java` imports the interception CA
   into a JDK's `cacerts` and `msb-trust chrome` into Chrome/Chromium's NSS store; `msb-trust all` configures every
