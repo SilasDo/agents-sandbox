@@ -10,6 +10,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- Internal: add `make mutation`, an on-demand mutation-testing target (`gomutants`, pinned like `vulncheck`). It reports
+  mutants the tests do not notice; by default it covers the whole module but only lines changed since the last release
+  tag (`PKG=...` narrows to one package, `FULL=1` runs every line). It is deliberately excluded from `make check`,
+  `make verify`, and CI. Part of the release flow: every survivor is either killed by a strengthened test or recorded in
+  source with a reason (#253).
 - Internal: add `make test-race` (race detector) and `make vulncheck` (`govulncheck` against the Go vulnerability
   database) to `make verify`, and run each as its own CI job. Both stay out of `make check` so the everyday loop stays
   fast; `vulncheck` needs network on first run. The first scan reported nine reachable Go standard-library

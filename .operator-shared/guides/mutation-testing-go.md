@@ -29,9 +29,10 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 - Repo `github.com/gomutants/gomutants`; module root package is `main`. `go install github.com/gomutants/gomutants@<ver>` is the documented install, and the Claude plugin "falls back to `go run github.com/gomutants/gomutants@latest`" ([README](https://github.com/gomutants/gomutants)).
 - **`go run github.com/gomutants/gomutants@v0.7.1 --help` works** here on go1.27.1 (downloaded and printed usage). `go.mod` requires only `gopkg.in/yaml.v3`, `go 1.26.10` ([go.mod](https://raw.githubusercontent.com/gomutants/gomutants/main/go.mod)); "The minimum supported version of Go for gomutants is **1.26**" ([README](https://github.com/gomutants/gomutants)).
 - Per-package: usage is `gomutants [flags] <package patterns>`, e.g. `gomutants ./internal/mypackage` or `gomutants -v ./internal/foo` ([README](https://github.com/gomutants/gomutants)); package patterns are positional.
+- Scope to changed lines: `--changed-since <ref>` keeps only mutants on lines added/modified vs `git diff --unified=0 --merge-base <ref>`, includes uncommitted edits to tracked files, and requires a **new** file to be `git add`ed to be visible. On a shallow clone (no reachable merge base) it fails with a hint rather than silently widening. **The flag is `--changed-since` in the pinned v0.7.1** — verified by running `go run github.com/gomutants/gomutants@v0.7.1 --changed-since v0.5.0 --dry-run ./internal/humanize` (works) and `-n v0.5.0` (`flag provided but not defined: -n`, exit 2). An earlier verbal summary said `-n`; it is wrong for this pin ([README](https://github.com/gomutants/gomutants), [flags.go](https://github.com/gomutants/gomutants/blob/main/flags.go)).
 - Output/triage: JSON report by default (`--output`/`-o`, default `mutation-report.json`), plus `--stryker-output`, `--html-output`, `--annotations github`; statuses `KILLED`, `LIVED`, `NOT COVERED`, `NOT VIABLE`, `TIMED OUT`, `INFRA ERROR`, `EQUIVALENT`; `--list-mutators`. Equivalent/uninteresting mutants are recorded via inline `// gomutants:disable`, `disable-next-line`, `disable-func`, `disable-regexp` and call-site `--exclude-calls` globs ([README](https://github.com/gomutants/gomutants)).
 - Applied by `go test -overlay` — "the source tree is never rewritten" ([README](https://github.com/gomutants/gomutants)). Speed features: content-addressed cache, per-test coverage routing, adaptive per-mutant timeouts. The README's own benchmarks put it ~1.5–1.8× faster than gremlins on medium single-package targets (self-reported; treat as a claim).
-- `-race`: forwarded through `--test-flags` (build flags such as `-race` go to the compile). Flags `-overlay`, `-c`, `-o`, `-args` are rejected because gomutants manages the overlay; `-exec` is allowed ([README](https://github.com/gomutants/gomutants)).
+- `-race`: forwarded through `--test-flags` (build flags such as `-race` go to the compile). `-overlay`, `-c` and `-args` are gomutants-managed and not forwarded; `-o`/`--output` is gomutants' own JSON report path (default `mutation-report.json`), not a pass-through to the inner `go test` ([README](https://github.com/gomutants/gomutants), `--help`).
 - Not a gate by default: `--threshold-efficacy`/`--threshold-mcover` default `0` (disabled), so exit is `0`; exit `10`/`11` only when thresholds are set ([README](https://github.com/gomutants/gomutants)).
 - Caveat: the project is new (created 2026-04-04, 13 stars, 3 open issues, PRs `collaborators_only`) ([repo API](https://api.github.com/repos/gomutants/gomutants)). Single-organisation bus factor; version-pin deliberately.
 
@@ -80,20 +81,28 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 
 ### Makefile (mirrors the `vulncheck` target; deliberately excluded from `check`/`verify`/CI)
 
+The canonical target lives in `.operator-shared/specs/mutation-testing.md`; its shape is:
+
 ```make
 GOMUTANTS_VERSION = v0.7.1
 
-# On-demand, per-package mutation testing. NEVER a CI gate.
-# Usage: make mutation PKG=./internal/humanize
-PKG ?= ./internal/...
+# On-demand mutation testing. Never part of check/verify/CI.
+#   make mutation                        # whole module, lines changed since the last release tag
+#   make mutation PKG=./internal/foo     # one package, changed lines
+#   make mutation FULL=1                 # whole module, all lines (slow)
+PKG   ?= ./...
+SINCE ?= $(shell git describe --tags --abbrev=0)
+FULL  ?=
+
 mutation:
-	go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION) $(PKG)
+	@test -n "$(FULL)" || test -n "$(SINCE)" || { \
+		echo "make mutation: cannot resolve a release tag; pass SINCE=<ref> or FULL=1"; exit 1; }
+	CGO_ENABLED=1 go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION) \
+		--detect-equivalent \
+		$(if $(FULL),,--changed-since $(SINCE)) \
+		$(PKG)
 ```
 
-The single invocation line to pin is:
-
-```
-go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION) $(PKG)
-```
-
-`mutation-report.json` is written to the working directory by default; pass `--output /tmp/mutation-<pkg>.json` to keep the tree clean. Do not add `mutation` to `check`/`verify`/`all`.
+`mutation-report.json` and the incremental cache `.gomutants-cache.json` are written to the working directory by default
+(the cache makes reruns cheap); pass `--output /tmp/mutation-<pkg>.json` to keep the tree clean instead. Do not add
+`mutation` to `check`/`verify`/`all`.

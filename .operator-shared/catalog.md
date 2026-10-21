@@ -15,11 +15,14 @@
 ### `guides/` - How-to and reference notes for this partition
 
 - `mutation-testing-go.md`
-  - Description: Survey of Go mutation-testing tools (gomutants, gremlins, go-mutesting, ooze, gomu) against the on-demand, per-package `go run module@version` Makefile-target constraint; recommends gomutants with the exact invocation line.
+  - Description: Survey of Go mutation-testing tools (gomutants, gremlins, go-mutesting, ooze, gomu) against the on-demand, per-package `go run module@version` Makefile-target constraint; recommends gomutants, records the `--changed-since` line scoping and its verified flag name (not `-n`), and carries the canonical `make mutation` target.
   - Read If: Adding or changing the on-demand mutation-testing Makefile target, or evaluating a Go mutation-testing tool.
 
 ### `specs/` - System contracts for this partition
 
+- `mutation-testing.md`
+  - Description: Contract for the on-demand mutation-testing practice (issue #253): a version-pinned `make mutation` target over gomutants (`GOMUTANTS_VERSION`, `--changed-since $(git describe --tags --abbrev=0)` by default, `FULL=1` for an unscoped run, `CGO_ENABLED=1`), never a CI or `make check` gate; each LIVED mutant is either killed by a strengthened test or recorded in source with `// gomutants:disable <TYPE> reason="..."` (or `--exclude-calls`); `-detect-equivalent` on by default; the release-skill step-2 rw amendment and CONTRIBUTING/NON-GO-DEPS/gitignore homes.
+  - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, or the release-skill verify step.
 - `config-paths-seam.md`
   - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
