@@ -149,6 +149,11 @@ func resolveProjectConfig(cwd string) (string, string) {
 	}
 	base := filepath.Join(layout.CheckoutRoot, projectConfigDir)
 	ignored := filepath.Join(physical, projectConfigDir)
+	if ignored == base {
+		// The CWD is the bare root itself: this is the directory the base reads,
+		// not a worktree copy that gets ignored.
+		return base, ""
+	}
 	if info, statErr := os.Stat(ignored); statErr == nil && info.IsDir() {
 		return base, ignored
 	}
@@ -243,8 +248,9 @@ func (c *realConfigPaths) ProjectEnvSecretYAMLFile() string {
 }
 
 // IgnoredWorktreeConfigDir returns the worktree-level .agents-sandbox that a
-// bare checkout's base ignores, or "" when none is ignored. It lets callers warn
-// about config the user must move to the bare root.
+// bare checkout's base ignores, or "" when none is ignored: everywhere outside a
+// bare checkout, and at the bare root itself, where the base's directory is the
+// only one. It lets callers warn about config the user must move to the bare root.
 func (c *realConfigPaths) IgnoredWorktreeConfigDir() string {
 	cwd, err := os.Getwd()
 	if err != nil {

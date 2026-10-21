@@ -196,6 +196,24 @@ func TestIgnoredWorktreeConfigDir(t *testing.T) {
 	}
 }
 
+// TestIgnoredWorktreeConfigDirEmptyAtBareRoot covers launching from the bare
+// root itself with <bare>/.agents-sandbox present: that directory is the base,
+// so nothing is ignored and the warning must not name it.
+func TestIgnoredWorktreeConfigDirEmptyAtBareRoot(t *testing.T) {
+	isolateProjectConfig(t)
+	root := writeBareCheckout(t)
+	if err := os.MkdirAll(filepath.Join(root, ".agents-sandbox"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(root)
+
+	assertBareProjectBase(t, root)
+
+	if got := Get().IgnoredWorktreeConfigDir(); got != "" {
+		t.Errorf("IgnoredWorktreeConfigDir() = %q, want empty when the CWD is the bare root", got)
+	}
+}
+
 func TestIgnoredWorktreeConfigDirEmptyForNonBare(t *testing.T) {
 	isolateProjectConfig(t)
 	repo := testutil.InitRepo(t)
