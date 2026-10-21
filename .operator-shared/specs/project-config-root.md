@@ -97,7 +97,7 @@ Implementation facts that shape the plan:
 
 The resolver stays pure: it exposes the ignored directory as a fact (a method). One `termio`-facing helper,
 `image.WarnIgnoredProjectConfig`, warns from the image path every VM-bound command passes through — `image.EnsureImage`
-(which covers `PrepareSandbox`, `run`/`shell`, the `volume …` ops and the `image` commands), `image.Build`, and
+(called by `PrepareSandbox`, `run`/`shell` and the `volume …` ops), `image.Build` (`image build`), and
 `build dockerfile` — not from `PersistentPreRunE`. `config`, `doctor`, `list`, `version`, `prune` and `df` stay quiet,
 and each such command reaches exactly one call site, so the warning cannot repeat within a run without a process-global
 guard.
