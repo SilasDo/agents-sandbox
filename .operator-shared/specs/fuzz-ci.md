@@ -32,9 +32,13 @@ others, and `timeout-minutes: 45` bounds a job.
 - **A cancelled run is a wasted run.** The job's concurrency group is `fuzz-<target>` with `cancel-in-progress: false`, so
   a new run waits for the in-flight one instead of cancelling it mid-budget. GitHub still drops a superseded *pending*
   job, which is intended: only the newest queued run matters.
-- **The corpus accumulates in `$GOCACHE/fuzz`.** `setup-go`'s `cache: true` carries that directory between runs, so a run
-  starts from the inputs earlier runs found rather than from the seed corpus alone. Cache restore keys are prefix-based,
-  so a `go.sum` change does not discard the corpus.
+- **The corpus accumulates in `$GOCACHE/fuzz`, cached on its own per target.** Go writes every input it finds there, so
+  the job restores `~/.cache/go-build/fuzz` from an `actions/cache` entry keyed
+  `fuzz-corpus-<target>-<run id>-<run attempt>` with a `fuzz-corpus-<target>-` restore prefix: a unique key always saves
+  (GitHub caches are immutable, so a fixed key is written once and never updated), and the prefix restores the newest
+  entry for that target. It must **not** rely on `setup-go`'s cache for this — that entry is keyed on `go.sum` and is
+  never re-saved on an exact hit, so a run's discoveries would be thrown away, and other jobs sharing the key can save it
+  first. The corpus is small: a 3s run yields tens of inputs and ~128K.
 - **A crasher leaves the runner as an artifact.** Go writes a failing input to the package's `testdata/fuzz/<Target>/` and
   prints it in the log; the failing job uploads `internal/**/testdata/fuzz/**`. CI does not commit the seed (that needs a
   push token, which the workflow deliberately does not have) — a maintainer or agent commits it, and from then on it runs

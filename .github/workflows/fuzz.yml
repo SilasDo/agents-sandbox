@@ -57,9 +57,21 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: .go-version
-          # This cache carries $GOCACHE/fuzz, so a run starts from the inputs
-          # previous runs found rather than from the seed corpus alone.
+          # Compile cache only, so the fuzz budget is not spent waiting on the
+          # build; the corpus has its own cache below.
           cache: true
+      - name: Restore the fuzz corpus
+        # Go keeps the interesting inputs it finds under $GOCACHE/fuzz, so cache
+        # that subtree directly. It cannot ride setup-go's cache: that entry is
+        # keyed on go.sum and GitHub caches are immutable, so an exact hit is
+        # never re-saved and each run's discoveries would be discarded (another
+        # job sharing the key may also save it first). A key unique per run
+        # always saves, and the prefix restores the newest for this target.
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ matrix.pkg.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-${{ matrix.pkg.name }}-
       - name: Fuzz ${{ matrix.pkg.path }}
         # A merge only needs the hint that nothing new broke; the nightly is
         # where depth comes from, and a dispatch says what it wants.
