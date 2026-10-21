@@ -457,6 +457,7 @@ func runnerStage(a agent.Agent, baseAlias, body string, docker, dockerInjected b
 	parts = append(parts,
 		fmt.Sprintf("COPY --from=%s %s %s\n", agentStageAlias, toolDir, toolDir),
 		agentAdoptionBlock(a),
+		guestToolsBlock(a),
 		agentImageConfigBlock(a),
 		finalizationBlock(),
 	)
@@ -524,6 +525,28 @@ RUN set -e; mkdir -p /etc/agents-sandbox; \
     case "$bin" in %s/*) echo tool ;; *) echo user ;; esac \
       > /etc/agents-sandbox/agent-source
 `, agentBinary(a), toolDir)
+}
+
+// guestToolsBlock verifies the in-VM tools this agent's runtime needs (daemon
+// health, session and worktree calls, notifications, and process control). It
+// runs in the final stage after the user body, so a body that installs them is
+// accepted, and fails the build naming the missing tool instead of failing at
+// runtime. Agents that run no daemon declare no tools and emit nothing.
+func guestToolsBlock(a agent.Agent) string {
+	requirer, ok := agent.AsGuestToolRequirer(a)
+	if !ok {
+		return ""
+	}
+	tools := requirer.GuestTools()
+	if len(tools) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(`USER root
+RUN set -e; for p in %s; do \
+      command -v "$p" >/dev/null 2>&1 || \
+        { echo "error: agent runtime tool missing: $p (required by %s)" >&2; exit 1; }; \
+    done
+`, strings.Join(tools, " "), a.Name())
 }
 
 // agentImageConfigBlock renders the sorted ENV lines for the agent's ImageSpec

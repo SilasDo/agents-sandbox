@@ -21,6 +21,17 @@ type DaemonProvider interface {
 	DaemonAuthHint() string
 }
 
+// GuestToolRequirer declares the shell tools the launcher invokes inside the
+// running VM for this agent's runtime: curl for the daemon health probe,
+// session and worktree calls, and the notify event stream; nohup and pkill for
+// daemon start and stop. The renderer verifies each with command -v in the
+// final runner stage, so a custom base missing one fails the image build naming
+// the tool instead of failing at runtime. Agents that run no daemon in the VM
+// (pi, claude-code) do not implement it.
+type GuestToolRequirer interface {
+	GuestTools() []string
+}
+
 // WorktreeProject identifies the daemon project a worktree request is scoped to.
 // Canonical is the repository root, which the worktree list must exclude so a
 // worktree named like the repository never reuses the main checkout. Both fields
@@ -99,6 +110,12 @@ type Provisioner interface {
 // AsDaemonProvider returns the agent's DaemonProvider, if it implements one.
 func AsDaemonProvider(a Agent) (DaemonProvider, bool) {
 	p, ok := a.(DaemonProvider)
+	return p, ok
+}
+
+// AsGuestToolRequirer returns the agent's GuestToolRequirer, if it implements one.
+func AsGuestToolRequirer(a Agent) (GuestToolRequirer, bool) {
+	p, ok := a.(GuestToolRequirer)
 	return p, ok
 }
 

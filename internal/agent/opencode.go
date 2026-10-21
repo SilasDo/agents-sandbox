@@ -15,6 +15,9 @@ type opencodeProfile struct {
 
 func (opencodeProfile) Name() string { return opencodeName }
 
+// GuestTools declares the daemon's in-VM runtime tools for the image-build check.
+func (opencodeProfile) GuestTools() []string { return daemonGuestTools }
+
 func (opencodeProfile) ImageSpec() ImageSpec {
 	return ImageSpec{
 		VersionArg: versionArgFor(opencodeName),

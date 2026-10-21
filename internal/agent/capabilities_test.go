@@ -1,6 +1,7 @@
 package agent_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -15,6 +16,27 @@ func TestOpencodeImplementsWorktreeProvider(t *testing.T) {
 	}
 	if _, ok := agent.AsDaemonProvider(a); !ok {
 		t.Fatal("opencode should implement DaemonProvider")
+	}
+}
+
+// The daemon agents declare the in-VM tools the launcher uses (checked at image
+// build); agents that run no daemon declare none.
+func TestGuestToolRequirer(t *testing.T) {
+	for _, name := range agent.Names() {
+		a, _ := agent.Lookup(name)
+		requirer, ok := agent.AsGuestToolRequirer(a)
+		wantDaemon := name == "opencode" || name == "opencode2"
+		if ok != wantDaemon {
+			t.Errorf("%s: AsGuestToolRequirer = %v, want %v", name, ok, wantDaemon)
+			continue
+		}
+		if !wantDaemon {
+			continue
+		}
+		want := []string{"curl", "nohup", "pkill"}
+		if got := requirer.GuestTools(); !slices.Equal(got, want) {
+			t.Errorf("%s: GuestTools() = %v, want %v", name, got, want)
+		}
 	}
 }
 
