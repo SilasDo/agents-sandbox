@@ -399,6 +399,8 @@ func TestRunShellInvalidSizeFlags(t *testing.T) {
 	for _, tc := range []runShellScenario{
 		{name: "tmp-size", args: []string{"run", "--tmp-size", "bogus"}, wantErrPart: "invalid --tmp-size"},
 		{name: "disk-size", args: []string{"run", "--disk-size", "bogus"}, wantErrPart: "invalid --disk-size"},
+		{name: "tmp-size-out-of-range", args: []string{"run", "--tmp-size", "4294967296"}, wantErrPart: "invalid --tmp-size"},
+		{name: "disk-size-out-of-range", args: []string{"run", "--disk-size", "4294967296"}, wantErrPart: "invalid --disk-size"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			initTestProjectDir(t)

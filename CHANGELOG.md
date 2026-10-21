@@ -158,6 +158,10 @@ command reports the bare version (e.g. `0.1.0`).
   keys used to accept `-1d`, and an oversized day/week count such as `110000d` wrapped `int64` into a negative duration.
   Both are invalid now: a negative prune age matched every artifact, so `prune --older-than -1d` pruned everything
   instead of nothing (found by fuzzing `ParseHumanDuration`).
+- CLI: a size specification above the uint32 MiB range is now rejected instead of silently wrapping. Only the
+  `G`-suffixed form was bounded, so a plain or `M`-suffixed count such as `4294967296` (4 GiB written as bytes) wrapped
+  to zero MiB: `--tmp-size`, `--disk-size`, and `--workspace-quota` accepted it, and `--memory` reached the sandbox as
+  0 MiB. Found by CodeQL's `go/incorrect-integer-conversion`.
 - Internal: the notify watcher no longer formats the sandbox value into its verbose start line — that `%s` walked the
   sandbox's fields while the run path was mutating them, a data race the new `make test-race` target caught on its first
   run.

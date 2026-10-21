@@ -267,6 +267,22 @@ func TestBuildRunOptionsInvalidDiskSize(t *testing.T) {
 	}
 }
 
+func TestBuildRunOptionsOutOfRangeTmpSize(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("tmp-size", "4294967296"); err != nil {
+		t.Fatalf("set tmp-size: %v", err)
+	}
+	r := mustResolver(t, cmd)
+	_, err := r.BuildRunOptions(cmd, &termio.Mock{})
+	if err == nil {
+		t.Fatal("expected error for a tmp-size above the uint32 MiB range")
+	}
+	if want := "invalid --tmp-size"; !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q; want to contain %q", err, want)
+	}
+}
+
 func TestBuildRunOptionsValidSizeFlags(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cmd := newRunCommand()
