@@ -94,6 +94,68 @@ func TestAcquireClaimReleaseRemovesFile(t *testing.T) {
 	release2()
 }
 
+func TestAcquireClaimFlockErrorSurfaces(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	claimOpened = func(f *os.File, _ string) { _ = f.Close() }
+	t.Cleanup(func() { claimOpened = nil })
+
+	if _, _, err := AcquireClaim("claimflockproj", "key"); err == nil {
+		t.Fatal("expected a non-contention flock error to surface")
+	}
+}
+
+func TestAcquireClaimRetriesWhenFileRemovedUnderIt(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	attempts := 0
+	claimOpened = func(_ *os.File, path string) {
+		attempts++
+		_ = os.Remove(path)
+	}
+	t.Cleanup(func() { claimOpened = nil })
+
+	_, claimed, err := AcquireClaim("claimraceproj", "key")
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	if claimed {
+		t.Fatal("a file removed under every attempt must not hand out a claim")
+	}
+	if attempts != 5 {
+		t.Fatalf("expected 5 attempts before giving up, got %d", attempts)
+	}
+}
+
+func TestSameFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f")
+
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sameFile(f, path) {
+		t.Fatal("an open file should match its path")
+	}
+
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if sameFile(f, path) {
+		t.Fatal("a removed path should not match")
+	}
+	_ = f.Close()
+
+	// A path that exists but whose open file is closed: stat of the fd fails.
+	again, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = again.Close()
+	if sameFile(f, path) {
+		t.Fatal("a closed file descriptor should not match")
+	}
+}
+
 func TestAcquireClaim_MkdirError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	slug := "claimmkdirproj"

@@ -8,6 +8,11 @@ import (
 	"syscall"
 )
 
+// claimOpened is a test seam invoked right after a claim file is opened and
+// before it is locked and verified. It lets a test force the open/lock race
+// deterministically; production leaves it nil.
+var claimOpened func(f *os.File, path string)
+
 // AcquireClaim atomically claims a named token under the slug's state dir,
 // returning claimed=true and a release func only when this caller won the
 // claim. If another live holder owns it, claimed is false and release is nil.
@@ -28,6 +33,9 @@ func AcquireClaim(slug, key string) (func(), bool, error) {
 		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 		if err != nil {
 			return nil, false, fmt.Errorf("open claim %s: %w", path, err)
+		}
+		if claimOpened != nil {
+			claimOpened(f, path)
 		}
 		if err := FlockExclusiveNB(f); err != nil {
 			_ = f.Close()
