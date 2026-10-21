@@ -28,7 +28,7 @@ Run a coding agent in a microsandbox VM. This is the default command — `agents
 ```console
 agents-sandbox [ARGS...]                          # default: run the configured agent
 agents-sandbox -w bugfix-fix-thing [ARGS...]            # worktree session
-agents-sandbox --dry-run                          # validate only
+agents-sandbox --dry-run                          # read-only preview
 agents-sandbox -m 8G -c 4 -- -c "fix bug"         # CPU/memory + ops
 agents-sandbox -- -c "fix bug"                    # arguments to the agent
 ```

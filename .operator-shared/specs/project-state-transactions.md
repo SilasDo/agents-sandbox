@@ -182,9 +182,9 @@ one process.
 ### `--dry-run` guard
 
 Keep `determineAgentVersion` as the single branch that skips `resolveBuildVersion` and the legacy fold, and
-`prepareHomeVolume` as the single branch that skips the migration offer; document the known `--dry-run` gates:
-`determineAgentVersion` and `prepareHomeVolume`, plus `volume.ApplyHomeAction` (skips the migrate/reset action) and
-`session.Run`/`session.Shell` (skip the attach). No new mechanism.
+`prepareHomeVolume` as the single branch that skips the migration offer. These in-`PrepareSandbox` gates remain the
+mechanism; the full `--dry-run` contract — a read-only preview that returns before `PrepareSandbox` — lives in
+[dry-run-preview.md](dry-run-preview.md). No new mechanism here.
 
 ### API after this change
 
