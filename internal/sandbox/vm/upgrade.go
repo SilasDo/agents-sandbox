@@ -28,6 +28,8 @@ var agentLatestVersion = func(ctx context.Context, a agent.Agent) (string, error
 
 // SetAgentLatestVersion replaces the agent-latest-version seam and returns the
 // previous value. Tests use it to keep the upgrade check off the network.
+//
+//deadcode:ignore reason="test seam replacing the agent latest-version lookup"
 func SetAgentLatestVersion(
 	f func(ctx context.Context, a agent.Agent) (string, error),
 ) func(ctx context.Context, a agent.Agent) (string, error) {

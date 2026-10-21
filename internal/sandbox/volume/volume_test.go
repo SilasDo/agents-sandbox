@@ -389,13 +389,13 @@ func TestApplyHomeAction_ExecutesAndKeepsOld(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			if newVol == oldVol {
-				t.Errorf("%s should produce a new volume, got %q", tt.action, newVol)
+				t.Errorf("%s should produce a new volume, got %q", actionLabel(tt.action), newVol)
 			}
 			if len(mock.CreatedSandboxes) != tt.wantSandboxes {
 				t.Errorf(
 					"expected %d sandboxes for %s, got %d",
 					tt.wantSandboxes,
-					tt.action,
+					actionLabel(tt.action),
 					len(mock.CreatedSandboxes),
 				)
 			}
@@ -598,27 +598,6 @@ func TestFromKeyReturnsErrorForInvalidKey(t *testing.T) {
 	_, err = FromKey("keep")
 	if err == nil {
 		t.Errorf("FromKey(\"keep\") returned nil error, want error")
-	}
-}
-
-func TestVolumeActionString(t *testing.T) {
-	tests := []struct {
-		action VolumeAction
-		want   string
-	}{
-		{ActionKeep, "keep"},
-		{ActionMigrate, "migrate"},
-		{ActionReset, "reset"},
-		{ActionQuit, "quit"},
-		{VolumeAction(99), "unknown"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			got := tt.action.String()
-			if got != tt.want {
-				t.Errorf("VolumeAction(%d).String() = %q, want %q", tt.action, got, tt.want)
-			}
-		})
 	}
 }
 

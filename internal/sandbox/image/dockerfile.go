@@ -120,15 +120,6 @@ func computeImageIdentity(projectDockerfile []byte, agentVersion string, docker 
 	}
 }
 
-// values returns the identity as a label map.
-func (id imageIdentity) values() map[string]string {
-	return map[string]string{
-		projectDockerfileHashLabelKey: id.ProjectDockerfileHash,
-		agentVersionLabelKey:          id.AgentVersion,
-		dockerLabelKey:                id.Docker,
-	}
-}
-
 // hashOrNone returns the SHA-256 of data, or identityNone when data is empty.
 func hashOrNone(data []byte) string {
 	if len(bytes.TrimSpace(data)) == 0 {

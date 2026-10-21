@@ -143,6 +143,8 @@ func daemonLogTail(ctx context.Context, sb msb.Sandbox, provider agent.DaemonPro
 //	    return "", 0, nil
 //	})
 //	t.Cleanup(func() { sandbox.SetDaemonShellFunc(orig) })
+//
+//deadcode:ignore reason="test seam replacing the daemon shell"
 func SetDaemonShellFunc(
 	f func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error),
 ) func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {

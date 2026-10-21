@@ -212,9 +212,9 @@ func TestReadHomeFromConfigDirJSON5NormalizeError(t *testing.T) {
 func TestBuildHomeFilesNoManifest(t *testing.T) {
 	user := t.TempDir()
 	proj := t.TempDir()
-	files, missing, has, err := BuildHomeFiles(user, proj, vmHome, nil)
+	files, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
 	if err != nil {
-		t.Fatalf("BuildHomeFiles: %v", err)
+		t.Fatalf("BuildHomeFilesWithModes: %v", err)
 	}
 	if has {
 		t.Error("expected has=false when no manifest exists")
@@ -231,16 +231,16 @@ func TestBuildHomeFilesRejectsInvalidUserManifest(t *testing.T) {
 	user := t.TempDir()
 	proj := t.TempDir()
 	writeHomeConfig(t, user, ".gitconfig:\n  source: [\n")
-	if _, _, _, err := BuildHomeFiles(user, proj, vmHome, nil); err == nil {
+	if _, _, _, err := BuildHomeFilesWithModes(user, proj, vmHome, nil); err == nil {
 		t.Fatal("expected an error for an invalid user manifest")
 	}
 }
 
-func TestDescribeManifestRejectsInvalidUserManifest(t *testing.T) {
+func TestLoadLayersRejectsInvalidUserManifest(t *testing.T) {
 	user := t.TempDir()
 	proj := t.TempDir()
 	writeHomeConfig(t, user, ".gitconfig:\n  source: [\n")
-	if _, _, err := DescribeManifest(user, proj, vmHome, nil); err == nil {
+	if _, _, err := LoadLayers([]string{user, proj}); err == nil {
 		t.Fatal("expected an error for an invalid user manifest")
 	}
 }
@@ -298,9 +298,9 @@ func TestBuildHomeFilesReadsUserManifest(t *testing.T) {
 	proj := t.TempDir()
 	testutil.WriteFile(t, home, ".gitconfig", "user=x\n")
 	writeHomeConfig(t, user, ".gitconfig:\n")
-	files, missing, has, err := BuildHomeFiles(user, proj, vmHome, nil)
+	files, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
 	if err != nil {
-		t.Fatalf("BuildHomeFiles: %v", err)
+		t.Fatalf("BuildHomeFilesWithModes: %v", err)
 	}
 	if !has {
 		t.Fatal("expected has=true")

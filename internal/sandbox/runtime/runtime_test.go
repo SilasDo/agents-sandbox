@@ -22,9 +22,9 @@ func TestInspectRuntimeEqual(t *testing.T) {
 	unsetEnv(t, "MSB_HOME")
 	unsetEnv(t, "MSB_PATH")
 
-	inspection, err := InspectRuntime()
+	inspection, err := inspectRuntime(msbSdk.SDKVersion())
 	if err != nil {
-		t.Fatalf("InspectRuntime() error = %v", err)
+		t.Fatalf("inspectRuntime() error = %v", err)
 	}
 	if inspection.Relation != RuntimeEqual {
 		t.Fatalf("Relation = %q, want %q", inspection.Relation, RuntimeEqual)
@@ -73,9 +73,9 @@ func TestInspectRuntimeNewerAndOlder(t *testing.T) {
 			unsetEnv(t, "MSB_HOME")
 			unsetEnv(t, "MSB_PATH")
 
-			inspection, err := InspectRuntime()
+			inspection, err := inspectRuntime(msbSdk.SDKVersion())
 			if err != nil {
-				t.Fatalf("InspectRuntime() error = %v", err)
+				t.Fatalf("inspectRuntime() error = %v", err)
 			}
 			if inspection.Relation != test.want {
 				t.Errorf("Relation = %q, want %q", inspection.Relation, test.want)
@@ -90,9 +90,9 @@ func TestInspectRuntimeMissingLibraryIsIncomplete(t *testing.T) {
 	unsetEnv(t, "MSB_HOME")
 	unsetEnv(t, "MSB_PATH")
 
-	inspection, err := InspectRuntime()
+	inspection, err := inspectRuntime(msbSdk.SDKVersion())
 	if err != nil {
-		t.Fatalf("InspectRuntime() error = %v", err)
+		t.Fatalf("inspectRuntime() error = %v", err)
 	}
 	if inspection.Relation != RuntimeIncomplete {
 		t.Fatalf("Relation = %q, want %q", inspection.Relation, RuntimeIncomplete)
@@ -105,9 +105,9 @@ func TestInspectRuntimeUnknownVersion(t *testing.T) {
 	unsetEnv(t, "MSB_HOME")
 	unsetEnv(t, "MSB_PATH")
 
-	inspection, err := InspectRuntime()
+	inspection, err := inspectRuntime(msbSdk.SDKVersion())
 	if err != nil {
-		t.Fatalf("InspectRuntime() error = %v", err)
+		t.Fatalf("inspectRuntime() error = %v", err)
 	}
 	if inspection.Relation != RuntimeUnknown {
 		t.Fatalf("Relation = %q, want %q", inspection.Relation, RuntimeUnknown)
@@ -123,9 +123,9 @@ func TestInspectRuntimeVersionCommandFailure(t *testing.T) {
 	runMSBVersion = func(string) (string, error) { return "", errors.New("exec failed") }
 	t.Cleanup(func() { runMSBVersion = oldVersion })
 
-	inspection, err := InspectRuntime()
+	inspection, err := inspectRuntime(msbSdk.SDKVersion())
 	if err != nil {
-		t.Fatalf("InspectRuntime() error = %v", err)
+		t.Fatalf("inspectRuntime() error = %v", err)
 	}
 	if inspection.Relation != RuntimeUnknown {
 		t.Fatalf("Relation = %q, want %q", inspection.Relation, RuntimeUnknown)
@@ -150,9 +150,9 @@ func TestInspectRuntimeInvalidRequiredVersion(t *testing.T) {
 func TestInspectRuntimeMissingBinary(t *testing.T) {
 	mockRuntimeHome(t)
 
-	inspection, err := InspectRuntime()
+	inspection, err := inspectRuntime(msbSdk.SDKVersion())
 	if err != nil {
-		t.Fatalf("InspectRuntime() error = %v", err)
+		t.Fatalf("inspectRuntime() error = %v", err)
 	}
 	if inspection.Relation != RuntimeMissing {
 		t.Fatalf("Relation = %q, want %q", inspection.Relation, RuntimeMissing)
@@ -171,8 +171,8 @@ func TestInspectRuntimeMsbStatError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := InspectRuntime(); err == nil {
-		t.Fatal("InspectRuntime() error = nil, want msb stat error")
+	if _, err := inspectRuntime(msbSdk.SDKVersion()); err == nil {
+		t.Fatal("inspectRuntime() error = nil, want msb stat error")
 	}
 }
 
@@ -190,8 +190,8 @@ func TestInspectRuntimeLibraryStatError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := InspectRuntime(); err == nil {
-		t.Fatal("InspectRuntime() error = nil, want libkrunfw stat error")
+	if _, err := inspectRuntime(msbSdk.SDKVersion()); err == nil {
+		t.Fatal("inspectRuntime() error = nil, want libkrunfw stat error")
 	}
 }
 

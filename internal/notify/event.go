@@ -112,11 +112,6 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 	return nil
 }
 
-// HandleEventType is a convenience wrapper for tests.
-func (t *Tracker) HandleEventType(typ string) *Notification {
-	return t.Handle(agent.StreamEvent{Type: typ, SessionID: "", ParentID: "", EventID: ""})
-}
-
 func eventTypeIn(typ string, eventTypes []string) bool {
 	return slices.Contains(eventTypes, typ)
 }

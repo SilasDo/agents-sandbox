@@ -148,16 +148,6 @@ func isDir(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// AgentConfigPath returns the VM path where the agent's merged config is
-// provisioned for the given home directory. It delegates to the agent's own
-// ConfigMerger so the path reflects the agent's config layout.
-func AgentConfigPath(a agent.Agent, home string) string {
-	if cm, ok := agent.AsConfigMerger(a); ok {
-		return cm.VMConfigPath(home)
-	}
-	return filepath.Join(home, ".config", a.ConfigDirName(), "agent.jsonc")
-}
-
 // ConfigFiles holds the merged agent config, the set of home files to
 // provision into the VM, the default drop-in copy from the host, and the VM
 // paths to remove so stale host config cannot shadow the merged config.

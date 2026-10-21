@@ -20,6 +20,10 @@ func opencodeTestAgent() agent.Agent {
 	return a
 }
 
+// opencodeMergedPath is where production writes the merged opencode config
+// (ConfigFiles.MergedPath) under VMHomeDir.
+const opencodeMergedPath = "/home/dev/.config/opencode/opencode.jsonc"
+
 // TestLoadConfigFilesWithSnippet verifies that a snippet produces a non-empty
 // OpenCode config and includes the opencode.json key.
 func TestLoadConfigFilesWithSnippet(t *testing.T) {
@@ -38,7 +42,7 @@ func TestLoadConfigFilesWithSnippet(t *testing.T) {
 	if len(cf.Merged) == 0 {
 		t.Error("expected non-empty OpenCode config")
 	}
-	if len(cf.Keys) == 0 || cf.Keys[0] != AgentConfigPath(opencodeTestAgent(), VMHomeDir) {
+	if len(cf.Keys) == 0 || cf.Keys[0] != opencodeMergedPath {
 		t.Errorf("expected opencode config key in Keys, got %v", cf.Keys)
 	}
 }
@@ -71,7 +75,7 @@ func TestLoadConfigFilesWarnsMissingSource(t *testing.T) {
 func TestLoadConfigFilesBuildHomeFilesError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	// parseEntry rejects a non-string source value, surfacing a BuildHomeFiles error.
+	// parseEntry rejects a non-string source value, surfacing a BuildHomeFilesWithModes error.
 	testutil.WriteFile(t, cp.ProjectConfigDir(), "config.yaml",
 		"home:\n"+
 			"  .tool/x:\n"+
@@ -88,7 +92,7 @@ func TestLoadConfigFilesBuildHomeFilesError(t *testing.T) {
 func TestLoadConfigFilesBuildHooksError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	// A manifest that BuildHomeFiles accepts but BuildHooks rejects via the
+	// A manifest that BuildHomeFilesWithModes accepts but BuildHooks rejects via the
 	// hook validation. An unknown hook value is rejected by parseEntry, so use a
 	// hook value that is invalid for BuildHooks filtering.
 	testutil.WriteFile(t, cp.ProjectConfigDir(), "config.yaml",

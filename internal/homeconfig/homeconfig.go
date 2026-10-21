@@ -171,16 +171,6 @@ func parseEntry(v any) (Entry, error) {
 	}
 }
 
-// MergeManifests returns a single map with later layers overriding earlier ones
-// by key.
-func MergeManifests(layers ...Manifest) Manifest {
-	merged := Manifest{}
-	for _, layer := range layers {
-		maps.Copy(merged, layer)
-	}
-	return merged
-}
-
 // Layer pairs a home manifest with the config dir its relative sources resolve
 // against.
 type Layer struct {
@@ -282,29 +272,6 @@ func ResolveVMTarget(homeBase, relTarget string, reserved []string) (string, err
 	return abs, nil
 }
 
-// BuildHomeFiles loads the user and project config files' home manifests, merges
-// (project wins per key), resolves each entry, and reads the host source files.
-// It returns the desired home files keyed by absolute VM path, the resolved
-// source paths that could not be read (missing files), and whether any manifest
-// existed. A missing host source file is skipped, not fatal; its resolved path
-// is reported so callers can warn. The reserved list holds home-relative VM
-// paths the manifest must not target (e.g., the agent's merged config path);
-// when empty, no target is reserved.
-func BuildHomeFiles(
-	userConfigDir, projectConfigDir, homeBase string,
-	reserved []string,
-) (map[string][]byte, []string, bool, error) {
-	files, missing, has, err := BuildHomeFilesWithModes(userConfigDir, projectConfigDir, homeBase, reserved)
-	if err != nil {
-		return nil, nil, false, err
-	}
-	contents := make(map[string][]byte, len(files))
-	for path, file := range files {
-		contents[path] = file.Data
-	}
-	return contents, missing, has, nil
-}
-
 // HomeFile contains a home-provisioning source's content and ordinary Unix
 // permission bits.
 type HomeFile struct {
@@ -312,8 +279,15 @@ type HomeFile struct {
 	Mode os.FileMode
 }
 
-// BuildHomeFilesWithModes is like BuildHomeFiles but also returns ordinary Unix
-// permission bits for each source file.
+// BuildHomeFilesWithModes loads the user and project config files' home
+// manifests, merges them (project wins per target), resolves each entry, and
+// reads the host source files. It returns the desired home files keyed by
+// absolute VM path, the resolved source paths that could not be read (missing
+// files), and whether any manifest existed. A missing host source file is
+// skipped, not fatal; its resolved path is reported so callers can warn. The
+// reserved list holds home-relative VM paths the manifest must not target (e.g.,
+// the agent's merged config path); when empty, no target is reserved. Each
+// returned file carries its source's ordinary Unix permission bits.
 func BuildHomeFilesWithModes(
 	userConfigDir, projectConfigDir, homeBase string,
 	reserved []string,
@@ -373,18 +347,6 @@ func DescribeLayers(layers []Layer, homeBase string, reserved []string) ([][2]st
 		return pairs[i][0] < pairs[j][0]
 	})
 	return pairs, nil
-}
-
-func DescribeManifest(userConfigDir, projectConfigDir, homeBase string, reserved []string) ([][2]string, bool, error) {
-	layers, has, err := LoadLayers([]string{userConfigDir, projectConfigDir})
-	if err != nil {
-		return nil, false, err
-	}
-	pairs, err := DescribeLayers(layers, homeBase, reserved)
-	if err != nil {
-		return nil, false, err
-	}
-	return pairs, has, nil
 }
 
 // HookSpec describes a single startup-hook entry: the provisioned VM target,

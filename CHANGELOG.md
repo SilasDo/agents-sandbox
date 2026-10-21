@@ -165,6 +165,14 @@ command reports the bare version (e.g. `0.1.0`).
   its effect (`internal/testutil/mocks`), so the wrapper's body is covered by that package's own test binary.
 - Notifications: notify now supports the `opencode2` agent (its v2 session event stream) in addition to `opencode`, and
   is skipped for subagent sessions — a child session carries a non-empty `parentID`, so only top-level sessions notify.
+- Internal: add `make deadcode` (pinned like `vulncheck`), a gate that fails when production code is unreachable from any
+  `main` package — code that only tests call, which `staticcheck`'s `unused` counts as usage and therefore cannot see. It
+  analyses the default, `integration`, `msb`, and `integration msb` configurations and unions the findings. Deliberate
+  unreachability is recorded where the code lives with a required `//deadcode:ignore reason="..."` marker in the
+  declaration's or the file's package doc comment, and a marker that excuses nothing fails the gate. It runs as its own
+  CI job on every PR and in `make verify`, deliberately not as a release prerequisite. Ship-green: 12 internal functions
+  unreachable from any `main` package were deleted and 11 test seams plus 10 test-support files were marked — no
+  user-visible behavior change.
 
 ### Changed
 

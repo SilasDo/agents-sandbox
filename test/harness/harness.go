@@ -3,6 +3,8 @@
 // full-screen TUI. The VM-driven test lives behind the `msb` build tag; the
 // untagged files here are inert and shared by it: the harness table, the child
 // environment allowlist, and the output helpers.
+//
+//deadcode:ignore reason="test support: referenced only by _test.go files"
 package harness
 
 import (

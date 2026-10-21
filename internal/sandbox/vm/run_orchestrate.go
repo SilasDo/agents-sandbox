@@ -84,6 +84,8 @@ var offerRuntimeHomeMigration = runtimemigration.Offer
 //		return nil
 //	})
 //	t.Cleanup(func() { vm.SetRuntimeHomeMigrationOffer(orig) })
+//
+//deadcode:ignore reason="test seam replacing the runtime migration offer"
 func SetRuntimeHomeMigrationOffer(
 	f func(ctx context.Context, client msb.Client, ui termio.UI) error,
 ) func(ctx context.Context, client msb.Client, ui termio.UI) error {

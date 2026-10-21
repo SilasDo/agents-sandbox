@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck mutation coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck deadcode deadcode-test mutation coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -13,6 +13,7 @@ ZIG_VERSION ?= 0.17.0
 GOTESTSUM_VERSION = 1.13.0
 GOVULNCHECK_VERSION = v1.9.0
 GOMUTANTS_VERSION = v0.7.1
+DEADCODE_VERSION = v0.52.0
 
 ARTIFACT = agents-sandbox-$(GOOS)-$(GOARCH)
 
@@ -128,6 +129,21 @@ compile-all:
 vulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
+# Fail when production code is unreachable from any main package and carries no
+# reason-bearing //deadcode:ignore marker. deadcode always exits 0, so
+# ci/check-deadcode.sh decides the verdict; a failed analysis is a hard error,
+# never a silent pass. Analyses the host's own GOOS, once per build-tag
+# configuration. See the specs/dead-code-gate contract in .operator-shared/.
+#   make deadcode
+#   make deadcode PKG=./cmd/...         # inspection only; stale markers not checked
+#   make deadcode TAGS=integration      # one configuration instead of the matrix
+deadcode:
+	DEADCODE_VERSION='$(DEADCODE_VERSION)' PKG='$(PKG)' $(if $(TAGS),TAGS='$(TAGS)',) ci/check-deadcode.sh
+
+# Test the dead-code gate script itself (fixtures only: never runs deadcode).
+deadcode-test:
+	ci/test-check-deadcode.sh
+
 # Mutation testing: mutate the code and check whether the tests notice. Run on
 # demand (at release time), never as a gate — a full run takes minutes per
 # package, so it stays out of check/verify/CI. By default it mutates only lines
@@ -137,6 +153,7 @@ vulncheck:
 #   make mutation PKG=./internal/foo     # one package, changed lines
 #   make mutation FULL=1                 # whole module, all lines (slow)
 PKG   ?= ./...
+TAGS  ?=
 SINCE ?= $(shell git describe --tags --abbrev=0)
 FULL  ?=
 mutation:
@@ -168,10 +185,10 @@ validate-fmt:
 run:
 	go run ./cmd/agents-sandbox
 
-check: fmt lint test compile-all docs-linkcheck docs-linkcheck-test
+check: fmt lint test compile-all docs-linkcheck docs-linkcheck-test deadcode-test
 
 # Read-only check for CI parity: fmt-check + lint + test + race + vulncheck (does not modify files).
-verify: validate-fmt lint test test-race compile-all vulncheck docs-linkcheck docs-linkcheck-test
+verify: validate-fmt lint test test-race compile-all vulncheck deadcode docs-linkcheck docs-linkcheck-test deadcode-test
 
 all: fmt lint test docs-linkcheck docs-linkcheck-test build
 

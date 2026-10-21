@@ -55,6 +55,8 @@ var Get = func() Client {
 // RealClient returns a Client backed by the real moby client, bypassing the
 // fail-fast Get installed under tests. Integration tests opt back into the real
 // docker daemon with it.
+//
+//deadcode:ignore reason="integration tests opt back into the real docker daemon"
 func RealClient() Client { return &realDockerClient{} }
 
 var (
