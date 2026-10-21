@@ -521,6 +521,7 @@ func buildDockerfileCmd(ui termio.UI) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Short: "Print the runner Dockerfile as it would be built",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			image.WarnIgnoredProjectConfig(ui)
 			a, err := resolveAgentFlag(cmd)
 			if err != nil {
 				return err
