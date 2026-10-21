@@ -146,6 +146,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- CLI: a negative or overflow-sized duration is now rejected instead of silently accepted. `--older-than` (and the
+  deprecated `--age`) plus the `auto-prune-age`, `manual-prune-age`, `auto-stop-timeout`, and `upgrade-interval` config
+  keys used to accept `-1d`, and an oversized day/week count such as `110000d` wrapped `int64` into a negative duration.
+  Both are invalid now: a negative prune age matched every artifact, so `prune --older-than -1d` pruned everything
+  instead of nothing (found by fuzzing `ParseHumanDuration`).
 - opencode2: the attach client now passes the working directory as v2's positional argument instead of the removed
   `--dir` flag, so attaching no longer exits with `Unrecognized flag: --dir`.
 - opencode2: the daemon health probe now polls `/api/info`, v2's actual health endpoint. `/api/health` matches no v2
