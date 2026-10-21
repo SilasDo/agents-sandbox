@@ -168,8 +168,8 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
 - Markers as a rubber stamp: a `reason` that says nothing ("test", "unused"), or file-scope markers applied to production
   files to silence an inconvenient finding.
 - The gate silently weakening when `ci/check-deadcode.sh` fails to parse deadcode's output — an empty finding set must be
-  distinguishable from a failed analysis. A non-zero deadcode exit, a non-JSON payload, or a missing `-json` key is an
-  error, never "no findings".
+  distinguishable from a failed analysis. A non-zero deadcode exit, a non-JSON payload, a missing `-json` key, or a
+  report-less directory is an error, never "no findings".
 - Making `make verify` unusable on a supported development host.
 
 ## Constraints
