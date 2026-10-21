@@ -19,8 +19,11 @@ import (
 // so a first post-upgrade stop cannot act on a half-understood identity.
 func TestStopKillProjectVMAdoptionFailureFailsClosed(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	t.Chdir(t.TempDir())
+	t.Chdir(newOriginClone(t))
 	identity := git.ResolveIdentity(".")
+	if identity.RepoSlug == identity.CheckoutSlug {
+		t.Fatalf("fixture must have distinct repo and checkout slugs")
+	}
 
 	legacyDir := state.KeyDir(state.Key{Slug: identity.RepoSlug, Agent: "opencode"})
 	if err := os.MkdirAll(legacyDir, 0o700); err != nil {

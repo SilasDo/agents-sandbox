@@ -208,10 +208,14 @@ func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
 // VM survived: the VM is the remaining legacy artifact, and adopting it (rather
 // than treating the checkout as new) is what preserves its home volume.
 //
-// It fails closed on reads: an unparsable or otherwise unreadable state, or a VM
-// whose mounts cannot be read, is returned as an error rather than treated as
-// absent, so an unknown document or an unreadable mount can never lead to
-// destroying a legacy VM or moving state nobody has read.
+// It skips rather than aborts on a corrupt or unreadable *checkout* state: the
+// checkout state is the caller's own document, and the caller's recovery path
+// (RecoverHomeState, run after this) repairs it, so blocking the run would strand
+// the user's live VM and home volume. Skipping leaves legacy VMs and state
+// untouched, which is the fail-safe. Reads of the *legacy* state and a legacy
+// VM's mounts do fail closed (returned as an error), so an unknown legacy
+// document or an unreadable mount can never lead to destroying a legacy VM or
+// moving state nobody has read.
 //
 // A checkout state is normally the settled record that stops adoption. The one
 // exception is a state that carries a RecoveredHomeVolume: a prior VM-only
@@ -229,7 +233,7 @@ func legacyAdoptionPending(
 	case checkoutErr == nil && checkout.RecoveredHomeVolume == "":
 		return legacyPendingSource{}, false, nil
 	case checkoutErr != nil && !errors.Is(checkoutErr, state.ErrStateNotFound):
-		return legacyPendingSource{}, false, checkoutErr
+		return legacyPendingSource{}, false, nil
 	}
 
 	for _, slug := range slugs {

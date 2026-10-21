@@ -335,11 +335,11 @@ func buildConfigPathsCmd(ui termio.UI) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Short: "Print the config layers in precedence order",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			slug := git.RepoSlug()
+			identity := git.ResolveIdentity(".")
 			// The layer block goes through Outf, which the quiet printer
 			// suppresses; the hint goes through Infof so it survives --quiet.
 			if !ui.Quiet() {
-				printConfigLayers(ui, slug)
+				printConfigLayers(ui, effectiveConfigSlug(identity), identity.RepoSlug)
 			}
 			ui.Infof(
 				"Repo-wide settings belong in the committed project config (%s) so every clone shares them; "+
@@ -356,8 +356,11 @@ func buildConfigPathsCmd(ui termio.UI) *cobra.Command {
 const projectConfigDisplayPath = ".agents-sandbox/config.yaml"
 
 // printConfigLayers writes the launcher-config layers lowest precedence first,
-// naming the resolved dir of each file layer and flagging the missing ones.
-func printConfigLayers(ui termio.UI, slug string) {
+// naming the resolved dir of each file layer and flagging the missing ones. It
+// reads the per-slug layer from slug (the effective config slug) but labels the
+// repo slug separately, so a bare root's pre-migration layer dir is not misread
+// as the repo slug.
+func printConfigLayers(ui termio.UI, slug, repoSlug string) {
 	ui.Outf("config layers (lowest to highest precedence):")
 	for _, layer := range viperconfig.ConfigLayers(slug) {
 		if layer.Path == "" {
@@ -370,7 +373,7 @@ func printConfigLayers(ui termio.UI, slug string) {
 		}
 		ui.Outf("  %s  %s%s", layer.Name, layer.Path, missing)
 	}
-	ui.Outf("repo slug:  %s", slug)
+	ui.Outf("repo slug:  %s", repoSlug)
 }
 
 // envLayerGlob returns the variable-name glob shown as the second column of an

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/git"
 	sandboxmsb "github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	"github.com/inoio/agents-sandbox/internal/testutil"
@@ -95,4 +96,84 @@ func physicalPath(t *testing.T, path string) string {
 		t.Fatalf("EvalSymlinks(%q): %v", path, err)
 	}
 	return resolved
+}
+
+// setupBareCheckoutCommandFixtures is setupBareCheckoutFixtures for the config
+// commands: the standard command fixtures plus the real path resolver, so config
+// resolution reads the temp config tree. Not parallel: t.Setenv/t.Chdir forbid it.
+func setupBareCheckoutCommandFixtures(t *testing.T, args ...string) (*cobra.Command, *termio.Mock) {
+	t.Helper()
+	origin := testutil.InitRepo(t)
+	root := t.TempDir()
+	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
+	testutil.RunGit(t, filepath.Join(root, ".git"), "worktree", "add", filepath.Join(root, "main"))
+
+	cmd, ui := setupCommandFixtures(t, args...)
+
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	// Override the command fixture's mock paths with the real resolver.
+	configpaths.WithRealConfigPaths(t)
+	// The bare root itself records the legacy identity (a worktree inside it does
+	// not), so the config-resolution tests run from the bare root.
+	t.Chdir(root)
+	return cmd, ui
+}
+
+// bareRootLegacyConfigDir returns the bare root's pre-split per-slug user config
+// directory, the layer the resolver must read before adoption renames it onto the
+// repo slug, failing the test if the fixture has no legacy slug.
+func bareRootLegacyConfigDir(t *testing.T) (git.Identity, string) {
+	t.Helper()
+	identity := git.ResolveIdentity(".")
+	if len(identity.LegacyRepoSlugs) == 0 {
+		t.Fatal("bare root must record a legacy config slug")
+	}
+	return identity, filepath.Join(configpaths.Get().UserConfigDir(), identity.LegacyRepoSlugs[0])
+}
+
+// TestBareRootReadsLegacyConfigBeforeMigration asserts the resolver reads a bare
+// root's pre-split per-slug config: adoption renames that directory onto the repo
+// slug only later in the run, so loading the repo-slug layer would use defaults
+// instead of the user's saved settings (PR #244 review).
+func TestBareRootReadsLegacyConfigBeforeMigration(t *testing.T) {
+	cmd, ui := setupBareCheckoutCommandFixtures(t, cmdConfig, cmdAgent, "opencode")
+	_, legacyDir := bareRootLegacyConfigDir(t)
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteYAML(t, legacyDir, "config.yaml", map[string]any{"provision-host-config": false})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config agent: %v", err)
+	}
+	if joined := strings.Join(ui.OutCalls, "\n"); !strings.Contains(joined, "provision-host-config=false") {
+		t.Errorf("bare root must read the legacy user config before migration, got:\n%s", joined)
+	}
+}
+
+// TestBareRootConfigPathsShowsEffectiveLayer asserts config paths reports the
+// legacy layer dir it actually reads while keeping the repo-slug label, so a
+// bare root's pre-migration config is not presented as the repo slug's.
+func TestBareRootConfigPathsShowsEffectiveLayer(t *testing.T) {
+	cmd, ui := setupBareCheckoutCommandFixtures(t, cmdConfig, cmdPaths)
+	identity, legacyDir := bareRootLegacyConfigDir(t)
+	if err := os.MkdirAll(legacyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteYAML(t, legacyDir, "config.yaml", map[string]any{"cpus": 2})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config paths: %v", err)
+	}
+	out := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(out, legacyDir) {
+		t.Errorf("config paths must list the effective legacy layer dir %q, got:\n%s", legacyDir, out)
+	}
+	if !strings.Contains(out, "repo slug:  "+identity.RepoSlug) {
+		t.Errorf("config paths must still label the repo slug %q, got:\n%s", identity.RepoSlug, out)
+	}
 }

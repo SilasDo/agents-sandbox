@@ -415,11 +415,17 @@ func writeUnparsableLegacyState(t *testing.T, key state.Key) {
 func TestStopKillAdoptionFailureFailsClosed(t *testing.T) {
 	for _, cmdName := range []string{cmdStop, cmdKill} {
 		t.Run(cmdName, func(t *testing.T) {
-			initTestProjectDir(t)
+			// An origin-holding clone gives distinct repo and checkout slugs, so the
+			// corrupt document is a *legacy* state, whose unreadable read still fails
+			// closed (a corrupt checkout state is skipped so recovery can repair it).
+			t.Chdir(newOriginClone(t))
 			// setupStopKillConfig installs the config-paths mock, so the seed
 			// and the command resolve the same isolated state root.
 			cmd, _ := setupStopKillConfig(t, []string{cmdName}, nil)
 			identity := git.ResolveIdentity(".")
+			if identity.RepoSlug == identity.CheckoutSlug {
+				t.Fatalf("fixture must have distinct repo and checkout slugs")
+			}
 			writeUnparsableLegacyState(t, state.Key{Slug: identity.RepoSlug, Agent: defaultAgentName})
 
 			assertErrContains(t, cmd.Execute(), "check for a pending legacy identity")

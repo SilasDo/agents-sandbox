@@ -421,12 +421,14 @@ func TestAdoptLegacyIdentityStrandedStateFileFailsLoudly(t *testing.T) {
 	}
 }
 
-// TestAdoptLegacyIdentityUnparsableCheckoutState pins the fail-closed predicate
-// on the checkout side: a corrupt checkout-keyed document is an error, not
-// "absent", so adoption never runs on top of a state it cannot read.
-func TestAdoptLegacyIdentityUnparsableCheckoutState(t *testing.T) {
+// TestAdoptLegacyIdentityUnparsableCheckoutStateSkipsMigration pins the
+// skip-don't-block predicate on the checkout side: a corrupt checkout-keyed
+// document must not abort the run before the recovery path (RecoverHomeState) can
+// repair it, so adoption reports nothing pending and leaves the legacy VM and
+// state untouched.
+func TestAdoptLegacyIdentityUnparsableCheckoutStateSkipsMigration(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	seedLegacyState(t)
+	legacyStateFile := seedLegacyState(t)
 	checkoutDir := state.KeyDir(adoptCheckoutKey())
 	if err := os.MkdirAll(checkoutDir, 0o700); err != nil {
 		t.Fatalf("create checkout state dir: %v", err)
@@ -439,12 +441,44 @@ func TestAdoptLegacyIdentityUnparsableCheckoutState(t *testing.T) {
 	}}
 	ui := termio.NewTestMock(t)
 
-	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
-	if err == nil {
-		t.Fatal("expected an unparsable checkout state to fail adoption")
+	adoption, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err != nil {
+		t.Fatalf("a corrupt checkout state must not abort the run: %v", err)
 	}
-	if !strings.Contains(err.Error(), "check for a pending legacy identity") {
-		t.Errorf("error = %v, want the fail-closed predicate error", err)
+	if adoption.Pending || adoption.Applied {
+		t.Errorf("adoption = %+v, want nothing pending", adoption)
+	}
+	if _, statErr := os.Stat(legacyStateFile); statErr != nil {
+		t.Errorf("legacy state file gone after a skipped migration: %v", statErr)
+	}
+}
+
+// TestAdoptLegacyIdentityNonRepoCorruptStateDoesNotBlock covers the empty-legacy
+// case: outside a repository there is no legacy identity to adopt, so a corrupt
+// checkout state must not block the run's own recovery path.
+func TestAdoptLegacyIdentityNonRepoCorruptStateDoesNotBlock(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	// Both slugs equal for a non-repo directory, so legacySlugs is empty.
+	identity := git.Identity{RepoSlug: "workspace-ccc", CheckoutSlug: "workspace-ccc"}
+	key := state.Key{Slug: "workspace-ccc", Agent: adoptAgentName}
+	if err := os.MkdirAll(state.KeyDir(key), 0o700); err != nil {
+		t.Fatalf("create checkout state dir: %v", err)
+	}
+	testutil.WriteFile(t, state.KeyDir(key), "state.yaml", `": [`)
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		t.Errorf("GetSandbox(%q) called with no legacy identity", name)
+		return nil, errors.New("GetSandbox must not be called")
+	}}
+	ui := termio.NewTestMock(t)
+
+	adoption, err := AdoptLegacyIdentity(context.Background(), client, identity, adoptAgentName, true, &ui)
+	if err != nil {
+		t.Fatalf("a corrupt state outside a repo must not block the run: %v", err)
+	}
+	if adoption.Pending || adoption.Applied {
+		t.Errorf("adoption = %+v, want nothing pending", adoption)
 	}
 }
 
@@ -720,10 +754,11 @@ func TestMigrateLegacyConfigDirsKeepsExistingTarget(t *testing.T) {
 	}
 }
 
-// TestAdoptLegacyIdentityRecheckErrorFailsClosed covers the fail-closed re-check
-// under the lock: if the checkout state becomes unreadable while this run waited
-// for the lock, adoption stops rather than proceeding on a document it cannot read.
-func TestAdoptLegacyIdentityRecheckErrorFailsClosed(t *testing.T) {
+// TestAdoptLegacyIdentityRecheckCorruptStateSkips covers the re-check under the
+// lock: if the checkout state becomes unreadable while this run waited for the
+// lock, adoption skips rather than proceeding on a document it cannot read, and
+// leaves the legacy VM untouched for the caller's recovery path.
+func TestAdoptLegacyIdentityRecheckCorruptStateSkips(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	seedLegacyState(t)
 
@@ -743,12 +778,12 @@ func TestAdoptLegacyIdentityRecheckErrorFailsClosed(t *testing.T) {
 	}}
 	ui := termio.NewTestMock(t)
 
-	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
-	if err == nil {
-		t.Fatal("expected an unparsable re-check to fail adoption")
+	adoption, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err != nil {
+		t.Fatalf("a corrupt re-check must not abort the run: %v", err)
 	}
-	if !strings.Contains(err.Error(), "check for a pending legacy identity") {
-		t.Errorf("error = %v, want the fail-closed re-check error", err)
+	if adoption.Pending || adoption.Applied {
+		t.Errorf("adoption = %+v, want nothing pending", adoption)
 	}
 }
 

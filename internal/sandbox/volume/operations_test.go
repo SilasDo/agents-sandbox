@@ -844,3 +844,80 @@ func TestResolveHomeVolume_MissingRecordedVolumeStartsFresh(t *testing.T) {
 		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
 	}
 }
+
+// TestVolumeOp_UsesRecoveredHomeVolumeAsSource covers the VM-only adoption marker
+// (#144): a first volume op after adoption has only RecoveredHomeVolume set, so
+// volumeOp must use it as the source volume instead of failing with "state has no
+// home_volume set", and must clear the marker once it commits.
+func TestVolumeOp_UsesRecoveredHomeVolumeAsSource(t *testing.T) {
+	mock, ui := setupVolumeOpsFixtures(t)
+
+	key := state.Key{Slug: "testproj-aBc1234D", Agent: "opencode"}
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-7"
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+
+	err := CmdReset(
+		context.Background(),
+		key,
+		"",
+		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		true,
+		false,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var removed bool
+	for _, v := range mock.RemovedVolumes {
+		if v == recovered {
+			removed = true
+		}
+	}
+	if !removed {
+		t.Errorf("recovered volume %q not used as the source, removed %v", recovered, mock.RemovedVolumes)
+	}
+
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.HomeVolume == "" {
+		t.Error("expected HomeVolume to be set after the operation")
+	}
+	if st.RecoveredHomeVolume != "" {
+		t.Errorf("RecoveredHomeVolume = %q, want the marker cleared", st.RecoveredHomeVolume)
+	}
+}
+
+// TestVolumeOp_ClearsRecoveredHomeVolumeWithExplicitSource covers the marker left
+// next to an explicit source volume: the commit must clear it, or the next home
+// resolution would recover the old volume and undo the operation.
+func TestVolumeOp_ClearsRecoveredHomeVolumeWithExplicitSource(t *testing.T) {
+	_, ui := setupVolumeOpsFixtures(t)
+
+	key := state.Key{Slug: "testproj-aBc1234D", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: "stale-marker"})
+
+	err := CmdReset(
+		context.Background(),
+		key,
+		"explicit-vol",
+		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		false,
+		false,
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.RecoveredHomeVolume != "" {
+		t.Errorf("RecoveredHomeVolume = %q, want the marker cleared", st.RecoveredHomeVolume)
+	}
+}

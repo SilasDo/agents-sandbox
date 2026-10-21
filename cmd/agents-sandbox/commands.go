@@ -48,6 +48,37 @@ func warnLegacyEnvVars(ui termio.UI, r *launcherconfig.Resolver) {
 	}
 }
 
+// effectiveConfigSlug returns the slug whose per-slug user config directory the
+// launcher should read. It is the repo slug — shared by every clone of a remote —
+// except for a bare root before its legacy config directory has been migrated:
+// its pre-split config lives under the path-derived legacy slug
+// (Identity.LegacyRepoSlugs), which adoption renames onto the repo slug on the
+// first post-upgrade run (#144). The resolver is built before adoption runs, so
+// without this the triggering run would load defaults instead of the user's saved
+// settings. The fallback is read-only, so a dry run stays side-effect-free.
+func effectiveConfigSlug(identity git.Identity) string {
+	if slugHasUserConfig(identity.RepoSlug) {
+		return identity.RepoSlug
+	}
+	for _, legacy := range identity.LegacyRepoSlugs {
+		if slugHasUserConfig(legacy) {
+			return legacy
+		}
+	}
+	return identity.RepoSlug
+}
+
+// slugHasUserConfig reports whether the per-slug user config dir for slug holds a
+// config file, using the same layer discovery NewResolver merges from.
+func slugHasUserConfig(slug string) bool {
+	for _, layer := range launcherconfig.ConfigLayers(slug) {
+		if layer.Name == launcherconfig.LayerNamePerSlugUserConfig {
+			return layer.Present
+		}
+	}
+	return false
+}
+
 // resolveAgent validates a resolved agent name (from flag, env, or config)
 // against the registered agents, returning the matching agent and rejecting
 // unknown names.
@@ -108,8 +139,10 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		// Config stays on the repo slug: the per-slug user config dir is shared by
-		// every clone of one origin, so it must not follow the checkout slug.
-		r, err := launcherconfig.NewResolver(cmd, git.RepoSlug())
+		// every clone of one origin, so it must not follow the checkout slug. A
+		// bare root before its config migration is the one exception, resolved by
+		// effectiveConfigSlug.
+		r, err := launcherconfig.NewResolver(cmd, effectiveConfigSlug(git.ResolveIdentity(".")))
 		if err != nil {
 			return err
 		}
