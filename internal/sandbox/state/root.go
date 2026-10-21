@@ -22,8 +22,6 @@ type RootState struct {
 
 // Updates groups the launcher-global update-check state: Launcher for
 // agents-sandbox itself, Agents for the tools baked into the runner image.
-//
-//exhaustruct:ignore
 type Updates struct {
 	Launcher LauncherUpdateState        `yaml:"launcher,omitempty"`
 	Agents   map[string]AgentCheckState `yaml:"agents,omitempty"`
@@ -37,8 +35,6 @@ func (u Updates) IsZero() bool {
 
 // LauncherUpdateState is the launcher's own update-check state, formerly the
 // standalone upgrade.json file.
-//
-//exhaustruct:ignore
 type LauncherUpdateState struct {
 	LastChecked       time.Time `yaml:"last_checked"`
 	DismissedVersions []string  `yaml:"dismissed_versions,omitempty"`
