@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, and a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes — see "Review fixes (PR #245)" below.
+Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes, and a fourth — after a live probe of the running opencode2 daemon — identified input requests by event id so two approvals asked in one step both notify — see "Review fixes (PR #245)" below.
 
 ## Problem
 
@@ -120,8 +120,8 @@ and `opencode v1.19.3` (installed to a temp HOME for this exercise).
   `parseSSEBlock` (v1 shape only), `handleEvent`, `streamReader`.
 - `internal/notify/event.go` — `Tracker{spec, states}`; `Handle` maps event types to
   bus/aparse input/idle/error transitions.
-- `internal/notify/dedup.go` — per-(session, trigger) cross-client claim; `SessionBusy` releases
-  claims on the busy events.
+- `internal/notify/dedup.go` — cross-client claim keyed on (session, trigger), plus the input event's
+  envelope id for input triggers; `SessionBusy` releases claims on the busy events.
 
 ## Design
 
@@ -129,11 +129,16 @@ and `opencode v1.19.3` (installed to a temp HOME for this exercise).
 
 ```go
 // StreamEvent is a decoded daemon event: its type, the session it belongs to,
-// and that session's parent (non-empty for a subagent session).
+// that session's parent (non-empty for a subagent session), and the event's
+// envelope id.
 type StreamEvent struct {
     Type      string
     SessionID string
     ParentID  string
+    // EventID is the envelope id (v1 .payload.id, v2 top-level .id), unique per
+    // emission. It tells two input requests apart when a session already awaits
+    // input (a turn can ask for two approvals in one step).
+    EventID string
 }
 
 type EventStreamSpec struct {
@@ -199,14 +204,18 @@ the decoder:
 
 The tracker consumes `agent.StreamEvent` instead of the removed local `Event`.
 
-- Add `children map[string]bool`.
+- Add `children map[string]bool` and `lastInput map[string]string` (session → last input event id).
 - `Handle(e)`:
   1. If `e.SessionID != ""` and `e.Type` is in `spec.SessionEvents`, record
      `children[e.SessionID] = true` when `e.ParentID != ""`. Do **not** early-return: a lifecycle
      event like v1's `session.updated` is also a busy event and must keep marking busy for
      top-level sessions.
   2. If `children[e.SessionID]`, return `nil` (no notification) before any trigger matching.
-  3. Otherwise the existing busy/awaiting/idle/error switch is unchanged.
+  3. The busy/idle/error arms are unchanged. The awaiting-input arm notifies from busy or idle as
+     before, and from awaiting input only when `e.EventID` is new for the session; it records
+     `lastInput[e.SessionID] = e.EventID` and carries the id on the notification. So a second
+     request in the same step notifies while a replayed event does not. From `stateError` nothing
+     fires (the sticky latch holds).
 - `SeedChildren(ids []string)` marks every id as a child. Called by the watcher.
 
 ### 4. Seeding on (re)connect (`internal/notify/watch.go`)
@@ -393,6 +402,23 @@ A second review (on the rebased head) added:
    case), and an unparsable body (`TestWatchOnceSeedUnparsableDoesNotBlockNotifications`), each
    asserting the command ran and the done notification still fired;
    `TestNewSessionListRejectsIncompletePairs` pins the constructor's invariant.
+6. **Two input requests in one step (P1, the last thread left open).** Finding 1 fixed the cross-step
+   case by re-arming busy on `session.step.started`, but that was a proxy for "work resumed" and left
+   the same-step case. A live probe (a session with `shell` set to `effect: ask`, prompted to run two
+   commands — see the `opencode2-live-event-probe.md` guide) settled it: opencode2 emits the two
+   `permission.asked` events **back to back in one step**, with only `session.tool.*` events between
+   the request and the tools, and no `session.step.started`. So no step boundary re-arms, and the
+   `(session, TriggerInput)` claim from the first request is still held. A resume rule cannot fix this
+   (there is no resume event between the two asks); request identity is required. Fix:
+   `agent.StreamEvent` gained `EventID` (the envelope id — v1 `.payload.id`, v2 top-level `.id`, both
+   unique per emission), the tracker notifies a same-state input request only when its `EventID` is
+   new (and carries it on the notification), and `Dedup` keys input claims on that id so distinct
+   requests each claim their own token while a replay dedups. `session.step.started` stays in
+   `BusyEvents` (a step start is still busy), it is just no longer the mechanism. Tests:
+   `TestTrackerSameStepInputRequestsBothFire`, `TestTrackerRepeatedInputEventFiresOnce`,
+   `TestHandleEventSameStepInputRequestsBothNotify`, `TestHandleEventRepeatedInputEventNotifiesOnce`,
+   plus the parser tables' `EventID` cases. Mutation-verified: reverting the tracker's id check fails
+   the repeated-input test, and dropping the id from the dedup key fails the same-step test.
 
 The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
 `CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
