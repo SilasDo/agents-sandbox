@@ -1,0 +1,167 @@
+---
+description: Contract making the user-facing `--dry-run` a true make-no-changes preview of a run/shell: it inspects the existing runner image and home volume and reports would-build/would-reuse, but performs no image build, volume creation, prefill, state write, VM start, attach, or network request. Complies with issue #228; `--dry-run-vm` remains the KVM-less "prepare everything, skip the VM" flag.
+read_if: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision, or the `agentLatestVersion` test seam.
+---
+
+# `--dry-run` preview
+
+Status: implemented on `issue-228-dry-run-preview`.
+
+Closes [issue #228](https://github.com/inoio/agents-sandbox/issues/228). Supersedes the "`--dry-run` is side-effect-free"
+clause in [upgrade-state-scoping.md](upgrade-state-scoping.md) (which held only for the upgrade check) and the
+"documentation-only" resolution in [project-state-transactions.md](project-state-transactions.md).
+
+## Problem
+
+`--dry-run` is documented as "Validate setup without running the agent" (`docs/commands.md`), and
+`upgrade-state-scoping.md` states it is side-effect-free. It is not. `session.Run`/`session.Shell` call
+`PrepareSandbox` and only early-return **after** it completes (`internal/sandbox/session/run.go:132`, `:209`), so the
+whole preparation runs. The parts that *are* suppressed are the upgrade network check and legacy fold
+(`vm/run_orchestrate.go:221`), the legacy home-migration offer (`:321`), the chosen home action
+(`volume/volume.go:113`,`:123`), and VM start/attach. Everything else runs under `--dry-run`:
+
+- `image.EnsureImage` builds the runner image when `buildDecision` says so (`internal/sandbox/image/build.go:407`).
+  `Build` documents that "dry-run handling [is] the caller's concern" and no caller handles it.
+- `EnsureNewHome` calls `CreateVolume`, prefills, and writes state (`internal/sandbox/volume/state.go:157`,`:176`).
+
+Two further leaks reach the network under `--dry-run`:
+
+- `resolveBaseDigest` (`image/build.go:617`) pulls the base image when a build runs.
+- `resolveAgentVersion` (`image/fetch.go:13`) hits the agent's `LatestVersion` when the resolved version is empty —
+  which is exactly what `determineAgentVersion` returns on a first run (`vm/run_orchestrate.go:221-227`).
+
+The two flags`--dry-run` (user-facing: "tell me what this would do") and `--dry-run-vm` (KVM-less: "prepare
+everything, skip the VM") only diverge at the four suppression sites above. The user-facing flag is the one that
+promises a preview and still mutates.
+
+## Decision
+
+`--dry-run` becomes a **read-only plan**: it runs the pure planning and read-only inspection steps and reports the
+decision, then returns before any mutation. It keeps implying `--dry-run-vm` (harmless once the preview returns before
+the VM), so `opts.DryRun` continues to set `opts.DryRunVM` (`viperconfig.go:823`).
+
+`--dry-run-vm` is unchanged: it still prepares fully (image ensure/build, home volume ensure/create, state writes,
+reconfig) and only skips the VM lifecycle. That is its purpose — running the tool on machines without `/dev/kvm`.
+
+### The preview (contract)
+
+Under `--dry-run`, after resolving the workspace bind layout and looking up the agent (both pure), the pipeline
+reports and returns, performing **none** of: image build, base-image pull, agent-version network resolution, volume
+creation, volume prefill, home-state write, config-hash persist, upgrade prompt, migration offer, VM create/start,
+daemon setup, attach.
+
+It reports, via `termio`:
+
+1. **Agent version.** The explicit pin, else the project's recorded `agent_version`; when neither, a message that the
+   version would be resolved at build time. Never a network call.
+2. **Image.** Render the build plan (pure: `RenderDockerfile` plus the `dockerfileID`/identity) and run the existing
+   build decision (local `docker inspect` only). Report `would build runner image <tag> (<reasons>)` or
+   `would reuse runner image <tag>`. The reasons are the same ones a real build logs. When the pin and the recorded
+   `agent_version` are both empty, the preview recovers the baked version from the project's existing image label via
+   `image.ExistingAgentVersion` (a local `docker inspect`, no network). Unlike `recoverAgentVersion`
+   (`vm/upgrade.go:302`), the preview does **not** record the recovered version — it only reports. This makes a
+   post-migration project with an unchanged image report `would reuse` rather than always `would build`. Only when no
+   version can be recovered does the preview report that no version is known — that is item 1's deferred-resolution
+   message — and the image decision then likely reports `would build`.
+   The preview does not run the upgrade check, so its image decision reflects the known version, not a possible
+   upgrade; it says so.
+3. **Home volume.** Read the project state and check the recorded volume's existence via `GetVolume` (local msb). When
+   state is missing or its recorded volume is gone, consult the live VM's mounted volume read-only
+   (`liveHomeVolume`, `GetSandbox` + `ConfigMounts`) so the preview reports `would reuse` for the volume a real run
+   would recover, rather than an unfaithful `would create`. Report `would create home volume` (the fresh volume's name
+   embeds a timestamp, so the preview prints no name it cannot honour) or `would reuse home volume <name>`. No volume
+   is created and no recovered state is written.
+4. **Session.** Report `would start agent session` (or the shell equivalent).
+
+The result is carried in a small value (e.g. `vm.Preview{Image, NeedsBuild, Reasons, AgentVersion, HomeVolume, Create}`
+plus the session line) so it is asserted as data in unit tests and as the rendered lines in CLI tests.
+
+### Purity boundaries (implementation shape)
+
+- Split the image path so the preview can compute the decision without building: `EnsureImageWithClient`
+  (`image/build.go:364`) factors a pure `planRunnerImage` (render + `buildDecision`) from `buildFromPlan` (`:470`).
+  The preview calls the planner only; `buildFromPlan` — and therefore `resolveBaseDigest` — is never reached.
+- The preview must not call `resolveAgentVersion(ctx, a, "")` (`image/build.go:378`). It passes the pin or the recorded
+  `agent_version`, falling back to the label-recovered baseline (`image.ExistingAgentVersion`, local) as the real path
+  does, and reports a deferred resolution only when none can be recovered.
+- Home resolution in the preview is a read-only variant of `ResolveHomeVolume` (`volume/state.go:23`): it reads state
+  and probes the recorded volume, and on the recovery path consults `liveHomeVolume` (`vm/run_orchestrate.go:371`,
+  also read-only), but never calls `recoverOrCreateHome`/`EnsureNewHome`/`RecoverHomeState` and never writes the
+  recovered state.
+- The `prepareHomeVolume` migration-offer gate and the `determineAgentVersion` gate stay as they are; they already
+  match the pure preview. The `--dry-run` note in `vm/run_orchestrate.go:109-115` is updated to state the new
+  contract.
+
+### Test seam
+
+`vm.agentLatestVersion` (`vm/upgrade.go:21`) is a package var with **no exported setter**, so `cmd` tests cannot stub
+it and `image.WithMockAgentVersion` does not cover it (a different var). Once the run/shell CLI tests move to
+`--dry-run-vm` they run `resolveBuildVersion`, whose `pendingUpgrade` can call it when a project has a recorded
+baseline and the check is due — a real network request. Add `vm.SetAgentLatestVersion` and install a **fail-fast**
+default in `cmd`'s `TestMain` (beside the existing migration-offer default, `cmd/agents-sandbox/main_test.go`),
+mirroring the isolation discipline: a test that reaches the network path fails loudly and opts in with an explicit
+stub, rather than silently bypassing it. This is not an `InstallFailFast*` family, so the `seamFamilies` registry in
+`internal/testutil/isolation_contract_test.go` is untouched.
+
+The preview itself needs no new seam: it composes the existing docker (`WithNoopDockerMock`) and msb
+(`WithMsbMock`) mocks. Its purity is pinned by tests that install a resolver/`agentLatestVersion` which fails the test
+if called, and by asserting `CreateVolume`/`ImageBuild` are absent from the mock call history.
+
+### CLI test migration
+
+The run/shell CLI tests currently express "prepare everything, skip the VM" through `--dry-run`
+(`cli_run_shell_test.go:100`,`:133`; `cli_bare_checkout_test.go:76`; `cli_test.go:64`,`:80`). That is `--dry-run-vm`'s
+contract, reached only transitively today. Move them to `--dry-run-vm`, which is required rather than cosmetic:
+`TestRunCommandReadsBareRoot` asserts the ignored-worktree warning emitted **inside** `EnsureImage`, which a pure
+`--dry-run` would no longer emit. Rewrite the two assertions that change (`run`'s "Would start agent session in VM"
+vs the old "Would run agent session"; drop the "dry-run-vm: auto-enabled" verbose expectation) and keep a dedicated
+set of tests for the new preview.
+
+### `volume <name> --dry-run`
+
+`volume migrate/reset/edit --dry-run` carries the same class of defect: `commands_system.go:126` calls
+`image.EnsureImage` (which can build) before the `volumeOp` dry-run early-return (`volume/operations.go:216`), even
+though the dry-run message needs only the state-derived old volume, not `info`, and `volumeOp` already tolerates a
+zero `ImageInfo`. **In scope**: under `--dry-run` skip the image ensure, so the volume ops honour the same flag
+contract. Tests cover that `--dry-run` performs no `ImageInspect`/`ImageBuild` and still reports the would-do message.
+
+## Non-goals
+
+- No change to `--dry-run-vm` behavior.
+- No change to a real run.
+- No change to prune/stop/kill/`image build`/`build dockerfile` `--dry-run` (already pure previews with their own
+  local flags).
+- No change to what a real build decides (same `buildDecision`, same reasons).
+- No new user flag and no `--dry-run-vm` deprecation.
+
+## Anti-goals
+
+- A preview that still builds, creates a volume, or writes state.
+- A preview that reads the network (version resolution, base-image pull).
+- Weakening the preview into a bare "would do a thing" with no inspection — it must still say would-build vs
+  would-reuse, with reasons.
+- Coupling `--dry-run` and `--dry-run-vm` so that fixing one breaks the other's purpose.
+
+## Acceptance
+
+- On a fresh project, `run --dry-run` and `shell --dry-run` create no volume, build no image, write no state, start no
+  VM, and make no network request; they report would-build and would-create decisions.
+- On a project with an unchanged image and an existing home volume, they report would-reuse for both.
+- `--dry-run-vm` on the same project still prepares fully (image ensured, volume ensured, state written) and skips
+  only the VM.
+- CLI tests exercise the prepare path through `--dry-run-vm`; dedicated tests pin the `--dry-run` preview and its
+  no-side-effect/no-network guarantees.
+- `volume migrate/reset/edit --dry-run` inspects/builds no image and performs no volume/state mutation, while still
+  reporting its would-do message.
+- `make check` and `make compile-all` green.
+
+## Docs and changelog
+
+- `docs/commands.md`: the `--dry-run` row states the preview and what it reports; the `--dry-run-vm` row keeps its
+  "skip VM lifecycle but prepare everything else" wording.
+- `specs/upgrade-state-scoping.md`: its "`--dry-run` is side-effect-free" clause is superseded by this spec; narrow it
+  to the upgrade check it was written for and point here.
+- `specs/project-state-transactions.md`: replace the "documentation-only, tracked in #228" resolution with a pointer
+  to this spec.
+- `CHANGELOG.md` `[Unreleased]`: `--dry-run` no longer builds an image, creates a home volume, or writes state (and no
+  longer resolves a version over the network).

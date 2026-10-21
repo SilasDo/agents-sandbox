@@ -193,6 +193,11 @@ command reports the bare version (e.g. `0.1.0`).
 - Docs: the [Deprecations](https://inoio.github.io/agents-sandbox/deprecations.html) page now states the full policy — the
   replacement always wins, renames are shimmed while only default-behaviour changes make a clean break, and a user-facing
   form is never removed without a deprecation cycle (#205).
+- `--dry-run` is now a read-only preview. It reports the agent version (or that the version resolves at build time),
+  whether the runner image would build (with the same reasons a real build logs) or be reused, and whether the home
+  volume would be created or reused — without building the runner image, creating a home volume, writing project state,
+  starting a VM, attaching, or making any network request (no version resolution and no base-image pull). The
+  `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image and inspect/build nothing.
 
 ### Fixed
 
