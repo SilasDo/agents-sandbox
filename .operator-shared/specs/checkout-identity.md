@@ -9,7 +9,9 @@ Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending 
 reconciled with #247's bare project-config resolver, and the migration hardened for the multi-agent and
 concurrent-adopter cases and for adopting a surviving legacy VM whose state file was lost (#219). A post-review
 fix made that lost-state adoption record the recovered volume in the checkout state before destroying the legacy
-VM, so the reference survives any caller that discards the adoption result (issue #244 review).
+VM, so the reference survives any caller that discards the adoption result (issue #244 review). A second review
+round made a corrupt checkout state skip rather than abort migration, made the volume ops read and clear the
+recovered-volume marker, and made a bare root's first run read its pre-split per-slug config.
 Date: 2026-10-19.
 
 ## Problem
@@ -103,14 +105,18 @@ builder working and, on a cold cache or offline, network for the base/agent laye
 Config stays on the **repo slug**, so its path is byte-identical to today and is shared by every clone
 of a remote. No config migration — except for a bare root, whose pre-split per-slug config directory
 (the path-derived slug) is renamed onto the repo slug during adoption, and only when the target does not
-already exist (see Migration).
+already exist (see Migration). Because the launcher-config resolver is built *before* adoption runs, the
+resolver reads the **legacy** per-slug dir when it holds a config file and the repo-slug dir does not
+(`effectiveConfigSlug` in `cmd/agents-sandbox`); otherwise the triggering run would load defaults instead
+of the user's saved settings. That fallback is read-only, so `--dry-run` stays side-effect-free.
 
 The only real gap is discoverability: nothing today prints the slug or the per-slug dir. Add
 `agents-sandbox config paths` (plural) printing every config layer in precedence order, including the
-concrete per-slug user dir and the resolved repo slug, and stating that repo-wide knobs belong in the
-committed project config (`.agents-sandbox/config.yaml`) or the generic user config. A `config edit`
-helper to create/open the per-slug `config.yaml` is optional. The ordered-multi-dir resolver machinery
-from `opencode2-config-fork.md` is available but not required, since nothing renames.
+concrete per-slug user dir (the effective layer, i.e. a bare root's legacy dir while it is still pending)
+and the resolved repo slug, and stating that repo-wide knobs belong in the committed project config
+(`.agents-sandbox/config.yaml`) or the generic user config. A `config edit` helper to create/open the
+per-slug `config.yaml` is optional. The ordered-multi-dir resolver machinery from
+`opencode2-config-fork.md` is available but not required, since nothing renames.
 
 ## Outside worktrees: their own identity
 
@@ -158,8 +164,13 @@ point: `stop`, `kill`, `build` and the volume commands discard the adoption resu
 fail after adoption but before home resolution, yet the next run recovers the volume from the state instead
 of minting a fresh one. While that field is set the trigger stays live, so a legacy VM left behind by a
 failed destroy is torn down on the retry (the state move is then a no-op, since no legacy state file
-exists). A VM whose mounts cannot be read fails the adoption closed rather than destroying it blind.
-Re-evaluated on each run until it fires.
+exists), and a `volume migrate`/`reset`/`edit` accepts the pending volume as its source and clears the
+marker when it commits, so the first volume op is not wedged behind an unset `home_volume` and cannot undo
+itself. A corrupt or unreadable *checkout* state makes the trigger skip migration rather than abort the
+run, leaving legacy VMs and state untouched so the caller's recovery path (`RecoverHomeState`) can repair
+the document; reads of the *legacy* state and a legacy VM's mounts still fail closed. A VM whose mounts
+cannot be read fails the adoption closed rather than destroying it blind. Re-evaluated on each run until
+it fires.
 
 **Entry points: uniform.** Every cwd-derived command that resolves the checkout slug attempts adoption —
 `run`, `shell`, `stop`, `kill`, the `volume …` ops and `build` — not only the paths that write state. A
@@ -203,7 +214,8 @@ the incomplete-migration failure on a source that is already gone.
    adoption writes it into `recovered_home_volume` on the checkout state *before* the destroy, and home
    resolution (`volume.Manager.ResolveHomeVolume`) recovers it into `home_volume` with the current digest
    and fingerprints. That marker is the durable record: it survives an adoption result the caller discards
-   and a run that fails before home resolution. The state-file arrival check is skipped there, because
+   and a run that fails before home resolution, and a `volume migrate`/`reset`/`edit` reads it as its
+   source and clears it when it commits. The state-file arrival check is skipped there, because
    there is no legacy state file to arrive.
 4. VM: recreated once under the new name over the preserved home volume.
 5. Runner image: rebuilt under the new checkout tag (cache-assisted, see above).

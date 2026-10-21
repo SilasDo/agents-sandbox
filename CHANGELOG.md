@@ -168,7 +168,10 @@ command reports the bare version (e.g. `0.1.0`).
   home volume is recorded durably in the checkout state *before* the VM is destroyed, so the previous home volume —
   credentials and files — is reused by the next run instead of a fresh one being minted, even when the adopting
   command is not a run (or the run fails before home resolution). A `--dry-run` leaves the legacy
-  layout in place. #144.
+  layout in place. The adoption trigger skips migration rather than aborting the run when the *checkout* state is
+  corrupt (so the caller's recovery path can still repair it), a bare root reads its pre-split per-slug config before
+  the rename so the first post-upgrade run honours the user's saved settings, and `volume migrate`/`reset`/`edit`
+  accept a pending recovered volume as their source and clear the marker when they commit. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the

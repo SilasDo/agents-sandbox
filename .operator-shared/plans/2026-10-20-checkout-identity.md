@@ -512,3 +512,27 @@ Tests: `TestAdoptLegacyIdentityAdoptsLiveLegacyVMWithoutState` (marker persisted
 `TestResolveHomeVolume_RecoversPersistedAdoptionVolume`,
 `TestPrepareHomeVolumeRecoversPersistedAdoptionVolume`, and
 `TestHomeVolumeReferencesProtectsPendingRecoveredVolume`.
+
+---
+
+### Review-fix round 2 (PR #244 review): marker follow-through
+
+The durable marker's follow-through paths still disagreed, so Greptile flagged three more P1s (the fourth,
+cross-clone marker sharing, is left for a design decision). Fixes, test-first:
+
+- **Volume commands miss the pending home** (`internal/sandbox/volume/operations.go`): `volumeOp` now falls
+  back to `st.RecoveredHomeVolume` when `st.HomeVolume` is empty, and clears `RecoveredHomeVolume` in the
+  commit, so a first `volume migrate`/`reset`/`edit` after adoption uses the preserved volume and cannot be
+  undone by the next resolution. Tests: `TestVolumeOp_UsesRecoveredHomeVolumeAsSource`,
+  `TestVolumeOp_ClearsRecoveredHomeVolumeWithExplicitSource`.
+- **Corrupt checkout state blocks recovery** (`internal/sandbox/vm/adopt.go`): `legacyAdoptionPending` now
+  skips migration (returns not-pending) on a non-not-found checkout-state read error instead of aborting the
+  run, so `PrepareSandbox` reaches `ResolveHomeVolume`/`RecoverHomeState` and repairs it; legacy VMs and state
+  stay untouched. Tests: `TestAdoptLegacyIdentityUnparsableCheckoutStateSkipsMigration`,
+  `TestAdoptLegacyIdentityNonRepoCorruptStateDoesNotBlock`,
+  `TestAdoptLegacyIdentityRecheckCorruptStateSkips`; the legacy-read fail-closed tests are unchanged.
+- **Bare root's first run ignores saved settings** (`cmd/agents-sandbox`): new `effectiveConfigSlug` resolves
+  the per-slug config dir to a bare root's legacy slug when it has a config and the repo-slug dir does not, and
+  is used by both `PersistentPreRunE` and `config paths` (which now prints the effective layer but keeps the
+  repo-slug label). Tests: `TestBareRootReadsLegacyConfigBeforeMigration`,
+  `TestBareRootConfigPathsShowsEffectiveLayer`.
