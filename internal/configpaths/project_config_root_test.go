@@ -178,6 +178,22 @@ func TestProjectConfigBaseNonRepoUnchanged(t *testing.T) {
 	assertRelativeProjectBase(t)
 }
 
+// TestResolveProjectConfigUnresolvableCwdFallsBack covers the EvalSymlinks
+// fallback: a CWD that cannot be resolved is used as-is, and since it is outside
+// any repository resolution degrades to the relative base with nothing ignored.
+func TestResolveProjectConfigUnresolvableCwdFallsBack(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+
+	base, ignored := resolveProjectConfig(missing)
+
+	if base != projectConfigDir {
+		t.Errorf("base = %q, want %q", base, projectConfigDir)
+	}
+	if ignored != "" {
+		t.Errorf("ignored = %q, want empty", ignored)
+	}
+}
+
 func TestIgnoredWorktreeConfigDir(t *testing.T) {
 	isolateProjectConfig(t)
 	root := writeBareCheckout(t)
@@ -246,5 +262,21 @@ func TestIgnoredWorktreeConfigDirEmptyForOutsideWorktree(t *testing.T) {
 
 	if got := Get().IgnoredWorktreeConfigDir(); got != "" {
 		t.Errorf("IgnoredWorktreeConfigDir() = %q, want empty for a worktree outside its checkout", got)
+	}
+}
+
+// TestIgnoredWorktreeConfigDirEmptyWhenCwdUnreadable covers the Getwd fallback:
+// with no readable CWD nothing is reported as ignored, mirroring
+// ProjectConfigDirAbs's fallback to the relative base.
+func TestIgnoredWorktreeConfigDirEmptyWhenCwdUnreadable(t *testing.T) {
+	isolateProjectConfig(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Get().IgnoredWorktreeConfigDir(); got != "" {
+		t.Errorf("IgnoredWorktreeConfigDir() with an unreadable cwd = %q, want empty", got)
 	}
 }
