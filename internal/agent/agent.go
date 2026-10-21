@@ -49,6 +49,8 @@ var registry = builtinRegistry()
 
 // Register adds an agent profile to the registry, overriding a built-in of the
 // same name.
+//
+//deadcode:ignore reason="internal registry extension point; only registry tests register stubs"
 func Register(a Agent) {
 	registry[a.Name()] = a
 }

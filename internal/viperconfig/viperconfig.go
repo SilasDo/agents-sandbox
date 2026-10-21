@@ -362,6 +362,8 @@ func legacyEnvVarsInUse() []string {
 // NewResolverWithConfig builds a Resolver from an explicit Config. It is
 // used by callers (notably cmd tests) that need a resolver with known values
 // without touching config files or env.
+//
+//deadcode:ignore reason="construction seam for cmd tests; see doc comment"
 func NewResolverWithConfig(cfg Config) *Resolver {
 	return &Resolver{cfg: cfg, legacyEnv: nil, dockerLegacy: ""}
 }

@@ -96,11 +96,15 @@ func ResolveIdentity(cwd string) Identity {
 
 // RepoSlug returns the repo slug of the current working directory: the value
 // shared by every clone of the same origin.
+//
+//deadcode:ignore reason="cwd-derived convenience for tests; production reads the ResolveIdentity fields"
 func RepoSlug() string {
 	return ResolveIdentity(".").RepoSlug
 }
 
 // CheckoutSlug returns the checkout slug of the current working directory.
+//
+//deadcode:ignore reason="cwd-derived convenience for tests; production reads the ResolveIdentity fields"
 func CheckoutSlug() string {
 	return ResolveIdentity(".").CheckoutSlug
 }
