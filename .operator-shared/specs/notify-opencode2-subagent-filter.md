@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings — see "Review fixes (PR #245)" below.
+Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, and a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes — see "Review fixes (PR #245)" below.
 
 ## Problem
 
@@ -152,18 +152,24 @@ type EventStreamSpec struct {
     // session's parent. A non-empty parent ID marks the session as a subagent
     // (child) session; no notification ever fires for a child session.
     SessionEvents []string
-    // SessionListCommand is a one-shot shell command printing the daemon's raw
-    // session list, run each time a stream opens to seed the filter with
-    // sessions created before the watcher (re)connected. Empty disables seeding.
-    SessionListCommand string
-    // SessionListParse extracts the child session IDs from SessionListCommand's
-    // stdout. The agent owns the list's JSON shape, so the command needs no jq
-    // (or other tooling) in the runner image, which a custom base need not have.
-    SessionListParse func(payload []byte) []string
+    // SessionList seeds the tracker with sessions created before the watcher
+    // (re)connected. Nil disables seeding; a non-nil value always carries both
+    // the command and its parser, so seeding can never be disabled by an
+    // omitted parser. Build one with NewSessionList.
+    SessionList *SessionListSpec
     // Parse decodes one SSE data payload into a StreamEvent. ok is false when
     // the payload carries no event.
     Parse func(payload []byte) (StreamEvent, bool)
     Name  string
+}
+
+// SessionListSpec pairs a one-shot session-list command with the parser for
+// its stdout (whose JSON-shape ownership keeps the command jq-free, since the
+// toolbase is not in a custom base's lineage). Both fields are unexported so an
+// incomplete pair is unrepresentable; NewSessionList panics on "", nil.
+type SessionListSpec struct {
+    command string
+    parse   func(payload []byte) []string
 }
 ```
 
@@ -206,13 +212,13 @@ The tracker consumes `agent.StreamEvent` instead of the removed local `Event`.
 ### 4. Seeding on (re)connect (`internal/notify/watch.go`)
 
 `watchOnce` gains the spec (it already has `sb`). Immediately after `ShellStream` opens, and before
-reading the stream, run `sb.Shell(ctx, spec.SessionListCommand)` when non-empty, hand stdout to
-`spec.SessionListParse`, and call `tracker.SeedChildren(ids)`. Seeding is best-effort: a failure, or
-a nil parser, is ignored and does not abort the stream (the tracker still learns new children from
-`session.created`). Running it per-connect, not just once, closes the gap for a child created while
-the watcher was disconnected.
+reading the stream, when `spec.SessionList != nil`, run `sb.Shell(ctx, spec.SessionList.Command())`,
+hand stdout to `spec.SessionList.Parse`, and call `tracker.SeedChildren(ids)`. Seeding is
+best-effort: a shell error, a non-zero exit, or a body the parser cannot read is ignored and does
+not abort the stream (the tracker still learns new children from `session.created`). Running it
+per-connect, not just once, closes the gap for a child created while the watcher was disconnected.
 
-The list's JSON shape lives in the agent (`SessionListParse`), like the event decoder: v1's
+The list's JSON shape lives in the agent (`SessionListSpec.parse`), like the event decoder: v1's
 `/session` is an array of sessions, v2's `/api/session` wraps them under `data`, and each parser
 keeps the sessions with a non-empty `parentID`. This keeps the command a bare `curl` and avoids a
 `jq` dependency — the tool-owned toolbase is deliberately *not* in the runner's lineage, so a custom
@@ -230,9 +236,10 @@ IdleEvents:    {"session.execution.succeeded"}
 ErrorEvents:   {"session.error", "session.execution.failed"}
 StickyErrorEvents: {}  // both error events are turn-scoped
 SessionEvents: {"session.created"}
-SessionListCommand: "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " +
-    opencode2ServerURL + "/api/session"
-SessionListParse: parseOpencodeV2SessionList
+SessionList: NewSessionList(
+    "curl " + opencode2CurlFlags + " " + opencode2CurlAuth + " " +
+        opencode2ServerURL + "/api/session",
+    parseOpencodeV2SessionList)
 Parse: parseOpencodeV2Event
 Name:  opencode2Name
 ```
@@ -242,8 +249,8 @@ lists verbatim; add:
 
 ```go
 SessionEvents: {"session.created", "session.updated"}
-SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session"
-SessionListParse: parseOpencodeV1SessionList
+SessionList: NewSessionList("curl -sf -m 30 http://127.0.0.1:4096/session",
+    parseOpencodeV1SessionList)
 StickyErrorEvents: {"session.error"}
 Parse: parseOpencodeV1Event
 ```
@@ -314,14 +321,16 @@ Parse: parseOpencodeV1Event
   never observed on the server stream; the execution pair is the observable per-turn busy/done.
 - **`session.execution.interrupted` is not an error trigger**: a user interrupt is not a failure
   worth a signal. It is left out; `session.error` and `session.execution.failed` cover real errors.
-- **The seed list's JSON shape lives in the agent, not in `notify`.** `SessionListParse` extracts
-  child ids from the raw session list, so `notify` keeps only `[]string` plumbing and the command
-  stays a bare `curl`. The original call used `jq` in the command to normalise the v1 array versus
-  v2's `.data[]`; the tool-owned toolbase is not in the runner's lineage, so a custom base (which the
-  design says needs neither `curl` nor `tar`) cannot be assumed to have `jq`, and seeding would fail
-  silently. A function field mirrors `Parse`; the spec's `reflect.DeepEqual` test excludes it too.
-- **v1 keeps its existing event lists unchanged**; only `SessionEvents`/`SessionListCommand` are
-  added. `session.idle` stays v1's done signal.
+- **The seed list's JSON shape lives in the agent, not in `notify`.** `SessionListSpec.parse`
+  extracts child ids from the raw session list, so `notify` keeps only `[]string` plumbing and the
+  command stays a bare `curl`. The original call used `jq` in the command to normalise the v1 array
+  versus v2's `.data[]`; the tool-owned toolbase is not in the runner's lineage, so a custom base
+  (which the design says needs neither `curl` nor `tar`) cannot be assumed to have `jq`, and seeding
+  would fail silently. The command and parser travel as one `NewSessionList` value, so a profile
+  cannot wire one without the other; the spec's `reflect.DeepEqual` test excludes the parser (a func
+  field on a pointer).
+- **v1 keeps its existing event lists unchanged**; only `SessionEvents`/`SessionList` are added.
+  `session.idle` stays v1's done signal.
 - **Child suppression keys on the event's own `sessionID`**, verified to be the running session's id
   (a child's execution events carried the child id). No second mechanism is needed for a subagent's
   input/error triggers: they are session-scoped to the child.
@@ -372,6 +381,18 @@ A second review (on the rebased head) added:
    moved into the agents (`parseOpencodeV1SessionList`, `parseOpencodeV2SessionList`), and the
    command became a bare `curl`. Tests: the two `parseOpencode*SessionList` tables and the updated
    `TestWatchOnceSeedsChildrenFromListCommand`.
+5. **The seed step's failure modes were untested, and the nil-parser skip was silent (P2).** A later
+   Greptile comment on the rebased head found the seed-failure test no longer reached the command: a
+   nil `SessionListParse` short-circuited it. The deeper issue was the seam — two independent fields
+   let a profile declare a list command and silently lose seeding by omitting the parser, the same
+   silent-no-op class as finding 4. Fix: the pair is one value, `*agent.SessionListSpec`, built only
+   by `NewSessionList`, whose unexported fields and panic on an empty command or nil parser make an
+   incomplete pair unrepresentable, so `watchOnce`'s guard is a plain `spec.SessionList != nil`.
+   Tests pin all three seed outcomes: shell error, non-zero exit
+   (`TestWatchOnceSeedNonSuccessDoesNotBlockNotifications`, the custom-base `jq: command not found`
+   case), and an unparsable body (`TestWatchOnceSeedUnparsableDoesNotBlockNotifications`), each
+   asserting the command ran and the done notification still fired;
+   `TestNewSessionListRejectsIncompletePairs` pins the constructor's invariant.
 
 The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
 `CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
