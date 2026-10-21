@@ -108,17 +108,24 @@ Removing `~/.microsandbox` does not uninstall a system-wide microsandbox by
 itself. Since agents-sandbox no longer requires the system-wide `msb` command,
 you can also uninstall a system-wide microsandbox the way you installed it.
 
-## Renamed flags and commands
+## A footnote: renamed flags and commands
 
-0.6 also renamed a few spellings. The old forms still work with a one-time
-warning; [Deprecations]({% link deprecations.md %}) has the full table and
-removal targets. The short list:
+The renames below are a footnote to 0.6, not one of its headline stories. The
+old forms still work with a one-time warning;
+[Deprecations]({% link deprecations.md %}) has the full table and removal
+targets.
 
 - `--dind` / `dind` / `AGENTS_SANDBOX_DIND` → `--docker` / `docker` / `AGENTS_SANDBOX_DOCKER`
+- the `OPENCODE_SANDBOX_*` environment-variable prefix → `AGENTS_SANDBOX_*`
 - `sandbox list --names` → the global `-q` / `--quiet`
 - `prune --age` (and `-a`) → `--older-than`
 - `--opencode-version` → `--agent-version`
 - `volume migrate|reset|edit --rebuild` → run `agents-sandbox build` first
+
+One behaviour changed rather than being aliased: `prune` and its `image`,
+`volume`, and `sandbox` subcommands now ask for confirmation before removing
+anything, with `--yes` to skip the prompt. Non-interactively, `--yes` is
+required.
 
 Release notes live on the
 [GitHub Releases page](https://github.com/inoio/agents-sandbox/releases); this
