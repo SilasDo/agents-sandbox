@@ -2,8 +2,10 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strconv"
@@ -467,4 +469,154 @@ func TestRunExitsTwoOnBrokenInput(t *testing.T) {
 			t.Errorf("run = (%d, %q); want 2 with a message on stderr", code, stderr)
 		}
 	})
+	t.Run("unknown flag", func(t *testing.T) {
+		if code, _, _ := invoke([]string{"-nope"}, ""); code != 2 {
+			t.Errorf("run exit = %d; want 2", code)
+		}
+	})
+	t.Run("unreadable source list", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-reports", t.TempDir()}, failingReader{}, &stdout, &stderr)
+		if code != 2 || !strings.Contains(stderr.String(), "source paths") {
+			t.Errorf("run = (%d, %q); want 2 mentioning source paths", code, stderr.String())
+		}
+	})
+}
+
+// failingReader stands in for a source list that disappears mid-read.
+type failingReader struct{}
+
+func (failingReader) Read([]byte) (int, error) { return 0, errors.New("read boom") }
+
+func TestScopeNameLabelsBothScopes(t *testing.T) {
+	for _, tc := range []struct {
+		scope Scope
+		want  string
+	}{
+		{ScopeFile, "file"},
+		{ScopeDeclaration, "declaration"},
+	} {
+		if got := scopeName(tc.scope); got != tc.want {
+			t.Errorf("scopeName(%v) = %q; want %q", tc.scope, got, tc.want)
+		}
+	}
+}
+
+// TestMergeSourcesOrdersAcrossFilesAndLines drives the comparator's file and
+// line branches; the end-to-end tests never merge findings across both.
+func TestMergeSourcesOrdersAcrossFilesAndLines(t *testing.T) {
+	got := mergeSources([]Finding{
+		{File: "b.go", Line: 1, Source: "default"},
+		{File: "a.go", Line: 9, Source: "default"},
+		{File: "a.go", Line: 2, Source: "msb"},
+	})
+	want := []Finding{
+		{File: "a.go", Line: 2, Source: "msb"},
+		{File: "a.go", Line: 9, Source: "default"},
+		{File: "b.go", Line: 1, Source: "default"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("mergeSources = %#v; want %#v", got, want)
+	}
+}
+
+func TestMergeSourceNames(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		existing string
+		added    string
+		want     string
+	}{
+		{"first source wins an absent existing", "", "default", "default"},
+		{"an absent addition keeps the existing", "default", "", "default"},
+		{"distinct names are unioned in sorted order", "default", "msb", "default,msb"},
+		{"a repeated name is not duplicated", "default,msb", "msb", "default,msb"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := mergeSourceNames(tc.existing, tc.added); got != tc.want {
+				t.Errorf("mergeSourceNames(%q, %q) = %q; want %q", tc.existing, tc.added, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLoadFindingsRejectsUnreadableInput(t *testing.T) {
+	t.Run("missing directory", func(t *testing.T) {
+		if _, err := loadFindings(filepath.Join(t.TempDir(), "absent")); err == nil {
+			t.Error("expected an error for a missing report directory")
+		}
+	})
+	t.Run("a nested directory is skipped", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Mkdir(filepath.Join(dir, "nested"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(
+			filepath.Join(dir, "default.json"),
+			[]byte(reportJSON("a.go", 1, "Dead")),
+			0o600,
+		); err != nil {
+			t.Fatal(err)
+		}
+		findings, err := loadFindings(dir)
+		if err != nil {
+			t.Fatalf("loadFindings: %v", err)
+		}
+		if len(findings) != 1 {
+			t.Errorf("loadFindings = %v; want only the file entry", findings)
+		}
+	})
+	t.Run("a dangling report symlink is an error", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.Symlink(filepath.Join(dir, "absent.json"), filepath.Join(dir, "default.json")); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if _, err := loadFindings(dir); err == nil {
+			t.Error("expected an error for a report entry that cannot be read")
+		}
+	})
+}
+
+// TestMainProcess runs main() in a child process, where its os.Exit cannot end
+// the test run. The child sees one unmarked finding, so main exits 1.
+func TestMainProcess(t *testing.T) {
+	r := newRig(t)
+	src := r.addSource(t, "a.go", "package main\n\nfunc Dead() {}\n")
+	r.addReport(t, "default.json", reportJSON(src, 3, "Dead"))
+
+	out, code := runMainHelper(t, []string{"-reports", r.reportDir})
+	if code != 1 {
+		t.Fatalf("main exit = %d; want 1 (output: %s)", code, out)
+	}
+	if !strings.Contains(out, "unreachable func: Dead") {
+		t.Errorf("main output = %q; want it to name Dead", out)
+	}
+}
+
+// runMainHelper re-executes the test binary with GO_WANT_MAIN_HELPER=1 so the
+// helper below calls main() in a clean process.
+func runMainHelper(t *testing.T, args []string) (string, int) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=TestMainHelperProcess")
+	cmd.Env = append(os.Environ(),
+		"GO_WANT_MAIN_HELPER=1",
+		"GO_MAIN_ARGS="+strings.Join(args, "\n"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return string(out), exitErr.ExitCode()
+		}
+		t.Fatalf("running helper: %v", err)
+	}
+	return string(out), 0
+}
+
+func TestMainHelperProcess(t *testing.T) {
+	if os.Getenv("GO_WANT_MAIN_HELPER") != "1" {
+		t.Skip("helper process only")
+	}
+	os.Args = append([]string{"deadcodecheck"}, strings.Split(os.Getenv("GO_MAIN_ARGS"), "\n")...)
+	main()
+	os.Exit(0)
 }
