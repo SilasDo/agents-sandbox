@@ -2,6 +2,8 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -48,7 +50,7 @@ func TestOpencodeAttachCommandQuotesTarget(t *testing.T) {
 func TestOpencodeWorktreeCreateCmdUsesName(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x"})
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x"}, agent.WorktreeProject{})
 	want := "curl -sf -X POST http://127.0.0.1:4096/experimental/worktree -H 'Content-Type: application/json' -d '{\"name\":\"feature/x\"}'"
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
@@ -99,44 +101,73 @@ func TestOpencodeDaemonHealthParse(t *testing.T) {
 	if err != nil || notOK {
 		t.Errorf("DaemonHealthParse(unhealthy) = %v, %v, want false, nil", notOK, err)
 	}
-	if _, err := daemon.DaemonHealthParse("not json"); err == nil {
-		t.Error("DaemonHealthParse(invalid) should error")
+	parsed, err := daemon.DaemonHealthParse("not json")
+	if parsed {
+		t.Error("DaemonHealthParse(invalid) ok = true, want false")
+	}
+	if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
+		t.Errorf("DaemonHealthParse(invalid) error = %v, want *json.SyntaxError", err)
 	}
 }
 
-func TestOpencodeWorktreeListCmd(t *testing.T) {
+func TestOpencodeWorktreeHasNoResolveStep(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	worktree := mustWorktree(t, a)
-	if !strings.Contains(worktree.WorktreeListCmd("/workspace"), "/experimental/worktree") {
-		t.Errorf("WorktreeListCmd = %q", worktree.WorktreeListCmd("/workspace"))
+	if got := worktree.WorktreeResolveCmd("/workspace"); got != "" {
+		t.Errorf("WorktreeResolveCmd = %q, want empty (v1 routes are global)", got)
 	}
 	if got := worktree.WorktreeListCmd(
-		"/workspace/my notes",
+		agent.WorktreeProject{},
 	); got != "curl -sf http://127.0.0.1:4096/experimental/worktree" {
 		t.Errorf("WorktreeListCmd = %q, want the global v1 route", got)
+	}
+	// v1 has no resolve step, so the paired parser is never called in
+	// production; it must still report no project rather than fabricate one.
+	if _, ok := worktree.WorktreeParseProject(`{"project":{"id":"abc","canonical":"/repo"}}`); ok {
+		t.Error("WorktreeParseProject must report no project for v1")
+	}
+}
+
+// TestOpencodeWorktreeParseList pins the v1 list parser: path strings and
+// {directory} objects are accepted, but a non-array payload or an entry without
+// a non-empty string directory must not read as "no worktrees".
+func TestOpencodeWorktreeParseList(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	worktree := mustWorktree(t, a)
+	cases := []struct {
+		name string
+		in   string
+		want []string
+		ok   bool
+	}{
+		{name: "string paths", in: `["/wt/a","/wt/b"]`, want: []string{"/wt/a", "/wt/b"}, ok: true},
+		{name: "objects", in: `[{"directory":"/wt/a"}]`, want: []string{"/wt/a"}, ok: true},
+		{name: "empty array", in: `[]`, want: []string{}, ok: true},
+		{name: "non-array object", in: `{"directory":"/wt/a"}`, ok: false},
+		{name: "null", in: `null`, ok: false},
+		{name: "empty input", in: ``, ok: false},
+		{name: "invalid json", in: `not json`, ok: false},
+		{name: "renamed field", in: `[{"path":"/wt/a"}]`, ok: false},
+		{name: "blank directory", in: `[{"directory":""}]`, ok: false},
+		{name: "numeric entry", in: `[123]`, ok: false},
+		{name: "numeric directory", in: `[{"directory":123}]`, ok: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := worktree.WorktreeParseList(tc.in, agent.WorktreeProject{})
+			if ok != tc.ok || !slices.Equal(got, tc.want) {
+				t.Errorf("WorktreeParseList(%q) = %v, %v; want %v, %v", tc.in, got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }
 
 func TestOpencodeWorktreeCreateCmdWithBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "f", Base: "main"})
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "f", Base: "main"}, agent.WorktreeProject{})
 	if !strings.Contains(got, `"startCommand":"git reset --hard main"`) {
 		t.Errorf("WorktreeCreateCmd(with base) = %q", got)
-	}
-}
-
-// TestOpencodeWorktreeCreateCmdIgnoresTarget pins that v1's global route does
-// not read the launch directory: the command is identical whatever the target.
-func TestOpencodeWorktreeCreateCmdIgnoresTarget(t *testing.T) {
-	a, _ := agent.Lookup("opencode")
-	worktree := mustWorktree(t, a)
-	withoutTarget := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "main"})
-	withTarget := worktree.WorktreeCreateCmd(
-		agent.WorktreeSpec{Name: "feat-x", Base: "main", Target: "/workspace/my notes"},
-	)
-	if withTarget != withoutTarget {
-		t.Errorf("WorktreeCreateCmd changed with the target: %q != %q", withTarget, withoutTarget)
 	}
 }
 
@@ -161,6 +192,11 @@ func TestOpencodeWorktreeParseDir(t *testing.T) {
 	}
 	if _, ok := worktree.WorktreeParseDir(`{"directory":""}`); ok {
 		t.Error("WorktreeParseDir(empty) should return not-ok")
+	}
+	// A decode error that nonetheless accepted a directory value (a duplicate key)
+	// must not be mistaken for a successful parse.
+	if dir, ok := worktree.WorktreeParseDir(`{"directory":"/x","directory":123}`); ok {
+		t.Errorf("WorktreeParseDir(duplicate key) = %q, %v, want not-ok", dir, ok)
 	}
 }
 

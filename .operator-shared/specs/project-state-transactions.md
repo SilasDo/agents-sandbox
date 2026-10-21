@@ -74,8 +74,8 @@ recovery as the only wholesale writer.
 6. **No reentrancy / lock-order guard.** flock is not reentrant and `UpdateHomeState` blocks, so a nested call
    self-deadlocks; root→home is intended but unchecked.
 7. **`--dry-run` side-effect-freedom is spread across call paths** (`vm/run_orchestrate.go:206`, `:313`), not one guard.
-   This change only documents the two existing gates; making `--dry-run` genuinely side-effect-free (today it can still
-   build an image, create a home volume, and write state) is tracked in a separate issue and is **out of scope** here.
+   It is now a genuine read-only preview (no image build, volume create, or state write); see
+   [dry-run-preview.md](dry-run-preview.md).
 
 ## Design
 
@@ -182,9 +182,9 @@ one process.
 ### `--dry-run` guard
 
 Keep `determineAgentVersion` as the single branch that skips `resolveBuildVersion` and the legacy fold, and
-`prepareHomeVolume` as the single branch that skips the migration offer; document the known `--dry-run` gates:
-`determineAgentVersion` and `prepareHomeVolume`, plus `volume.ApplyHomeAction` (skips the migrate/reset action) and
-`session.Run`/`session.Shell` (skip the attach). No new mechanism.
+`prepareHomeVolume` as the single branch that skips the migration offer. These in-`PrepareSandbox` gates remain the
+mechanism; the full `--dry-run` contract — a read-only preview that returns before `PrepareSandbox` — lives in
+[dry-run-preview.md](dry-run-preview.md). No new mechanism here.
 
 ### API after this change
 
@@ -240,9 +240,5 @@ Keep `determineAgentVersion` as the single branch that skips `resolveBuildVersio
 
 ## Resolved: `--dry-run` scope
 
-`--dry-run` purity is **documentation-only here (option A)**. Finding 7 is out of scope: this change documents the known
-`--dry-run` gates — `determineAgentVersion`, `prepareHomeVolume`, `volume.ApplyHomeAction`, and
-`session.Run`/`session.Shell` — and adds no commit-suppression. Making `--dry-run` genuinely side-effect-free (it can
-still build an image, create a home volume, and write state, because `prepareSandbox` runs before the dry-run
-early-return in `session/run.go`) is tracked in
-[issue #228](https://github.com/inoio/agents-sandbox/issues/228).
+Finding 7 is out of scope here and resolved by [dry-run-preview.md](dry-run-preview.md): `--dry-run` is now a genuine
+read-only preview — no image build, volume creation, or state write — so this change documents no `--dry-run` gates.

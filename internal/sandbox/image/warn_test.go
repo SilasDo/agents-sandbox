@@ -28,6 +28,10 @@ func synthesizeBareWorktree(t *testing.T, withWorktreeConfig bool) (worktree str
 	root := t.TempDir()
 	worktree = filepath.Join(root, "main")
 	writeFileAt(t, filepath.Join(root, ".git", "config"), "[core]\n\tbare = true\n")
+	// A real linked worktree's registration carries a commondir marker; the
+	// identity resolver requires it to tell a worktree from a --separate-git-dir
+	// checkout, so the synthetic layout must include it.
+	writeFileAt(t, filepath.Join(root, ".git", "worktrees", "main", "commondir"), "../..\n")
 	writeFileAt(t, filepath.Join(worktree, ".git"), "gitdir: ../.git/worktrees/main\n")
 	if withWorktreeConfig {
 		if err := os.MkdirAll(filepath.Join(worktree, ".agents-sandbox"), 0o750); err != nil {

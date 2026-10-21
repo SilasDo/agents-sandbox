@@ -91,8 +91,10 @@ another project's version.
 
 Under `--dry-run` (`opts.DryRun`, which implies `--dry-run-vm`), `resolveBuildVersion` is not called at all:
 `PrepareSandbox` uses the project's recorded `HomeState.agent_version` as the build arg (no network check, no prompt)
-and emits a verbose `dry-run: would resolve build version`. This keeps `--dry-run` side-effect-free, matching the
-home-migration offer gate; the legacy fold below is likewise skipped under `--dry-run`.
+and emits a verbose `dry-run: would resolve build version`. This is the upgrade-check half of `--dry-run`'s
+side-effect-freedom, matching the home-migration offer gate; the legacy fold below is likewise skipped under
+`--dry-run`. The full `--dry-run` contract (no image build, no volume create, no state write, no network request) is
+[dry-run-preview.md](dry-run-preview.md).
 
 ### Baseline recovery (image-label fallback)
 
@@ -211,8 +213,9 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
   share the one lock, so neither can clobber the other's map.
 - **A RootState read failure never writes.** A `RootState` read error must warn and return no offer without persisting,
   never overwrite the file with a zero-value document that would discard the `migrations` registry.
-- **`--dry-run` is side-effect-free.** Under it there is no upgrade network check, no state persistence, and no legacy
-  fold; `resolveBuildVersion` is replaced by a verbose "would resolve build version" message.
+- **`--dry-run` skips the upgrade check.** Under it there is no upgrade network check, no state persistence, and no legacy
+  fold; `resolveBuildVersion` is replaced by a verbose "would resolve build version" message. (Its broader
+  no-side-effects contract lives in [dry-run-preview.md](dry-run-preview.md).)
 
 ## Edge cases
 

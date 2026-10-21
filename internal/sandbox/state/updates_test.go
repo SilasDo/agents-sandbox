@@ -153,3 +153,23 @@ func TestRootStateWriteDropsLegacyAgentsKey(t *testing.T) {
 		t.Fatalf("folded agent check was lost on write:\n%s", data)
 	}
 }
+
+// The legacy agents: fold must not disturb the other root-state registries: an
+// old document that carries both a top-level agents: key and adoption claims
+// folds the agent checks and keeps the claims.
+func TestParseRootStateLegacyAgentsFoldKeepsAdoptionClaims(t *testing.T) {
+	doc := []byte(
+		"adopted_home_volumes:\n  widget-aaa/opencode:\n    checkout_slug: checkout-a\n    volume: vol-a\nagents:\n  opencode:\n    latest_version: 1.2.3\n",
+	)
+	got, err := parseRootState(doc)
+	if err != nil {
+		t.Fatalf("parseRootState: %v", err)
+	}
+	if got.Updates.Agents["opencode"].LatestVersion != "1.2.3" {
+		t.Fatalf("legacy agents key not folded: %+v", got.Updates.Agents)
+	}
+	claim, ok := got.AdoptedHomeVolume("widget-aaa", "opencode")
+	if !ok || claim.CheckoutSlug != "checkout-a" || claim.Volume != "vol-a" {
+		t.Fatalf("adoption claim dropped by the legacy fold: %+v", got.AdoptedHomeVolumes)
+	}
+}

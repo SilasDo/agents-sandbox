@@ -110,6 +110,18 @@ func TestEnvSecretYAMLPaths(t *testing.T) {
 	}
 }
 
+// TestUserSlugConfigDir pins the real (unmocked) per-slug user-config path, the
+// accessor viperconfig uses in place of its former inline Join.
+func TestUserSlugConfigDir(t *testing.T) {
+	WithRealConfigPaths(t)
+	t.Setenv("XDG_CONFIG_HOME", "/xdg/config")
+	got := Get().UserSlugConfigDir("widget-bbb")
+	want := filepath.Join("/xdg/config", "agents-sandbox", "widget-bbb")
+	if got != want {
+		t.Errorf("UserSlugConfigDir() = %q, want %q", got, want)
+	}
+}
+
 func TestUserAgentConfigDir(t *testing.T) {
 	WithRealConfigPaths(t)
 	t.Setenv("HOME", t.TempDir())

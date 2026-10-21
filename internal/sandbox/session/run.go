@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/notify"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -26,11 +26,54 @@ type preparedSandbox interface {
 	Target() string
 	ServeHostPort() int
 	GuestCWD() string
+	Key() state.Key
 }
 
 // prepareSandbox is a test seam swapped in tests to avoid real VM setup.
 var prepareSandbox = func(ctx context.Context, opts options.RunOptions, ui termio.UI) (preparedSandbox, error) {
 	return sandbox.PrepareSandbox(ctx, opts, ui)
+}
+
+// previewSandbox is a test seam swapped in tests to avoid real host inspection.
+var previewSandbox = sandbox.PreviewSandbox
+
+// renderPreview reports what a real run would do, without doing it.
+func renderPreview(ui termio.UI, p sandbox.Preview, shell bool) {
+	switch {
+	case p.ResolveVersionAtBuild:
+		ui.Infof("dry-run: agent version resolved at build time")
+	case p.UpgradeCheckSkipped:
+		ui.Infof("dry-run: agent version %s (upgrade check not run)", p.AgentVersion)
+	default:
+		ui.Infof("dry-run: agent version %s", p.AgentVersion)
+	}
+	if p.BuildImage {
+		ui.Infof("dry-run: would build runner image %s (%s)", p.ImageTag, strings.Join(p.BuildReasons, "; "))
+	} else {
+		ui.Infof("dry-run: would reuse runner image %s", p.ImageTag)
+	}
+	if p.CreateHome {
+		ui.Infof("dry-run: would create home volume")
+	} else {
+		ui.Infof("dry-run: would reuse home volume %s", p.HomeVolume)
+	}
+	if shell {
+		ui.Infof("dry-run: would start interactive shell session")
+	} else {
+		ui.Infof("dry-run: would start agent session")
+	}
+}
+
+// previewAndRender resolves the read-only preview and reports it, returning nil
+// so a dry run ends here: nothing is built, created, written, started, or
+// attached.
+func previewAndRender(ctx context.Context, opts options.RunOptions, ui termio.UI, shell bool) error {
+	p, err := previewSandbox(ctx, opts, ui)
+	if err != nil {
+		return err
+	}
+	renderPreview(ui, p, shell)
+	return nil
 }
 
 // notifyWatch is a test seam; production uses notify.Watch.
@@ -129,6 +172,10 @@ func runServeOnly(ctx context.Context, a agent.Agent, sb msb.Sandbox, ui termio.
 //
 // Note: Run is called from cli.go after all flags are resolved.
 func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
+	if opts.DryRun {
+		return previewAndRender(ctx, opts, ui, false)
+	}
+
 	ses, err := prepareSandbox(ctx, opts, ui)
 	if err != nil {
 		return err
@@ -136,16 +183,12 @@ func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if opts.DryRun {
-		ui.Infof("dry-run: Would run agent session")
-		return nil
-	}
 	if opts.DryRunVM && sb == nil {
 		ui.Infof("dry-run: Would start agent session in VM")
 		return nil
 	}
 
-	projectSlug := git.ProjectSlug()
+	projectSlug := ses.Key().Slug
 
 	a, _ := agent.Lookup(opts.Agent)
 	var streamSpec *agent.EventStreamSpec
@@ -206,6 +249,10 @@ func runServeOnlySession(
 // Shell creates (or reuses) the project VM and drops the user into an
 // interactive shell session, without starting the agent serve daemon.
 func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
+	if opts.DryRun {
+		return previewAndRender(ctx, opts, ui, true)
+	}
+
 	ses, err := prepareSandbox(ctx, opts, ui)
 	if err != nil {
 		return err
@@ -213,16 +260,12 @@ func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if opts.DryRun {
-		ui.Infof("dry-run: Would start interactive shell session")
-		return nil
-	}
 	if opts.DryRunVM && sb == nil {
 		ui.Infof("dry-run: Would start interactive shell session")
 		return nil
 	}
 
-	projectSlug := git.ProjectSlug()
+	projectSlug := ses.Key().Slug
 	return runAttach(ctx, sb, projectSlug, ses.GuestCWD(), ui, opts, "-l")
 }
 

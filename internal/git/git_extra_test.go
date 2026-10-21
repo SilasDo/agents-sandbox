@@ -5,11 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/go-git/go-billy/v5/osfs"
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/cache"
-	"github.com/go-git/go-git/v5/storage/filesystem"
-
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
@@ -45,7 +40,16 @@ func TestResolveGitDir(t *testing.T) {
 		if err := os.MkdirAll(wtDir, 0o755); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		relative, err := filepath.Rel(wtDir, filepath.Join(repo, ".git", "worktrees", "wt"))
+		// A registration needs its commondir marker, so a stripped-and-joined
+		// relative gitdir is validated as genuine.
+		candidate := filepath.Join(repo, ".git", "worktrees", "wt")
+		if err := os.MkdirAll(candidate, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(candidate, "commondir"), []byte("../..\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		relative, err := filepath.Rel(wtDir, candidate)
 		if err != nil {
 			t.Fatalf("Rel: %v", err)
 		}
@@ -89,6 +93,99 @@ func TestResolveGitDir(t *testing.T) {
 		}
 		if got := resolveGitDir(dir); got != "" {
 			t.Errorf("resolveGitDir(%q) = %q, want empty", dir, got)
+		}
+	})
+
+	t.Run("submodule gitdir under a worktrees-named ancestor", func(t *testing.T) {
+		sub := newSubmoduleUnderWorktreesAncestor(t)
+		want := filepath.Join(filepath.Dir(sub), ".git", "modules", "sub")
+		if got := resolveGitDir(sub); got != want {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", sub, got, want)
+		}
+		if isLinkedWorktree(sub) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", sub)
+		}
+	})
+
+	t.Run("relative gitdir under a worktrees-named ancestor", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "worktrees", "proj", "sub")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: ../shared.git\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		want := filepath.Join(root, "..", "shared.git")
+		if got := resolveGitDir(root); got != want {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", root, got, want)
+		}
+		if isLinkedWorktree(root) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", root)
+		}
+	})
+
+	t.Run("absolute gitdir under a worktrees-named ancestor", func(t *testing.T) {
+		root := filepath.Join(t.TempDir(), "proj")
+		if err := os.MkdirAll(root, 0o755); err != nil {
+			t.Fatalf("MkdirAll: %v", err)
+		}
+		shared := filepath.Join(t.TempDir(), "worktrees", "proj", "shared.git")
+		if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+shared+"\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if got := resolveGitDir(root); got != shared {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", root, got, shared)
+		}
+		if isLinkedWorktree(root) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", root)
+		}
+	})
+
+	t.Run("worktree registration under a worktrees-named ancestor", func(t *testing.T) {
+		repo := newRepoUnderWorktreesAncestor(t)
+		wt := filepath.Join(repo, "wt")
+		testutil.RunGit(t, repo, "worktree", "add", wt)
+		want := filepath.Join(repo, ".git")
+		if got := resolveGitDir(wt); got != want {
+			t.Errorf("resolveGitDir(%q) = %q, want %q", wt, got, want)
+		}
+		if !isLinkedWorktree(wt) {
+			t.Errorf("isLinkedWorktree(%q) = false, want true", wt)
+		}
+	})
+}
+
+func TestIsLinkedWorktree(t *testing.T) {
+	t.Run("dotgit directory", func(t *testing.T) {
+		repo := testutil.InitRepo(t)
+		if isLinkedWorktree(repo) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", repo)
+		}
+	})
+
+	t.Run("linked worktree", func(t *testing.T) {
+		repo := testutil.InitRepo(t)
+		wtDir := filepath.Join(t.TempDir(), "wt")
+		testutil.RunGit(t, repo, "worktree", "add", "--detach", wtDir)
+		if !isLinkedWorktree(wtDir) {
+			t.Errorf("isLinkedWorktree(%q) = false, want true", wtDir)
+		}
+	})
+
+	t.Run("separate git dir", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: /shared/repo.git\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		if isLinkedWorktree(dir) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", dir)
+		}
+	})
+
+	t.Run("missing dotgit", func(t *testing.T) {
+		dir := t.TempDir()
+		if isLinkedWorktree(dir) {
+			t.Errorf("isLinkedWorktree(%q) = true, want false", dir)
 		}
 	})
 }
@@ -140,19 +237,4 @@ func TestOriginURL(t *testing.T) {
 			t.Errorf("originURL(%q) = %q, want empty", repo, got)
 		}
 	})
-}
-
-func TestWorktreeRootBareRepo(t *testing.T) {
-	dir := t.TempDir()
-	if _, err := git.PlainInit(dir, true); err != nil {
-		t.Fatalf("PlainInit: %v", err)
-	}
-	fs := osfs.New(dir)
-	repo, err := git.Open(filesystem.NewStorage(fs, cache.NewObjectLRUDefault()), nil)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	if _, err := worktreeRoot(repo); err == nil {
-		t.Error("expected an error for a bare repository")
-	}
 }

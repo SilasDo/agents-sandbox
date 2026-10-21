@@ -149,11 +149,11 @@ func TestRecordImageProvenancePersistError(t *testing.T) {
 	}
 }
 
-func TestFindWorktreeDirNonObjectEntry(t *testing.T) {
-	// A numeric entry cannot be unmarshalled into either the string or object
-	// form, so it is skipped while the object entry is matched.
-	if _, ok := findWorktreeDir(`[123, {"directory": "/w/foo"}]`, "foo"); !ok {
-		t.Error("expected to skip the numeric entry and match the object entry")
+func TestFindWorktreeDirSkipsNonMatching(t *testing.T) {
+	// A non-matching entry is skipped so a later one can match.
+	dir, ok := findWorktreeDir([]string{"/w/bar", "/w/foo"}, "foo")
+	if !ok || dir != "/w/foo" {
+		t.Errorf("findWorktreeDir = %q, %v; want /w/foo, true", dir, ok)
 	}
 }
 
@@ -181,10 +181,10 @@ func (s *errOnCmdSandbox) Shell(
 func TestResolveTargetCreateShellError(t *testing.T) {
 	ui := &termio.Mock{}
 	provider := mustWorktreeProvider(t)
-	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
+	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}, agent.WorktreeProject{})
 	base := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(agent.WorktreeProject{}): msb.NewTestResult(true, 0, `[]`, "", nil),
 		},
 		ShellCalls: &[]string{},
 	}
@@ -373,7 +373,7 @@ func TestCreateProjectVMNetworkError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
@@ -399,7 +399,7 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
@@ -451,7 +451,7 @@ func TestCreateProjectVMServeOnlyAndNetwork(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
@@ -493,7 +493,7 @@ func TestCreateProjectVMServeOnlyPublishesExactPort(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
-		testVMKey(),
+		testVMKey().Slug,
 		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),

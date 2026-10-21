@@ -22,7 +22,7 @@ recreating the VM does not undo those edits. Additional host mounts and files pr
 surfaces. A daemon-based agent's `--worktree` mode moves the working tree inside the VM when the host checkout must remain
 untouched.
 
-The agent's `/home/dev` is backed by a persistent volume scoped to the project and agent. It can be kept across VM rebuilds or
+The agent's `/home/dev` is backed by a persistent volume scoped to the checkout and agent. It can be kept across VM rebuilds or
 reset separately. The VM root is replaceable, but the project checkout and writable host mounts have their own lifecycles.
 
 ## Credentials and network access

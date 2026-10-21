@@ -8,15 +8,18 @@ import (
 	"testing"
 	"time"
 
+	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
 // withAutoPruneMocks opts a smoke test into isolated msb and docker factories so
-// AutoPrune does not reach real microsandbox or Docker.
+// AutoPrune does not reach real microsandbox or Docker. The config-path mock is
+// needed because PruneVolumes now reads project state references unconditionally.
 func withAutoPruneMocks(t *testing.T) {
 	t.Helper()
+	configpaths.WithMockConfigPaths(t)
 	msb.WithMsbMock(t, &msb.MockMsbClient{})
 	docker.WithNoopDockerMock(t)
 }

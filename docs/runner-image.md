@@ -11,6 +11,11 @@ agents-sandbox builds a Docker image for each sandbox. The image contains the se
 CLI tools.
 Projects can extend the image with their own tooling.
 
+The image is built to rebuild quickly and stay lean. Its tools — the base CLI tools, Node, the selected agent, and the
+optional Docker engine — live in separate build stages whose layers are reused unchanged, so editing your project's
+Dockerfile body does not re-run the tool installs, and the same tool layers are shared across every project on the machine. Node
+is present only for the agent that needs it, and a custom base needs no `curl` or `tar` of its own.
+
 ## Home directory
 
 When rebuilding an image, all state in the VM's home directory (`/home/dev/`) would get lost. Therefore, the home
@@ -26,9 +31,9 @@ When a rebuilt image uses the same runner-image tag, agents-sandbox refreshes th
 Docker image directly under that tag. It does not remove the old cached manifest first, because a stopped project VM can
 still reference it. Unused image data is reclaimed later by image pruning.
 
-## One image per project
+## One image per checkout
 
-agents-sandbox builds a single runner image per project. The rendered Dockerfile is composed of per-tool multistage
+agents-sandbox builds a single runner image per checkout. The rendered Dockerfile is composed of per-tool multistage
 stages with fixed parents, merged into the final stage with `COPY` **after** the user body:
 
 - **`agents-sandbox-base`** — the embedded `debian:trixie-slim` tools block for a managed base, or your whole custom base
@@ -250,7 +255,7 @@ List cached images:
 agents-sandbox image list
 ```
 
-The image name includes the project slug and Docker image hash, so changes to the Dockerfile automatically trigger a
+The image name includes the checkout slug and Docker image hash, so changes to the Dockerfile automatically trigger a
 rebuild. When the resulting image digest differs from the image the existing project VM was booted from, the VM is
 recreated on the next run so it uses the new image (the home volume is preserved).
 
@@ -261,7 +266,7 @@ so each agent's image can be identified and updated independently:
 agents-sandbox/runner-<slug>:<agent>-latest
 ```
 
-For example, with a project slug of `my-project`, the opencode image is
+For example, with a checkout slug of `my-project`, the opencode image is
 `agents-sandbox/runner-my-project:opencode-latest`
 and the pi image is `agents-sandbox/runner-my-project:pi-latest`.
 

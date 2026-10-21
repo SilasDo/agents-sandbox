@@ -93,6 +93,7 @@ func ensureProjectVM(
 	opts options.RunOptions,
 	info image.ImageInfo, homeVol, repoPath string,
 	k state.Key,
+	repoSlug string,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
 	if opts.DryRunVM {
@@ -145,15 +146,15 @@ func ensureProjectVM(
 	}
 	defer release()
 
-	return createOrAttachAfterLock(ctx, client, name, k, info, homeVol, repoPath, opts, ui)
+	return createOrAttachAfterLock(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
 }
 
 // replaceSandboxForReconfig destroys an existing VM whose config changed,
-// reporting notFound=true so the caller recreates it. Destroy is a single
-// identity-safe stop-and-remove: an already-gone name is treated like a
-// successful removal, and a name whose held identity was replaced now refers to
-// a sandbox this session did not create for this config, so the reconfiguration
-// fails closed rather than silently adopting it.
+// reporting notFound=true so the caller recreates it. The destroy is the shared
+// identity-safe one (destroyProjectVMHandle): an already-gone name is treated
+// like a successful removal, and a name whose held identity was replaced now
+// refers to a sandbox this session did not create for this config, so the
+// reconfiguration fails closed rather than silently adopting it.
 func replaceSandboxForReconfig(
 	handle msb.SandboxHandle,
 	name string,
@@ -161,24 +162,57 @@ func replaceSandboxForReconfig(
 	spin termio.Spinner,
 ) (bool, error) {
 	ui.Verbosef("config changed; replacing project VM %s", name)
-	destroyErr := handle.Destroy(context.Background())
-	switch {
-	case msb.IsReplaced(destroyErr):
+
+	alreadyGone, destroyErr := destroyProjectVMHandle(
+		context.Background(),
+		handle,
+		name,
+		"rerun to reconfigure it",
+	)
+	if destroyErr != nil {
 		spin.StopError(destroyErr)
-		return false, fmt.Errorf(
-			"project VM %q was replaced by a different sandbox since it was checked; rerun to reconfigure it: %w",
-			name,
-			destroyErr,
-		)
-	case msb.IsNotFound(destroyErr):
+		return false, destroyErr
+	}
+	if alreadyGone {
 		ui.Verbosef("project VM %s was already gone; recreating from new config", name)
-	case destroyErr != nil:
-		spin.StopError(destroyErr)
-		return false, fmt.Errorf("destroy old project VM %q: %w", name, destroyErr)
-	default:
+	} else {
 		ui.Verbosef("replaced project VM %s; recreating from new config", name)
 	}
 	return true, nil
+}
+
+// destroyProjectVMHandle destroys a project VM handle identity-safely and
+// classifies the outcome for every VM teardown path, reporting whether the name
+// was already free before the request and returning the failure otherwise.
+//
+// A handle whose identity was replaced fails closed: its name now refers to a
+// different persisted sandbox than the one this handle was resolved for, so
+// destroying it would stop-and-remove a stranger's VM. The error says so and
+// carries onReplaced, the caller's own instruction for what to do next, because
+// replacing a reconfigured VM and completing a legacy identity adoption ask the
+// user different things. An already-gone name is a success reported through the
+// boolean so callers can log it distinctly; any other destroy failure is
+// returned as-is.
+func destroyProjectVMHandle(
+	ctx context.Context,
+	handle msb.SandboxHandle,
+	name, onReplaced string,
+) (bool, error) {
+	switch destroyErr := handle.Destroy(ctx); {
+	case msb.IsReplaced(destroyErr):
+		return false, fmt.Errorf(
+			"project VM %q was replaced by a different sandbox since it was checked; %s: %w",
+			name,
+			onReplaced,
+			destroyErr,
+		)
+	case msb.IsNotFound(destroyErr):
+		return true, nil
+	case destroyErr != nil:
+		return false, fmt.Errorf("destroy old project VM %q: %w", name, destroyErr)
+	default:
+		return false, nil
+	}
 }
 
 // resolveExistingVM attaches to, waits for, or starts an already-existing VM.
@@ -305,7 +339,7 @@ func createOrAttachAfterLock(
 	ctx context.Context,
 	client msb.Client,
 	name string,
-	k state.Key,
+	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
 	ui termio.UI,
@@ -318,7 +352,7 @@ func createOrAttachAfterLock(
 		return nil, vmBootConnected, fmt.Errorf("re-check sandbox %q: %w", name, err)
 	}
 
-	sb, created, err := createProjectVM(ctx, client, name, k, info, homeVol, repoPath, opts, ui)
+	sb, created, err := createProjectVM(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
 	if err != nil {
 		return nil, vmBootConnected, err
 	}
@@ -444,7 +478,7 @@ func createProjectVM(
 	ctx context.Context,
 	client msb.Client,
 	name string,
-	k state.Key,
+	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
 	ui termio.UI,
@@ -479,7 +513,10 @@ func createProjectVM(
 	optsList := []msbSdk.SandboxOption{
 		msbSdk.WithImage(info.Tag),
 		msbSdk.WithLabels(map[string]string{
-			naming.LabelProject: k.Slug,
+			// The VM name carries the checkout slug; the grouping label carries
+			// the repo slug so list --label project=<repo> groups every clone of
+			// one origin. Nothing keys ownership off this label.
+			naming.LabelProject: repoSlug,
 			naming.LabelImage:   info.Tag,
 		}),
 		msbSdk.WithMounts(mountConfigs),

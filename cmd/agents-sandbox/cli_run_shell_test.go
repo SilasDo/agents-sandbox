@@ -3,14 +3,18 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/moby/moby/client"
 	"github.com/spf13/cobra"
 	msb "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
+	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	sandboxmsb "github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
@@ -97,7 +101,7 @@ func TestRunShellDryRunRun(t *testing.T) {
 	initTestProjectDir(t)
 
 	mock := &sandboxmsb.MockMsbClient{}
-	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "run", "--dry-run")
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "run", "--dry-run-vm")
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -105,24 +109,13 @@ func TestRunShellDryRunRun(t *testing.T) {
 
 	foundInfo := false
 	for _, call := range ui.InfoCalls {
-		if strings.TrimSpace(call) == "dry-run: Would run agent session" {
+		if strings.TrimSpace(call) == "dry-run: Would start agent session in VM" {
 			foundInfo = true
 			break
 		}
 	}
 	if !foundInfo {
-		t.Errorf("expected info 'dry-run: Would run agent session'; got: %v", ui.InfoCalls)
-	}
-
-	foundVerbose := false
-	for _, call := range ui.VerboseCalls {
-		if strings.Contains(call, "dry-run-vm: auto-enabled") {
-			foundVerbose = true
-			break
-		}
-	}
-	if !foundVerbose {
-		t.Errorf("expected verbose 'dry-run-vm: auto-enabled'; got: %v", ui.VerboseCalls)
+		t.Errorf("expected info 'dry-run: Would start agent session in VM'; got: %v", ui.InfoCalls)
 	}
 }
 
@@ -130,7 +123,7 @@ func TestRunShellDryRunShell(t *testing.T) {
 	initTestProjectDir(t)
 
 	mock := &sandboxmsb.MockMsbClient{}
-	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "shell", "--dry-run")
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "shell", "--dry-run-vm")
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -297,7 +290,15 @@ func TestRunShellWorktreeOpencode2ReusesExisting(t *testing.T) {
 		ShellOut:   map[string]sandboxmsb.ShellResult{},
 		ShellCalls: &[]string{},
 	}
-	sb.ShellOut[provider.WorktreeListCmd(mounts.WorkspaceMountPath)] = sandboxmsb.NewTestResult(
+	project := agent.WorktreeProject{ID: "abc", Canonical: "/repo"}
+	sb.ShellOut[provider.WorktreeResolveCmd(mounts.WorkspaceMountPath)] = sandboxmsb.NewTestResult(
+		true,
+		0,
+		`{"project":{"id":"abc","canonical":"/repo"}}`,
+		"",
+		nil,
+	)
+	sb.ShellOut[provider.WorktreeListCmd(project)] = sandboxmsb.NewTestResult(
 		true,
 		0,
 		`[{"directory":"/home/dev/.local/share/opencode/worktree/abc/bugfix-exit-zero"}]`,
@@ -417,4 +418,143 @@ func TestRunShellInvalidSizeFlags(t *testing.T) {
 			}
 		})
 	}
+}
+
+// setupAbsentImagePreviewMocks makes the fresh-project preview report an absent
+// image: it overrides the command fixture's noop docker mock so the local
+// inspect misses, and fails the test if the preview resolves a version, builds
+// an image, or creates a volume. Call it AFTER setupRunMocks: the two
+// t.Cleanup-based overrides (agent-version resolver, docker) are scoped to the
+// calling test by cleanup ordering, while the CreateVolumeFn assignment is a
+// direct per-test field change on the caller's mock.
+func setupAbsentImagePreviewMocks(t *testing.T, mock *sandboxmsb.MockMsbClient) {
+	t.Helper()
+	image.WithMockAgentVersionResolver(t, func(context.Context, agent.Agent, string) (string, error) {
+		t.Fatal("the --dry-run preview must not resolve an agent version")
+		return "", nil
+	})
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{}, errors.New("no such image")
+		},
+		ImageBuildFn: func(context.Context, io.Reader, client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			t.Error("the --dry-run preview must not build the runner image")
+			return client.ImageBuildResult{}, errors.New("unexpected build")
+		},
+	})
+	mock.CreateVolumeFn = func(context.Context, string, ...msb.VolumeOption) (sandboxmsb.VolumeHandle, error) {
+		t.Error("the --dry-run preview must not create a home volume")
+		return nil, errors.New("unexpected CreateVolume")
+	}
+}
+
+// assertPreviewInfoLines pins the four rendered preview lines for a fresh
+// project with an absent image: version, build decision, home volume, session.
+// The runner tag embeds the temp project's slug, so it is asserted by shape.
+func assertPreviewInfoLines(t *testing.T, ui *termio.Mock, shell bool) {
+	t.Helper()
+	calls := ui.InfoCalls
+	if len(calls) != 4 {
+		t.Fatalf("expected exactly the four preview lines, got %d: %v", len(calls), calls)
+	}
+	if got := strings.TrimSpace(calls[0]); got != "dry-run: agent version resolved at build time" {
+		t.Errorf("preview line 1 = %q; want the resolved-at-build message", got)
+	}
+	imageLine := strings.TrimSpace(calls[1])
+	if !strings.HasPrefix(imageLine, "dry-run: would build runner image ") {
+		t.Errorf("preview line 2 = %q; want a would-build line", imageLine)
+	}
+	if !strings.Contains(imageLine, "(runner image not present locally)") {
+		t.Errorf("preview line 2 = %q; want the absent-image reason", imageLine)
+	}
+	if got := strings.TrimSpace(calls[2]); got != "dry-run: would create home volume" {
+		t.Errorf("preview line 3 = %q; want would-create home volume", got)
+	}
+	wantLast := "dry-run: would start agent session"
+	if shell {
+		wantLast = "dry-run: would start interactive shell session"
+	}
+	if got := strings.TrimSpace(calls[3]); got != wantLast {
+		t.Errorf("preview line 4 = %q; want %q", got, wantLast)
+	}
+}
+
+// TestRunDryRunPreviewCLI pins the run-level read-only preview: `run --dry-run`
+// on a fresh project renders the four plan lines and builds nothing, creates no
+// volume, and never resolves a version.
+func TestRunDryRunPreviewCLI(t *testing.T) {
+	initTestProjectDir(t)
+
+	mock := &sandboxmsb.MockMsbClient{}
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "run", "--dry-run")
+	setupAbsentImagePreviewMocks(t, mock)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertPreviewInfoLines(t, ui, false)
+	if len(mock.CreatedSandboxCalls) != 0 {
+		t.Errorf("--dry-run created %d sandbox(es), want 0", len(mock.CreatedSandboxCalls))
+	}
+}
+
+// TestShellDryRunPreviewCLI pins the shell-level preview: same read-only plan,
+// with the shell session as its last line.
+func TestShellDryRunPreviewCLI(t *testing.T) {
+	initTestProjectDir(t)
+
+	mock := &sandboxmsb.MockMsbClient{}
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "shell", "--dry-run")
+	setupAbsentImagePreviewMocks(t, mock)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertPreviewInfoLines(t, ui, true)
+	if len(mock.CreatedSandboxCalls) != 0 {
+		t.Errorf("--dry-run created %d sandbox(es), want 0", len(mock.CreatedSandboxCalls))
+	}
+}
+
+// TestRunDryRunWithPinnedVersionReportsPin verifies an explicit --agent-version
+// is reported verbatim and the upgrade/latest-version seam is never reached.
+func TestRunDryRunWithPinnedVersionReportsPin(t *testing.T) {
+	initTestProjectDir(t)
+
+	orig := sandbox.SetAgentLatestVersion(func(context.Context, agent.Agent) (string, error) {
+		t.Error("the --dry-run preview must not run the agent latest-version check")
+		return "", nil
+	})
+	t.Cleanup(func() { sandbox.SetAgentLatestVersion(orig) })
+
+	mock := &sandboxmsb.MockMsbClient{}
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "run", "--dry-run", "--agent-version", "9.9.9")
+	setupAbsentImagePreviewMocks(t, mock)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(ui.InfoCalls) == 0 || strings.TrimSpace(ui.InfoCalls[0]) != "dry-run: agent version 9.9.9" {
+		t.Errorf("expected pinned version line 'dry-run: agent version 9.9.9'; got: %v", ui.InfoCalls)
+	}
+}
+
+// TestRunDryRunServeOnlyIsPurePreview verifies --serve-only combined with
+// --dry-run returns from the preview before serving, so it neither hangs nor
+// attaches.
+func TestRunDryRunServeOnlyIsPurePreview(t *testing.T) {
+	initTestProjectDir(t)
+
+	mock := &sandboxmsb.MockMsbClient{}
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{}, "run", "--dry-run", "--serve-only")
+	setupAbsentImagePreviewMocks(t, mock)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	assertPreviewInfoLines(t, ui, false)
 }

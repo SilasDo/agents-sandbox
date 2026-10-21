@@ -78,6 +78,15 @@ type HomeState struct {
 	SecretState     SecretState  `yaml:"secret_state,omitempty"`
 	NetworkState    NetworkState `yaml:"network_state,omitempty"`
 	MountState      MountState   `yaml:"mount_state,omitempty"`
+
+	// RecoveredHomeVolume is the home volume a VM-only identity adoption (#144)
+	// preserved by destroying a legacy VM whose state file was lost. Adoption
+	// records it before the destroy, because the legacy VM is then gone and its
+	// mount can no longer be read; home resolution recovers it into HomeVolume
+	// (with the current digest and fingerprints) and clears the field. It is set
+	// only while a recovery is pending, so an empty value means the state is
+	// settled.
+	RecoveredHomeVolume string `yaml:"recovered_home_volume,omitempty"`
 }
 
 // Offered reports whether the version has already had its rebuild prompt shown

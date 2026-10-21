@@ -95,6 +95,10 @@ func (m *mockConfigPaths) UserConfigDir() string {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "userconfig"))
 }
 
+func (m *mockConfigPaths) UserSlugConfigDir(slug string) string {
+	return ensureMockConfigDirectory(filepath.Join(m.UserConfigDir(), slug))
+}
+
 func (m *mockConfigPaths) UserCacheDir() string {
 	return ensureMockConfigDirectory(filepath.Join(m.baseDir, "usercache"))
 }
@@ -184,9 +188,13 @@ func (f *failFastConfigPaths) mustMock() {
 }
 
 func (f *failFastConfigPaths) UserConfigDir() string { f.mustMock(); return "" }
-func (f *failFastConfigPaths) UserCacheDir() string  { f.mustMock(); return "" }
-func (f *failFastConfigPaths) UserStateDir() string  { f.mustMock(); return "" }
-func (f *failFastConfigPaths) UserDataDir() string   { f.mustMock(); return "" }
+func (f *failFastConfigPaths) UserSlugConfigDir(_ string) string {
+	f.mustMock()
+	return ""
+}
+func (f *failFastConfigPaths) UserCacheDir() string { f.mustMock(); return "" }
+func (f *failFastConfigPaths) UserStateDir() string { f.mustMock(); return "" }
+func (f *failFastConfigPaths) UserDataDir() string  { f.mustMock(); return "" }
 
 func (f *failFastConfigPaths) UserAgentConfigDir(_ agent.Agent) string {
 	f.mustMock()

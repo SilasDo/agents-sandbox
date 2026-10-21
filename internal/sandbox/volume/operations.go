@@ -205,6 +205,13 @@ func volumeOp(
 	if oldVolume == "" {
 		oldVolume = st.HomeVolume
 		if oldVolume == "" {
+			// A VM-only identity adoption (#144) records the legacy home volume in
+			// RecoveredHomeVolume before destroying the legacy VM, leaving HomeVolume
+			// empty until home resolution runs. Use the pending volume as the source
+			// so a first volume op works instead of failing.
+			oldVolume = st.RecoveredHomeVolume
+		}
+		if oldVolume == "" {
 			return errors.New("no volume to operate on: state has no home_volume set")
 		}
 	}
@@ -259,11 +266,18 @@ func volumeOp(
 		}
 		cur.HomeVolume = newVolumeName
 		cur.ImageDigest = info.Digest
+		// The pending recovered-volume marker is superseded by the new volume;
+		// leaving it set would make the next home resolution recover the old
+		// volume and undo this operation (#144).
+		cur.RecoveredHomeVolume = ""
 		return true, nil
 	}); err != nil {
 		vm.cleanupVolume(ctx, client, newVolumeName, ui)
 		return err
 	}
+	// If the operation replaced a volume an identity adoption preserved, its
+	// claim is spent; retire it so it is not left stale (#144).
+	clearAdoptionClaim(k, oldVolume, ui)
 
 	if rmOld {
 		if err := client.RemoveVolume(ctx, oldVolume); err != nil {

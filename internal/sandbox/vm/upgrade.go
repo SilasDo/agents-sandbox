@@ -26,6 +26,16 @@ var agentLatestVersion = func(ctx context.Context, a agent.Agent) (string, error
 	return checker.LatestVersion(ctx)
 }
 
+// SetAgentLatestVersion replaces the agent-latest-version seam and returns the
+// previous value. Tests use it to keep the upgrade check off the network.
+func SetAgentLatestVersion(
+	f func(ctx context.Context, a agent.Agent) (string, error),
+) func(ctx context.Context, a agent.Agent) (string, error) {
+	orig := agentLatestVersion
+	agentLatestVersion = f
+	return orig
+}
+
 // existingAgentVersion reports the agent release baked into a project's existing
 // runner image, read from its identity label. A package seam so tests do not
 // touch a real docker daemon.

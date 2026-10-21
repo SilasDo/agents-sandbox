@@ -12,6 +12,7 @@ import (
 
 type ConfigPaths interface {
 	UserConfigDir() string
+	UserSlugConfigDir(slug string) string
 	UserCacheDir() string
 	UserStateDir() string
 	UserDataDir() string
@@ -46,6 +47,13 @@ var Get = func() ConfigPaths {
 // agents-sandbox, defaulting to ~/.config/agents-sandbox.
 func (c *realConfigPaths) UserConfigDir() string {
 	return filepath.Join(xdgBaseDir("XDG_CONFIG_HOME", ".config"), pathPrefix)
+}
+
+// UserSlugConfigDir returns the per-slug user-config directory: the tool's user
+// config dir joined with the project slug. It is keyed by the repo slug, so
+// every clone of one origin shares it.
+func (c *realConfigPaths) UserSlugConfigDir(slug string) string {
+	return filepath.Join(c.UserConfigDir(), slug)
 }
 
 // UserCacheDir returns the tool's cache directory: $XDG_CACHE_HOME/
@@ -144,12 +152,12 @@ func resolveProjectConfig(cwd string) (string, string) {
 	if err != nil {
 		physical = cwd
 	}
-	layout := git.ResolveWorkspaceLayout(physical)
-	if !layout.Bare || layout.OutsideWorktree || layout.CheckoutRoot == "" {
+	identity := git.ResolveIdentity(physical)
+	if !identity.Bare || identity.OutsideWorktree || identity.CheckoutRoot == "" {
 		return projectConfigDir, ""
 	}
-	base := filepath.Join(layout.CheckoutRoot, projectConfigDir)
-	ignored := filepath.Join(layout.WorktreeRoot, projectConfigDir)
+	base := filepath.Join(identity.CheckoutRoot, projectConfigDir)
+	ignored := filepath.Join(identity.WorktreeRoot, projectConfigDir)
 	if ignored == base {
 		// The CWD is the bare root itself: this is the directory the base reads,
 		// not a worktree copy that gets ignored.

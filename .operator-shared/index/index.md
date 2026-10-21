@@ -30,7 +30,7 @@ read_if: Navigating the codebase.
 - `cli.go` — Cobra root, `execute`, injection seams (msb/docker mocks).
 - `commands.go` — Root/tree/version/upgrade commands and wiring.
 - `commands_cli.go` — run/shell/stop/kill commands.
-- `commands_system.go` — doctor/list/config/home/agent/build/dockerfile/image/volume/sandbox/prune commands.
+- `commands_system.go` — doctor/list/config/home/agent/build/dockerfile/image/volume/sandbox/prune commands, including `config paths` (the config layers in precedence order, driven by `viperconfig.ConfigLayers`).
 - `commands_inspect.go` — `volume inspect`/`image inspect`/`sandbox inspect` command builders.
 - `commands_storage.go` — `df` command and the `storage` group alias (`storage df`/`storage prune`).
 - `list_output.go`, `inspect_output.go`, `prune_output.go`, `storage_output.go` — shared table/JSON/quiet list rendering, single-object inspect rendering, prune report JSON, and the msb-shaped `df` report.
@@ -46,7 +46,7 @@ read_if: Navigating the codebase.
 - `configmerge/` — Merge config with precedence.
 - `configmigration/` — **See [configmigration subindex](configmigration.md)** (native agent config migration, guided onboarding, network plan).
 - `configpaths/` — Config/home path resolution and guards.
-- `git/` — Git helpers (go-git wrapper).
+- `git/` — Git helpers (go-git wrapper) and project identity: `Identity`/`ResolveIdentity` with the repo slug (origin-derived; keys the per-slug user config dir and the grouping label) and the checkout slug (git common dir; keys state/VM/volume/locks/image tag), plus the bind-root rule (#144).
 - `homeconfig/` — Home config provisioning.
 - `humanize/` — Human-readable formatting.
 - `notify/` — Desktop notifications (backend, dedup, events, watch).
@@ -55,7 +55,7 @@ read_if: Navigating the codebase.
 - `termio/` — Terminal UI (printer, table, prompt, spinner, ansi, levels).
 - `testutil/` — Test helpers (mocks, testgit) and the test-isolation contract test (`isolation_contract_test.go`).
 - `upgrade/` — Self-upgrade (incl. Homebrew).
-- `viperconfig/` — Viper-based launcher config.
+- `viperconfig/` — Viper-based launcher config, incl. `ConfigLayers` (the six-layer precedence list that drives both `NewResolver`'s merge order and the `config paths` display, so the two cannot drift).
 - `yamlfmt/` — YAML formatting.
 
 ### `test/harness/` — `msb`-tagged harness smoke tests

@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 
+	"github.com/moby/moby/client"
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
@@ -78,7 +81,7 @@ func runVolumeOpScenario(t *testing.T, tc volumeOpScenario) {
 		}
 	}
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	if tc.withStopped {
 		mock.Sandboxes = append(mock.Sandboxes, mkStoppedVM(slug))
 	}
@@ -151,6 +154,63 @@ func TestVolumeMigrate(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			runVolumeOpScenario(t, tc)
+		})
+	}
+}
+
+// TestVolumeOpsDryRunDoesNotEnsureImage pins the dry-run contract of the volume
+// ops: the preview message needs only the state-derived old volume, so the dry
+// run must not build (or even inspect for) the runner image, and must not create
+// a volume. Docker is mocked so that any image ensure fails the test loudly.
+func TestVolumeOpsDryRunDoesNotEnsureImage(t *testing.T) {
+	for _, command := range []string{cmdMigrate, cmdReset, cmdEdit} {
+		t.Run(command, func(t *testing.T) {
+			initTestProjectDir(t)
+			configpaths.WithMockConfigPaths(t)
+			ui := &termio.Mock{}
+
+			dockerMock := &docker.MockDockerClient{
+				ImageInspectFn: func(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+					return client.ImageInspectResult{}, errors.New("ImageInspect must not be called during --dry-run")
+				},
+				ImageBuildFn: func(context.Context, io.Reader, client.ImageBuildOptions) (client.ImageBuildResult, error) {
+					return client.ImageBuildResult{}, errors.New("ImageBuild must not be called during --dry-run")
+				},
+			}
+			docker.WithDockerMock(t, dockerMock)
+			doctor.MockedCheckAll(t, true)
+			image.WithMockAgentVersion(t, "0.0.0-test")
+
+			slug := git.CheckoutSlug()
+			homeVolume := fmt.Sprintf("agents-sandbox-home-%s-20260814T132349", slug)
+			if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+				HomeVolume: homeVolume,
+			}); err != nil {
+				t.Fatalf("seed home state: %v", err)
+			}
+
+			createVolumeCalls := 0
+			msb.WithMsbMock(t, &msb.MockMsbClient{
+				CreateVolumeFn: func(context.Context, string, ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+					createVolumeCalls++
+					return nil, errors.New("CreateVolume must not be called during --dry-run")
+				},
+			})
+
+			root := buildRootCmd(ui)
+			root.SetArgs([]string{cmdVolume, command, "--dry-run"})
+			if err := root.Execute(); err != nil {
+				t.Fatalf("volume %s --dry-run: %v", command, err)
+			}
+			if createVolumeCalls != 0 {
+				t.Errorf("CreateVolume called %d times during --dry-run, want 0", createVolumeCalls)
+			}
+			assertInfoHasPrefix(t, ui, "dry-run: Would ")
+			for _, call := range ui.InfoCalls {
+				if !strings.Contains(call, homeVolume) {
+					t.Errorf("dry-run message %q does not name the old volume %q", call, homeVolume)
+				}
+			}
 		})
 	}
 }

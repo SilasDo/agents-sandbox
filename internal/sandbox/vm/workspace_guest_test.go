@@ -3,7 +3,6 @@ package vm
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -32,31 +31,6 @@ func TestGuestWorkspacePath(t *testing.T) {
 				t.Errorf("guestWorkspacePath(%q, %q) = %q, want %q", tc.bindRoot, tc.cwd, got, tc.want)
 			}
 		})
-	}
-}
-
-func TestResolveBindLayoutOutsideWorktreeWarns(t *testing.T) {
-	repo := testutil.InitRepo(t)
-	wt := filepath.Join(t.TempDir(), "wt")
-	testutil.RunGit(t, repo, "worktree", "add", wt)
-
-	ui := &termio.Mock{}
-	layout, guestCWD := resolveBindLayout(wt, ui)
-
-	if guestCWD != mounts.WorkspaceMountPath {
-		t.Errorf("guestCWD = %q, want %q", guestCWD, mounts.WorkspaceMountPath)
-	}
-	if layout.BindRoot != wt {
-		t.Errorf("BindRoot = %q, want %q", layout.BindRoot, wt)
-	}
-	if len(ui.WarnCalls) != 1 {
-		t.Fatalf("WarnCalls = %d, want 1", len(ui.WarnCalls))
-	}
-	if !strings.Contains(ui.WarnCalls[0], "outside its checkout") {
-		t.Errorf("warning %q missing %q", ui.WarnCalls[0], "outside its checkout")
-	}
-	if !strings.Contains(ui.WarnCalls[0], repo) {
-		t.Errorf("warning %q missing checkout root %q", ui.WarnCalls[0], repo)
 	}
 }
 

@@ -15,6 +15,11 @@ command reports the bare version (e.g. `0.1.0`).
   tag (`PKG=...` narrows to one package, `FULL=1` runs every line). It is deliberately excluded from `make check`,
   `make verify`, and CI. Part of the release flow: every survivor is either killed by a strengthened test or recorded in
   source with a reason (#253).
+- Internal: run the first on-demand mutation sweep (`make mutation FULL=1 PKG=./internal/agent/`) and close every
+  survivor. The strengthened tests now assert error wrapping (`errors.Is`/`errors.As`), outbound request headers, the
+  non-200 and decode error paths, provision-rule validation (which exposed and dropped a redundant `HasPrefix` guard),
+  and per-fetch decode failures; the HTTP client timeout, which no local test can observe, is recorded in source with a
+  `// gomutants:disable` reason (#253).
 - Internal: add `make test-race` (race detector) and `make vulncheck` (`govulncheck` against the Go vulnerability
   database) to `make verify`, and run each as its own CI job. Both stay out of `make check` so the everyday loop stays
   fast; `vulncheck` needs network on first run. The first scan reported nine reachable Go standard-library
@@ -39,6 +44,10 @@ command reports the bare version (e.g. `0.1.0`).
   system store. The script is vendored verbatim from microsandbox v0.7.8 (`data/msb-trust.LICENSE` records the source,
   the hash, and the re-sync command), and its bytes participate in the runner image's content identity (#152). The
   helper's Apache-2.0 license ships with it at `/usr/share/licenses/msb-trust/LICENSE`.
+- CLI: `config paths` prints the launcher-config layers in precedence order (each file layer's resolved path, flagged
+  `(missing)` when absent) and the resolved repo slug, making the per-slug user config dir discoverable. The layer block
+  is stdout; the guidance naming the committed project config and the generic user config is stderr and survives
+  `--quiet`. #144.
 - CLI: `image remove <ref>...` (`rm`) deletes cached runner images by reference and `sandbox remove <name>` (`rm`)
   removes a project VM. `image remove` accepts only `agents-sandbox/runner-*` references and refuses an in-use image
   unless `-f`/`--force` (naming the referencing projects); `sandbox remove` refuses a running VM unless
@@ -153,6 +162,27 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- **Breaking** Project identity is split by scope: a checkout-scoped slug (the resolved git common dir) keys the state
+  directory, VM name, home volume, locks, and runner image tag, while a repo-scoped slug (the origin URL) keys the
+  per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get separate
+  VMs and home volumes, sharing a runner image only best-effort through the build cache; a checkout and the worktrees
+  *inside* it keep sharing everything; a worktree *outside* its checkout gets its own identity instead of being refused.
+  The first post-upgrade run migrates automatically with a notice — it destroys the legacy origin-keyed VM of every
+  agent whose state the move carries, then recursively merges the state directory onto the checkout slug, never
+  overwriting an existing file (anything it cannot move is reported and left in place). A bare root also adopts its
+  pre-split path-derived identity, so a bare-checkout user's saved home volume and per-slug config are not stranded.
+  A surviving legacy VM is itself adopted even when its state file was lost (an issue #219 recovery): its mounted
+  home volume is recorded durably in the checkout state *before* the VM is destroyed, so the previous home volume —
+  credentials and files — is reused by the next run instead of a fresh one being minted, even when the adopting
+  command is not a run (or the run fails before home resolution). A `--dry-run` leaves the legacy
+  layout in place. The adoption trigger skips migration rather than aborting the run when the *checkout* state is
+  corrupt (so the caller's recovery path can still repair it), a bare root reads its pre-split per-slug config before
+  the rename so the first post-upgrade run honours the user's saved settings, and `volume migrate`/`reset`/`edit`
+  accept a pending recovered volume as their source and clear the marker when they commit. A shared legacy
+  identity's recovered home volume is claimed under the legacy identity in the launcher-global root state, so a
+  second clone cannot recover the same volume; the claim is committed before the recovery marker, and a checkout that
+  destroys the shared legacy VM without owning the volume first materializes the owner's marker from the claim (failing
+  the migration closed if it cannot), so the owner's volume is never stranded by another clone's destroy. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the
@@ -167,9 +197,18 @@ command reports the bare version (e.g. `0.1.0`).
   `updates.launcher` (the retired `upgrade.json`, whose `last_check` is now `last_checked`) and `updates.agents` (agent
   update checks). The old top-level `agents:` key and `upgrade.json` fold in silently on first run, so no action is
   needed on upgrade (#141).
+- `--dry-run` is now a read-only preview. It reports the agent version (or that the version resolves at build time),
+  whether the runner image would build (with the same reasons a real build logs) or be reused, and whether the home
+  volume would be created or reused — without building the runner image, creating a home volume, writing project state,
+  starting a VM, attaching, or making any network request (no version resolution and no base-image pull). The
+  `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image and inspect/build nothing.
 
 ### Fixed
 
+- Worktrees: `--worktree` for `opencode2` ran its worktree commands through `jq` inside the VM, so a custom runner base
+  without `jq` failed with `jq: command not found`. The launcher now parses the worktree API responses in Go, so the
+  worktree API path needs no `jq` (only `curl`). A malformed worktree list now fails the run for both `opencode` and
+  `opencode2` instead of reading as "no worktrees" and silently creating a second worktree (#257).
 - Notifications: a second permission or form request inside one turn now notifies, even when both are asked back
   to back in a single step. After the first request the session stayed in its awaiting-input state, so a later
   request in the same turn was silent; each request is now identified by its event id, so distinct requests alert

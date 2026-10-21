@@ -16,10 +16,11 @@ import (
 // ResolveHomeVolume determines the home volume to mount for a project run.
 //
 // When the state file resolves to a volume that still exists, that volume is
-// reused. Otherwise the live VM's mounted volume (recoveredVolume) is adopted
-// if it still exists, so a lost state file does not mint a duplicate volume and
-// orphan the previous one (issue #219). When neither is available it falls back
-// to EnsureNewHome.
+// reused. When it records a pending RecoveredHomeVolume (a VM-only identity
+// adoption, #144), that volume is recovered into the state. Otherwise the live
+// VM's mounted volume (recoveredVolume) is adopted if it still exists, so a lost
+// state file does not mint a duplicate volume and orphan the previous one (issue
+// #219). When none is available it falls back to EnsureNewHome.
 func (vm *Manager) ResolveHomeVolume(
 	ctx context.Context,
 	client msb.Client,
@@ -36,6 +37,14 @@ func (vm *Manager) ResolveHomeVolume(
 			ui.Warnf("could not read state file for project %q: %v", k.Slug, err)
 		}
 		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
+	}
+
+	// A VM-only identity adoption (#144) destroyed the legacy VM and recorded its
+	// home volume here first, because the VM is then gone and cannot be read.
+	// Finish that recovery so the volume becomes the project's HomeVolume with
+	// the current digest and fingerprints.
+	if st.RecoveredHomeVolume != "" {
+		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, st.RecoveredHomeVolume, ui)
 	}
 
 	if _, err := client.GetVolume(ctx, st.HomeVolume); err != nil {
@@ -68,11 +77,15 @@ func (vm *Manager) recoverOrCreateHome(
 ) (string, state.HomeState, error) {
 	recovered, ok := confirmedRecoveredVolume(ctx, client, recoveredVolume)
 	if !ok {
-		return vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
+		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
+		if err == nil {
+			clearAdoptionClaim(k, recoveredVolume, ui)
+		}
+		return volName, hs, err
 	}
 
 	ui.Warnf(
-		"state for project %q is missing or its volume is gone; recovering home volume %q from the running VM",
+		"state for project %q needs home-volume recovery; recovering home volume %q",
 		k.Slug,
 		recovered,
 	)
@@ -85,6 +98,10 @@ func (vm *Manager) recoverOrCreateHome(
 		return true, nil
 	}); err != nil {
 		ui.Warnf("failed to recover state file: %v", err)
+	} else {
+		// The recovered volume is now the project's HomeVolume and the marker is
+		// gone, so the adoption claim that recorded ownership is spent.
+		clearAdoptionClaim(k, recovered, ui)
 	}
 	if !callbackRan {
 		// The transaction failed before it could run the callback (lock or read
@@ -95,10 +112,26 @@ func (vm *Manager) recoverOrCreateHome(
 	return recovered, recoveredState, nil
 }
 
+// clearAdoptionClaim retires a spent adoption claim (#144) after the recovered
+// volume has been folded into the project's own state. Best-effort: a stale
+// claim is harmless once the legacy VM is gone, so a failure only warns.
+func clearAdoptionClaim(k state.Key, volume string, ui termio.UI) {
+	if volume == "" {
+		return
+	}
+	if err := state.ClearAdoptedHomeVolume(k.Slug, volume); err != nil {
+		ui.Warnf("failed to clear the adoption claim for volume %q: %v", volume, err)
+	}
+}
+
 // priorOrNil returns the readable prior document for carry-forward, or nil when
-// recovery is rebuilding from scratch.
+// recovery is rebuilding from scratch. An identity-adoption marker
+// (RecoveredHomeVolume set, #144) is not a real prior: it holds no fingerprints
+// or upgrade fields, so treating it as one would copy empty fingerprints forward.
+// Discarding it also seeds the desired fingerprints, the #183 rule for a state
+// whose contents were effectively lost.
 func priorOrNil(cur *state.HomeState, exists bool) *state.HomeState {
-	if !exists {
+	if !exists || cur.RecoveredHomeVolume != "" {
 		return nil
 	}
 	return cur

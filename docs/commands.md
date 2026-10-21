@@ -28,7 +28,7 @@ Run a coding agent in a microsandbox VM. This is the default command — `agents
 ```console
 agents-sandbox [ARGS...]                          # default: run the configured agent
 agents-sandbox -w bugfix-fix-thing [ARGS...]            # worktree session
-agents-sandbox --dry-run                          # validate only
+agents-sandbox --dry-run                          # read-only preview
 agents-sandbox -m 8G -c 4 -- -c "fix bug"         # CPU/memory + ops
 agents-sandbox -- -c "fix bug"                    # arguments to the agent
 ```
@@ -42,7 +42,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--worktree`   | `-w`  | `""`     | Isolated agent worktree named <name>, optionally starting from base ref <name>:<base>                                  |
 | `--rebuild`    | `-r`  | `false`  | Rebuild runner image before starting (clean rebuild; still offers an agent upgrade if one is available)                                                                                                       |
 | `--agent-version` | —  | `""`     | Pin the version agents-sandbox installs into the runner image (default: latest). Ignored for a user-provided agent. |
-| `--dry-run`    | `-n`  | `false`  | Validate setup without running the agent                                                                                                    |
+| `--dry-run`    | `-n`  | `false`  | Read-only preview of a run: report the agent version (or that it resolves at build time), whether the runner image would build (with the reasons a real build logs) or be reused, and whether the home volume would be created or reused — without building, creating a volume, writing state, starting a VM, attaching, or making any network request. When the reported version is a known, non-pinned one, its line notes `(upgrade check not run)` |
 | `--cpus`       | `-c`  | `0`      | vCPUs for the sandbox (0 = all)                                                                                                            |
 | `--memory`     | `-m`  | `4G`     | Memory limit, e.g. `4G`, `512M`                                                                                                            |
 | `--disk-size`  | —     | `""`     | Project VM root disk size (e.g. 16G). Empty = microsandbox runtime default (~4 GiB). Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
@@ -384,6 +384,33 @@ config dir: user="/home/me/.config/agents-sandbox/opencode2"  project="/work/rep
 The trailing label is `primary` when the agent's own namespace is used, or `legacy fallback "<dir>"` when the agent is reading a shared legacy namespace (see [agent configuration]({% link configuration/agent.md %})). These are host launcher-config dirs; the guest agent config path is always `~/.config/opencode` regardless.
 
 Each host file is listed as `merged` (its VM path is the merged config path or part of the removed config-file family) or `not merged` (copied verbatim). Verbatim mirror files are listed as their host source path → VM path.
+
+#### config paths
+
+Print the launcher-config layers in precedence order (lowest to highest), the resolved path of each, and the repo slug.
+
+```console
+agents-sandbox config paths
+```
+
+Each file layer is shown with its path, flagged `(missing)` when the file does not exist; the two environment layers show
+their variable-name globs, and `flags` is the CLI-flag layer:
+
+```
+config layers (lowest to highest precedence):
+  generic user config  /home/me/.config/agents-sandbox
+  per-project user config  /home/me/.config/agents-sandbox/myproject-<hash>  (missing)
+  project config  /work/repo/.agents-sandbox  (missing)
+  legacy env  OPENCODE_SANDBOX_*
+  env  AGENTS_SANDBOX_*
+  flags
+repo slug:  myproject-<hash>
+```
+
+The layer lines are stdout; a guidance line naming the committed project config (`.agents-sandbox/config.yaml`) and the
+generic user config is stderr and survives `--quiet`. The command takes no flags (the global `--quiet` suppresses the
+layer block). The per-slug user config dir is keyed by the **repo** slug, so every clone of one remote shares it; that is
+the slug reported here (see [Per-slug configuration]({% link configuration/launcher.md %}#per-slug-configuration)).
 
 #### config home
 

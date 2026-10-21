@@ -18,6 +18,9 @@ import (
 type RootState struct {
 	Migrations map[string]Migration `yaml:"migrations,omitempty"`
 	Updates    Updates              `yaml:"updates,omitempty"`
+	// AdoptedHomeVolumes records, per legacy project identity, the checkout that
+	// adopted its lost-state home volume (#144). See AdoptedHomeVolume.
+	AdoptedHomeVolumes map[string]AdoptedHomeVolume `yaml:"adopted_home_volumes,omitempty"`
 }
 
 // Updates groups the launcher-global update-check state: Launcher for
@@ -94,6 +97,69 @@ func (s *RootState) SetMigration(name string, m Migration) {
 		s.Migrations = map[string]Migration{}
 	}
 	s.Migrations[name] = m
+}
+
+// AdoptedHomeVolume records the checkout that adopted a legacy project
+// identity's lost-state home volume (#144). A legacy identity (every clone of
+// one origin) has one VM and therefore one home volume, so exactly one checkout
+// may own it. The record is keyed under the *legacy* identity so a second clone
+// can see the claim and start fresh, instead of both recovering the same volume
+// and sharing one home between two VMs.
+//
+//exhaustruct:ignore
+type AdoptedHomeVolume struct {
+	CheckoutSlug string `yaml:"checkout_slug"`
+	Volume       string `yaml:"volume"`
+}
+
+// adoptedHomeVolumeKey keys an adoption claim by the legacy project identity;
+// neither a slug nor an agent name contains "/", so the join is unambiguous.
+func adoptedHomeVolumeKey(slug, agent string) string { return slug + "/" + agent }
+
+// AdoptedHomeVolume returns the adoption claim for a legacy project identity.
+func (s *RootState) AdoptedHomeVolume(slug, agent string) (AdoptedHomeVolume, bool) {
+	claim, ok := s.AdoptedHomeVolumes[adoptedHomeVolumeKey(slug, agent)]
+	return claim, ok
+}
+
+// ClaimAdoptedHomeVolume records checkoutSlug as the owner of the home volume a
+// legacy project identity's VM mounted, initializing the registry if nil.
+func (s *RootState) ClaimAdoptedHomeVolume(slug, agent, checkoutSlug, volume string) {
+	if s.AdoptedHomeVolumes == nil {
+		s.AdoptedHomeVolumes = map[string]AdoptedHomeVolume{}
+	}
+	s.AdoptedHomeVolumes[adoptedHomeVolumeKey(slug, agent)] = AdoptedHomeVolume{
+		CheckoutSlug: checkoutSlug,
+		Volume:       volume,
+	}
+}
+
+// ForgetAdoptedHomeVolume removes every claim a checkout holds for the given
+// volume, once the volume has been recovered into the checkout's own state.
+func (s *RootState) ForgetAdoptedHomeVolume(checkoutSlug, volume string) {
+	for key, claim := range s.AdoptedHomeVolumes {
+		if claim.CheckoutSlug == checkoutSlug && claim.Volume == volume {
+			delete(s.AdoptedHomeVolumes, key)
+		}
+	}
+}
+
+// ClearAdoptedHomeVolume retires a checkout's adoption claim for a recovered
+// volume. It is best-effort bookkeeping: callers warn on error, since a stale
+// claim is harmless once the legacy VM is gone (no other checkout can adopt it).
+func ClearAdoptedHomeVolume(checkoutSlug, volume string) error {
+	if volume == "" {
+		return nil
+	}
+	_, err := WithRootState(true, func(txn *RootTxn) error {
+		before := len(txn.State().AdoptedHomeVolumes)
+		txn.State().ForgetAdoptedHomeVolume(checkoutSlug, volume)
+		if len(txn.State().AdoptedHomeVolumes) == before {
+			return nil
+		}
+		return txn.Commit()
+	})
+	return err
 }
 
 // AgentCheckInterval is the minimum time between network upgrade checks for an
@@ -178,19 +244,25 @@ func ReadRootState() (*RootState, error) {
 // into Updates.Agents, so an old document reads correctly and the next write
 // normalizes it. The new shape wins: a non-empty updates.agents is adopted as-is
 // and the legacy key ignored, while updates.launcher survives either way.
+//
+// The legacy key is decoded into its own small struct rather than a mirror of
+// RootState: a mirror silently drops any field it does not restate, so adding a
+// field to RootState would lose that field's data on every read.
 func parseRootState(data []byte) (RootState, error) {
-	var wire struct {
-		Migrations   map[string]Migration       `yaml:"migrations"`
-		Updates      Updates                    `yaml:"updates"`
-		LegacyAgents map[string]AgentCheckState `yaml:"agents"`
-	}
-	if err := yaml.Unmarshal(data, &wire); err != nil {
+	var state RootState
+	if err := yaml.Unmarshal(data, &state); err != nil {
 		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
 	}
-	if len(wire.Updates.Agents) == 0 {
-		wire.Updates.Agents = wire.LegacyAgents
+	if len(state.Updates.Agents) == 0 {
+		var legacy struct {
+			Agents map[string]AgentCheckState `yaml:"agents"`
+		}
+		if err := yaml.Unmarshal(data, &legacy); err != nil {
+			return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+		}
+		state.Updates.Agents = legacy.Agents
 	}
-	return RootState{Migrations: wire.Migrations, Updates: wire.Updates}, nil
+	return state, nil
 }
 
 // writeRootState atomically writes the launcher-global state to disk. Unexported

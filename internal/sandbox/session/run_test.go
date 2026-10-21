@@ -189,6 +189,7 @@ type fakePrepared struct {
 	target        string
 	serveHostPort int
 	guestCWD      string
+	key           state.Key
 }
 
 func (f *fakePrepared) Cleanup()             {}
@@ -196,27 +197,172 @@ func (f *fakePrepared) Sandbox() msb.Sandbox { return f.sb }
 func (f *fakePrepared) Target() string       { return f.target }
 func (f *fakePrepared) ServeHostPort() int   { return f.serveHostPort }
 func (f *fakePrepared) GuestCWD() string     { return f.guestCWD }
+func (f *fakePrepared) Key() state.Key       { return f.key }
 
 // --- Run: dry-run ---
 
-func TestRunDryRun(t *testing.T) {
+// stubPreviewSandbox swaps the preview seam for a fixed preview and restores it
+// on cleanup. Tests that call Run/Shell with DryRun must use it so the real
+// PreviewSandbox never touches host state.
+func stubPreviewSandbox(t *testing.T, preview sandbox.Preview) {
+	t.Helper()
+	orig := previewSandbox
+	previewSandbox = func(context.Context, options.RunOptions, termio.UI) (sandbox.Preview, error) {
+		return preview, nil
+	}
+	t.Cleanup(func() { previewSandbox = orig })
+}
+
+func assertInfoCalls(t *testing.T, ui *termio.Mock, want []string) {
+	t.Helper()
+	if len(ui.InfoCalls) != len(want) {
+		t.Fatalf("info calls = %v, want %v", ui.InfoCalls, want)
+	}
+	for i, line := range want {
+		if ui.InfoCalls[i] != line {
+			t.Errorf("info call %d = %q, want %q", i, ui.InfoCalls[i], line)
+		}
+	}
+}
+
+func TestRunDryRunRendersPreview(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
-	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
-		return &fakePrepared{}, nil
-	}
-	defer func() { prepareSandbox = orig }()
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion: "1.0.0",
+		ImageTag:     "agents-sandbox-runner-x",
+		BuildImage:   true,
+		BuildReasons: []string{"runner image not present locally"},
+		CreateHome:   true,
+	})
 
 	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
-	if len(ui.InfoCalls) == 0 {
-		t.Fatal("expected info output")
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.0.0",
+		"dry-run: would build runner image agents-sandbox-runner-x (runner image not present locally)",
+		"dry-run: would create home volume",
+		"dry-run: would start agent session",
+	})
+}
+
+func TestRunDryRunRendersReusePreview(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion: "1.2.3",
+		ImageTag:     "agents-sandbox-runner-y",
+		HomeVolume:   "agents-sandbox-home-abc",
+	})
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err != nil {
+		t.Fatalf("Run dry-run: %v", err)
 	}
-	if ui.InfoCalls[0] != "dry-run: Would run agent session" {
-		t.Errorf("info = %q, want dry-run message", ui.InfoCalls[0])
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.2.3",
+		"dry-run: would reuse runner image agents-sandbox-runner-y",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start agent session",
+	})
+}
+
+func TestRunDryRunRendersUpgradeCheckSkippedSuffix(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion:        "1.0.0",
+		UpgradeCheckSkipped: true,
+		ImageTag:            "agents-sandbox-runner-y",
+		HomeVolume:          "agents-sandbox-home-abc",
+	})
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.0.0 (upgrade check not run)",
+		"dry-run: would reuse runner image agents-sandbox-runner-y",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start agent session",
+	})
+}
+
+func TestRunDryRunResolveAtBuildMessage(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{
+		ResolveVersionAtBuild: true,
+		ImageTag:              "agents-sandbox-runner-z",
+		HomeVolume:            "agents-sandbox-home-abc",
+	})
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version resolved at build time",
+		"dry-run: would reuse runner image agents-sandbox-runner-z",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start agent session",
+	})
+}
+
+func TestRunDryRunJoinsMultipleBuildReasons(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion: "1.0.0",
+		ImageTag:     "agents-sandbox-runner-x",
+		BuildImage:   true,
+		BuildReasons: []string{"runner image not present locally", "agent version changed"},
+		HomeVolume:   "agents-sandbox-home-abc",
+	})
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.0.0",
+		"dry-run: would build runner image agents-sandbox-runner-x (runner image not present locally; agent version changed)",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start agent session",
+	})
+}
+
+func TestRunDryRunDoesNotPrepareSandbox(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{AgentVersion: "1.0.0", ImageTag: "tag", HomeVolume: "vol"})
+	orig := prepareSandbox
+	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+		t.Error("prepareSandbox must not run in dry-run mode")
+		return &fakePrepared{}, nil
+	}
+	t.Cleanup(func() { prepareSandbox = orig })
+
+	if err := Run(context.Background(), options.RunOptions{DryRun: true}, ui); err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+}
+
+func TestRunDryRunPropagatesPreviewError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	orig := previewSandbox
+	previewSandbox = func(context.Context, options.RunOptions, termio.UI) (sandbox.Preview, error) {
+		return sandbox.Preview{}, errors.New("preview boom")
+	}
+	t.Cleanup(func() { previewSandbox = orig })
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err == nil || !strings.Contains(err.Error(), "preview boom") {
+		t.Errorf("err = %v, want preview error", err)
 	}
 }
 
@@ -414,21 +560,57 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 
 // --- Shell ---
 
-func TestShellDryRun(t *testing.T) {
+func TestShellDryRunRendersPreview(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
-	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
-		return &fakePrepared{}, nil
-	}
-	defer func() { prepareSandbox = orig }()
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion: "1.0.0",
+		ImageTag:     "agents-sandbox-runner-x",
+		BuildImage:   true,
+		BuildReasons: []string{"runner image not present locally"},
+		HomeVolume:   "agents-sandbox-home-abc",
+	})
 
 	err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui)
 	if err != nil {
 		t.Fatalf("Shell dry-run: %v", err)
 	}
-	if len(ui.InfoCalls) == 0 || ui.InfoCalls[0] != "dry-run: Would start interactive shell session" {
-		t.Errorf("info = %v, want dry-run shell message", ui.InfoCalls)
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.0.0",
+		"dry-run: would build runner image agents-sandbox-runner-x (runner image not present locally)",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start interactive shell session",
+	})
+}
+
+func TestShellDryRunDoesNotPrepareSandbox(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{AgentVersion: "1.0.0", ImageTag: "tag", HomeVolume: "vol"})
+	orig := prepareSandbox
+	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+		t.Error("prepareSandbox must not run in dry-run mode")
+		return &fakePrepared{}, nil
+	}
+	t.Cleanup(func() { prepareSandbox = orig })
+
+	if err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui); err != nil {
+		t.Fatalf("Shell dry-run: %v", err)
+	}
+}
+
+func TestShellDryRunPropagatesPreviewError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	orig := previewSandbox
+	previewSandbox = func(context.Context, options.RunOptions, termio.UI) (sandbox.Preview, error) {
+		return sandbox.Preview{}, errors.New("preview boom")
+	}
+	t.Cleanup(func() { previewSandbox = orig })
+
+	err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err == nil || !strings.Contains(err.Error(), "preview boom") {
+		t.Errorf("err = %v, want preview error", err)
 	}
 }
 

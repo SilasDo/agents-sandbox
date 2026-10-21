@@ -811,6 +811,7 @@ func (p *projectDockerfilePaths) ProjectDockerfile() string {
 }
 
 func (p *projectDockerfilePaths) UserConfigDir() string                 { return "" }
+func (p *projectDockerfilePaths) UserSlugConfigDir(string) string       { return "" }
 func (p *projectDockerfilePaths) UserCacheDir() string                  { return "" }
 func (p *projectDockerfilePaths) UserStateDir() string                  { return "" }
 func (p *projectDockerfilePaths) UserDataDir() string                   { return "" }

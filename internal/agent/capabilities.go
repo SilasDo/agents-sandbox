@@ -21,13 +21,42 @@ type DaemonProvider interface {
 	DaemonAuthHint() string
 }
 
-// WorktreeProvider manages git worktrees through a running daemon. WorktreeListCmd
-// takes the target — the launch directory the daemon scopes its worktree request
-// to; the create path receives it on WorktreeSpec.Target instead. Agents with
-// global routes ignore it.
+// WorktreeProject identifies the daemon project a worktree request is scoped to.
+// Canonical is the repository root, which the worktree list must exclude so a
+// worktree named like the repository never reuses the main checkout. Both fields
+// are required: a request is never sent with an empty ID, and the list is never
+// filtered against an empty canonical.
+type WorktreeProject struct {
+	ID        string
+	Canonical string
+}
+
+// WorktreeProvider manages git worktrees through a running daemon. The daemon's
+// JSON is decoded in Go by the owning agent, so no guest command needs jq (which
+// a custom runner base need not have). The steps are explicit because v2's
+// routes are project-scoped: the resolve command turns the launch directory into
+// a project (empty for agents whose routes are global, which skip the step), the
+// list and create commands take that project, and each response has its own
+// parser.
 type WorktreeProvider interface {
-	WorktreeListCmd(target string) string
-	WorktreeCreateCmd(spec WorktreeSpec) string
+	// WorktreeResolveCmd returns the command that resolves the launch directory
+	// to a project, or "" when the agent's routes are global (no step).
+	WorktreeResolveCmd(target string) string
+	// WorktreeParseProject decodes the resolve command's stdout. ok is false on
+	// a bad payload or an empty id/canonical.
+	WorktreeParseProject(stdout string) (WorktreeProject, bool)
+	// WorktreeListCmd returns the command that lists project's worktrees.
+	WorktreeListCmd(project WorktreeProject) string
+	// WorktreeParseList decodes the list command's stdout into directory paths,
+	// already filtered of the project's canonical root. ok is false on a bad
+	// payload (a non-array, or an entry without a non-empty directory), so a
+	// failed list never reads as "no worktrees".
+	WorktreeParseList(stdout string, project WorktreeProject) ([]string, bool)
+	// WorktreeCreateCmd returns the command that creates spec's worktree in
+	// project.
+	WorktreeCreateCmd(spec WorktreeSpec, project WorktreeProject) string
+	// WorktreeParseDir decodes the create command's stdout into the created
+	// worktree directory.
 	WorktreeParseDir(stdout string) (string, bool)
 }
 

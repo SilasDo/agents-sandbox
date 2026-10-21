@@ -92,7 +92,11 @@ func StopProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agent
 	if !ok {
 		return fmt.Errorf("unknown agent %q", agentName)
 	}
-	k := state.Key{Slug: git.ProjectSlug(), Agent: a.Name()}
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui)
+	if err != nil {
+		return err
+	}
+	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
 	return stopOrKillProjectVM(ctx, remove, dryRun, ui, k, "stop", "Stopping", msb.Get(),
 		func(h msb.SandboxHandle, c context.Context) error { return h.Stop(c) })
 }
@@ -104,7 +108,11 @@ func KillProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agent
 	if !ok {
 		return fmt.Errorf("unknown agent %q", agentName)
 	}
-	k := state.Key{Slug: git.ProjectSlug(), Agent: a.Name()}
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui)
+	if err != nil {
+		return err
+	}
+	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
 	return stopOrKillProjectVM(ctx, remove, dryRun, ui, k, "kill", "Force-killing", msb.Get(),
 		func(h msb.SandboxHandle, c context.Context) error { return h.Kill(c) })
 }

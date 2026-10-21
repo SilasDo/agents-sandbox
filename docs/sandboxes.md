@@ -18,6 +18,9 @@ particular `msb` version has to be present. agents-sandbox never uses `~/.micros
 to it. The only exception is the one-time legacy home-volume migration, which reads that directory to copy your old
 volumes; see [Upgrading to 0.6]({% link install/upgrading.md %}) for its mechanics.
 
+Owning the runtime also means managing it: `df` (and the `storage` group) reports its storage by category, while
+`sandbox`, `volume`, and `image` `inspect`/`remove` cover the VMs, home volumes, and images it owns.
+
 ## Lifecycle Overview
 
 Each agents-sandbox invocation follows this lifecycle:
@@ -28,7 +31,7 @@ Each agents-sandbox invocation follows this lifecycle:
 - Auto-prune: Remove stale VMs, volumes, and images
 - Pre-flight checks (doctor): Docker, KVM, Git, private microsandbox runtime
 - Image verify/build: `.agents-sandbox/Dockerfile` (or default image) → Docker image -> microsandbox image (read from the bare root next to `.git` in a bare checkout)
-- Home volume verify/build: Persistent microsandbox home volume (`agents-sandbox-home-<slug>-<timestamp>`) per project
+- Home volume verify/build: Persistent microsandbox home volume (`agents-sandbox-home-<slug>-<timestamp>`) per checkout
 - VM creation or reuse: New or existing project-specific VM
 - Provisioning: Copy agent config etc. (updated configs are re-provisioned).
 - Daemon verify/start: Ensure/start microsandbox internal services
@@ -39,24 +42,35 @@ Each agents-sandbox invocation follows this lifecycle:
 
 ## VM Identity
 
-Each (project, agent) pair gets its own VM identified by the project slug and agent:
+Each (checkout, agent) pair gets its own VM identified by the checkout slug and agent:
 
 ```
-agents-sandbox-vm-<project-slug>-<agent>
+agents-sandbox-vm-<checkout-slug>-<agent>
 ```
 
-The project slug consists of the repository name and a hash of the repository host and full path. For example, a repo
-cloned from `git@github.com:inoio/myproject.git` gets:
+Project identity splits into two slugs, each governing the artifacts whose unit it matches:
 
-```
-agents-sandbox-vm-myproject-<hash>-opencode
-```
+- **checkout slug** — derived from the checkout's resolved git common directory. It keys the state directory, the VM
+  name, the home volume, the locks, and the runner image tag. Two clones of one remote therefore get separate VMs and
+  home volumes, while a checkout and the worktrees **inside** it share one. A worktree **outside** its checkout hashes
+  its own root, so it gets its own identity — state, VM, home volume, and image tag — rather than being refused.
+- **repo slug** — derived from the origin remote URL. It keys the per-slug user config dir
+  (`~/.config/agents-sandbox/<repo-slug>/`, see [Per-slug configuration]({% link configuration/launcher.md %}#per-slug-configuration))
+  and the `org.agents-sandbox.project` grouping label, so `list --label project=<repo-slug>` and that config dir are
+  shared by every clone.
 
-Where `<hash>` is the hash of `github.com:inoio/myproject` (username and extension removed). Every clone and linked
-worktree of the same remote shares the same project (and therefore the same VM, volume, and image names) for the same
-agent.
+Both slugs have the `<folder>-<hash>` shape; `<folder>` is the origin's repository name, or the checkout's own name when
+there is no origin. The repo slug hashes the origin URL; the checkout slug hashes the resolved git common dir. For
+example, a repo cloned from `git@github.com:inoio/myproject.git` gets a VM named
+`agents-sandbox-vm-myproject-<hash>-opencode`, where `<hash>` comes from that checkout's common dir — so two clones read
+the same folder name but different hashes. Runner images are built per checkout, so two clones with identical
+Dockerfiles each build their own tag; the second build is a cache hit against the shared BuildKit cache.
 
-The VM is **per-(project, agent), not per-invocation**. Subsequent runs connect to the existing VM (or start it if
+The `/workspace` bind follows the identity: a run from inside a checkout, a worktree nested in it, or a subdirectory of
+either binds the enclosing checkout root, and an outside worktree binds its own root. The agent still starts in the
+subdirectory the run was invoked from.
+
+The VM is **per-(checkout, agent), not per-invocation**. Subsequent runs connect to the existing VM (or start it if
 stopped) rather than creating a new one. When the Docker image's Dockerfile has changed, the existing VM has to be
 recreated, but it keeps its name. The home volume is untouched, so no user state is lost (see [Volumes](#volumes)).
 
@@ -71,8 +85,8 @@ by the agent-scoped names, and are reclaimed by `prune`.
 
 Home volumes are persistent storage for the VM's `$HOME` directory. They survive VM destruction and Dockerfile changes.
 
-Home volumes are named `agents-sandbox-home-<slug>-<timestamp>`. Information which home volume is the current one is
-stored in a state file (under `~/.local/state/<slug>/state.yaml`).
+Home volumes are named `agents-sandbox-home-<checkout-slug>-<timestamp>`. Which home volume is current is stored in the
+project's state file (`~/.local/state/agents-sandbox/<checkout-slug>/<agent>/state.yaml`).
 
 When the Dockerfile changes (new image digest), most of the times the current home volume can continue to be used. Only
 if the Dockerfile changes lead to changes in the home directory, keeping the current home volume might be an issue.
@@ -175,11 +189,11 @@ agents-sandbox stop -f
 
 ## Concurrency
 
-Only one VM is created per (project, agent). Concurrent invocations of agents-sandbox share the same VM — additional
+Only one VM is created per (checkout, agent). Concurrent invocations of agents-sandbox share the same VM — additional
 sessions connect to the existing VM rather than creating one.
 
-A host-side file lock (`~/.local/state/agents-sandbox/vm-ensure/<slug>.lock`) prevents race conditions during first
-boot creation.
+A host-side file lock (`~/.local/state/agents-sandbox/locks/<checkout-slug>/<agent>.lock`) prevents race conditions
+during first boot creation.
 
 When another client is attached, config changes that would restart the agent daemon or recreate the VM trigger a
 prompt asking whether to keep the running server/VM (defer), proceed, or quit (abort the apply). The default is always
