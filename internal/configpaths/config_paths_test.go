@@ -277,6 +277,25 @@ func TestProjectConfigDirAbs(t *testing.T) {
 	}
 }
 
+// TestWithRealConfigPathsPinsCwd pins the helper's contract: opting into the
+// real resolver also pins the CWD to a controlled, layout-free directory, so
+// project paths cannot inherit the checkout layout the suite runs in. Without
+// the pin, a launch from a worktree of a bare checkout resolves the base to
+// that checkout's bare root and the relative expectations here break.
+func TestWithRealConfigPathsPinsCwd(t *testing.T) {
+	isolateProjectConfig(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := Get().ProjectConfigDir(); got != projectConfigDir {
+		t.Errorf("ProjectConfigDir() = %q, want the relative %q after WithRealConfigPaths", got, projectConfigDir)
+	}
+	if got := Get().ProjectConfigDirAbs(); got != filepath.Join(wd, projectConfigDir) {
+		t.Errorf("ProjectConfigDirAbs() = %q, want %q under the pinned CWD", got, filepath.Join(wd, projectConfigDir))
+	}
+}
+
 func TestProjectConfigDirAbsFallsBackWhenCwdUnreadable(t *testing.T) {
 	WithRealConfigPaths(t)
 	dir := t.TempDir()

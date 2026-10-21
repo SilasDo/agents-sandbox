@@ -72,6 +72,17 @@ Add a `main_test.go` with such a `TestMain` to every new package that has tests;
 it must not be `t.Parallel` (`t.Setenv` forbids it). `WithMockConfigPathsHomeError(t, err)` installs a mock whose
 `UserHomeDir` fails, to exercise host-home resolution failures.
 
+## Project-path CWD pin
+
+`configpaths.WithRealConfigPaths(t)` — the opt-in for the real path resolver — also pins the CWD to a fresh
+`t.TempDir()`, for the same reason `WithMockConfigPaths` pins `$HOME`: the real project base is derived from the CWD's
+checkout layout. Without the pin, a test that inherited the suite's CWD resolves a different base inside a bare
+checkout's worktree (that checkout's bare root, not the relative `.agents-sandbox`), so a project-path assertion depends
+on where the suite runs. The helper fails fast if the pinned temp dir still resolves to a bare-root base (i.e. `TMPDIR`
+sits inside a bare checkout). A test that needs a specific layout chdirs into its own fixture after the call, as the
+bare-checkout tests do. This is why `configpaths`' project-path accessor tests assert the relative base without
+pinning the CWD themselves, and it closes the incident below.
+
 ## Audit status (2026-10-16)
 
 A full sweep of `internal/**` and `cmd/**` found the seam model holding: no production path outside the documented
@@ -96,3 +107,8 @@ global.
 as the agent's merged config, found it different from the host snippet merge, and raised the daemon-restart
 "agent config changed" prompt (see `reconfig-decision.md`). `go test` must not leave the host in a state a later run
 reacts to. The tree-wide fail-fast defaults and the `$HOME` redirect close this class.
+
+A later incident closed the sibling class: `TestProjectDirsAndFiles`/`TestProjectConfigDirAbs` read the real resolver
+against the suite's ambient CWD, so once the bare-checkout resolver made the checkout layout an input, they failed when
+run from a bare checkout's worktree (`/workspace/.agents-sandbox` instead of the relative base) — and CI, on a non-bare
+clone, never saw it. The `WithRealConfigPaths` CWD pin above closes it.

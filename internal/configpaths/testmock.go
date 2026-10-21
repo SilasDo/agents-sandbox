@@ -55,11 +55,31 @@ func WithMockConfigPathsHomeError(t *testing.T, err error) {
 // the fail-fast default installed by TestMain. Only use it when a test
 // deliberately exercises the real resolver and isolates its directories via
 // t.Setenv, as config_paths_test.go does.
+//
+// It also pins the CWD to a fresh temp directory. The real resolver derives the
+// project base from the CWD's checkout layout, so without the pin a test would
+// inherit whatever layout the suite runs in — a bare checkout's worktree
+// resolves the base to that checkout's bare root, not the relative constant the
+// tests expect. A test that needs a specific layout chdirs into its own fixture
+// after this call, as the bare-checkout tests do.
 func WithRealConfigPaths(t *testing.T) {
 	t.Helper()
 	orig := Get
 	Get = func() ConfigPaths { return &realConfigPaths{} }
 	t.Cleanup(func() { Get = orig })
+	t.Chdir(pinnedProjectCWD(t))
+}
+
+// pinnedProjectCWD returns a fresh temp directory outside any bare checkout and
+// chdirs into it, failing fast if the directory would still resolve to a
+// bare-root base (i.e. TMPDIR sits inside a bare checkout).
+func pinnedProjectCWD(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if base, _ := resolveProjectConfig(dir); base != projectConfigDir {
+		t.Fatalf("temp dir %q resolves to the bare-root base %q; set TMPDIR outside a bare checkout", dir, base)
+	}
+	return dir
 }
 
 func ensureMockConfigDirectory(path string) string {
