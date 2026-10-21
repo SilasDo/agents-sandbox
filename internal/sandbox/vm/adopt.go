@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -34,6 +35,12 @@ type IdentityAdoption struct {
 	// slug this call. False when nothing was pending or the caller asked for a
 	// dry run.
 	Applied bool
+	// RecoveredHomeVolume is the home volume of a live legacy VM that adoption
+	// destroyed when there was no legacy state file to carry the volume (issue
+	// #219: the state file was lost while the VM survived). The caller seeds
+	// home resolution with it so the preserved volume is reused instead of a
+	// fresh one being minted. Empty unless adoption recovered from a VM.
+	RecoveredHomeVolume string
 }
 
 // adoptLockHook is a test seam invoked inside the locked adoption, before the
@@ -64,6 +71,13 @@ var renameConfigDir = os.Rename
 // legacy VM is destroyed, not only the requested one; otherwise a still-running
 // sibling agent would recreate itself over the same home volume.
 //
+// A live legacy VM is itself a legacy identity, even when its state file was
+// lost (issue #219): without adopting it the run would treat the checkout as
+// brand new, mint a fresh home volume and orphan the user's credentials and
+// files. That arm has no state file to move, so it destroys the VM and returns
+// the mounted home volume in RecoveredHomeVolume for home resolution to reuse,
+// rather than failing the arrival check that only a state-file migration needs.
+//
 // With apply=false (a dry run) it prints the notice and leaves everything in
 // place, returning the legacy slug so the rest of the pipeline keeps resolving
 // against the pre-migration location.
@@ -84,7 +98,7 @@ func AdoptLegacyIdentity(
 	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: agentName}
 	slugs := legacySlugs(identity)
 
-	legacySlug, legacy, pending, err := legacyStatePending(slugs, checkoutKey)
+	source, pending, err := legacyAdoptionPending(ctx, client, slugs, checkoutKey)
 	if err != nil {
 		return IdentityAdoption{}, fmt.Errorf("check for a pending legacy identity: %w", err)
 	}
@@ -92,13 +106,17 @@ func AdoptLegacyIdentity(
 		return IdentityAdoption{Slug: identity.CheckoutSlug}, nil
 	}
 
+	notAdopted := IdentityAdoption{Slug: source.Slug, Pending: true}
+	if source.FromVM {
+		notAdopted.RecoveredHomeVolume = source.HomeVolume
+	}
 	if !apply {
-		ui.Warnf("%s", adoptionNotice(identity, agentName, legacy.HomeVolume, false))
+		ui.Warnf("%s", adoptionNotice(identity, agentName, source.HomeVolume, false))
 		// Resolve the caller's remaining work against the source the state was
 		// actually found under, not always the repo slug: for a bare root the
 		// pending state can live under the path-derived legacy slug, and a
 		// dry-run that named the repo slug would read the wrong (absent) state.
-		return IdentityAdoption{Slug: legacySlug, Pending: true}, nil
+		return notAdopted, nil
 	}
 
 	var result IdentityAdoption
@@ -111,7 +129,7 @@ func AdoptLegacyIdentity(
 		if adoptLockHook != nil {
 			adoptLockHook()
 		}
-		_, legacy, pending, recheckErr := legacyStatePending(slugs, checkoutKey)
+		source, pending, recheckErr := legacyAdoptionPending(ctx, client, slugs, checkoutKey)
 		if recheckErr != nil {
 			return fmt.Errorf("check for a pending legacy identity: %w", recheckErr)
 		}
@@ -119,11 +137,14 @@ func AdoptLegacyIdentity(
 			result = IdentityAdoption{Slug: identity.CheckoutSlug}
 			return nil
 		}
-		ui.Warnf("%s", adoptionNotice(identity, agentName, legacy.HomeVolume, true))
-		if adoptErr := adoptLegacyIdentity(ctx, client, identity, slugs, checkoutKey, ui); adoptErr != nil {
+		ui.Warnf("%s", adoptionNotice(identity, agentName, source.HomeVolume, true))
+		if adoptErr := adoptLegacyIdentity(ctx, client, identity, slugs, checkoutKey, source, ui); adoptErr != nil {
 			return adoptErr
 		}
 		result = IdentityAdoption{Slug: identity.CheckoutSlug, Pending: true, Applied: true}
+		if source.FromVM {
+			result.RecoveredHomeVolume = source.HomeVolume
+		}
 		return nil
 	})
 	if err != nil {
@@ -149,40 +170,74 @@ func legacySlugs(identity git.Identity) []string {
 	return slugs
 }
 
-// legacyStatePending reports whether any legacy identity has a state file for the
-// agent while the checkout-keyed one does not. It returns the slug the first such
-// state was found under (so a dry run can resolve read-only against the real
+// legacyPendingSource is where a pending legacy identity was found. FromVM marks
+// an identity evidenced only by a surviving project VM whose state file was lost
+// (issue #219); HomeVolume is the volume to preserve in either case.
+type legacyPendingSource struct {
+	Slug       string
+	HomeVolume string
+	FromVM     bool
+}
+
+// legacyAdoptionPending reports whether a legacy identity is pending: the
+// checkout-keyed state file is absent and either a legacy state file exists or a
+// live legacy project VM for the agent still exists. It returns the slug the
+// identity was found under (so a dry run can resolve read-only against the real
 // source — a bare root's state may live under its path-derived slug, not the repo
-// slug) and that state, so the notice can name its home volume.
+// slug) and the volume to preserve.
 //
-// The predicate is state-file absence, not directory absence, so a stray or
-// aborted run that created the empty checkout directory cannot permanently skip
-// migration, and it is re-evaluated on every run until it fires. It is
-// deliberately first-adopter-wins: once the checkout state exists, later callers
-// stop, which is the accepted asymmetry of moving one shared identity instead of
-// copying it.
+// The state-file predicate is state-*file* absence, not directory absence, so a
+// stray or aborted run that created the empty checkout directory cannot
+// permanently skip migration, and it is re-evaluated on every run until it fires.
+// It is deliberately first-adopter-wins: once the checkout state exists, later
+// callers stop, which is the accepted asymmetry of moving one shared identity
+// instead of copying it.
 //
-// It fails closed on reads: an unparsable or otherwise unreadable state is
-// returned as an error rather than treated as absent, so an unknown document can
-// never lead to destroying a legacy VM or moving state nobody has read.
-func legacyStatePending(slugs []string, checkoutKey state.Key) (string, *state.HomeState, bool, error) {
+// The live-VM arm covers a legacy identity whose state file was lost while its
+// VM survived: the VM is the remaining legacy artifact, and adopting it (rather
+// than treating the checkout as new) is what preserves its home volume.
+//
+// It fails closed on reads: an unparsable or otherwise unreadable state, or a VM
+// whose mounts cannot be read, is returned as an error rather than treated as
+// absent, so an unknown document or an unreadable mount can never lead to
+// destroying a legacy VM or moving state nobody has read.
+func legacyAdoptionPending(
+	ctx context.Context,
+	client msb.Client,
+	slugs []string,
+	checkoutKey state.Key,
+) (legacyPendingSource, bool, error) {
 	if _, err := state.ReadState(checkoutKey); err == nil {
-		return "", nil, false, nil
+		return legacyPendingSource{}, false, nil
 	} else if !errors.Is(err, state.ErrStateNotFound) {
-		return "", nil, false, err
+		return legacyPendingSource{}, false, err
 	}
 
 	for _, slug := range slugs {
 		found, err := state.ReadState(state.Key{Slug: slug, Agent: checkoutKey.Agent})
-		if err != nil {
-			if errors.Is(err, state.ErrStateNotFound) {
-				continue
-			}
-			return "", nil, false, err
+		if err == nil {
+			return legacyPendingSource{
+				Slug:       slug,
+				HomeVolume: found.HomeVolume,
+				FromVM:     false,
+			}, true, nil
 		}
-		return slug, found, true, nil
+		if !errors.Is(err, state.ErrStateNotFound) {
+			return legacyPendingSource{}, false, err
+		}
+		volume, exists, vmErr := projectVMHomeVolume(ctx, client, state.Key{Slug: slug, Agent: checkoutKey.Agent})
+		if vmErr != nil {
+			return legacyPendingSource{}, false, fmt.Errorf("check legacy project VM for %s: %w", slug, vmErr)
+		}
+		if exists {
+			return legacyPendingSource{
+				Slug:       slug,
+				HomeVolume: volume,
+				FromVM:     true,
+			}, true, nil
+		}
 	}
-	return "", nil, false, nil
+	return legacyPendingSource{}, false, nil
 }
 
 // adoptLegacyIdentity destroys the legacy VMs and merges every legacy state
@@ -193,6 +248,7 @@ func adoptLegacyIdentity(
 	identity git.Identity,
 	slugs []string,
 	checkoutKey state.Key,
+	source legacyPendingSource,
 	ui termio.UI,
 ) error {
 	primary := slugs[0]
@@ -205,7 +261,7 @@ func adoptLegacyIdentity(
 	// the first source's home and silently strand the other source's VM, home
 	// volume and state.
 	for _, slug := range slugs {
-		if err := destroyLegacyVMs(ctx, client, slug, ui); err != nil {
+		if err := destroyLegacyVMs(ctx, client, slug, checkoutKey.Agent, ui); err != nil {
 			return err
 		}
 	}
@@ -235,32 +291,45 @@ func adoptLegacyIdentity(
 	// notice has already promised a move and the legacy VM is gone by now, so the
 	// error has to say what is half-done and what to clear to finish it; the read
 	// error is wrapped for a non-not-found failure (I/O, parse).
-	if _, verifyErr := state.ReadState(checkoutKey); verifyErr != nil {
-		primaryKey := state.Key{Slug: primary, Agent: checkoutKey.Agent}
-		return fmt.Errorf(
-			"migration to the checkout identity did not complete: the legacy state file %s did not arrive at %s (the move skipped [%s], read error: %w); the legacy project VM %s is already gone, so clear those entries under the checkout state directory %s and rerun",
-			filepath.Join(state.KeyDir(primaryKey), "state.yaml"),
-			filepath.Join(state.KeyDir(checkoutKey), "state.yaml"),
-			strings.Join(skipped, ", "),
-			verifyErr,
-			projectVMName(primaryKey),
-			state.SlugDir(identity.CheckoutSlug),
-		)
+	//
+	// A VM-only adoption has no legacy state file to arrive: home resolution
+	// writes the recovered checkout state from the preserved volume instead, so
+	// the check does not apply.
+	if !source.FromVM {
+		if _, verifyErr := state.ReadState(checkoutKey); verifyErr != nil {
+			primaryKey := state.Key{Slug: primary, Agent: checkoutKey.Agent}
+			return fmt.Errorf(
+				"migration to the checkout identity did not complete: the legacy state file %s did not arrive at %s (the move skipped [%s], read error: %w); the legacy project VM %s is already gone, so clear those entries under the checkout state directory %s and rerun",
+				filepath.Join(state.KeyDir(primaryKey), "state.yaml"),
+				filepath.Join(state.KeyDir(checkoutKey), "state.yaml"),
+				strings.Join(skipped, ", "),
+				verifyErr,
+				projectVMName(primaryKey),
+				state.SlugDir(identity.CheckoutSlug),
+			)
+		}
 	}
 	return nil
 }
 
 // destroyLegacyVMs destroys the legacy origin-keyed project VM of every agent
-// whose state lives under slug. The whole slug directory is moved, so leaving a
-// sibling agent's VM running would let it keep writing the shared home volume
-// while a later run recreates that agent under the checkout name over the same
-// volume.
-func destroyLegacyVMs(ctx context.Context, client msb.Client, slug string, ui termio.UI) error {
+// whose state lives under slug, plus the command's own agent. Destroying the
+// whole set matters because the whole slug directory is moved: leaving a sibling
+// agent's VM running would let it keep writing the shared home volume while a
+// later run recreates that agent under the checkout name over the same volume.
+// The command's own agent is included explicitly because a legacy VM whose state
+// file was lost is not listed by StatefulAgentNames (issue #219), yet it is the
+// VM that would otherwise keep running over the volume adoption preserves.
+func destroyLegacyVMs(ctx context.Context, client msb.Client, slug, agentName string, ui termio.UI) error {
 	names, err := state.StatefulAgentNames(slug)
 	if err != nil {
 		return fmt.Errorf("list legacy state for %s: %w", slug, err)
 	}
-	for _, name := range names {
+	toDestroy := names
+	if !slices.Contains(names, agentName) {
+		toDestroy = append(append([]string(nil), names...), agentName)
+	}
+	for _, name := range toDestroy {
 		if err := destroyLegacyVM(ctx, client, state.Key{Slug: slug, Agent: name}, ui); err != nil {
 			return err
 		}

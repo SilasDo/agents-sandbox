@@ -52,6 +52,7 @@ func TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{DryRun: true},
 		state.Fingerprints{},
+		"",
 		&ui,
 	); err != nil {
 		t.Fatalf("prepareHomeVolume() error = %v", err)
@@ -92,6 +93,7 @@ func TestPrepareHomeVolumeDryRunVMStillOffers(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{DryRunVM: true},
 		state.Fingerprints{},
+		"",
 		&ui,
 	); err != nil {
 		t.Fatalf("prepareHomeVolume() error = %v", err)
@@ -123,6 +125,7 @@ func TestPrepareHomeVolumeOfferErrorPropagates(t *testing.T) {
 		sandboximage.ImageInfo{},
 		options.RunOptions{},
 		state.Fingerprints{},
+		"",
 		&ui,
 	)
 	if !errors.Is(err, wantErr) {
@@ -180,7 +183,7 @@ func TestLiveHomeVolumeMountsError(t *testing.T) {
 	if got := liveHomeVolume(context.Background(), mock, k, &ui); got != "" {
 		t.Errorf("liveHomeVolume() = %q, want empty on mounts error", got)
 	}
-	if !strings.Contains(strings.Join(ui.VerboseCalls, " "), "VM mounts") {
+	if !strings.Contains(strings.Join(ui.VerboseCalls, " "), "home-volume recovery") {
 		t.Errorf("expected a verbose mounts-read log, got %v", ui.VerboseCalls)
 	}
 }
@@ -267,6 +270,7 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 		sandboximage.ImageInfo{Digest: "sha256:def"},
 		options.RunOptions{},
 		state.Fingerprints{},
+		"",
 		&ui,
 	)
 	if err != nil {
@@ -378,5 +382,53 @@ func TestPrepareSandboxResolveWorkspaceDirError(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
 		t.Fatal("expected error when the workspace directory cannot be resolved")
+	}
+}
+
+// TestPrepareHomeVolumeReusesAdoptionRecoveredVolume covers the lost-state
+// migration path: adoption destroyed the legacy VM and handed its home volume to
+// the run, so home resolution must reuse that volume rather than mint a fresh one.
+func TestPrepareHomeVolumeReusesAdoptionRecoveredVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	k := state.Key{Slug: adoptCheckoutSlug, Agent: adoptAgentName}
+
+	mock := &msb.MockMsbClient{
+		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "legacy VM already destroyed"}
+		},
+		GetVolumeFn: func(_ context.Context, name string) (msb.VolumeHandle, error) {
+			if name == recovered {
+				return &msb.MockVolumeHandle{Name_: name}, nil
+			}
+			return nil, fmt.Errorf("volume %s not found", name)
+		},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
+			return nil, errors.New("unexpected CreateVolume")
+		},
+	}
+	msb.WithMsbMock(t, mock)
+
+	origOffer := offerRuntimeHomeMigration
+	offerRuntimeHomeMigration = func(_ context.Context, _ msb.Client, _ termio.UI) error { return nil }
+	t.Cleanup(func() { offerRuntimeHomeMigration = origOffer })
+
+	ui := termio.NewTestMock(t)
+	_, _, homeVol, _, err := prepareHomeVolume(
+		context.Background(),
+		k,
+		sandboximage.ImageInfo{Digest: "sha256:def"},
+		options.RunOptions{},
+		state.Fingerprints{},
+		recovered,
+		&ui,
+	)
+	if err != nil {
+		t.Fatalf("prepareHomeVolume() error = %v", err)
+	}
+	if homeVol != recovered {
+		t.Errorf("home volume = %q, want the adoption-recovered %q", homeVol, recovered)
 	}
 }

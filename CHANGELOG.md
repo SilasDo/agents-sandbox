@@ -164,7 +164,9 @@ command reports the bare version (e.g. `0.1.0`).
   agent whose state the move carries, then recursively merges the state directory onto the checkout slug, never
   overwriting an existing file (anything it cannot move is reported and left in place). A bare root also adopts its
   pre-split path-derived identity, so a bare-checkout user's saved home volume and per-slug config are not stranded.
-  A `--dry-run` leaves the legacy layout in place. #144.
+  A surviving legacy VM is itself adopted even when its state file was lost (an issue #219 recovery), so the previous
+  home volume — credentials and files — is reused instead of a fresh one being minted. A `--dry-run` leaves the legacy
+  layout in place. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the

@@ -7,7 +7,7 @@ read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), th
 
 Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge); rebased onto main and
 reconciled with #247's bare project-config resolver, and the migration hardened for the multi-agent and
-concurrent-adopter cases.
+concurrent-adopter cases and for adopting a surviving legacy VM whose state file was lost (#219).
 Date: 2026-10-19.
 
 ## Problem
@@ -145,6 +145,12 @@ takes the legacy state, and the others start fresh.
 `<state>/<legacySlug>/<agent>/state.yaml` and no checkout-keyed **state file** exists at
 `<state>/<checkoutSlug>/<agent>/state.yaml`. The predicate is state-**file** absence, not directory absence,
 so a stray or aborted run that creates the empty checkout directory cannot permanently skip migration.
+**Or** the agent's legacy **project VM** is still live under a legacy slug while no checkout-keyed state
+file exists — the lost-state case of `home-volume-recovery.md` (#219), where the VM is the only remaining
+legacy artifact. Treating that as "brand new" would mint a fresh home volume and orphan the previous one
+(credentials, files), so the VM arm adopts instead: it destroys the VM and carries its mounted home volume
+into the run (`IdentityAdoption.RecoveredHomeVolume`), which home resolution recovers into the checkout
+state. A VM whose mounts cannot be read fails the adoption closed rather than destroying it blind.
 Re-evaluated on each run until it fires.
 
 **Entry points: uniform.** Every cwd-derived command that resolves the checkout slug attempts adoption —
@@ -163,7 +169,8 @@ the incomplete-migration failure on a source that is already gone.
 **Actions**
 
 1. **Destroy every legacy VM first, across all sources, before moving any state.** For every legacy slug,
-   enumerate the agents whose state lives there (`state.StatefulAgentNames`) and destroy
+   enumerate the agents whose state lives there (`state.StatefulAgentNames`), **plus the command's own agent**
+   (so a lost-state VM that `StatefulAgentNames` cannot see is torn down too), and destroy
    `projectVMName({Slug: legacySlug, Agent})` identity-safely (best-effort; a gone name is fine). Doing all
    destroys before any move makes a destroy failure abort with every legacy state file still in place, so
    the next run re-fires the trigger and resumes; moving first would create the checkout state file and, on
@@ -184,7 +191,9 @@ the incomplete-migration failure on a source that is already gone.
    a real idempotence record: the state file always arrives, because the predicate guarantees none exists
    at the destination.
 3. Home volume: unchanged. Its name is stored in the state's `home_volume`, so the preserved volume is
-   re-resolved by name with no rename.
+   re-resolved by name with no rename. In the VM-only arm there is no state to carry the name, so the
+   volume rides in `RecoveredHomeVolume` and home resolution recovers the checkout state from it; the
+   state-file arrival check is skipped there, because there is no state file to arrive.
 4. VM: recreated once under the new name over the preserved home volume.
 5. Runner image: rebuilt under the new checkout tag (cache-assisted, see above).
 
