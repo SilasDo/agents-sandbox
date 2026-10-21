@@ -90,6 +90,48 @@ func TestRenderDockerfileBuilds(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileMissingGuestToolFailsBuild is the expected-failure guard
+// for the in-VM runtime tool check: a custom base lacking a required tool must
+// fail the build naming the tool, not build successfully and then fail at the
+// daemon health probe.
+func TestRenderDockerfileMissingGuestToolFailsBuild(t *testing.T) {
+	origGet := docker.Get
+	docker.Get = docker.RealClient
+	t.Cleanup(func() { docker.Get = origGet })
+
+	a, ok := agent.Lookup("opencode")
+	if !ok {
+		t.Fatal("opencode agent not registered")
+	}
+	version, err := resolveAgentVersion(context.Background(), a, "")
+	if err != nil {
+		t.Fatalf("resolve agent version: %v", err)
+	}
+
+	ctx := context.Background()
+	if _, err := docker.Get().Ping(ctx, client.PingOptions{}); err != nil {
+		t.Skipf("docker daemon not available: %v", err)
+	}
+
+	// debian:trixie-slim ships no curl, so the runtime tool check must stop the build.
+	tag := "agents-sandbox/it-missing-guest-tool"
+	t.Cleanup(func() { removeTestImage(tag) })
+
+	var lines []string
+	buildErr := buildImage(
+		ctx, a,
+		renderBytesVersion(t, a, version, []byte("FROM debian:trixie-slim\n"), false),
+		tag, false, version, "", "", false, imageIdentity{},
+		func(s string) { lines = append(lines, s) },
+	)
+	if buildErr == nil {
+		t.Fatal("the build must fail when the base lacks a required in-VM tool")
+	}
+	if out := strings.Join(lines, "\n"); !strings.Contains(out, "agent runtime tool missing: curl") {
+		t.Errorf("the failed build must name the missing tool; output:\n%s", out)
+	}
+}
+
 // TestRenderDockerfileNodeAgentNodeRuns is the regression guard for #132: a
 // node-dependent agent installed onto the managed base must leave a working
 // node/npm. The managed base does not install libatomic1, so a node tarball with

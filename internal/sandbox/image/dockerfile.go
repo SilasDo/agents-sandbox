@@ -457,9 +457,9 @@ func runnerStage(a agent.Agent, baseAlias, body string, docker, dockerInjected b
 	parts = append(parts,
 		fmt.Sprintf("COPY --from=%s %s %s\n", agentStageAlias, toolDir, toolDir),
 		agentAdoptionBlock(a),
-		guestToolsBlock(a),
 		agentImageConfigBlock(a),
 		finalizationBlock(),
+		guestToolsBlock(a),
 	)
 	return joinBlocks(parts...)
 }
@@ -529,9 +529,11 @@ RUN set -e; mkdir -p /etc/agents-sandbox; \
 
 // guestToolsBlock verifies the in-VM tools this agent's runtime needs (daemon
 // health, session and worktree calls, notifications, and process control). It
-// runs in the final stage after the user body, so a body that installs them is
-// accepted, and fails the build naming the missing tool instead of failing at
-// runtime. Agents that run no daemon declare no tools and emit nothing.
+// runs last, as the runtime user and after finalizationBlock finalizes the
+// image PATH (which adds ~/.local/bin), so it sees the same PATH the launcher's
+// commands will; a tool installed only there is still found. It fails the build
+// naming the missing tool instead of failing at runtime. Agents that run no
+// daemon declare no tools and emit nothing.
 func guestToolsBlock(a agent.Agent) string {
 	requirer, ok := agent.AsGuestToolRequirer(a)
 	if !ok {
@@ -541,8 +543,7 @@ func guestToolsBlock(a agent.Agent) string {
 	if len(tools) == 0 {
 		return ""
 	}
-	return fmt.Sprintf(`USER root
-RUN set -e; for p in %s; do \
+	return fmt.Sprintf(`RUN set -e; for p in %s; do \
       command -v "$p" >/dev/null 2>&1 || \
         { echo "error: agent runtime tool missing: $p (required by %s)" >&2; exit 1; }; \
     done
