@@ -11,8 +11,10 @@ applied by `reconfig.ResolveReconfig` (silent when alone, a keep/quit[/restart] 
 
 ## Fingerprint-backed change detection
 
-The microsandbox SDK does not round-trip env, secrets, network, or mounts when reading an existing VM back, so those
-changes are detected against fingerprints persisted in the per-`(slug, agent)` `state.yaml` (`state.HomeState`):
+The microsandbox SDK's `Config()` does not round-trip env, secrets, or network when reading an existing VM back, so
+those changes are detected against fingerprints persisted in the per-`(slug, agent)` `state.yaml` (`state.HomeState`).
+Mounts are the exception: they are read live from the persisted config JSON (`specs/live-mount-readback.md`), and
+`MountState` fingerprints only the user's extra host bind mounts. The fingerprints:
 
 - `EnvState`, `SecretState`, `MountState` — content hashes. Empty applied means "no persisted state yet" and counts as
   changed **only when the desired setting is non-empty**.
@@ -66,3 +68,16 @@ The trade-off: the seed write briefly asserts "applied" before the VM exists. If
 what is baked in, which is harmless because with no VM `PlanReconfig` short-circuits to no recreate. Recreated VMs (a
 genuine config change against an existing home) still refresh fingerprints via `persistConfigHashes` after creation; the
 state is never fingerprint-less on that path, so the change detected there is real.
+
+## Live mounts and the size/quota/home detectors (issue #223)
+
+`tmpSizeChange`, `workspaceQuotaChange`, and `homeVolumeChange` compare against the live VM's mounts. The launcher
+reads those from the persisted config JSON through `msb.SandboxHandle.ConfigMounts()`
+(`specs/live-mount-readback.md`), because the SDK's `Config()` leaves `cfg.Volumes` empty on every read-back.
+`decideReconfig` applies that read before calling `PlanReconfig`, so the three detectors see the VM's real `/tmp`
+(`size_mib`), `/workspace` (`quota_mib`), and `/home/dev` (`Named.name`) mounts. `rootDiskChange` reads
+`cfg.RootDisk`, which does round-trip, and is unaffected.
+
+Until #223 landed, all three compared against an always-empty `cfg.Volumes` and never fired, so a changed `tmp_size`
+or `workspace-quota` on an existing VM was silently ignored until an unrelated recreate — behaviour the launcher's own
+docs already describe as triggering recreation. Plan: `plans/2026-10-20-live-mount-readback.md`.

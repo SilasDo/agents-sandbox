@@ -92,6 +92,12 @@ type SandboxHandle interface {
 	Remove(ctx context.Context) error
 	Destroy(ctx context.Context, opts ...msbSdk.DestroyOption) error
 	Config() (*msbSdk.SandboxConfig, error)
+	// ConfigMounts returns the mounts the persisted config records, keyed by
+	// guest path. Config() cannot supply them: the SDK's
+	// SandboxConfig.UnmarshalJSON drops the persisted mounts, so
+	// cfg.Volumes is always empty on a read-back
+	// (specs/live-mount-readback.md).
+	ConfigMounts() (map[string]msbSdk.MountConfig, error)
 	Modify(ctx context.Context, opts msbSdk.ModifyOptions) (*msbSdk.SandboxModificationPlan, error)
 }
 
@@ -605,6 +611,10 @@ func (w realSandboxHandle) Destroy(ctx context.Context, opts ...msbSdk.DestroyOp
 
 func (w realSandboxHandle) Config() (*msbSdk.SandboxConfig, error) {
 	return w.handle.Config()
+}
+
+func (w realSandboxHandle) ConfigMounts() (map[string]msbSdk.MountConfig, error) {
+	return ParseConfigMounts(w.handle.ConfigJSON())
 }
 
 func (w realSandboxHandle) Modify(

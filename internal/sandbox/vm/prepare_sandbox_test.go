@@ -812,3 +812,110 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 		t.Errorf("MountState.Names = %v, want [/home/dev/.m2]", st.MountState.Names)
 	}
 }
+
+// TestPrepareSandboxRecreatesVMOnLiveMountChange is the end-to-end counterpart of
+// the decideReconfig live-mount tests: a project VM whose persisted mounts no
+// longer match the requested tmp size is destroyed and recreated, proving the
+// mount read-back reaches the VM lifecycle and not only the decision.
+func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	sandboximage.WithMockAgentVersionResolver(t, func(_ context.Context, _ agent.Agent, req string) (string, error) {
+		return req, nil
+	})
+	origUpgradeInfo := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
+	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID: "sha256:abc123",
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+				},
+			}, nil
+		},
+	})
+
+	slug := git.ProjectSlug()
+	k := state.Key{Slug: slug, Agent: "opencode"}
+
+	// The existing VM's persisted mounts carry the previous tmp size. Its image
+	// and the seeded env/secret/network/mount fingerprints match the run, so the
+	// mount read-back is the only thing that can drive the recreate.
+	shellOut := map[string]msb.ShellResult{dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil)}
+	existing := &msb.MockSandboxHandle{
+		Name_:     projectVMName(k),
+		Status_:   msbSdk.SandboxStatusRunning,
+		Cfg:       &msbSdk.SandboxConfig{},
+		ConnectSb: &msb.MockSandbox{Name_: "vm", FSValue_: msb.NewTestFS(nil, nil), ShellOut: shellOut},
+		Mounts: map[string]msbSdk.MountConfig{
+			mounts.TmpMountPath: msbSdk.Mount.Tmpfs(msbSdk.TmpfsOptions{SizeMiB: 1024}),
+			mounts.WorkspaceMountPath: msbSdk.Mount.Bind(
+				"/host/repo",
+				msbSdk.MountOptions{QuotaMiB: options.DefaultWorkspaceQuotaMiB},
+			),
+			mounts.VMHomeDir: msbSdk.Mount.Named("home-vol", msbSdk.MountOptions{}),
+		},
+	}
+	createdSb := &msb.MockSandbox{Name_: projectVMName(k), FSValue_: msb.NewTestFS(nil, nil), ShellOut: shellOut}
+	mock := &msb.MockMsbClient{
+		ImageGetFn:     func(_ context.Context, _ string) error { return nil },
+		CreatedSandbox: createdSb,
+		Volumes:        []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "home-vol"}},
+	}
+	// After the VM is destroyed, GetSandbox must report it gone so the create path
+	// runs; a static handle would leave the mock attaching to the old VM.
+	mock.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		if existing.DidDestroy() {
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: projectVMName(k)}
+		}
+		return existing, nil
+	}
+	msb.WithMsbMock(t, mock)
+
+	opts := options.RunOptions{TmpSize: "2G"}
+	seedUI := termio.NewTestMock(t)
+	fingerprints := desiredFingerprints(opts, &seedUI)
+	if err := seedHomeState(k, state.HomeState{
+		HomeVolume:   "home-vol",
+		ImageDigest:  "sha256:abc123",
+		AgentVersion: "1.5.0",
+		AgentSource:  agentSourceTool,
+		EnvState:     fingerprints.Env,
+		SecretState:  fingerprints.Secret,
+		NetworkState: fingerprints.Network,
+		MountState:   fingerprints.Mount,
+	}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+		if command == opencodeProvider(t).DaemonHealthCmd() {
+			return `{"healthy":true,"version":"test"}`, 0, nil
+		}
+		return "", 0, nil
+	})
+	t.Cleanup(func() { SetDaemonShellFunc(origDaemon) })
+
+	ui := termio.NewTestMock(t)
+	sess, err := PrepareSandbox(context.Background(), opts, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox: %v", err)
+	}
+	defer sess.Cleanup()
+
+	if !existing.DidDestroy() {
+		t.Error("expected the existing VM to be destroyed for the live tmp-size change")
+	}
+	if len(mock.CreatedSandboxes) != 1 {
+		t.Fatalf("expected the VM to be recreated once, got %d creations", len(mock.CreatedSandboxes))
+	}
+	if !contains(joinStrings(ui.VerboseCalls), "/tmp tmpfs size") {
+		t.Errorf("expected a tmp-size rebuild reason, got %v", ui.VerboseCalls)
+	}
+}

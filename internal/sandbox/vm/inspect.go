@@ -46,13 +46,15 @@ func InspectSandbox(ctx context.Context, name string) (SandboxDetail, error) {
 	if err != nil {
 		return SandboxDetail{}, fmt.Errorf("inspect sandbox %q: read config: %w", name, err)
 	}
+	liveMounts, err := handle.ConfigMounts()
+	if err != nil {
+		return SandboxDetail{}, fmt.Errorf("inspect sandbox %q: read mounts: %w", name, err)
+	}
 	var labels map[string]string
-	var mounts []MountDetail
 	var memoryMiB, maxMemoryMiB uint32
 	var cpus, maxCPUs uint8
 	if cfg != nil {
 		labels = cfg.Labels
-		mounts = mountDetails(cfg.Volumes)
 		memoryMiB = cfg.MemoryMiB
 		maxMemoryMiB = cfg.MaxMemoryMiB
 		cpus = cfg.CPUs
@@ -67,7 +69,7 @@ func InspectSandbox(ctx context.Context, name string) (SandboxDetail, error) {
 		CreatedAt:    FormatTime(handle.CreatedAt()),
 		UpdatedAt:    FormatTime(handle.UpdatedAt()),
 		Labels:       labels,
-		Mounts:       mounts,
+		Mounts:       mountDetails(liveMounts),
 		MemoryMiB:    memoryMiB,
 		CPUs:         cpus,
 		MaxMemoryMiB: maxMemoryMiB,

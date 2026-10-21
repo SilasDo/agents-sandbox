@@ -137,10 +137,9 @@ func TestLiveHomeVolumeReturnsMountedVolume(t *testing.T) {
 	mock := &msb.MockMsbClient{
 		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 			return &msb.MockSandboxHandle{
-				Cfg: &msbSdk.SandboxConfig{
-					Volumes: map[string]msbSdk.MountConfig{
-						mounts.VMHomeDir: {Named: "home-vol"},
-					},
+				Cfg: &msbSdk.SandboxConfig{Image: "img:tag"},
+				Mounts: map[string]msbSdk.MountConfig{
+					mounts.VMHomeDir: msbSdk.Mount.Named("home-vol", msbSdk.MountOptions{}),
 				},
 			}, nil
 		},
@@ -162,19 +161,27 @@ func TestLiveHomeVolumeNoVM(t *testing.T) {
 	}
 }
 
-func TestLiveHomeVolumeConfigError(t *testing.T) {
+// TestLiveHomeVolumeMountsError covers a mounts read failure on an otherwise
+// readable VM: the recovery falls back to an empty result instead of failing.
+func TestLiveHomeVolumeMountsError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	k := state.Key{Slug: "slug", Agent: "opencode"}
 	mock := &msb.MockMsbClient{
 		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
-			return &msb.MockSandboxHandle{ConfigErr: errors.New("config boom")}, nil
+			return &msb.MockSandboxHandle{
+				Cfg:       &msbSdk.SandboxConfig{Image: "img:tag"},
+				MountsErr: errors.New("mounts boom"),
+			}, nil
 		},
 	}
 
 	ui := termio.NewTestMock(t)
 	if got := liveHomeVolume(context.Background(), mock, k, &ui); got != "" {
-		t.Errorf("liveHomeVolume() = %q, want empty on config error", got)
+		t.Errorf("liveHomeVolume() = %q, want empty on mounts error", got)
+	}
+	if !strings.Contains(strings.Join(ui.VerboseCalls, " "), "VM mounts") {
+		t.Errorf("expected a verbose mounts-read log, got %v", ui.VerboseCalls)
 	}
 }
 
@@ -230,10 +237,9 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 	mock := &msb.MockMsbClient{
 		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 			return &msb.MockSandboxHandle{
-				Cfg: &msbSdk.SandboxConfig{
-					Volumes: map[string]msbSdk.MountConfig{
-						mounts.VMHomeDir: {Named: recovered},
-					},
+				Cfg: &msbSdk.SandboxConfig{Image: "img:tag"},
+				Mounts: map[string]msbSdk.MountConfig{
+					mounts.VMHomeDir: msbSdk.Mount.Named(recovered, msbSdk.MountOptions{}),
 				},
 			}, nil
 		},

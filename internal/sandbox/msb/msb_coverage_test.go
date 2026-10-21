@@ -803,3 +803,22 @@ func TestFailFastClientPanics(t *testing.T) {
 		})
 	}
 }
+
+func TestMockSandboxHandleConfigMounts(t *testing.T) {
+	want := map[string]msbSdk.MountConfig{
+		"/tmp": msbSdk.Mount.Tmpfs(msbSdk.TmpfsOptions{SizeMiB: 2048}),
+	}
+	m := &MockSandboxHandle{Mounts: want}
+	got, err := m.ConfigMounts()
+	if err != nil {
+		t.Fatalf("ConfigMounts() error = %v", err)
+	}
+	if got["/tmp"].SizeMiB != 2048 {
+		t.Errorf("ConfigMounts() = %+v, want the seeded mounts", got)
+	}
+
+	failing := &MockSandboxHandle{MountsErr: errors.New("mounts boom")}
+	if _, err := failing.ConfigMounts(); err == nil {
+		t.Error("ConfigMounts() error = nil, want the configured MountsErr")
+	}
+}

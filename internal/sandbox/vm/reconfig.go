@@ -151,6 +151,7 @@ func decideReconfig(
 		if cfgErr != nil {
 			ui.Verbosef("reading existing VM config failed: %v (continuing)", cfgErr)
 		}
+		applyLiveMounts(curCfg, handle, ui)
 		var connectErr error
 		liveSb, connectErr = handle.Connect(ctx)
 		if connectErr != nil {
@@ -220,6 +221,23 @@ func decideReconfig(
 		homeVol = newVol
 	}
 	return recreate, restart, homeVol, plan.ServeHostPort, nil
+}
+
+// applyLiveMounts fills cfg.Volumes with the mounts the persisted config
+// records, which the SDK's Config() drops (specs/live-mount-readback.md). Until
+// it runs, cfg.Volumes is empty and the size/quota/home detectors see nothing. A
+// read failure is reported at verbose level and leaves cfg.Volumes untouched, so
+// the decision degrades to the pre-#223 behaviour instead of aborting the run.
+func applyLiveMounts(cfg *msbSdk.SandboxConfig, handle msb.SandboxHandle, ui termio.UI) {
+	if cfg == nil {
+		return
+	}
+	liveMounts, err := handle.ConfigMounts()
+	if err != nil {
+		ui.Verbosef("reading VM mounts failed: %v (continuing)", err)
+		return
+	}
+	cfg.Volumes = liveMounts
 }
 
 // restartDaemons provisions config files and restarts the agent's daemon so an

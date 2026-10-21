@@ -265,6 +265,13 @@ command reports the bare version (e.g. `0.1.0`).
   config-path, Docker, doctor, or msb resolution fails fast instead of silently touching the host. The `notify` backend
   now also installs a fail-fast default for its notification-command seam, and `options.FirstFreeHostPort` probes through
   a `probeHostPort` seam so tests need not bind a real socket.
+- Reconfiguration: a changed `--tmp-size` or `--workspace-quota`, and a home-volume switch, now actually recreate an
+  existing project VM. Those three detectors compared against `cfg.Volumes`, which the microsandbox Go SDK always leaves
+  empty when reading a VM back (its config decode drops the persisted mounts), so they never fired and the change was
+  silently ignored until an unrelated recreate — while the launcher's docs already described them as triggering one. The
+  live VM's mounts are now read from its persisted config. The same empty `cfg.Volumes` also silently disabled two other
+  readers: home-volume recovery after a lost `state.yaml` never found the surviving volume (always minting the duplicate
+  #219 was filed for), and `sandbox inspect` reported `mounts (0)` for a fully mounted VM (#223).
 
 ### Changed
 
