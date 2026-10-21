@@ -28,11 +28,11 @@ func legacyVMNotFound(handle msb.SandboxHandle) *msb.MockMsbClient {
 	}}
 }
 
-func legacyVMWithHome(volume string) *msb.MockSandboxHandle {
+func legacyVMWithHome() *msb.MockSandboxHandle {
 	return &msb.MockSandboxHandle{
 		Name_: adoptLegacyVMName(),
 		Mounts: map[string]msbSdk.MountConfig{
-			mounts.VMHomeDir: msbSdk.Mount.Named(volume, msbSdk.MountOptions{}),
+			mounts.VMHomeDir: msbSdk.Mount.Named(adoptLegacyVolume, msbSdk.MountOptions{}),
 		},
 	}
 }
@@ -87,7 +87,7 @@ func TestAdoptLegacyIdentityPersistRecoveredVolumeFailureFailsClosed(t *testing.
 	}
 	t.Cleanup(func() { _ = os.Chmod(keyDir, 0o700) })
 
-	handle := legacyVMWithHome(adoptLegacyVolume)
+	handle := legacyVMWithHome()
 	ui := termio.NewTestMock(t)
 
 	if _, err := AdoptLegacyIdentity(
@@ -144,7 +144,7 @@ func TestAdoptLegacyIdentityClaimCommitFailureFailsClosed(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.Chmod(root, 0o700) })
 
-	handle := legacyVMWithHome(adoptLegacyVolume)
+	handle := legacyVMWithHome()
 	ui := termio.NewTestMock(t)
 
 	if _, err := AdoptLegacyIdentity(
@@ -180,7 +180,7 @@ func TestAdoptLegacyIdentityClaimVolumeMismatchFailsClosed(t *testing.T) {
 		t.Fatalf("seed claim: %v", err)
 	}
 
-	handle := legacyVMWithHome(adoptLegacyVolume)
+	handle := legacyVMWithHome()
 	ui := termio.NewTestMock(t)
 
 	_, err := AdoptLegacyIdentity(
@@ -199,6 +199,135 @@ func TestAdoptLegacyIdentityClaimVolumeMismatchFailsClosed(t *testing.T) {
 	}
 	if handle.Destroyed {
 		t.Error("the legacy VM must survive a mismatched adoption claim")
+	}
+}
+
+// adoptOtherOwnerSlug is a third checkout that already owns a shared legacy
+// identity's home volume but never wrote its recovery marker (its marker write
+// failed after the claim committed), the state a later adopter destroying the
+// legacy VM must not strand.
+const adoptOtherOwnerSlug = "widget-ccc"
+
+func adoptOtherOwnerKey() state.Key {
+	return state.Key{Slug: adoptOtherOwnerSlug, Agent: adoptAgentName}
+}
+
+// TestAdoptLegacyIdentityRestoresOtherOwnersMarkerBeforeDestroy covers the
+// stranded-volume hole: checkout A claimed the shared legacy home but failed to
+// record its recovery marker, so when checkout B adopts the same live VM it must
+// materialize A's marker from the claim before destroying the VM (the volume's
+// only other reference). B still starts with its own fresh volume.
+func TestAdoptLegacyIdentityRestoresOtherOwnersMarkerBeforeDestroy(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := seedRootState(state.RootState{AdoptedHomeVolumes: map[string]state.AdoptedHomeVolume{
+		"widget-aaa/opencode": {CheckoutSlug: adoptOtherOwnerSlug, Volume: adoptLegacyVolume},
+	}}); err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+
+	handle := legacyVMWithHome()
+	ui := termio.NewTestMock(t)
+
+	if _, err := AdoptLegacyIdentity(
+		context.Background(),
+		legacyVMNotFound(handle),
+		adoptIdentity(),
+		adoptAgentName,
+		true,
+		&ui,
+	); err != nil {
+		t.Fatalf("AdoptLegacyIdentity: %v", err)
+	}
+	if !handle.Destroyed {
+		t.Error("the legacy VM must be destroyed by the checkout that does not own the volume")
+	}
+
+	// The owner's recovery reference is durable, so the volume survives even if
+	// the owner never runs again.
+	ownerState, err := state.ReadState(adoptOtherOwnerKey())
+	if err != nil {
+		t.Fatalf("ReadState(owner): %v", err)
+	}
+	if ownerState.RecoveredHomeVolume != adoptLegacyVolume {
+		t.Errorf("owner RecoveredHomeVolume = %q, want %q", ownerState.RecoveredHomeVolume, adoptLegacyVolume)
+	}
+	// The adopting checkout must not share the owner's volume.
+	if statePresent(t, adoptCheckoutKey()) {
+		t.Error("the non-owning checkout must not record a recovery marker")
+	}
+}
+
+// TestAdoptLegacyIdentityOtherOwnerClaimVolumeMismatchFailsClosed covers the
+// mismatch guard for a claim held by another checkout: the claim names a
+// different volume than the live VM mounts, so destroying the VM could strand
+// whatever it actually holds, and adoption refuses.
+func TestAdoptLegacyIdentityOtherOwnerClaimVolumeMismatchFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := seedRootState(state.RootState{AdoptedHomeVolumes: map[string]state.AdoptedHomeVolume{
+		"widget-aaa/opencode": {CheckoutSlug: adoptOtherOwnerSlug, Volume: "some-other-volume"},
+	}}); err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+
+	handle := legacyVMWithHome()
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(
+		context.Background(),
+		legacyVMNotFound(handle),
+		adoptIdentity(),
+		adoptAgentName,
+		true,
+		&ui,
+	)
+	if err == nil {
+		t.Fatal("expected a mismatched other-owner claim to fail closed")
+	}
+	if !strings.Contains(err.Error(), "refusing to destroy it") {
+		t.Errorf("error = %v, want the fail-closed refusal", err)
+	}
+	if handle.Destroyed {
+		t.Error("the legacy VM must survive a mismatched other-owner claim")
+	}
+	if statePresent(t, adoptOtherOwnerKey()) {
+		t.Error("a refused adoption must not write the owner's marker")
+	}
+}
+
+// TestAdoptLegacyIdentityOtherOwnerMarkerRestoreFailureFailsClosed covers the
+// owner's marker restore failing: the VM's only other reference could not be
+// made durable, so adoption must not destroy the VM and strand the volume.
+func TestAdoptLegacyIdentityOtherOwnerMarkerRestoreFailureFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := seedRootState(state.RootState{AdoptedHomeVolumes: map[string]state.AdoptedHomeVolume{
+		"widget-aaa/opencode": {CheckoutSlug: adoptOtherOwnerSlug, Volume: adoptLegacyVolume},
+	}}); err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+	// A directory at the owner's state-file path makes the marker write fail with
+	// a non-repairable read error.
+	if err := os.MkdirAll(filepath.Join(state.KeyDir(adoptOtherOwnerKey()), "state.yaml"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	handle := legacyVMWithHome()
+	ui := termio.NewTestMock(t)
+
+	if _, err := AdoptLegacyIdentity(
+		context.Background(),
+		legacyVMNotFound(handle),
+		adoptIdentity(),
+		adoptAgentName,
+		true,
+		&ui,
+	); err == nil {
+		t.Fatal("expected the owner's marker restore failure to abort adoption")
+	}
+	if handle.Destroyed {
+		t.Error("the legacy VM must survive a failed owner-marker restore")
 	}
 }
 

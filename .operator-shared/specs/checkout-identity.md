@@ -172,11 +172,12 @@ itself. A shared legacy identity has one VM and therefore one home volume, so th
 **claims** the volume under the legacy identity in the launcher-global `RootState` (`adopted_home_volumes`,
 keyed `<legacySlug>/<agent>`) and commits the claim, then writes the marker; both run under the same root
 lock and before the destroy, so each survives a destroy failure and a failed marker write cannot leave the
-volume recorded without an owner. A second clone that adopts the same surviving VM sees the claim, skips the
-marker, and starts with its own fresh volume instead of both recovering one volume; the claim is retired once
-the owner folds the volume into its own state. A claim this checkout already owns that names a *different*
-volume than the live VM mounts is a state adoption cannot reconcile, so it fails closed rather than
-destroying the VM. A corrupt or unreadable *checkout*
+volume recorded without an owner. A second clone that adopts the same surviving VM sees the claim, starts with its own fresh
+volume instead of recovering one volume, and — before it destroys that VM — writes the **owner's** recovery marker
+from the claim, so the owner's volume stays reachable even if the owner never runs again (failing the migration
+closed if it cannot write it). The claim is retired once the owner folds the volume into its own state. A claim
+naming a *different* volume than the live VM mounts — its own or another checkout's — is a state adoption cannot
+reconcile, so it fails closed rather than destroying the VM. A corrupt or unreadable *checkout*
 state makes the trigger skip migration rather than abort the run, leaving legacy VMs and state untouched
 so the caller's recovery path (`RecoverHomeState`) can repair the document; reads of the *legacy* state and
 a legacy VM's mounts still fail closed. A VM whose mounts cannot be read fails the adoption closed rather

@@ -565,3 +565,24 @@ coverage of the review-added error branches:
   marker-write failure aborts before the destroy, claim-commit failure aborts, volume mismatch refuses, locked
   re-check error propagates), `TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp`/`CommitError`,
   `TestResolveHomeVolume_AdoptionClaimClearErrorWarns`, and `TestSlugHasUserConfigEmptySlugIsFalse`.
+
+### Post-merge review round 2: materialize the owner's marker before another clone destroys
+
+The second Greptile finding on the same thread (`adopt.go`, "Saved home becomes unreachable") is the mirrored gap
+of the ordering fix above: claim-first closes "marker without owner", but leaves "owner without marker" open. If
+checkout A commits the claim and its marker write fails, A aborts before the destroy; checkout B then adopts the
+same live VM, sees A owns the volume, skips its own marker, **yet still destroys the VM** (the destroy loop is
+unconditional). A's retry finds neither a marker nor a VM and mints a fresh home, and nothing reads the claim to
+recover the volume. Fix, in `adopt.go` only:
+
+- `claimLegacyHomeVolume` returns the existing claim and runs the volume-mismatch fail-closed check for **any**
+  holder, not only this checkout (a claim naming a volume the VM does not mount is unreconcilable whoever owns it).
+- `persistAdoptionOwnership`, on the not-owner path, materializes the owner's recovery marker from the claim
+  (`persistRecoveredHomeVolume` under `owner.CheckoutSlug`) before the destroy, and fails the migration closed if
+  that write fails. The invariant becomes: a legacy VM is never destroyed until its home volume has a durable
+  reference. Chosen over "recover directly from the claim", which only helps the owner if it runs again.
+
+Tests (`internal/sandbox/vm/adopt_review_test.go`), first-failing then green:
+`TestAdoptLegacyIdentityRestoresOtherOwnersMarkerBeforeDestroy` (B materializes A's marker, destroys the VM, and
+keeps its own state clean), `...OtherOwnerClaimVolumeMismatchFailsClosed`, and
+`...OtherOwnerMarkerRestoreFailureFailsClosed` (B aborts and the VM survives).

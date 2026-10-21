@@ -173,7 +173,9 @@ command reports the bare version (e.g. `0.1.0`).
   the rename so the first post-upgrade run honours the user's saved settings, and `volume migrate`/`reset`/`edit`
   accept a pending recovered volume as their source and clear the marker when they commit. A shared legacy
   identity's recovered home volume is claimed under the legacy identity in the launcher-global root state, so a
-  second clone cannot recover the same volume. #144.
+  second clone cannot recover the same volume; the claim is committed before the recovery marker, and a checkout that
+  destroys the shared legacy VM without owning the volume first materializes the owner's marker from the claim (failing
+  the migration closed if it cannot), so the owner's volume is never stranded by another clone's destroy. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the

@@ -185,7 +185,11 @@ type legacyPendingSource struct {
 // (its only other reference) is gone. It flows through the recovery transaction,
 // which repairs a missing or unparsable document; the trigger guarantees no
 // settled checkout state exists yet, and a retried adoption rewrites its own
-// marker. A VM with no home mount has nothing to preserve and writes nothing.
+// marker. The key is not necessarily this checkout's: a checkout that does not
+// own the volume still records it under the owner's key, materializing the
+// owner's marker from the claim before it destroys the shared VM (see
+// persistAdoptionOwnership). A VM with no home mount has nothing to preserve and
+// writes nothing.
 func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
 	if homeVolume == "" {
 		return nil
@@ -200,34 +204,35 @@ func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
 }
 
 // claimLegacyHomeVolume records this checkout as the owner of a shared legacy
-// identity's lost-state home volume, within the adoption root transaction. It
-// returns false when another checkout already owns the identity's volume, so
-// this checkout must not record a marker (it starts with its own fresh volume
-// instead of sharing the owner's). A claim by this checkout is re-recorded, so a
+// identity's lost-state home volume, within the adoption root transaction. The
+// boolean reports whether this checkout is that owner; false means another
+// checkout already owns the identity's volume, in which case the returned claim
+// names it (so the caller can materialize the owner's marker) and this checkout
+// must not record one of its own. A claim by this checkout is re-recorded, so a
 // retried adoption is idempotent — but only when it names the volume the live
-// legacy VM actually mounts. A claim that disagrees with the observed volume is
-// a state adoption cannot reconcile, so it fails closed instead of destroying
-// the VM and overwriting the record.
+// legacy VM actually mounts. A claim that disagrees with the observed volume,
+// whoever holds it, is a state adoption cannot reconcile, so it fails closed
+// instead of destroying the VM and stranding whatever the VM actually mounts.
 func claimLegacyHomeVolume(
 	txn *state.RootTxn,
 	source legacyPendingSource,
 	checkoutKey state.Key,
-) (bool, error) {
+) (state.AdoptedHomeVolume, bool, error) {
 	if owner, claimed := txn.State().AdoptedHomeVolume(source.Slug, checkoutKey.Agent); claimed {
-		if owner.CheckoutSlug != checkoutKey.Slug {
-			return false, nil
-		}
 		if owner.Volume != source.HomeVolume {
-			return false, fmt.Errorf(
+			return state.AdoptedHomeVolume{}, false, fmt.Errorf(
 				"adoption claim for legacy identity %s records home volume %q but the live VM mounts %q: refusing to destroy it",
 				source.Slug,
 				owner.Volume,
 				source.HomeVolume,
 			)
 		}
+		if owner.CheckoutSlug != checkoutKey.Slug {
+			return owner, false, nil
+		}
 	}
 	txn.State().ClaimAdoptedHomeVolume(source.Slug, checkoutKey.Agent, checkoutKey.Slug, source.HomeVolume)
-	return true, nil
+	return state.AdoptedHomeVolume{CheckoutSlug: checkoutKey.Slug, Volume: source.HomeVolume}, true, nil
 }
 
 // persistAdoptionOwnership durably records a shared legacy identity's lost-state
@@ -237,19 +242,27 @@ func claimLegacyHomeVolume(
 // destroy failure (or a caller that discards the adoption result) still leaves
 // the volume owned and recoverable, and a marker write that fails cannot leave
 // the volume recorded without an owner — which would let a second clone claim
-// and recover the same volume. It is a no-op when another checkout already owns
-// the volume, so this checkout starts with its own fresh volume instead.
+// and recover the same volume. When another checkout already owns the volume,
+// this checkout starts with its own fresh volume instead, but it first
+// materializes the owner's recovery marker from the claim: it is about to destroy
+// the legacy VM, the volume's only other reference, so without the marker the
+// owner's retry would find neither a marker nor a VM and mint a fresh home. A
+// failed restore fails the whole adoption closed, so a VM is never destroyed
+// before its home volume has a durable reference.
 func persistAdoptionOwnership(
 	txn *state.RootTxn,
 	source legacyPendingSource,
 	checkoutKey state.Key,
 ) error {
-	own, err := claimLegacyHomeVolume(txn, source, checkoutKey)
+	owner, own, err := claimLegacyHomeVolume(txn, source, checkoutKey)
 	if err != nil {
 		return err
 	}
 	if !own {
-		return nil
+		return persistRecoveredHomeVolume(
+			state.Key{Slug: owner.CheckoutSlug, Agent: checkoutKey.Agent},
+			owner.Volume,
+		)
 	}
 	if err := txn.Commit(); err != nil {
 		return fmt.Errorf("record adoption ownership for %s: %w", source.Slug, err)
