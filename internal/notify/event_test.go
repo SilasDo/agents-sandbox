@@ -61,6 +61,39 @@ func TestTrackerAwaitingInputFiresInput(t *testing.T) {
 	}
 }
 
+// opencode2Spec mirrors the v2 profile's transition lists: a turn is one
+// execution pair, each step start re-arms busy, and input requests arrive as
+// permission.asked / form.created.
+func opencode2Spec() agent.EventStreamSpec {
+	return agent.EventStreamSpec{
+		BusyEvents:    []string{"session.execution.started", "session.step.started"},
+		AwaitingInput: []string{"permission.asked", "form.created"},
+		IdleEvents:    []string{"session.execution.succeeded"},
+		ErrorEvents:   []string{"session.error", "session.execution.failed"},
+		Name:          "opencode2",
+		Parse:         parseTestEvent,
+	}
+}
+
+// TestTrackerSecondInputInTurnFiresInput guards the v2 gap where a session that
+// awaited input stayed in that state, so a later request in the same turn
+// produced no notification. A step start re-arms busy.
+func TestTrackerSecondInputInTurnFiresInput(t *testing.T) {
+	tr := NewTracker(opencode2Spec())
+	sid := "ses_top"
+	tr.Handle(agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
+	first := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid})
+	if first == nil || first.Trigger != TriggerInput {
+		t.Fatalf("expected first input notification, got %+v", first)
+	}
+	// The user answers, the turn resumes with a new step, then asks again.
+	tr.Handle(agent.StreamEvent{Type: "session.step.started", SessionID: sid})
+	second := tr.Handle(agent.StreamEvent{Type: "form.created", SessionID: sid})
+	if second == nil || second.Trigger != TriggerInput {
+		t.Fatalf("expected second input notification after a step started, got %+v", second)
+	}
+}
+
 func TestTrackerErrorFiresError(t *testing.T) {
 	tr := NewTracker(opencodeSpec())
 	n := tr.Handle(agent.StreamEvent{Type: "session.error"})

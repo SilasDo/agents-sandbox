@@ -389,7 +389,7 @@ func TestOpencode2EventStream(t *testing.T) {
 	got.Parse = nil
 	want := agent.EventStreamSpec{
 		StreamCommand:      "curl -N -s -u opencode:opencode http://127.0.0.1:4096/api/event",
-		BusyEvents:         []string{"session.execution.started"},
+		BusyEvents:         []string{"session.execution.started", "session.step.started"},
 		AwaitingInput:      []string{"permission.asked", "form.created"},
 		IdleEvents:         []string{"session.execution.succeeded"},
 		ErrorEvents:        []string{"session.error", "session.execution.failed"},

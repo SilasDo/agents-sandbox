@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 )
 
@@ -106,6 +107,27 @@ func TestDedupSameClientSecondNotifyDropped(t *testing.T) {
 	c.Notify(n) // held locally -> dropped
 	if sink.count() != 1 {
 		t.Fatalf("expected 1 notification after a repeat, got %d", sink.count())
+	}
+}
+
+// TestHandleEventSecondInputInTurnNotifies drives the full path for the v2
+// within-turn gap: the first request claims the input token, a step start
+// releases it, and the second request notifies again.
+func TestHandleEventSecondInputInTurnNotifies(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	sink := &sharedSink{}
+	dedup := NewDedup("dedupinturn-a", StateClaimer{}, sink)
+	tr := NewTracker(opencode2Spec())
+	sid := "ses_top"
+
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid})
+	// The user answers; the next step starts, releasing the input claim.
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "session.step.started", SessionID: sid})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "form.created", SessionID: sid})
+
+	if sink.count() != 2 {
+		t.Fatalf("expected both in-turn input requests to notify, got %d", sink.count())
 	}
 }
 

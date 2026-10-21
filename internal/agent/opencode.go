@@ -126,7 +126,7 @@ func (opencodeProfile) EventStream() EventStreamSpec {
 		ErrorEvents:        []string{sessionErrorEvent},
 		StickyErrorEvents:  []string{sessionErrorEvent},
 		SessionEvents:      []string{"session.created", "session.updated"},
-		SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
+		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
 		Name:               opencodeName,
 		Parse:              parseOpencodeV1Event,
 	}

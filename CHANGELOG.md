@@ -155,6 +155,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Notifications: a second permission or form request inside one `opencode2` turn now notifies. After the first
+  request the session stayed in its awaiting-input state, so later requests in the same turn were silent; a
+  `session.step.started` event now re-arms the session. v1's seed request is also time-limited, so a stalled
+  `/session` can no longer stop the notify watcher for the rest of the run.
 - CLI: a negative or overflow-sized duration is now rejected instead of silently accepted. `--older-than` (and the
   deprecated `--age`) plus the `auto-prune-age`, `manual-prune-age`, `auto-stop-timeout`, and `upgrade-interval` config
   keys used to accept `-1d`, and an oversized day/week count such as `110000d` wrapped `int64` into a negative duration.

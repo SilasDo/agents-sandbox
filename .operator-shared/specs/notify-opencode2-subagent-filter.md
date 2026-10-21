@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter` (commits `437c869`, `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`, `af1e1e7`, `217aee3`); PR #245 open, pending merge.
+Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings — see "Review fixes (PR #245)" below.
 
 ## Problem
 
@@ -143,9 +143,10 @@ type EventStreamSpec struct {
     IdleEvents    []string
     ErrorEvents   []string
     // StickyErrorEvents is the subset of ErrorEvents that latches the session
-    // in the error state: no further notification fires for that session until
-    // the watcher reconnects. An error event not listed here ends only the
-    // current turn. Empty means no error event latches.
+    // in the error state for the watcher's lifetime — reconnecting does not
+    // clear it, since the watcher reuses one tracker across reconnects. An
+    // error event not listed here ends only the current turn. Empty means no
+    // error event latches.
     StickyErrorEvents []string
     // SessionEvents are lifecycle event types whose payload may identify a
     // session's parent. A non-empty parent ID marks the session as a subagent
@@ -213,7 +214,7 @@ the watcher was disconnected.
 
 ```go
 StreamCommand: "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event"
-BusyEvents:    {"session.execution.started"}
+BusyEvents:    {"session.execution.started", "session.step.started"}
 AwaitingInput: {"permission.asked", "form.created"}
 IdleEvents:    {"session.execution.succeeded"}
 ErrorEvents:   {"session.error", "session.execution.failed"}
@@ -230,7 +231,7 @@ lists verbatim; add:
 
 ```go
 SessionEvents: {"session.created", "session.updated"}
-SessionListCommand: "curl -sf http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'"
+SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'"
 StickyErrorEvents: {"session.error"}
 Parse: parseOpencodeV1Event
 ```
@@ -322,3 +323,33 @@ Parse: parseOpencodeV1Event
   fire a false done — the idle arm requires a busy or awaiting-input state.
 - **v1's `session.error` latch is unchanged.** The latch's origin was a coverage commit (`dc360d91`),
   not a documented contract; keeping v1 sticky preserves today's behavior exactly.
+
+## Review fixes (PR #245)
+
+Three Greptile findings, all fixed on the rebased branch:
+
+1. **Later input requests in a v2 turn were silent (P1).** A v2 turn is one
+   `session.execution.started`/`succeeded` pair with many steps, so after the first
+   `permission.asked`/`form.created` the session stayed in `stateAwaitingInput`; a second request in the
+   same turn matched neither the busy nor the idle arm of `Handle` and produced no notification, and the
+   `(session, TriggerInput)` dedup claim from the first request stayed held. Fix: add
+   `session.step.started` — an already-observed v2 event — to `BusyEvents`. A step start re-arms busy and
+   `handleEvent` releases the session's claims (via `SessionBusy`), so the next request notifies and the
+   first request is not repeated. Tests: `TestTrackerSecondInputInTurnFiresInput` and
+   `TestHandleEventSecondInputInTurnNotifies`. **Residual uncertainty:** the fix relies on a
+   `session.step.started` occurring between two input requests in one turn. That holds when each request
+   gates its own step; if two requests fall inside one step (e.g. parallel tool calls) the second still
+   cannot re-arm. A live probe of a two-permission turn is still needed to close this.
+2. **v1's seed command had no time limit (P2).** `watchOnce` runs the session-list command synchronously
+   before reading the stream, so a stalled `/session` would stop all notifications for the run. The v1
+   command gained `-m 30`, matching v2's `opencode2CurlFlags`.
+3. **`StickyErrorEvents` comment was wrong (P2).** It claimed the latch lasted "until the watcher
+   reconnects", but `Watch` reuses one `Tracker` across reconnects, so the latch lasts the watcher's
+   lifetime. Comment corrected; behavior unchanged.
+
+The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
+`CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
+`CountActiveClients` removes any file it can lock, so a poll landing between create and flock deletes the
+lease and the live client becomes invisible. This made
+`internal/sandbox/session.TestReapOnLastClient_ClientReattachesDuringWait` hang to its 10-minute timeout on
+CI. Tracked separately from PR #245.

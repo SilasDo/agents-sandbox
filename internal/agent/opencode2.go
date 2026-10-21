@@ -211,7 +211,7 @@ func (opencode2Profile) AttachCommand(target string, args []string) string {
 func (opencode2Profile) EventStream() EventStreamSpec {
 	return EventStreamSpec{
 		StreamCommand:      "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event",
-		BusyEvents:         []string{"session.execution.started"},
+		BusyEvents:         []string{"session.execution.started", "session.step.started"},
 		AwaitingInput:      []string{"permission.asked", "form.created"},
 		IdleEvents:         []string{"session.execution.succeeded"},
 		ErrorEvents:        []string{sessionErrorEvent, "session.execution.failed"},
