@@ -143,7 +143,7 @@ write_empty_report no-tags
 write_empty_report integration
 write_empty_report msb
 write_empty_report 'integration+msb'
-expect "package-scoped run skips staleness" 0 "skipping the stale-marker pass" PKG=./internal/git
+expect "package-scoped run skips staleness" 0 "skipping the stale-marker pass" PKG=./cmd/...
 
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

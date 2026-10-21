@@ -15,10 +15,11 @@
 #
 # Usage: DEADCODE_VERSION=v0.52.0 ci/check-deadcode.sh
 #   DEADCODE_VERSION  required; the pinned golang.org/x/tools release (Makefile).
-#   PKG               package pattern to analyse, default ./... . A narrower
-#                     pattern is an inspection aid: it cannot judge markers
-#                     elsewhere in the module, so the stale-marker pass is
-#                     skipped and reported as skipped.
+#   PKG               package pattern to analyse, default ./... . deadcode needs
+#                     at least one main package in the pattern, so a leaf package
+#                     cannot stand alone. A narrower pattern is an inspection aid:
+#                     it cannot judge markers elsewhere in the module, so the
+#                     stale-marker pass is skipped and reported as skipped.
 #   TAGS              one build-tag configuration instead of the full matrix.
 #
 # Test-only seams, set by ci/test-check-deadcode.sh and by nothing else:
