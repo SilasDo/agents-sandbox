@@ -117,6 +117,22 @@ func originURL(root string) string {
 	return ""
 }
 
+// isBare reports whether gitDir (a repository's shared git directory) is a bare
+// repository, read from its config's core.bare. A missing or unreadable config
+// means "not bare": that is today's behavior for an unrecognized repo.
+func isBare(gitDir string) bool {
+	f, err := os.Open(filepath.Join(gitDir, "config"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	cfg, err := config.ReadConfig(f)
+	if err != nil {
+		return false
+	}
+	return cfg.Core.IsBare
+}
+
 // resolveGitDir returns the absolute git directory for the checkout rooted at
 // root. For a normal checkout that is root/.git; for a linked worktree, whose
 // root/.git is a file containing "gitdir: <shared>.git/worktrees/<name>", it

@@ -22,6 +22,9 @@ func TestResolveWorkspaceLayoutNonRepo(t *testing.T) {
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
 	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
+	}
 }
 
 func TestResolveWorkspaceLayoutRepoRoot(t *testing.T) {
@@ -37,6 +40,9 @@ func TestResolveWorkspaceLayoutRepoRoot(t *testing.T) {
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
+	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
 	}
 }
 
@@ -58,6 +64,9 @@ func TestResolveWorkspaceLayoutRepoSubdirectory(t *testing.T) {
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
 	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
+	}
 }
 
 func TestResolveWorkspaceLayoutNestedWorktree(t *testing.T) {
@@ -75,6 +84,9 @@ func TestResolveWorkspaceLayoutNestedWorktree(t *testing.T) {
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
+	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
 	}
 }
 
@@ -94,6 +106,9 @@ func TestResolveWorkspaceLayoutOutsideWorktree(t *testing.T) {
 	if !got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = false, want true")
 	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
+	}
 }
 
 func TestResolveWorkspaceLayoutMalformedGitFile(t *testing.T) {
@@ -112,6 +127,9 @@ func TestResolveWorkspaceLayoutMalformedGitFile(t *testing.T) {
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
+	}
+	if got.Bare {
+		t.Errorf("Bare = true, want false")
 	}
 }
 
@@ -137,6 +155,9 @@ func TestResolveWorkspaceLayoutBareGitDirNotNamedDotGit(t *testing.T) {
 	if got.CheckoutRoot != bare {
 		t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, bare)
 	}
+	if !got.Bare {
+		t.Errorf("Bare = false, want true")
+	}
 }
 
 func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
@@ -156,6 +177,9 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
 		}
+		if !got.Bare {
+			t.Errorf("Bare = false, want true")
+		}
 	})
 
 	t.Run("worktree subdirectory", func(t *testing.T) {
@@ -173,6 +197,9 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
 		}
+		if !got.Bare {
+			t.Errorf("Bare = false, want true")
+		}
 	})
 
 	t.Run("bare root", func(t *testing.T) {
@@ -185,6 +212,56 @@ func TestResolveWorkspaceLayoutBareWorktree(t *testing.T) {
 		}
 		if got.OutsideWorktree {
 			t.Errorf("OutsideWorktree = true, want false")
+		}
+		if !got.Bare {
+			t.Errorf("Bare = false, want true")
+		}
+	})
+}
+
+// TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing covers a shared git dir
+// whose config is absent or unparseable: core.bare cannot be read, so the layout
+// must report not-bare rather than failing.
+func TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing(t *testing.T) {
+	newWorktree := func(t *testing.T) string {
+		t.Helper()
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, ".git", "worktrees", "wt"), 0o755); err != nil {
+			t.Fatalf("mkdir git dir: %v", err)
+		}
+		worktree := filepath.Join(root, "wt")
+		if err := os.MkdirAll(worktree, 0o755); err != nil {
+			t.Fatalf("mkdir worktree: %v", err)
+		}
+		gitFile := filepath.Join(worktree, ".git")
+		if err := os.WriteFile(gitFile, []byte("gitdir: ../.git/worktrees/wt\n"), 0o644); err != nil {
+			t.Fatalf("write .git: %v", err)
+		}
+		return worktree
+	}
+
+	t.Run("missing config", func(t *testing.T) {
+		got := ResolveWorkspaceLayout(newWorktree(t))
+
+		if got.Bare {
+			t.Errorf("Bare = true, want false")
+		}
+	})
+
+	t.Run("unparseable config", func(t *testing.T) {
+		worktree := newWorktree(t)
+		if err := os.WriteFile(
+			filepath.Join(filepath.Dir(worktree), ".git", "config"),
+			[]byte("not a config"),
+			0o644,
+		); err != nil {
+			t.Fatalf("write config: %v", err)
+		}
+
+		got := ResolveWorkspaceLayout(worktree)
+
+		if got.Bare {
+			t.Errorf("Bare = true, want false")
 		}
 	})
 }
@@ -203,5 +280,8 @@ func TestResolveWorkspaceLayoutRelativeGitDir(t *testing.T) {
 	}
 	if got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = true, want false")
+	}
+	if !got.Bare {
+		t.Errorf("Bare = false, want true")
 	}
 }
