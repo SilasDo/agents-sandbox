@@ -2,6 +2,8 @@ package notify
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -148,47 +150,78 @@ func TestHandleEventRepeatedInputEventNotifiesOnce(t *testing.T) {
 	}
 }
 
-// recordingClaimer records the tokens it is asked for, so a test can assert the
-// claim set stays bounded.
-type recordingClaimer struct {
-	mu   sync.Mutex
-	keys []string
-}
+// alwaysClaimer is a filesystem-free claimer that always wins.
+type alwaysClaimer struct{}
 
-func (c *recordingClaimer) Acquire(_, key string) (func(), bool, error) {
-	c.mu.Lock()
-	c.keys = append(c.keys, key)
-	c.mu.Unlock()
+func (alwaysClaimer) Acquire(string, string) (func(), bool, error) {
 	return func() {}, true, nil
 }
 
-func (c *recordingClaimer) uniqueKeys() map[string]bool {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	unique := map[string]bool{}
-	for _, k := range c.keys {
-		unique[k] = true
-	}
-	return unique
+// claimsDir returns the slug's claim-file directory under the mocked state root.
+func claimsDir(t *testing.T, slug string) string {
+	t.Helper()
+	return filepath.Join(configpaths.Get().UserStateDir(), slug, "claims")
 }
 
-// TestDedupDistinctInputsShareOneClaimKey pins the storage bound: `AcquireClaim`
-// creates one file per token and never deletes it, so a token per request would
-// leak a file for every permission or form. Distinct requests in a turn must
-// therefore share the session's single input claim token.
-func TestDedupDistinctInputsShareOneClaimKey(t *testing.T) {
+// TestDedupReleasesInputClaims pins bounded storage: each request gets its own
+// token (so one client's dropped stream cannot silence another client's later
+// request), and releasing the session's claims removes their files rather than
+// leaving one per request behind.
+func TestDedupReleasesInputClaims(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	slug := "dedupcleanup-a"
 	sink := &sharedSink{}
-	claimer := &recordingClaimer{}
-	c := NewDedup("dedupbounded-a", claimer, sink)
+	c := NewDedup(slug, StateClaimer{}, sink)
 
-	for _, id := range []string{"evt_1", "evt_2", "evt_3"} {
-		c.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: id})
+	c.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_1"})
+	c.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_2"})
+	if sink.count() != 2 {
+		t.Fatalf("expected 2 distinct input notifications, got %d", sink.count())
 	}
-	if sink.count() != 3 {
-		t.Fatalf("expected 3 distinct input notifications, got %d", sink.count())
+	if n := countClaimFiles(t, claimsDir(t, slug)); n != 2 {
+		t.Fatalf("expected 2 claim files while held, got %d", n)
 	}
-	if keys := claimer.uniqueKeys(); len(keys) != 1 {
-		t.Fatalf("expected one input claim token for three requests, got %v", keys)
+
+	c.SessionBusy("ses_A")
+	if n := countClaimFiles(t, claimsDir(t, slug)); n != 0 {
+		t.Fatalf("expected the released claim files removed, got %d", n)
+	}
+}
+
+func countClaimFiles(t *testing.T, dir string) int {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0
+		}
+		t.Fatal(err)
+	}
+	count := 0
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".claim" {
+			count++
+		}
+	}
+	return count
+}
+
+// TestDedupLaterInputNotBlockedByAnotherClient pins liveness: a client holding
+// one request's token must not block a second request when its own stream has
+// dropped (so it never sees the second request). Each request has its own
+// token, so the other client can still deliver it.
+func TestDedupLaterInputNotBlockedByAnotherClient(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	slug := "dedupliveness-a"
+	sink := &sharedSink{}
+	c1 := NewDedup(slug, StateClaimer{}, sink)
+	c2 := NewDedup(slug, StateClaimer{}, sink)
+
+	c1.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_1"})
+	// c1's stream drops here and it never sees evt_2.
+	c2.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_2"})
+	if sink.count() != 2 {
+		t.Fatalf("expected both requests delivered, got %d", sink.count())
 	}
 }
 
@@ -197,7 +230,7 @@ func TestDedupDistinctInputsShareOneClaimKey(t *testing.T) {
 // forwarded once.
 func TestDedupSameInputEventDeliveredOnce(t *testing.T) {
 	sink := &sharedSink{}
-	c := NewDedup("dedupinputrepeat-a", &recordingClaimer{}, sink)
+	c := NewDedup("dedupinputrepeat-a", alwaysClaimer{}, sink)
 
 	n := Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_1"}
 	c.Notify(n)
@@ -207,10 +240,9 @@ func TestDedupSameInputEventDeliveredOnce(t *testing.T) {
 	}
 }
 
-// TestDedupCrossClientInputsSingleDeliverer guards cross-client behavior with
-// the shared input token: one client owns the session's input claim and
-// delivers each distinct request, the other drops them.
-func TestDedupCrossClientInputsSingleDeliverer(t *testing.T) {
+// TestDedupCrossClientInputsDeliveredOnce guards cross-client behavior: each
+// distinct request is claimed by one client and dropped by the other.
+func TestDedupCrossClientInputsDeliveredOnce(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	slug := "dedupcross-input-a"
 	sink := &sharedSink{}

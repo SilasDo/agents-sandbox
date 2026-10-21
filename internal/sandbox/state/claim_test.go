@@ -70,7 +70,7 @@ func TestAcquireClaimAbandonedFileReclaimable(t *testing.T) {
 	release()
 }
 
-func TestAcquireClaimReclaimableAfterReleaseWithFilePresent(t *testing.T) {
+func TestAcquireClaimReleaseRemovesFile(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	slug := "claimproj-b"
 
@@ -79,14 +79,14 @@ func TestAcquireClaimReclaimableAfterReleaseWithFilePresent(t *testing.T) {
 		t.Fatalf("first acquire: claimed=%v err=%v", claimed1, err)
 	}
 
-	// Release frees the flock but leaves the claim file in place.
+	// Release removes the claim file so tokens do not accumulate.
 	release1()
 	dir := filepath.Join(stateRoot(), slug, "claims")
-	if _, err := os.Stat(filepath.Join(dir, "keyX.claim")); err != nil {
-		t.Fatalf("claim file should remain after release: %v", err)
+	if _, err := os.Stat(filepath.Join(dir, "keyX.claim")); !os.IsNotExist(err) {
+		t.Fatalf("release should remove the claim file, stat err = %v", err)
 	}
 
-	// An un-removed file with a freed flock must be reclaimable.
+	// The key is free to claim again afterwards.
 	release2, claimed2, err := AcquireClaim(slug, "keyX")
 	if err != nil || !claimed2 {
 		t.Fatalf("re-acquire after release: claimed=%v err=%v", claimed2, err)
