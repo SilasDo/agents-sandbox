@@ -26,6 +26,10 @@ paths:
   `workflow_dispatch` while `on:` declared no dispatch trigger, so the documented manual path did not exist.
 - `on.pull_request.types` must list `labeled` **and** repeat the defaults (`opened`, `synchronize`, `reopened`):
   declaring `types:` replaces the default set rather than extending it.
+- Both workflows declare a workflow-level `permissions: contents: read`; the `publish` job raises its own (`contents:
+  write`, `pull-requests: write`) to publish the Release and open the Homebrew bump PR. CodeQL's
+  `actions/missing-workflow-permissions` query reports one alert **per job** with no effective limitation, so removing the
+  workflow-level block reopens one alert per job rather than one per workflow.
 - GitHub only offers dispatch for workflows whose file exists on the default branch. The `workflow_dispatch` trigger
   therefore becomes usable when it reaches `main`; `gh workflow run ci.yml --ref <branch>` can then dispatch any branch.
 - The label name has no single source of truth: it appears in the job condition, in the job's comment, and in

@@ -10,6 +10,12 @@ on:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
+# Least privilege for every job. The release pipeline's `publish` job raises this
+# for itself (contents + pull-requests write, to publish the Release and open the
+# Homebrew bump PR).
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: lint
