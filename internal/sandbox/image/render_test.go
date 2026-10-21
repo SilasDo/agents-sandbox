@@ -332,6 +332,58 @@ func TestRenderDockerfileDockerPrereqsExcludeDownloadTools(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileChecksGuestRuntimeTools guards the custom-base contract:
+// the in-VM tools the daemon agent's runtime needs (curl, nohup, pkill) must be
+// verified in the final stage after the user body, so a body that installs them
+// is accepted and a base missing one fails the build naming the tool.
+func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM debian:trixie-slim\nRUN apt-get update && apt-get install -y curl procps\n")
+	final := finalStage(t, mustRender(t, a, project, false))
+
+	checkIdx := strings.Index(final, "agent runtime tool missing")
+	if checkIdx < 0 {
+		t.Fatalf("the final stage must verify the agent's runtime tools; got:\n%s", final)
+	}
+	if !strings.Contains(final, "for p in curl nohup pkill;") {
+		t.Errorf("the check must cover curl, nohup, and pkill; got:\n%s", final)
+	}
+	if !strings.Contains(final, "command -v") {
+		t.Errorf("the check must probe the tools with command -v; got:\n%s", final)
+	}
+	bodyIdx := strings.Index(final, "apt-get install -y curl procps")
+	if bodyIdx < 0 || checkIdx < bodyIdx {
+		t.Errorf("the runtime tool check must run after the user body; got:\n%s", final)
+	}
+}
+
+// TestRenderDockerfileNoGuestToolsForDaemonlessAgents guards that agents which
+// run no daemon in the VM declare no guest tools, so no check is emitted.
+func TestRenderDockerfileNoGuestToolsForDaemonlessAgents(t *testing.T) {
+	for _, name := range []string{"pi", "claude-code"} {
+		a, _ := agent.Lookup(name)
+		final := finalStage(t, mustRender(t, a, nil, false))
+		if strings.Contains(final, "agent runtime tool missing") {
+			t.Errorf("%s runs no daemon and must not emit a guest-tool check; got:\n%s", name, final)
+		}
+	}
+}
+
+// emptyGuestToolsAgent declares the GuestToolRequirer capability with no tools,
+// covering guestToolsBlock's empty-list guard. The interface contract is that a
+// daemonless agent does not implement it, but a capability that returns an empty
+// list must still emit no check.
+type emptyGuestToolsAgent struct{ agent.Agent }
+
+func (emptyGuestToolsAgent) Name() string         { return "stub" }
+func (emptyGuestToolsAgent) GuestTools() []string { return nil }
+
+func TestGuestToolsBlockEmptyListEmitsNothing(t *testing.T) {
+	if got := guestToolsBlock(emptyGuestToolsAgent{}); got != "" {
+		t.Errorf("guestToolsBlock with an empty tool list = %q, want empty", got)
+	}
+}
+
 // TestRenderDockerfilePostBodyBlocksResetUserRoot guards I2: a user body ending
 // in a non-root USER must not leak into the tool-owned adoption RUN blocks.
 func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {

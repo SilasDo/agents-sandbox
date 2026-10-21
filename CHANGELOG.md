@@ -10,6 +10,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- Runner image: the in-VM tools the selected agent's runtime uses are now declared per agent and checked at build
+  time. A daemon agent (`opencode`, `opencode2`) needs `curl` (the daemon health probe, session and worktree calls, and
+  notifications), `nohup`, and `pkill` (daemon start/stop); `pi` and `claude-code` run no daemon and need none. A custom
+  base missing one now fails the build naming the tool instead of the daemon health probe failing at runtime. The list is
+  declared in Go (`agent.GuestToolRequirer`), so it cannot drift from the launcher's in-guest commands; removing the
+  `curl` requirement altogether is tracked as [#263](https://github.com/inoio/agents-sandbox/issues/263).
 - Internal: add `make mutation`, an on-demand mutation-testing target (`gomutants`, pinned like `vulncheck`). It reports
   mutants the tests do not notice; by default it covers the whole module but only lines changed since the last release
   tag (`PKG=...` narrows to one package, `FULL=1` runs every line). It is deliberately excluded from `make check`,

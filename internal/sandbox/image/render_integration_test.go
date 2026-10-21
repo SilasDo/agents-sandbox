@@ -62,13 +62,16 @@ func TestRenderDockerfileBuilds(t *testing.T) {
 		{"custom-base-fedora", []byte(
 			"FROM fedora:latest\n" +
 				"RUN dnf install -y curl tar && dnf clean all\n"), false},
-		// #143: debian:trixie-slim ships no curl, so a custom base that only
-		// needs to be a valid runner base must build without installing curl
-		// or tar anywhere.
-		{"custom-base-slim-no-curl", []byte("FROM debian:trixie-slim\n"), false},
-		{"custom-base-slim-no-curl-docker", []byte(
+		// #143: the image build's downloads run on the tool base, so a custom
+		// base needs no tar; curl and procps are installed only because the
+		// daemon agent's in-VM runtime tools (curl, nohup, pkill) are checked
+		// at build time.
+		{"custom-base-slim-no-tar", []byte(
 			"FROM debian:trixie-slim\n" +
-				"RUN apt-get update && apt-get install -y --no-install-recommends iptables git procps xz-utils && rm -rf /var/lib/apt/lists/*\n"), true},
+				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps && rm -rf /var/lib/apt/lists/*\n"), false},
+		{"custom-base-slim-no-tar-docker", []byte(
+			"FROM debian:trixie-slim\n" +
+				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps iptables git xz-utils && rm -rf /var/lib/apt/lists/*\n"), true},
 		{"custom-base-fedora-docker", []byte(
 			"FROM fedora:latest\n" +
 				"RUN dnf install -y curl tar iptables git procps-ng xz && dnf clean all\n"), true},
@@ -84,6 +87,48 @@ func TestRenderDockerfileBuilds(t *testing.T) {
 			rendered := renderBytesVersion(t, a, version, tc.projectDockerfile, tc.docker)
 			buildDockerfile(t, a, rendered, version, tc.docker)
 		})
+	}
+}
+
+// TestRenderDockerfileMissingGuestToolFailsBuild is the expected-failure guard
+// for the in-VM runtime tool check: a custom base lacking a required tool must
+// fail the build naming the tool, not build successfully and then fail at the
+// daemon health probe.
+func TestRenderDockerfileMissingGuestToolFailsBuild(t *testing.T) {
+	origGet := docker.Get
+	docker.Get = docker.RealClient
+	t.Cleanup(func() { docker.Get = origGet })
+
+	a, ok := agent.Lookup("opencode")
+	if !ok {
+		t.Fatal("opencode agent not registered")
+	}
+	version, err := resolveAgentVersion(context.Background(), a, "")
+	if err != nil {
+		t.Fatalf("resolve agent version: %v", err)
+	}
+
+	ctx := context.Background()
+	if _, err := docker.Get().Ping(ctx, client.PingOptions{}); err != nil {
+		t.Skipf("docker daemon not available: %v", err)
+	}
+
+	// debian:trixie-slim ships no curl, so the runtime tool check must stop the build.
+	tag := "agents-sandbox/it-missing-guest-tool"
+	t.Cleanup(func() { removeTestImage(tag) })
+
+	var lines []string
+	buildErr := buildImage(
+		ctx, a,
+		renderBytesVersion(t, a, version, []byte("FROM debian:trixie-slim\n"), false),
+		tag, false, version, "", "", false, imageIdentity{},
+		func(s string) { lines = append(lines, s) },
+	)
+	if buildErr == nil {
+		t.Fatal("the build must fail when the base lacks a required in-VM tool")
+	}
+	if out := strings.Join(lines, "\n"); !strings.Contains(out, "agent runtime tool missing: curl") {
+		t.Errorf("the failed build must name the missing tool; output:\n%s", out)
 	}
 }
 

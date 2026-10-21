@@ -48,6 +48,9 @@ type opencode2Profile struct {
 
 func (opencode2Profile) Name() string { return opencode2Name }
 
+// GuestTools declares the daemon's in-VM runtime tools for the image-build check.
+func (opencode2Profile) GuestTools() []string { return daemonGuestTools }
+
 // ConfigDirName scopes opencode2's own launcher config dir; the guest config
 // path and host drop-in still come from the embedded opencodeConfig.
 func (opencode2Profile) ConfigDirName() string { return opencode2Name }

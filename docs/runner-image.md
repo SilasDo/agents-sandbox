@@ -14,7 +14,8 @@ Projects can extend the image with their own tooling.
 The image is built to rebuild quickly and stay lean. Its tools — the base CLI tools, Node, the selected agent, and the
 optional Docker engine — live in separate build stages whose layers are reused unchanged, so editing your project's
 Dockerfile body does not re-run the tool installs, and the same tool layers are shared across every project on the machine. Node
-is present only for the agent that needs it, and a custom base needs no `curl` or `tar` of its own.
+is present only for the agent that needs it, and the image build's downloads need no `curl` or `tar` from your base — they
+run on the tool base.
 
 ## Home directory
 
@@ -95,7 +96,12 @@ base must meet these requirements:
 - **For Docker only**: the runtime prerequisites `iptables`, `git`, `ps`, and `xz`. These are checked after your
   Dockerfile body runs, so they may be installed in the body or an earlier stage. If one is missing, the build fails and
   names the missing package. The engine download itself runs on the tool base, so your image needs no `curl` or `tar`.
-- The recommended CLI tools above are documented for your convenience — as a custom base you install your own.
+- **For the daemon agents (`opencode`, `opencode2`)**: the in-VM tools the launcher uses — `curl`, `nohup`, and `pkill`.
+  `curl` reaches the daemon (the health probe, session and worktree calls, and notifications), `nohup`/`pkill` start and
+  stop it. These are checked after your Dockerfile body runs, so they may be installed in the body or an earlier stage;
+  if one is missing, the build fails and names the tool. `pi` and `claude-code` run no daemon and need none.
+- The recommended CLI tools above are documented for your convenience, not as requirements — as a custom base you install
+  your own.
 - A base that already provides docker, node, or the agent is left alone (idempotency), and a pre-created `dev` user is
   tolerated.
 

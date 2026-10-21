@@ -18,6 +18,14 @@ type opencodeConfig struct{}
 // inside the sandbox.
 const opencodeAutoupdateDisabled = "true"
 
+// daemonGuestTools are the in-VM tools the launcher uses to reach and control
+// an opencode daemon: curl for the health probe, session and worktree calls,
+// and the notify event stream; nohup and pkill for the daemon start and stop
+// commands. Both daemon profiles (opencode, opencode2) declare them, and the
+// renderer checks them at image build, so a custom base missing one fails the
+// build naming the tool instead of failing at runtime.
+var daemonGuestTools = []string{"curl", "nohup", "pkill"}
+
 func (opencodeConfig) ConfigDirName() string { return opencodeName }
 
 func (opencodeConfig) SnippetPattern() string { return "opencode*.json*" }

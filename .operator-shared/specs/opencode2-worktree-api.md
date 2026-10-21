@@ -1,7 +1,7 @@
 # Contract: opencode2 worktree API (v2 routes, project scoping, base refs, tool-free commands)
 
 Date: 2026-10-19 (revised 2026-10-21 for issue #257)
-Status: implemented on fix/opencode2-worktree-jq (PR #261, pending merge): the v2 routes/project scoping (#235) and the guest-`jq` removal (#257) are both in the tree.
+Status: implemented and merged — the v2 routes/project scoping (#235) on `fix/opencode2-worktree-api` (PR #238) and the guest-`jq` removal (#257) on `fix/opencode2-worktree-jq` (PR #261). The remaining in-guest `curl` dependency is now a build-checked custom-base requirement and is tracked for removal as #263.
 
 ## Problem
 
@@ -158,9 +158,10 @@ both before the list, each naming the resolve failure (mirroring the list's abor
   rejects anything that is not a slug, so `--worktree feature/x` never reaches the daemon; the real
   repro command is `--worktree feature-x`.
 - **`curl` remains an in-guest prerequisite for opencode/opencode2** (health probe, event stream,
-  session list, and these worktree calls), and it is not listed among the custom-base requirements in
-  `docs/runner-image.md`. #257 removes `jq` specifically; removing `curl` would mean moving the
-  daemon HTTP calls host-side, which is out of scope.
+  session list, and these worktree calls). It is now an enforced custom-base requirement: the daemon
+  profiles declare it (with `nohup` and `pkill`) via `agent.GuestToolRequirer`, and the image build
+  checks it, so a base without it fails the build naming the tool. #257 removed `jq` specifically;
+  removing `curl` would mean moving the daemon HTTP calls host-side, tracked as #263.
 
 ## Non-goals
 
