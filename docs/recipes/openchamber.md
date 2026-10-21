@@ -116,13 +116,40 @@ OpenChamber and OpenCode to run in the same VM, which is the optional in-VM inte
 [issue #266](https://github.com/inoio/agents-sandbox/issues/266). Until that design is implemented and tested,
 keep worktree and isolated multi-run features off for the host-side setup.
 
+## Security boundary
+
+This host-side arrangement isolates the OpenCode agent process in the VM; it does **not** sandbox the OpenChamber
+server. OpenChamber runs with the host user's operating-system permissions, so treat access to its UI as access to
+host-side development tools and data:
+
+- OpenChamber's file browser reads and edits project files on the host. Normal workspace operations are scoped to the
+  selected project, although some file-read APIs can explicitly access paths outside it, subject to host permissions.
+- Its terminal and project actions run commands as the host user. Those commands can access any files and network
+  services available to that user. Review and trust project actions or repository-provided OpenChamber setup before
+  running them; do not assume the VM's egress policy applies to them.
+- Its Git integration runs on the host and may use host Git configuration and credentials. OpenChamber's own server,
+  extensions, integrations, update checks, tunnels, and other enabled features also use the host's network access.
+- Only OpenCode-agent requests go through the sandboxed daemon and its microsandbox network policy. Keeping the
+  OpenCode port on `127.0.0.1` does not restrict the host-side OpenChamber process.
+
+Keep OpenChamber bound to localhost unless remote access is needed, and set a strong `OPENCHAMBER_UI_PASSWORD`. Pair
+only devices you trust and revoke unused pairings. Prefer OpenChamber Private Relay or a trusted VPN over exposing a
+public tunnel; a tunnel makes the host-capable UI reachable remotely. Never expose the agents-sandbox OpenCode port to
+the LAN or Internet: the current `opencode2` Basic Auth credential (`opencode:opencode`) is fixed in the runner image,
+not a per-project secret. For a shared-parent workspace, every repository under that parent is accessible to the VM
+agent and host-side OpenChamber, so use it only for repositories in the same trust boundary.
+
+See OpenChamber's [Security](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/security.mdx)
+and [Environment](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/environment.mdx)
+guides for its UI authentication, enterprise policy, extensions, and network settings. These controls govern
+OpenChamber itself; they do not move its host-side processes into the sandbox.
+
 ## Remote access
 
-OpenChamber's web server binds to localhost by default. To use its mobile or desktop clients remotely, follow
-OpenChamber's [device pairing guide](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/connect-devices.mdx)
-and use its Private Relay or a trusted VPN. Keep the agents-sandbox OpenCode port loopback-only; remote clients should
-connect to OpenChamber, not directly to the agent server. Set a strong `OPENCHAMBER_UI_PASSWORD` before enabling any
-broader network access.
+OpenChamber's web server binds to localhost by default. To connect its mobile or desktop clients, follow
+OpenChamber's [device pairing guide](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/connect-devices.mdx).
+Keep the agents-sandbox OpenCode port loopback-only; remote clients should connect to OpenChamber, not directly to the
+agent server. Apply the access controls described above before allowing connections from other machines.
 
 Both the `agents-sandbox run --serve-only` process and the OpenChamber server must remain running while you use the UI.
 When finished, stop OpenChamber and press `Ctrl-D` in the agents-sandbox terminal.
