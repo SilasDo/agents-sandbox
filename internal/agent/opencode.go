@@ -101,9 +101,10 @@ func (opencodeProfile) WorktreeParseList(stdout string, _ WorktreeProject) ([]st
 	for _, entry := range entries {
 		var directory string
 		if len(entry) > 0 && entry[0] == '"' {
-			if json.Unmarshal(entry, &directory) != nil {
-				return nil, false
-			}
+			// The outer unmarshal already validated entry as JSON, so a value
+			// starting with a quote is a string and decoding it cannot fail; a
+			// rejected value still fails the empty check below.
+			_ = json.Unmarshal(entry, &directory)
 		} else {
 			var info struct {
 				Directory string `json:"directory"`

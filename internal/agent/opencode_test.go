@@ -115,6 +115,11 @@ func TestOpencodeWorktreeHasNoResolveStep(t *testing.T) {
 	); got != "curl -sf http://127.0.0.1:4096/experimental/worktree" {
 		t.Errorf("WorktreeListCmd = %q, want the global v1 route", got)
 	}
+	// v1 has no resolve step, so the paired parser is never called in
+	// production; it must still report no project rather than fabricate one.
+	if _, ok := worktree.WorktreeParseProject(`{"project":{"id":"abc","canonical":"/repo"}}`); ok {
+		t.Error("WorktreeParseProject must report no project for v1")
+	}
 }
 
 // TestOpencodeWorktreeParseList pins the v1 list parser: path strings and
@@ -138,6 +143,8 @@ func TestOpencodeWorktreeParseList(t *testing.T) {
 		{name: "invalid json", in: `not json`, ok: false},
 		{name: "renamed field", in: `[{"path":"/wt/a"}]`, ok: false},
 		{name: "blank directory", in: `[{"directory":""}]`, ok: false},
+		{name: "numeric entry", in: `[123]`, ok: false},
+		{name: "numeric directory", in: `[{"directory":123}]`, ok: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

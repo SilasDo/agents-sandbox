@@ -32,6 +32,7 @@ type recordingWorktreeAgent struct {
 	resolveTarget string
 	resolveCalls  int
 	badProject    bool
+	badList       bool
 	listProject   agent.WorktreeProject
 	createSpec    agent.WorktreeSpec
 	createProject agent.WorktreeProject
@@ -56,6 +57,9 @@ func (r *recordingWorktreeAgent) WorktreeListCmd(project agent.WorktreeProject) 
 }
 
 func (r *recordingWorktreeAgent) WorktreeParseList(string, agent.WorktreeProject) ([]string, bool) {
+	if r.badList {
+		return nil, false
+	}
 	return []string{}, true
 }
 
@@ -154,6 +158,36 @@ func TestResolveTargetAbortsWhenProjectUnparsable(t *testing.T) {
 	for _, call := range *sb.ShellCalls {
 		if call == "list" || call == "create" {
 			t.Errorf("must not list or create after an unparsable resolve; calls: %v", *sb.ShellCalls)
+		}
+	}
+}
+
+// TestResolveTargetAbortsWhenListUnparsable pins that a list payload the
+// provider's parser rejects aborts before create: a malformed list must never
+// read as "no worktrees" and spawn a duplicate.
+func TestResolveTargetAbortsWhenListUnparsable(t *testing.T) {
+	ui := &termio.Mock{}
+	a := &recordingWorktreeAgent{badList: true}
+	sb := &msb.MockSandbox{
+		ShellOut: map[string]msb.ShellResult{
+			"resolve": msb.NewTestResult(true, 0, `{}`, "", nil),
+			"list":    msb.NewTestResult(true, 0, "garbage", "", nil),
+		},
+		ShellCalls: &[]string{},
+	}
+	if _, err := ResolveTarget(
+		context.Background(),
+		a,
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	); err == nil {
+		t.Fatal("expected an error when the list payload cannot be parsed")
+	}
+	for _, call := range *sb.ShellCalls {
+		if call == "create" {
+			t.Errorf("must not create after an unparsable list; calls: %v", *sb.ShellCalls)
 		}
 	}
 }
