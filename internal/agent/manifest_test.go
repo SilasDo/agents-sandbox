@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -160,9 +159,10 @@ func TestEvalProvisionRulesCountBeforeError(t *testing.T) {
 		{Dir: "b", Patterns: []string{"**"}},
 	}
 
+	vmHome := t.TempDir()
 	failErr := errors.New("copy boom")
-	n, err := agent.EvalProvisionRules(rules, hostHome, t.TempDir(), func(dst string, _ []byte, _ os.FileMode) error {
-		if strings.Contains(dst, "b") {
+	n, err := agent.EvalProvisionRules(rules, hostHome, vmHome, func(dst string, _ []byte, _ os.FileMode) error {
+		if dst == filepath.Join(vmHome, "b", "two.txt") {
 			return failErr
 		}
 		return nil
