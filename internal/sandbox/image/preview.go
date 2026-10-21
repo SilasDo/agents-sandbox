@@ -45,3 +45,18 @@ func PreviewImage(
 	WarnIgnoredProjectConfig(ui)
 	return previewRunnerImage(ctx, a, readProjectDockerfile(), projectSlug, buildOpts, ui)
 }
+
+// RunnerDockerfileID returns the content identity of the runner image this
+// project would build for the pinned agent version: the rendered Dockerfile
+// (agent profile plus on-disk project Dockerfile), the build-context assets, and
+// the version folded together. It is the value the build decision compares an
+// existing image's dockerfile-id label against. Exposed so callers outside this
+// package (e.g. higher-layer preview tests) can seed an image whose label
+// matches the plan this package computes.
+func RunnerDockerfileID(a agent.Agent, agentVersion string, docker bool) (string, error) {
+	rendered, err := RenderProjectDockerfile(a, agentVersion, docker)
+	if err != nil {
+		return "", err
+	}
+	return computeDockerfileID(rendered, agentVersion), nil
+}
