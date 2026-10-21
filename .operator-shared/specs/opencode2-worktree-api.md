@@ -1,7 +1,7 @@
 # Contract: opencode2 worktree API (v2 routes, project scoping, base refs, tool-free commands)
 
 Date: 2026-10-19 (revised 2026-10-21 for issue #257)
-Status: implemented on fix/opencode2-worktree-jq (pending merge): the v2 routes/project scoping (#235) and the guest-`jq` removal (#257) are both in the tree.
+Status: implemented on fix/opencode2-worktree-jq (PR #261, pending merge): the v2 routes/project scoping (#235) and the guest-`jq` removal (#257) are both in the tree.
 
 ## Problem
 

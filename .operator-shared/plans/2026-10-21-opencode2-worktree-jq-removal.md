@@ -1,5 +1,9 @@
 # opencode2 Worktree jq Removal Implementation Plan
 
+Status: implemented on `fix/opencode2-worktree-jq` (PR #261, pending merge). Both tasks landed in one
+commit; the whole-branch review found only minors, all addressed (resolve-call count + resolve transport
+failure tests, the extra parser fixtures the deleted jq-filter test pinned, and small wording/formatting).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `agents-sandbox run --agent opencode2 --worktree <name>` work on a custom runner base that has no `jq`, by moving all daemon-JSON handling on the worktree path out of guest shell commands and into Go.
