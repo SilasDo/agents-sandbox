@@ -481,6 +481,17 @@ type MockSandbox struct {
 	ShellStreamCmds *[]string
 }
 
+// String returns a stable label so logging the sandbox with %s does not walk
+// its fields. Those fields are recorded without synchronization, and the
+// notify watcher logs the sandbox while the run path is mutating it, so a
+// direct %s on the struct is a data race.
+func (m *MockSandbox) String() string {
+	if m.Name_ != "" {
+		return "MockSandbox(" + m.Name_ + ")"
+	}
+	return "MockSandbox"
+}
+
 func (m *MockSandbox) FS() SandboxFS {
 	if f, ok := m.FSValue_.(SandboxFS); ok {
 		return f
