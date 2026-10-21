@@ -281,15 +281,34 @@ func TestOpencodeEventStream(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode should implement EventStreamProvider")
 	}
-	want := agent.EventStreamSpec{
-		StreamCommand: "curl -N -s http://127.0.0.1:4096/global/event",
-		BusyEvents:    []string{"message.part.updated", "session.updated"},
-		AwaitingInput: []string{"permission.asked", "question.asked"},
-		IdleEvents:    []string{"session.idle"},
-		ErrorEvents:   []string{"session.error"},
-		Name:          "opencode",
+	got := provider.EventStream()
+	if got.Parse == nil {
+		t.Fatal("EventStream().Parse is nil")
 	}
-	if got := provider.EventStream(); !reflect.DeepEqual(got, want) {
+	got.Parse = nil
+	if got.SessionList == nil {
+		t.Fatal("EventStream().SessionList is nil")
+	}
+	if want := "curl -sf -m 30 http://127.0.0.1:4096/session"; got.SessionList.Command() != want {
+		t.Errorf("SessionList.Command() = %q, want %q", got.SessionList.Command(), want)
+	}
+	if children := got.SessionList.Parse([]byte(
+		`[{"id":"ses_child","parentID":"ses_top"}]`,
+	)); len(children) != 1 || children[0] != "ses_child" {
+		t.Errorf("SessionList.Parse() = %v, want [ses_child]", children)
+	}
+	got.SessionList = nil
+	want := agent.EventStreamSpec{
+		StreamCommand:     "curl -N -s http://127.0.0.1:4096/global/event",
+		BusyEvents:        []string{"message.part.updated", "session.updated"},
+		AwaitingInput:     []string{"permission.asked", "question.asked"},
+		IdleEvents:        []string{"session.idle"},
+		ErrorEvents:       []string{"session.error"},
+		StickyErrorEvents: []string{"session.error"},
+		SessionEvents:     []string{"session.created", "session.updated"},
+		Name:              "opencode",
+	}
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("EventStream() = %+v, want %+v", got, want)
 	}
 }

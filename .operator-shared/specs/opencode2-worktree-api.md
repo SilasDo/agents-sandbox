@@ -164,3 +164,13 @@ serve` with real HTTP calls, per the "Verified v2.0.32 API" section.
 - Manual end-to-end (user-side; the dev VM cannot start microsandbox VMs):
   `agents-sandbox run --agent opencode2 --worktree feature-x` creates, attaches, and a second run
   reuses the same directory; `-w feature-x:main` checks out at `main` (detached).
+
+## Known issue: `jq` runtime dependency
+
+Every v2 worktree command pipes the daemon response through `jq` (`opencode2LocatePrelude`,
+`WorktreeListCmd`'s filter, `WorktreeCreateCmd`'s body builder), and the commands run in the guest
+via `sb.Shell`. The managed base installs `jq`, but the tool-owned toolbase is deliberately not in
+the runner's lineage, so a **custom base** without `jq` breaks `--worktree` on opencode2
+(`jq: command not found`, surfacing as a failed worktree list). Filed as #257. The intended fix is
+the same one #245 applied to the notify seed: return the raw responses and parse/filter and build
+the body in Go on the `WorktreeProvider` seam, removing the dependency.

@@ -148,6 +148,8 @@ command reports the bare version (e.g. `0.1.0`).
   `internal/filewalk`, the last two packages without a backstop, and registers `notify` as a fifth family (installed by
   the wrapper; the five packages notify imports mirror the wrapper body directly). The wrapper's own package now tests
   its effect (`internal/testutil/mocks`), so the wrapper's body is covered by that package's own test binary.
+- Notifications: notify now supports the `opencode2` agent (its v2 session event stream) in addition to `opencode`, and
+  is skipped for subagent sessions — a child session carries a non-empty `parentID`, so only top-level sessions notify.
 
 ### Changed
 
@@ -164,6 +166,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Notifications: a second permission or form request inside one turn now notifies, even when both are asked back
+  to back in a single step. After the first request the session stayed in its awaiting-input state, so a later
+  request in the same turn was silent; each request is now identified by its event id, so distinct requests alert
+  while a replayed one does not. v1's seed request is also time-limited, so a stalled `/session` can no longer stop
+  the notify watcher for the rest of the run, and the seed no longer needs `jq` in the runner image, so
+  child-session filtering also works on custom bases.
 - CLI: a negative or overflow-sized duration is now rejected instead of silently accepted. `--older-than` (and the
   deprecated `--age`) plus the `auto-prune-age`, `manual-prune-age`, `auto-stop-timeout`, and `upgrade-interval` config
   keys used to accept `-1d`, and an oversized day/week count such as `110000d` wrapped `int64` into a negative duration.

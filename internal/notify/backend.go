@@ -29,6 +29,9 @@ type Notification struct {
 	Trigger   Trigger
 	Title     string
 	Body      string
+	// EventID is the source event's envelope id, set for input notifications so
+	// dedup keys each distinct request separately. Empty for other triggers.
+	EventID string
 }
 
 // Backend delivers notifications.

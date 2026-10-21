@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -111,13 +112,81 @@ func (opencodeProfile) ParseVersion(stdout string) (string, error) {
 	return extractSemverFromOutput(stdout)
 }
 
+// sessionErrorEvent is the session-level error event shared by the opencode
+// profiles: v1 latches on it, v2 treats it as turn-scoped like its other
+// error event.
+const sessionErrorEvent = "session.error"
+
 func (opencodeProfile) EventStream() EventStreamSpec {
 	return EventStreamSpec{
-		StreamCommand: "curl -N -s http://127.0.0.1:4096/global/event",
-		BusyEvents:    []string{"message.part.updated", "session.updated"},
-		AwaitingInput: []string{"permission.asked", "question.asked"},
-		IdleEvents:    []string{"session.idle"},
-		ErrorEvents:   []string{"session.error"},
-		Name:          opencodeName,
+		StreamCommand:     "curl -N -s http://127.0.0.1:4096/global/event",
+		BusyEvents:        []string{"message.part.updated", "session.updated"},
+		AwaitingInput:     []string{"permission.asked", "question.asked"},
+		IdleEvents:        []string{"session.idle"},
+		ErrorEvents:       []string{sessionErrorEvent},
+		StickyErrorEvents: []string{sessionErrorEvent},
+		SessionEvents:     []string{"session.created", "session.updated"},
+		SessionList:       NewSessionList("curl -sf -m 30 http://127.0.0.1:4096/session", parseOpencodeV1SessionList),
+		Name:              opencodeName,
+		Parse:             parseOpencodeV1Event,
 	}
+}
+
+// parseOpencodeV1Event decodes v1's /global/event SSE payload: the event type
+// and session id live under payload.{type,properties.sessionID}, and a
+// session.created event's parent (non-empty for a subagent session) lives
+// under payload.properties.info.parentID.
+func parseOpencodeV1Event(payload []byte) (StreamEvent, bool) {
+	var raw struct {
+		Payload struct {
+			ID         string `json:"id"`
+			Type       string `json:"type"`
+			Properties struct {
+				SessionID string `json:"sessionID"`
+				Info      struct {
+					ParentID string `json:"parentID"`
+				} `json:"info"`
+			} `json:"properties"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return StreamEvent{}, false
+	}
+	if raw.Payload.Type == "" {
+		return StreamEvent{}, false
+	}
+	return StreamEvent{
+		Type:      raw.Payload.Type,
+		SessionID: raw.Payload.Properties.SessionID,
+		ParentID:  raw.Payload.Properties.Info.ParentID,
+		EventID:   raw.Payload.ID,
+	}, true
+}
+
+// sessionParent is the (id, parentID) pair both agents' session lists carry.
+type sessionParent struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentID"`
+}
+
+// childSessionIDs returns the ids of sessions carrying a non-empty parentID,
+// the one rule both agents' session lists share.
+func childSessionIDs(sessions []sessionParent) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		if session.ParentID != "" {
+			ids = append(ids, session.ID)
+		}
+	}
+	return ids
+}
+
+// parseOpencodeV1SessionList extracts child session ids from v1's /session
+// response, a JSON array of sessions each carrying an optional parentID.
+func parseOpencodeV1SessionList(payload []byte) []string {
+	var sessions []sessionParent
+	if err := json.Unmarshal(payload, &sessions); err != nil {
+		return nil
+	}
+	return childSessionIDs(sessions)
 }

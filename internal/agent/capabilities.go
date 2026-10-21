@@ -137,6 +137,20 @@ type VersionProvider interface {
 // AsVersionProvider returns the agent's VersionProvider, if it implements one.
 func AsVersionProvider(a Agent) (VersionProvider, bool) { p, ok := a.(VersionProvider); return p, ok }
 
+// StreamEvent is a decoded daemon event: its type, the session it belongs to,
+// and that session's parent (non-empty for a subagent session).
+type StreamEvent struct {
+	Type      string
+	SessionID string
+	ParentID  string
+	// EventID is the event's envelope id, unique per emission. It tells two
+	// input requests apart when a session already awaits input: a turn can ask
+	// for two approvals back to back in one step, so neither a step boundary
+	// nor the session state distinguishes them, but their ids do. Empty when
+	// the envelope carries no id.
+	EventID string
+}
+
 // EventStreamSpec describes the SSE event stream notify watches for an agent:
 // the shell command that streams events in the VM, the event-type names that
 // drive tracker transitions, and the agent name used in notification titles.
@@ -146,8 +160,58 @@ type EventStreamSpec struct {
 	AwaitingInput []string
 	IdleEvents    []string
 	ErrorEvents   []string
-	Name          string
+	// StickyErrorEvents is the subset of ErrorEvents that latches the session
+	// in the error state for the watcher's lifetime — reconnecting does not
+	// clear it, since the watcher reuses one tracker across reconnects. An
+	// error event not listed here ends only the current turn, so the session
+	// notifies again on its next turn. Empty means no error event latches.
+	StickyErrorEvents []string
+	// SessionEvents are lifecycle event types whose payload may identify a
+	// session's parent. A non-empty parent ID marks the session as a subagent
+	// (child) session; no notification ever fires for a child session.
+	SessionEvents []string
+	// SessionList seeds the tracker with sessions created before the watcher
+	// (re)connected, by running one shell command and parsing its output. Nil
+	// disables seeding; a non-nil value always carries both the command and its
+	// parser, so seeding can never be disabled by an omitted parser.
+	SessionList *SessionListSpec
+	Name        string
+	// Parse decodes one SSE data payload into a StreamEvent. ok is false when
+	// the payload carries no event.
+	Parse func(payload []byte) (StreamEvent, bool)
 }
+
+// SessionListSpec is an agent's one-shot session-list command together with the
+// parser for its stdout. The two belong together: a command without a parser
+// cannot seed anything, and a nil parser once made the notify watcher silently
+// skip seeding. Build one with NewSessionList.
+type SessionListSpec struct {
+	command string
+	parse   func(payload []byte) []string
+}
+
+// NewSessionList returns the seeding spec for command, using parse to extract
+// child session IDs from its stdout. Both are required: an agent that declares
+// a session list must also declare how to read it, so an incomplete pair is a
+// programming error and fails fast. A profile that omits its parser would
+// otherwise silently lose subagent filtering. The parser owns the list's JSON
+// shape, so the command needs no jq (or other tooling) in the runner image,
+// which a custom base need not have.
+func NewSessionList(command string, parse func(payload []byte) []string) *SessionListSpec {
+	if command == "" {
+		panic("agent.NewSessionList: empty command")
+	}
+	if parse == nil {
+		panic("agent.NewSessionList: nil parser")
+	}
+	return &SessionListSpec{command: command, parse: parse}
+}
+
+// Command is the shell command that prints the daemon's raw session list.
+func (s *SessionListSpec) Command() string { return s.command }
+
+// Parse extracts the child session IDs from Command's stdout.
+func (s *SessionListSpec) Parse(payload []byte) []string { return s.parse(payload) }
 
 // EventStreamProvider exposes the SSE event stream an agent daemon serves.
 type EventStreamProvider interface {

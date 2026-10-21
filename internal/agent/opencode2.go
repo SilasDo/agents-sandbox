@@ -203,3 +203,74 @@ func (opencode2Profile) AttachCommand(target string, args []string) string {
 	parts = append(parts, args...)
 	return strings.Join(parts, " ")
 }
+
+// EventStream exposes v2's authed /api/event SSE stream, which carries a flat
+// envelope (type plus data.sessionID) unlike v1's nested payload shape. A user
+// turn is one session.execution.started/succeeded pair and awaiting input is a
+// permission.asked or form.created event.
+func (opencode2Profile) EventStream() EventStreamSpec {
+	return EventStreamSpec{
+		StreamCommand:     "curl -N -s " + opencode2CurlAuth + " " + opencode2ServerURL + "/api/event",
+		BusyEvents:        []string{"session.execution.started", "session.step.started"},
+		AwaitingInput:     []string{"permission.asked", "form.created"},
+		IdleEvents:        []string{"session.execution.succeeded"},
+		ErrorEvents:       []string{sessionErrorEvent, "session.execution.failed"},
+		StickyErrorEvents: nil,
+		SessionEvents:     []string{"session.created"},
+		SessionList: NewSessionList(
+			"curl "+opencode2CurlFlags+" "+opencode2CurlAuth+" "+opencode2ServerURL+"/api/session",
+			parseOpencodeV2SessionList,
+		),
+		Name:  opencode2Name,
+		Parse: parseOpencodeV2Event,
+	}
+}
+
+// parseOpencodeV2Event decodes v2's /api/event SSE payload: the event type and
+// session id live at data.sessionID, with two fallbacks the flat envelope makes
+// necessary — a form.created nests its session id under data.form.sessionID, and
+// a session event carries the parent (non-empty for a subagent session) under
+// data.info.parentID.
+func parseOpencodeV2Event(payload []byte) (StreamEvent, bool) {
+	var raw struct {
+		ID   string `json:"id"`
+		Type string `json:"type"`
+		Data struct {
+			SessionID string `json:"sessionID"`
+			ParentID  string `json:"parentID"`
+			Form      struct {
+				SessionID string `json:"sessionID"`
+			} `json:"form"`
+			Info struct {
+				ParentID string `json:"parentID"`
+			} `json:"info"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return StreamEvent{}, false
+	}
+	if raw.Type == "" {
+		return StreamEvent{}, false
+	}
+	sessionID := raw.Data.SessionID
+	if sessionID == "" {
+		sessionID = raw.Data.Form.SessionID
+	}
+	parentID := raw.Data.ParentID
+	if parentID == "" {
+		parentID = raw.Data.Info.ParentID
+	}
+	return StreamEvent{Type: raw.Type, SessionID: sessionID, ParentID: parentID, EventID: raw.ID}, true
+}
+
+// parseOpencodeV2SessionList extracts child session ids from v2's /api/session
+// response, which wraps the array under "data".
+func parseOpencodeV2SessionList(payload []byte) []string {
+	var body struct {
+		Data []sessionParent `json:"data"`
+	}
+	if err := json.Unmarshal(payload, &body); err != nil {
+		return nil
+	}
+	return childSessionIDs(body.Data)
+}

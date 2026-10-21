@@ -68,7 +68,7 @@ func startNotifyWatcher(
 	var watchErr error
 	go func() {
 		defer close(done)
-		ui.Verbosef("starting notify watcher, project %s, active %v, spec %s", projectSlug, cfg.Active(), spec)
+		ui.Verbosef("starting notify watcher, project %s, active %v, spec %+v", projectSlug, cfg.Active(), spec)
 		watchErr = notifyWatch(watchCtx, sb, *spec, backend)
 	}()
 	return func() error {
