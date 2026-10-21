@@ -148,6 +148,86 @@ func TestHandleEventRepeatedInputEventNotifiesOnce(t *testing.T) {
 	}
 }
 
+// recordingClaimer records the tokens it is asked for, so a test can assert the
+// claim set stays bounded.
+type recordingClaimer struct {
+	mu   sync.Mutex
+	keys []string
+}
+
+func (c *recordingClaimer) Acquire(_, key string) (func(), bool, error) {
+	c.mu.Lock()
+	c.keys = append(c.keys, key)
+	c.mu.Unlock()
+	return func() {}, true, nil
+}
+
+func (c *recordingClaimer) uniqueKeys() map[string]bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	unique := map[string]bool{}
+	for _, k := range c.keys {
+		unique[k] = true
+	}
+	return unique
+}
+
+// TestDedupDistinctInputsShareOneClaimKey pins the storage bound: `AcquireClaim`
+// creates one file per token and never deletes it, so a token per request would
+// leak a file for every permission or form. Distinct requests in a turn must
+// therefore share the session's single input claim token.
+func TestDedupDistinctInputsShareOneClaimKey(t *testing.T) {
+	sink := &sharedSink{}
+	claimer := &recordingClaimer{}
+	c := NewDedup("dedupbounded-a", claimer, sink)
+
+	for _, id := range []string{"evt_1", "evt_2", "evt_3"} {
+		c.Notify(Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: id})
+	}
+	if sink.count() != 3 {
+		t.Fatalf("expected 3 distinct input notifications, got %d", sink.count())
+	}
+	if keys := claimer.uniqueKeys(); len(keys) != 1 {
+		t.Fatalf("expected one input claim token for three requests, got %v", keys)
+	}
+}
+
+// TestDedupSameInputEventDeliveredOnce pins dedup's own idempotence: the same
+// input event delivered twice (the tracker normally suppresses it first) is
+// forwarded once.
+func TestDedupSameInputEventDeliveredOnce(t *testing.T) {
+	sink := &sharedSink{}
+	c := NewDedup("dedupinputrepeat-a", &recordingClaimer{}, sink)
+
+	n := Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_1"}
+	c.Notify(n)
+	c.Notify(n)
+	if sink.count() != 1 {
+		t.Fatalf("expected the same input event delivered once, got %d", sink.count())
+	}
+}
+
+// TestDedupCrossClientInputsSingleDeliverer guards cross-client behavior with
+// the shared input token: one client owns the session's input claim and
+// delivers each distinct request, the other drops them.
+func TestDedupCrossClientInputsSingleDeliverer(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	slug := "dedupcross-input-a"
+	sink := &sharedSink{}
+	c1 := NewDedup(slug, StateClaimer{}, sink)
+	c2 := NewDedup(slug, StateClaimer{}, sink)
+
+	n1 := Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_1"}
+	n2 := Notification{SessionID: "ses_A", Trigger: TriggerInput, EventID: "evt_2"}
+	c1.Notify(n1)
+	c2.Notify(n1)
+	c1.Notify(n2)
+	c2.Notify(n2)
+	if sink.count() != 2 {
+		t.Fatalf("expected each distinct request delivered once across clients, got %d", sink.count())
+	}
+}
+
 // errorClaimer simulates a claim backend that is unavailable.
 type errorClaimer struct{}
 
