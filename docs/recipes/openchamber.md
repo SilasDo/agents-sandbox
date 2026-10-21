@@ -48,8 +48,11 @@ is a separate credential for signing in to OpenChamber.
 ## Project path and host-side features
 
 The OpenCode server runs with the project mounted at `/workspace`. Select `/workspace` as the project directory in
-OpenChamber so its requests refer to the same path. On the host, `/workspace` must resolve to the checkout. The setup
-differs by operating system.
+OpenChamber so its requests refer to the same path. On the host, `/workspace` must resolve to the checkout. If you only
+need one repository, point it at the project root as described below. For several repositories that should share one VM
+and one network/resource policy, use a common parent directory as the project workspace.
+
+### One repository
 
 On Linux, create a symlink to the project root:
 
@@ -70,13 +73,48 @@ After reboot, verify that `/workspace` resolves to the checkout before starting 
 system-wide and tied to this checkout's absolute path; update it if the checkout moves or you want to use a different
 project.
 
+### Several repositories in one sandbox
+
+Put the repositories you want to work on under a common parent directory, then start agents-sandbox from that parent.
+For example:
+
+```text
+~/work/customer-x/
+├── service-a/
+├── service-b/
+└── shared-library/
+```
+
+Start `agents-sandbox run --agent opencode2 --serve-only` from `~/work/customer-x/`. In OpenChamber, add each repository
+as a separate project using its guest path: `/workspace/service-a`, `/workspace/service-b`, and
+`/workspace/shared-library`. The one OpenCode 2 server can then serve requests for each repository, and OpenChamber
+keeps their sessions and project settings separate. They share the same sandbox VM, home volume, resource limits, and
+network policy. This is useful when several repositories belong to one customer or need the same permitted egress.
+
+The host-side `/workspace` mapping described above must point to `~/work/customer-x/`, the common parent, rather than
+to one repository inside it. On macOS, use the parent directory as the target in `/etc/synthetic.conf`. OpenChamber's
+host-side filesystem, terminal, and preview features can then address those same subpaths.
+
+This layout gives the agent access to every repository mounted under the parent. Use it only when those repositories
+belong to the same trust boundary. Use separate agents-sandbox VMs when projects need different network policies,
+credentials, or resource limits.
+
 OpenChamber's filesystem, terminal, and preview processes run on the host. They do not inherit the VM's isolation,
 installed tools, or network policy. OpenChamber file operations can therefore access the host checkout through
 `/workspace`; commands launched from its terminal run on the host.
 
 OpenChamber's project path is host-local, and agents-sandbox does not currently translate paths between host and guest.
-Use the main checkout for this setup. Worktrees and multi-run sessions need a separately tested path arrangement and
-are not covered by this recipe.
+For host-side OpenChamber, use the main checkout(s) in the shared workspace. OpenChamber-created worktrees live on the
+host, while an OpenCode server in the VM cannot see them at the same paths. Conversely, agents-sandbox `--worktree`
+creates worktrees inside the VM's persistent home volume, which OpenChamber's host-side Git, filesystem, terminal, and
+preview features cannot see. Multi-run with isolation disabled may run several sessions against the same mounted
+checkout, but they share files and can conflict; isolated multi-run requires worktrees and is not supported by this
+host-side arrangement.
+
+Using OpenChamber worktrees and isolated multi-run with consistent Git, file, terminal, and preview access requires
+OpenChamber and OpenCode to run in the same VM, which is the optional in-VM integration being evaluated in
+[issue #266](https://github.com/inoio/agents-sandbox/issues/266). Until that design is implemented and tested,
+keep worktree and isolated multi-run features off for the host-side setup.
 
 ## Remote access
 
