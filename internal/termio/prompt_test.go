@@ -176,6 +176,21 @@ func TestSelect(t *testing.T) {
 			t.Fatal("expected error when reading fails")
 		}
 	})
+
+	t.Run("placeholder for a choice without a description", func(t *testing.T) {
+		var stderr bytes.Buffer
+		ui := New(strings.NewReader("\n"), &bytes.Buffer{}, &stderr, false, LevelInfo, false, false)
+		p := ui.(*printer)
+		p.isTerminal = func(int) bool { return true }
+
+		bare := []Choice{{Label: "Keep", Key: "k"}}
+		if _, err := ui.Select("What to do?", bare, "k"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(stderr.String(), "k) Keep (default) - -") {
+			t.Errorf("expected a '-' placeholder for a missing description, got %q", stderr.String())
+		}
+	})
 }
 
 func TestInput(t *testing.T) {

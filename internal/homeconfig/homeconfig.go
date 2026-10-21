@@ -212,20 +212,16 @@ func LoadLayers(dirs []string) ([]Layer, bool, error) {
 
 // resolveLayerSources resolves each layer's sources against that layer's own
 // config dir.
-func resolveLayerSources(layers []Layer) ([]Layer, error) {
+func resolveLayerSources(layers []Layer) []Layer {
 	for i := range layers {
 		out := make(Manifest, len(layers[i].Manifest))
 		for target, e := range layers[i].Manifest {
-			src, err := ResolveManifestSource(target, e.Source, layers[i].Dir)
-			if err != nil {
-				return nil, err
-			}
-			e.Source = src
+			e.Source = ResolveManifestSource(target, e.Source, layers[i].Dir)
 			out[target] = e
 		}
 		layers[i].Manifest = out
 	}
-	return layers, nil
+	return layers
 }
 
 // ResolveManifestSource resolves a manifest source value to a host path.
@@ -234,18 +230,18 @@ func resolveLayerSources(layers []Layer) ([]Layer, error) {
 //	starts with "/"  -> absolute
 //	starts with "~"  -> host $HOME/<rest>
 //	otherwise        -> relative to manifestDir
-func ResolveManifestSource(target, source, manifestDir string) (string, error) {
+func ResolveManifestSource(target, source, manifestDir string) string {
 	switch {
 	case source == "":
 		home, _ := configpaths.Get().UserHomeDir()
-		return filepath.Join(home, target), nil
+		return filepath.Join(home, target)
 	case strings.HasPrefix(source, "/"):
-		return source, nil
+		return source
 	case strings.HasPrefix(source, "~"):
 		home, _ := configpaths.Get().UserHomeDir()
-		return filepath.Join(home, strings.TrimPrefix(source, "~")), nil
+		return filepath.Join(home, strings.TrimPrefix(source, "~"))
 	default:
-		return filepath.Join(manifestDir, source), nil
+		return filepath.Join(manifestDir, source)
 	}
 }
 
@@ -326,10 +322,7 @@ func BuildHomeFilesWithModes(
 	if err != nil {
 		return nil, nil, false, err
 	}
-	resolved, err := resolveLayerSources(layers)
-	if err != nil {
-		return nil, nil, false, err
-	}
+	resolved := resolveLayerSources(layers)
 	merged := Manifest{}
 	for _, l := range resolved {
 		maps.Copy(merged, l.Manifest)
@@ -363,10 +356,7 @@ func BuildHomeFilesWithModes(
 // host source) pairs sorted by VM target, independent of whether the source
 // files exist.
 func DescribeLayers(layers []Layer, homeBase string, reserved []string) ([][2]string, error) {
-	resolved, err := resolveLayerSources(layers)
-	if err != nil {
-		return nil, err
-	}
+	resolved := resolveLayerSources(layers)
 	merged := Manifest{}
 	for _, l := range resolved {
 		maps.Copy(merged, l.Manifest)
@@ -438,10 +428,7 @@ func BuildHooks(userConfigDir, projectConfigDir, homeBase string, reserved []str
 	if err != nil {
 		return nil, err
 	}
-	resolved, err := resolveLayerSources(layers)
-	if err != nil {
-		return nil, err
-	}
+	resolved := resolveLayerSources(layers)
 	merged := Manifest{}
 	for _, l := range resolved {
 		maps.Copy(merged, l.Manifest)

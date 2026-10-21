@@ -12,6 +12,12 @@
   - Description: Operator Memory overview and install instructions.
   - Read If: Onboarding to Operator / setting up the plugin.
 
+### `guides/` - How-to and reference notes for this partition
+
+- `mutation-testing-go.md`
+  - Description: Survey of Go mutation-testing tools (gomutants, gremlins, go-mutesting, ooze, gomu) against the on-demand, per-package `go run module@version` Makefile-target constraint; recommends gomutants with the exact invocation line.
+  - Read If: Adding or changing the on-demand mutation-testing Makefile target, or evaluating a Go mutation-testing tool.
+
 ### `specs/` - System contracts for this partition
 
 - `config-paths-seam.md`

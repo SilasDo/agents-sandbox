@@ -137,20 +137,14 @@ func TestResolveSourceEmptyFallsBackToTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveManifestSource(".gitconfig", "", "/tmp/mf")
-	if err != nil {
-		t.Fatalf("ResolveSource: %v", err)
-	}
+	got := ResolveManifestSource(".gitconfig", "", "/tmp/mf")
 	if want := filepath.Join(home, ".gitconfig"); got != want {
 		t.Errorf("empty source = %q, want %q", got, want)
 	}
 }
 
 func TestResolveSourceAbsolute(t *testing.T) {
-	got, err := ResolveManifestSource(".x", "/etc/foo", "/tmp/mf")
-	if err != nil {
-		t.Fatalf("ResolveSource: %v", err)
-	}
+	got := ResolveManifestSource(".x", "/etc/foo", "/tmp/mf")
 	if got != "/etc/foo" {
 		t.Errorf("expected absolute source, got %q", got)
 	}
@@ -162,20 +156,14 @@ func TestResolveSourceTilde(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := ResolveManifestSource(".x", "~/bar", "/tmp/mf")
-	if err != nil {
-		t.Fatalf("ResolveSource: %v", err)
-	}
+	got := ResolveManifestSource(".x", "~/bar", "/tmp/mf")
 	if want := filepath.Join(home, "bar"); got != want {
 		t.Errorf("~ source = %q, want %q", got, want)
 	}
 }
 
 func TestResolveSourceRelativeToManifestDir(t *testing.T) {
-	got, err := ResolveManifestSource(".x", "tool/cfg.toml", "/home/u/dotfiles")
-	if err != nil {
-		t.Fatalf("ResolveSource: %v", err)
-	}
+	got := ResolveManifestSource(".x", "tool/cfg.toml", "/home/u/dotfiles")
 	if got != "/home/u/dotfiles/tool/cfg.toml" {
 		t.Errorf("expected manifest-dir-relative source, got %q", got)
 	}
@@ -455,6 +443,34 @@ func TestBuildHomeFilesWithModesPreservesSourceMode(t *testing.T) {
 	}
 	if file.Mode.Perm() != 0o755 {
 		t.Errorf("file mode = %o, want 755", file.Mode.Perm())
+	}
+}
+
+// TestBuildHomeFilesWithModesReportsUnreadableSourceAsMissing verifies a source
+// that exists but cannot be read as a file (here, a directory) is treated as a
+// missing source rather than a fatal error, so a stale home entry never blocks
+// VM setup.
+func TestBuildHomeFilesWithModesReportsUnreadableSourceAsMissing(t *testing.T) {
+	user := t.TempDir()
+	proj := t.TempDir()
+	sourceDir := filepath.Join(proj, "not-a-file")
+	if err := os.Mkdir(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeHomeConfig(t, proj, ".config/tool/x: "+sourceDir+"\n")
+
+	files, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
+	if err != nil {
+		t.Fatalf("BuildHomeFilesWithModes: %v", err)
+	}
+	if !has {
+		t.Fatal("expected has=true")
+	}
+	if len(files) != 0 {
+		t.Errorf("unreadable source must yield no home file, got %v", files)
+	}
+	if len(missing) != 1 || missing[0] != sourceDir {
+		t.Errorf("missing = %v, want [%q]", missing, sourceDir)
 	}
 }
 

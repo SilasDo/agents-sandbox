@@ -3,6 +3,7 @@ package reprovision
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -168,6 +169,25 @@ func TestChownPathsReportsUnsuccessfulShell(t *testing.T) {
 	err := chownPaths(context.Background(), sb, []string{"/b", "/a"})
 	if err == nil {
 		t.Error("expected an error when chown reports a failed exit status")
+	}
+}
+
+// TestProvisionPropagatesMkdirError verifies a failure creating the merged
+// config's parent directory aborts provisioning instead of silently continuing.
+func TestProvisionPropagatesMkdirError(t *testing.T) {
+	mkdirErr := errors.New("mkdir boom")
+	cf := &ConfigFiles{
+		HasSnippets: true,
+		Merged:      []byte(`{"model":"x"}`),
+		MergedPath:  filepath.Join(VMHomeDir, ".config", "opencode", "opencode.jsonc"),
+	}
+	fs := msb.NewTestFS(nil, nil)
+	fs.MkdirErr = mkdirErr
+	sb := &msb.MockSandbox{FSValue_: fs}
+
+	err := Provision(context.Background(), sb, cf)
+	if !errors.Is(err, mkdirErr) {
+		t.Errorf("expected mkdir error to be surfaced, got %v", err)
 	}
 }
 

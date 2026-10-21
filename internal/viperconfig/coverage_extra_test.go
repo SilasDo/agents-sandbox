@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -117,6 +118,22 @@ func TestNewResolverValidPruneAge(t *testing.T) {
 	}
 	if r.AutoPruneAge() != 7*24*time.Hour {
 		t.Errorf("AutoPruneAge = %v, want 7d", r.AutoPruneAge())
+	}
+}
+
+// A config value of the wrong shape for a typed field (a list for the string
+// memory key) makes viper.Unmarshal fail, surfacing as a decode error.
+func TestNewResolverSurfacesDecodeError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	testutil.WriteYAML(t, cp.UserConfigDir(), "config.yaml", map[string]any{"memory": []any{1, 2}})
+
+	_, err := NewResolver(nil, "")
+	if err == nil {
+		t.Fatal("expected a decode error for a list-valued memory key")
+	}
+	if !strings.Contains(err.Error(), "memory") {
+		t.Errorf("error = %v, want it to name the offending memory key", err)
 	}
 }
 
