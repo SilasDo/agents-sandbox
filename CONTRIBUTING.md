@@ -94,6 +94,13 @@ This project defaults to **test-driven development**:
   and any committed crasher run under `make test`, so a crasher is a regression test first; the `fuzz` workflow explores
   the targets nightly and on merges that touch them, and nothing is gated on it, so a red run reports a crasher instead of
   blocking a merge. A crasher it finds comes back as a build artifact to commit as a seed.
+- `make mutation` runs [gomutants](https://github.com/gomutants/gomutants) on demand: it mutates the code and reports the
+  mutants the tests do not notice. A surviving ("LIVED") mutant is either a missing assertion or a mutation that cannot
+  change behaviour. By default it covers the whole module but only lines changed since the last release tag
+  (`PKG=./internal/foo` narrows it to one package; `FULL=1` runs every line). It is **never** a gate — not in
+  `make check`, `make verify`, or CI — and a package takes minutes. Close every survivor: strengthen the test so the
+  mutant now fails, or record the reason in the source next to the mutant with `// gomutants:disable <TYPE>
+  reason="..."`.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
   there; it always runs on `main` and on releases.

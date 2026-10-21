@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck mutation coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -12,6 +12,7 @@ GOLANGCI_LINT_VERSION = 2.14.0
 ZIG_VERSION ?= 0.17.0
 GOTESTSUM_VERSION = 1.13.0
 GOVULNCHECK_VERSION = v1.9.0
+GOMUTANTS_VERSION = v0.7.1
 
 ARTIFACT = agents-sandbox-$(GOOS)-$(GOARCH)
 
@@ -126,6 +127,25 @@ compile-all:
 # non-zero when a reachable vulnerability is found.
 vulncheck:
 	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+
+# Mutation testing: mutate the code and check whether the tests notice. Run on
+# demand (at release time), never as a gate — a full run takes minutes per
+# package, so it stays out of check/verify/CI. By default it mutates only lines
+# changed since the last release tag; FULL=1 runs every mutant and PKG picks
+# the package(s).
+#   make mutation                        # whole module, lines changed since the last tag
+#   make mutation PKG=./internal/foo     # one package, changed lines
+#   make mutation FULL=1                 # whole module, all lines (slow)
+PKG   ?= ./...
+SINCE ?= $(shell git describe --tags --abbrev=0)
+FULL  ?=
+mutation:
+	@test -n "$(FULL)" || test -n "$(SINCE)" || { \
+		echo "make mutation: cannot resolve a release tag; pass SINCE=<ref> or FULL=1"; exit 1; }
+	CGO_ENABLED=1 go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION) \
+		--detect-equivalent \
+		$(if $(FULL),,--changed-since $(SINCE)) \
+		$(PKG)
 
 coverage:
 	CGO_ENABLED=1 go test -coverprofile=coverage.out ./...
