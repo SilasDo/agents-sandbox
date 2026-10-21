@@ -152,12 +152,12 @@ func resolveProjectConfig(cwd string) (string, string) {
 	if err != nil {
 		physical = cwd
 	}
-	layout := git.ResolveWorkspaceLayout(physical)
-	if !layout.Bare || layout.OutsideWorktree || layout.CheckoutRoot == "" {
+	identity := git.ResolveIdentity(physical)
+	if !identity.Bare || identity.OutsideWorktree || identity.CheckoutRoot == "" {
 		return projectConfigDir, ""
 	}
-	base := filepath.Join(layout.CheckoutRoot, projectConfigDir)
-	ignored := filepath.Join(layout.WorktreeRoot, projectConfigDir)
+	base := filepath.Join(identity.CheckoutRoot, projectConfigDir)
+	ignored := filepath.Join(identity.WorktreeRoot, projectConfigDir)
 	if ignored == base {
 		// The CWD is the bare root itself: this is the directory the base reads,
 		// not a worktree copy that gets ignored.
