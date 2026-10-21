@@ -67,17 +67,18 @@ func WithRealConfigPaths(t *testing.T) {
 	orig := Get
 	Get = func() ConfigPaths { return &realConfigPaths{} }
 	t.Cleanup(func() { Get = orig })
-	t.Chdir(pinnedProjectCWD(t))
+	t.Chdir(pinProjectCWD(t.TempDir()))
 }
 
-// pinnedProjectCWD returns a fresh temp directory outside any bare checkout and
-// chdirs into it, failing fast if the directory would still resolve to a
-// bare-root base (i.e. TMPDIR sits inside a bare checkout).
-func pinnedProjectCWD(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
+// pinProjectCWD returns dir when the resolver reads it as the relative project
+// base, panicking otherwise — i.e. when dir sits inside a bare checkout and
+// resolves to that checkout's bare root, so the pin could not isolate the base.
+// It panics rather than calling t.Fatal so a test can reach the guard.
+func pinProjectCWD(dir string) string {
 	if base, _ := resolveProjectConfig(dir); base != projectConfigDir {
-		t.Fatalf("temp dir %q resolves to the bare-root base %q; set TMPDIR outside a bare checkout", dir, base)
+		panic(
+			fmt.Sprintf("temp dir %q resolves to the bare-root base %q; set TMPDIR outside a bare checkout", dir, base),
+		)
 	}
 	return dir
 }

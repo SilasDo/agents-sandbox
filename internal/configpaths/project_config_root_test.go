@@ -8,16 +8,25 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
-// isolateProjectConfig pins the host home and XDG directories inside a temp
-// tree and installs the real resolver, so bare-checkout resolution never reads
-// the developer's real config or creates a directory in it.
-func isolateProjectConfig(t *testing.T) {
+// pinHostDirs points the host home and XDG directories at temp trees, so a test
+// and any git subprocess it spawns never read or write the developer's real
+// config. It does not install the resolver; callers that need the real one add
+// WithRealConfigPaths (or isolateProjectConfig does both).
+func pinHostDirs(t *testing.T) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+}
+
+// isolateProjectConfig pins the host home and XDG directories inside a temp
+// tree and installs the real resolver, so bare-checkout resolution never reads
+// the developer's real config or creates a directory in it.
+func isolateProjectConfig(t *testing.T) {
+	t.Helper()
+	pinHostDirs(t)
 	WithRealConfigPaths(t)
 }
 
