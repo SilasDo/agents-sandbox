@@ -159,7 +159,7 @@ command reports the bare version (e.g. `0.1.0`).
   instead of nothing (found by fuzzing `ParseHumanDuration`).
 - Internal: the notify watcher no longer formats the sandbox value into its verbose start line — that `%s` walked the
   sandbox's fields while the run path was mutating them, a data race the new `make test-race` target caught on its first
-  run. The mock sandbox gains a stable `String()` so the same mistake cannot recur.
+  run.
 - opencode2: the attach client now passes the working directory as v2's positional argument instead of the removed
   `--dir` flag, so attaching no longer exits with `Unrecognized flag: --dir`.
 - opencode2: the daemon health probe now polls `/api/info`, v2's actual health endpoint. `/api/health` matches no v2
