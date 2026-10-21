@@ -2,6 +2,8 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -99,8 +101,12 @@ func TestOpencodeDaemonHealthParse(t *testing.T) {
 	if err != nil || notOK {
 		t.Errorf("DaemonHealthParse(unhealthy) = %v, %v, want false, nil", notOK, err)
 	}
-	if _, err := daemon.DaemonHealthParse("not json"); err == nil {
-		t.Error("DaemonHealthParse(invalid) should error")
+	parsed, err := daemon.DaemonHealthParse("not json")
+	if parsed {
+		t.Error("DaemonHealthParse(invalid) ok = true, want false")
+	}
+	if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
+		t.Errorf("DaemonHealthParse(invalid) error = %v, want *json.SyntaxError", err)
 	}
 }
 
@@ -161,6 +167,11 @@ func TestOpencodeWorktreeParseDir(t *testing.T) {
 	}
 	if _, ok := worktree.WorktreeParseDir(`{"directory":""}`); ok {
 		t.Error("WorktreeParseDir(empty) should return not-ok")
+	}
+	// A decode error that nonetheless accepted a directory value (a duplicate key)
+	// must not be mistaken for a successful parse.
+	if dir, ok := worktree.WorktreeParseDir(`{"directory":"/x","directory":123}`); ok {
+		t.Errorf("WorktreeParseDir(duplicate key) = %q, %v, want not-ok", dir, ok)
 	}
 }
 

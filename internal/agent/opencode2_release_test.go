@@ -126,6 +126,8 @@ func TestOpencode2BetaBuildNumber(t *testing.T) {
 		{in: "v0.0.0-beta-5", want: 5, ok: true},
 		{in: "0.0.0-beta-x", want: 0, ok: false},
 		{in: "1.2.3", want: 0, ok: false},
+		// A bare number lacks the beta prefix and must be rejected, not parsed.
+		{in: "18866", want: 0, ok: false},
 	}
 	for _, tc := range tests {
 		got, ok := opencode2BetaBuildNumber(tc.in)
