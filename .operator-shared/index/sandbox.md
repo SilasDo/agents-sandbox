@@ -39,6 +39,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 ### `mounts/` — Filesystem mount handling
 
 - `mounts.go`
+- `fuzz_test.go` — `FuzzResolveMountTarget`: a configured guest target must never equal or shadow a managed mount (`/workspace`, `/tmp`, `/home/dev`)
 
 ### `msb/` — Microsandbox SDK client
 
@@ -55,6 +56,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 ### `options/` — Sandbox options, sizes, timeouts, worktree spec
 
 - `options.go`, `sizes.go`, `timeouts.go`, `worktree_spec.go`
+- `fuzz_test.go` — `FuzzParseOptions`: size-spec parsing against an independent overflow oracle, and `--worktree` slug validation
 
 ### `pruning/` — Cleanup and prune of images, sandboxes, volumes
 
@@ -74,8 +76,9 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 ### `state/` — State locking (flock, clientlock, claims) and project state
 
-- `claim.go`, `clientlock.go`, `flock.go`, `state.go`, `root.go`, `fingerprint.go`
+- `claim.go`, `clientlock.go`, `flock.go`, `state.go`, `root.go`, `fingerprint.go` (`state.go`/`root.go` hold the pure `parseHomeState`/`parseRootState` unmarshal steps the readers delegate to)
 - `references.go` — fail-closed project-state reference scan: `HomeVolumeReferences` and `ImageReferences` (the image analogue), both built on the shared `projectStateReferences` walk
+- `fuzz_test.go` — `FuzzParseState`: both state documents must never panic, classify malformed bytes as `ErrStateUnparsable`, and round-trip through the writer unchanged
 
 ### `storage/` — Private-home storage accounting seam (Slice 2; backs `df` in Slice 5)
 
@@ -86,6 +89,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 - `daemon.go`, `dockerd.go`, `exit.go`, `inspect.go`, `list.go`, `provenance.go`, `reconfig.go`, `run_envstate.go`, `run_orchestrate.go`, `upgrade.go`, `upgrade_state.go`, `vm_control.go`, `vm_env.go`, `vm_lifecycle.go`, `vm_name.go`, `vm_resources.go`, `worktree.go` (`inspect.go` is `InspectSandbox`: the sandbox-inspect detail seam)
 - `create_project_vm_test.go`, `ensure_project_vm_test.go`, `prepare_sandbox_test.go`, `setupsandbox_test.go` — lifecycle setup tests
+- `fuzz_test.go` — `FuzzParseLegacyUpdaterState`: the retired `updater.yaml` reader is panic-free and folds a flat `last_checked` into the opencode agent entry
 
 ### `volume/` — Volume management
 

@@ -114,7 +114,8 @@ func rootStateFile() string {
 var marshalRootState = yaml.Marshal
 
 // ReadRootState loads the launcher-global state. A missing file yields a zero
-// RootState with no error; parse and other I/O failures are returned.
+// RootState with no error; a parse failure is wrapped with ErrStateUnparsable
+// (as in ReadState) and other I/O failures are returned plain.
 func ReadRootState() (*RootState, error) {
 	path := rootStateFile()
 	data, err := os.ReadFile(path)
@@ -124,11 +125,22 @@ func ReadRootState() (*RootState, error) {
 		}
 		return nil, fmt.Errorf("read root state file %s: %w", path, err)
 	}
-	var state RootState
-	if err := yaml.Unmarshal(data, &state); err != nil {
+	state, err := parseRootState(data)
+	if err != nil {
 		return nil, fmt.Errorf("parse root state file %s: %w", path, err)
 	}
 	return &state, nil
+}
+
+// parseRootState is the pure unmarshal step of ReadRootState: arbitrary bytes
+// in, RootState or ErrStateUnparsable-wrapped error out, no file I/O. Kept
+// separate so FuzzParseState can drive it without a filesystem.
+func parseRootState(data []byte) (RootState, error) {
+	var state RootState
+	if err := yaml.Unmarshal(data, &state); err != nil {
+		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+	}
+	return state, nil
 }
 
 // writeRootState atomically writes the launcher-global state to disk. Unexported

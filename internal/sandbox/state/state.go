@@ -131,10 +131,10 @@ func stateFile(k Key) string {
 // ErrStateNotFound is returned by ReadState when no state file exists yet.
 var ErrStateNotFound = errors.New("state file not found")
 
-// ErrStateUnparsable wraps a YAML parse failure in ReadState, classifying a
-// corrupt document distinctly from a missing one. WithHomeState returns it
-// without writing so an unknown document is never clobbered; only recovery
-// (RecoverHomeState) may discard an unparsable document.
+// ErrStateUnparsable wraps a YAML parse failure in ReadState and ReadRootState,
+// classifying a corrupt document distinctly from a missing one. WithHomeState
+// returns it without writing so an unknown document is never clobbered; only
+// recovery (RecoverHomeState) may discard an unparsable document.
 var ErrStateUnparsable = errors.New("state file is unparsable")
 
 // ReadState loads and parses the state file.
@@ -150,11 +150,22 @@ func ReadState(k Key) (*HomeState, error) {
 		}
 		return nil, fmt.Errorf("read state file %s: %w", path, err)
 	}
-	var state HomeState
-	if err := yaml.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("parse state file %s: %w: %w", path, ErrStateUnparsable, err)
+	state, err := parseHomeState(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse state file %s: %w", path, err)
 	}
 	return &state, nil
+}
+
+// parseHomeState is the pure unmarshal step of ReadState: arbitrary bytes in,
+// HomeState or ErrStateUnparsable-wrapped error out, no file I/O. Kept separate
+// so FuzzParseState can drive it without a filesystem.
+func parseHomeState(data []byte) (HomeState, error) {
+	var state HomeState
+	if err := yaml.Unmarshal(data, &state); err != nil {
+		return HomeState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+	}
+	return state, nil
 }
 
 // writeState atomically writes the state to disk. Unexported so every mutation

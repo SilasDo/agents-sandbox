@@ -127,8 +127,8 @@ func TestReadState_CorruptedYAML(t *testing.T) {
 	testutil.WriteFile(t, sdir, "state.yaml", "not: valid: yaml: [")
 
 	_, err := ReadState(k)
-	if err == nil {
-		t.Fatal("expected error for corrupted YAML")
+	if !errors.Is(err, ErrStateUnparsable) {
+		t.Fatalf("ReadState() error = %v, want ErrStateUnparsable", err)
 	}
 }
 

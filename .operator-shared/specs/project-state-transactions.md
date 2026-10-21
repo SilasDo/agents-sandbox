@@ -199,6 +199,8 @@ Keep `determineAgentVersion` as the single branch that skips `resolveBuildVersio
 - Missing state file, `WithHomeState`: `exists=false`; the writer decides (create or skip).
 - Present-but-corrupt file, `WithHomeState`: returns an error, writes nothing (never clobbers an unknown document).
 - Present-but-corrupt file, `RecoverHomeState`: hands `fn` an empty document; recovery rebuilds and repairs the file.
+- Present-but-corrupt root file: `ReadRootState` wraps `ErrStateUnparsable` too — both documents share the sentinel — and
+  `WithRootState` returns that error and never calls `fn`.
 - Concurrent campaign holds the root lock: non-blocking upgrade/fold acquirers get `ok=false` and retry next run.
 - Double-lock in one process: descriptive error, not a deadlock.
 - Lock directory deleted by a user: recreated on demand; flock identity is per-file and there are no cross-change
