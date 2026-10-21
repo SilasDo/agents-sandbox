@@ -118,61 +118,29 @@ keep worktree and isolated multi-run features off for the host-side setup.
 
 ## Security boundary
 
-This host-side arrangement isolates the OpenCode agent process in the VM; it does **not** sandbox the OpenChamber
-server. OpenChamber runs with the host user's operating-system permissions, so treat access to its UI as access to
-host-side development tools and data:
+The VM contains the OpenCode agent, not OpenChamber. OpenChamber's file browser and Git integration run on the host;
+its terminal and project actions run commands as the host user and use that user's network access. The agent's edits
+appear in the shared checkout, but its VM egress policy does not restrict OpenChamber's host-side processes.
 
-- OpenChamber's file browser reads and edits project files on the host. Normal workspace operations are scoped to the
-  selected project, although some file-read APIs can explicitly access paths outside it, subject to host permissions.
-- Its terminal and project actions run commands as the host user. Those commands can access any files and network
-  services available to that user. Review and trust project actions or repository-provided OpenChamber setup before
-  running them; do not assume the VM's egress policy applies to them.
-- Its Git integration runs on the host and may use host Git configuration and credentials. OpenChamber's own server,
-  extensions, integrations, update checks, tunnels, and other enabled features also use the host's network access.
-- Only OpenCode-agent requests go through the sandboxed daemon and its microsandbox network policy. Keeping the
-  OpenCode port on `127.0.0.1` does not restrict the host-side OpenChamber process.
+In this recipe, `OPENCODE_HOST` points OpenChamber at an external server, so OpenChamber's own agent-control and
+scheduling tools are unavailable. The agent has no documented tool to invoke OpenChamber's host terminal or manage its
+projects; its tools, MCP servers, and plugins are those available inside the VM. The UI password and host credentials
+are separate from `OPENCODE_PASSWORD` and are not passed to the agent. See OpenChamber's
+[Agent Control Tool documentation](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/agent-control-tool.mdx).
 
-Keep OpenChamber bound to localhost unless remote access is needed, and set a strong `OPENCHAMBER_UI_PASSWORD`. Pair
-only devices you trust and revoke unused pairings. Prefer OpenChamber Private Relay or a trusted VPN over exposing a
-public tunnel; a tunnel makes the host-capable UI reachable remotely. Never expose the agents-sandbox OpenCode port to
-the LAN or Internet: the current `opencode2` Basic Auth credential (`opencode:opencode`) is fixed in the runner image,
-not a per-project secret. For a shared-parent workspace, every repository under that parent is accessible to the VM
-agent and host-side OpenChamber, so use it only for repositories in the same trust boundary.
+The default `network: none` policy denies VM egress but is not an air gap: VM ingress is allowed. The published
+OpenCode endpoint uses the fixed `opencode:opencode` credential. Keep that endpoint on `127.0.0.1`; do not use
+`--network host`, allow VM egress to host services, or pass an OpenChamber URL or credentials into the VM without
+reviewing the new access path. Any process that can reach the OpenCode endpoint can control that server.
 
-See OpenChamber's [Security](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/security.mdx)
-and [Environment](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/environment.mdx)
-guides for its UI authentication, enterprise policy, extensions, and network settings. These controls govern
-OpenChamber itself; they do not move its host-side processes into the sandbox.
-
-### Can the agent control OpenChamber or reach the host through it?
-
-In this recipe, OpenChamber connects to an **external** OpenCode server using `OPENCODE_HOST` and
-`OPENCODE_SKIP_START=true`. OpenChamber documents that its `openchamber` agent-control and scheduling tools are not
-available in this mode. The agent therefore has no supported OpenChamber tool for creating host-side projects,
-starting OpenChamber sessions, or invoking OpenChamber's host terminal. Its normal OpenCode tools, project files, and
-any MCP servers or plugins configured in the VM remain available under the VM's own permissions and network policy.
-See OpenChamber's [Agent Control Tool documentation](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/agent-control-tool.mdx).
-
-The OpenChamber UI password and its host-side API credentials stay in the host process; they are not the
-`OPENCODE_PASSWORD` used by the guest daemon. The OpenCode server port is a host-to-guest loopback forward, not a
-listener granting the guest access to host `localhost`. This recipe provides no OpenChamber URL or credentials to the
-guest agent, and OpenChamber's agent-control tools are disabled for this external-server setup. Keep OpenChamber bound
-to `127.0.0.1` and retain the guest's default deny-by-default egress policy; do not add a host-reachable OpenChamber URL
-or credentials to the VM. The VM's `none` network profile is an egress policy, not a complete air gap (ingress is
-allowed), so do not interpret it alone as proof that host services are unreachable. In particular, do not switch to
-`--network host` or allow host egress unless you have separately evaluated the resulting host-service exposure. The
-published OpenCode port itself uses the fixed `opencode:opencode` credential, so any other process that can reach that
-port can control the sandboxed OpenCode server.
-
-That does not remove all risk from running both components. OpenChamber receives and renders agent-generated content,
-so treat links, instructions, and requests for approval in agent output as untrusted. A rendering or browser integration
-vulnerability could create an indirect path from malicious project content to the host UI; keep OpenChamber updated and
-do not run host-side project actions, commands, or extensions merely because an agent recommends them. Repository
-project actions and worktree setup commands can execute on the host after OpenChamber's trust prompt; inspect the exact
-commands before approving them. The agent can also try to persuade a user to run a command or approve a permission in
-the UI, even though it cannot invoke the host terminal through the external-server integration. Any MCP server, plugin,
-extra mount, or network rule you deliberately add can also create capabilities beyond this recipe and should be
-assessed separately.
+Protect the host-capable UI too: bind OpenChamber to localhost, set a strong `OPENCHAMBER_UI_PASSWORD` if allowing
+remote access, and pair only trusted devices. Inspect repository project actions and worktree setup commands before
+approving them; the agent may recommend actions, but cannot execute them on the host through this external-server
+connection. Treat agent-provided links and instructions as untrusted. A shared-parent workspace gives both the VM agent
+and host-side OpenChamber access to every repository beneath it, so use it only within one trust boundary. Additional
+MCP servers, plugins, mounts, and network rules change these assumptions and need separate review. See OpenChamber's
+[Security](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/security.mdx) and
+[Environment](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/environment.mdx) guides.
 
 ## Remote access
 
