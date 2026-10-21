@@ -1,0 +1,47 @@
+package image
+
+import (
+	"context"
+
+	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/termio"
+)
+
+// ImagePreview is a read-only description of what EnsureImage would do.
+type ImagePreview struct {
+	Tag                   string
+	NeedsBuild            bool
+	Reasons               []string
+	AgentVersion          string
+	ResolveVersionAtBuild bool
+}
+
+// previewRunnerImage renders the plan + decision for a supplied Dockerfile and
+// decided version. It never builds and never resolves a version over the network.
+func previewRunnerImage(
+	ctx context.Context, a agent.Agent, projectDockerfile []byte, projectSlug string,
+	buildOpts BuildOptions, ui termio.UI,
+) (ImagePreview, error) {
+	for _, warning := range legacyDockerfileWarnings(projectDockerfile) {
+		ui.Warn(warning)
+	}
+	agentVersion, identityVersion, _ := initialBuildVersions(buildOpts)
+	_, tag, needsBuild, reasons, err := planRunnerImage(
+		ctx, a, projectDockerfile, projectSlug, buildOpts.Docker, agentVersion, identityVersion, buildOpts.Force,
+	)
+	if err != nil {
+		return ImagePreview{}, err
+	}
+	return ImagePreview{
+		Tag: tag, NeedsBuild: needsBuild, Reasons: reasons,
+		AgentVersion: buildOpts.AgentVersion, ResolveVersionAtBuild: agentVersion == "",
+	}, nil
+}
+
+// PreviewImage reports what EnsureImage would do without building anything.
+func PreviewImage(
+	ctx context.Context, a agent.Agent, projectSlug string, buildOpts BuildOptions, ui termio.UI,
+) (ImagePreview, error) {
+	WarnIgnoredProjectConfig(ui)
+	return previewRunnerImage(ctx, a, readProjectDockerfile(), projectSlug, buildOpts, ui)
+}

@@ -382,13 +382,13 @@ func EnsureImageWithClient(
 		agentVersion, identityVersion = resolved, resolved
 	}
 
-	rTag := runnerTag(projectSlug, a.Name())
-	plan, err := renderBuildPlan(a, projectDockerfile, buildOpts.Docker, agentVersion, identityVersion)
+	plan, rTag, needsBuild, reasons, err := planRunnerImage(
+		ctx, a, projectDockerfile, projectSlug, buildOpts.Docker, agentVersion, identityVersion, buildOpts.Force,
+	)
 	if err != nil {
 		return ImageInfo{}, fmt.Errorf("render Dockerfile: %w", err)
 	}
 
-	needsBuild, reasons := buildDecision(ctx, rTag, buildOpts.Force, plan.dockerfileID, plan.identity)
 	if needsBuild && deferResolve {
 		resolved, resolveErr := resolveAgentVersion(ctx, a, "")
 		if resolveErr != nil {
@@ -463,6 +463,26 @@ func renderBuildPlan(
 		),
 		dockerfileID: computeDockerfileID(rendered, identityVersion),
 	}, nil
+}
+
+// planRunnerImage renders the build plan and computes the local build decision.
+// It performs no build and no network access.
+func planRunnerImage(
+	ctx context.Context,
+	a agent.Agent,
+	projectDockerfile []byte,
+	projectSlug string,
+	dockerFlag bool,
+	agentVersion, identityVersion string,
+	force bool,
+) (buildPlan, string, bool, []string, error) {
+	plan, err := renderBuildPlan(a, projectDockerfile, dockerFlag, agentVersion, identityVersion)
+	if err != nil {
+		return buildPlan{}, "", false, nil, err
+	}
+	tag := runnerTag(projectSlug, a.Name())
+	needsBuild, reasons := buildDecision(ctx, tag, force, plan.dockerfileID, plan.identity)
+	return plan, tag, needsBuild, reasons, nil
 }
 
 // buildFromPlan builds the image described by plan, resolving the base digest
