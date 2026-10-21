@@ -279,6 +279,105 @@ func TestPreviewSandboxWorkspaceDirError(t *testing.T) {
 	}
 }
 
+// TestPreviewSandboxUserProvidedAgentIgnoresPin pins the user-provided-agent
+// precedence: like resolveBuildVersion, the preview ignores --agent-version for
+// an agent the tool does not own, so it reports the recorded version and the
+// reuse a real run would get instead of a phantom rebuild.
+func TestPreviewSandboxUserProvidedAgentIgnoresPin(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	a := opencodeAgent(t)
+	k := previewKey()
+
+	id, err := sandboximage.RunnerDockerfileID(a, "1.0.0", false)
+	if err != nil {
+		t.Fatalf("RunnerDockerfileID: %v", err)
+	}
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(
+			context.Context, string, ...client.ImageInspectOption,
+		) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{dockerfileIDLabel: id},
+				},
+			}, nil
+		},
+	})
+	noVolumeCreateMock(t)
+	seedAgentState(t, k, "1.0.0", agentSourceUser)
+
+	orig := SetAgentLatestVersion(func(context.Context, agent.Agent) (string, error) {
+		t.Fatal("PreviewSandbox must not run the upgrade check for a user-provided agent")
+		return "", nil
+	})
+	t.Cleanup(func() { SetAgentLatestVersion(orig) })
+
+	ui := termio.NewTestMock(t)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{AgentVersion: "9.9.9"}, &ui)
+	if err != nil {
+		t.Fatalf("PreviewSandbox() error = %v", err)
+	}
+	if p.AgentVersion != "1.0.0" {
+		t.Errorf("AgentVersion = %q, want the recorded %q (the pin must be ignored)", p.AgentVersion, "1.0.0")
+	}
+	if p.BuildImage {
+		t.Errorf("BuildImage = true, want false (the real run reuses the 1.0.0 image; reasons %v)", p.BuildReasons)
+	}
+	if p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = true, want false for a user-provided agent (never upgrade-checked)")
+	}
+}
+
+// TestPreviewSandboxUserProvidedAgentNeverRecoversVersion pins that a
+// user-provided agent with no recorded version defers resolution to build time
+// instead of recovering a version from the image label, matching the real run.
+func TestPreviewSandboxUserProvidedAgentNeverRecoversVersion(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	absentImageDockerMock(t)
+	noVolumeCreateMock(t)
+	seedAgentState(t, previewKey(), "", agentSourceUser)
+
+	orig := existingAgentVersion
+	existingAgentVersion = func(context.Context, string, string) (string, bool) {
+		t.Fatal("PreviewSandbox must not recover a version for a user-provided agent")
+		return "", false
+	}
+	t.Cleanup(func() { existingAgentVersion = orig })
+
+	ui := termio.NewTestMock(t)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	if err != nil {
+		t.Fatalf("PreviewSandbox() error = %v", err)
+	}
+	if !p.ResolveVersionAtBuild {
+		t.Error("ResolveVersionAtBuild = false, want true for a user-provided agent with no recorded version")
+	}
+	if p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = true, want false when resolution is deferred")
+	}
+}
+
+// TestPreviewSandboxSurfacesAdoptionError covers the pending-legacy-identity
+// error arm: a corrupt legacy state document must surface from the read-only
+// adoption check rather than be silently ignored.
+func TestPreviewSandboxSurfacesAdoptionError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacySlug := git.RepoSlug()
+	if legacySlug == git.CheckoutSlug() {
+		t.Skip("no distinct legacy identity in this checkout")
+	}
+	legacyKey := state.Key{Slug: legacySlug, Agent: "opencode"}
+	if err := os.MkdirAll(state.KeyDir(legacyKey), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	testutil.WriteFile(t, state.KeyDir(legacyKey), "state.yaml", `": [`)
+
+	ui := termio.NewTestMock(t)
+	if _, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+		t.Fatal("expected the pending-identity check error to surface")
+	}
+}
+
 func TestPreviewSandboxForcedRebuildReportsBuild(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)

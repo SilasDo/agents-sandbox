@@ -53,7 +53,9 @@ daemon setup, attach.
 It reports, via `termio`:
 
 1. **Agent version.** The explicit pin, else the project's recorded `agent_version`; when neither, a message that the
-   version would be resolved at build time. Never a network call.
+   version would be resolved at build time. Never a network call. A user-provided agent (recorded `agent_source` is
+   `user`) takes the recorded version and ignores the pin, exactly as `resolveBuildVersion` does — a real run would
+   never rebuild such an agent to the pin, so the preview must not report the resulting phantom rebuild.
 2. **Image.** Render the build plan (pure: `RenderDockerfile` plus the `dockerfileID`/identity) and run the existing
    build decision (local `docker inspect` only). Report `would build runner image <tag> (<reasons>)` or
    `would reuse runner image <tag>`. The reasons are the same ones a real build logs. When the pin and the recorded
@@ -66,8 +68,10 @@ It reports, via `termio`:
    The preview does not run the upgrade check, so its image decision reflects the known version, not a possible
    upgrade. When a concrete version is known and not pinned — the project's recorded `agent_version` or the
    label-recovered baseline — the agent-version line carries the note `(upgrade check not run)`. An explicit
-   `--agent-version` pin and a deferred build-time resolution carry no suffix: a pin is never upgraded, and a
-   deferred resolution knows no version to disclose.
+   `--agent-version` pin, a user-provided agent, and a deferred build-time resolution carry no suffix: a pin is never
+   upgraded, a user-provided agent is never upgrade-checked by a real run either, and a deferred resolution knows no
+   version to disclose. A user-provided agent likewise never has a version recovered from the image label (the real
+   run leaves resolution to the build), so its no-record case reports the deferred-resolution message.
 3. **Home volume.** Read the project state and check the recorded volume's existence via `GetVolume` (local msb). When
    state is missing or its recorded volume is gone, consult the live VM's mounted volume read-only
    (`liveHomeVolume`, `GetSandbox` + `ConfigMounts`) so the preview reports `would reuse` for the volume a real run

@@ -22,8 +22,9 @@ type Preview struct {
 	// UpgradeCheckSkipped is true when a concrete agent version is known
 	// (recorded or recovered from the image label) but the real run's upgrade
 	// check did not run, so the reported version is the known one and not a
-	// possible upgrade. False for an explicit pin (never upgraded) and when
-	// resolution is deferred to build time.
+	// possible upgrade. False for an explicit pin (never upgraded), for a
+	// user-provided agent (never upgrade-checked), and when resolution is
+	// deferred to build time.
 	UpgradeCheckSkipped bool
 	ImageTag            string
 	BuildImage          bool
@@ -37,7 +38,8 @@ type Preview struct {
 // builds no image, creates no volume, writes no state, starts no VM, prompts,
 // and makes no network request. The agent version is the explicit pin, else the
 // recorded version, else the version recovered from the existing image label —
-// recovered for reporting only, never recorded.
+// recovered for reporting only, never recorded. A user-provided agent ignores
+// the pin and never recovers a version, matching a real run.
 func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) (Preview, error) {
 	cwd, err := resolveWorkspaceDir()
 	if err != nil {
@@ -57,22 +59,17 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 	}
 	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
 
-	version := opts.AgentVersion
-	if version == "" {
-		version = currentAgentVersion(k)
-	}
-	if version == "" {
-		if recovered, ok := existingAgentVersion(ctx, k.Slug, k.Agent); ok {
-			version = recovered
-		}
-	}
-	// A known, non-pinned version came from the project's record or the
-	// recovered image label; the preview never runs the upgrade check, so say so.
-	upgradeCheckSkipped := version != "" && opts.AgentVersion == ""
+	userProvided := currentAgentSource(k) == agentSourceUser
+	version := previewAgentVersion(ctx, k, opts, userProvided)
+	// A known version from the project's record or the recovered image label is
+	// what a real run would bake without running the upgrade check, so disclose
+	// it. A pin is never upgraded and a user-provided agent is never
+	// upgrade-checked, so neither carries the note.
+	upgradeCheckSkipped := version != "" && opts.AgentVersion == "" && !userProvided
 
 	img, err := image.PreviewImage(
 		ctx, a, k.Slug,
-		buildOptions(opts, version, opts.Rebuild, currentAgentSource(k) == agentSourceUser),
+		buildOptions(opts, version, opts.Rebuild, userProvided),
 		ui,
 	)
 	if err != nil {
@@ -92,4 +89,26 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 		HomeVolume:            homeVolume,
 		CreateHome:            createHome,
 	}, nil
+}
+
+// previewAgentVersion decides the agent version the preview reports, matching
+// resolveBuildVersion's precedence. A user-provided agent is not owned by the
+// tool: the preview ignores any --agent-version pin and reports the recorded
+// version, recovering none from the image label (a real build resolves a missing
+// version itself). Any other agent takes the pin, then the record, then the
+// label-recovered baseline.
+func previewAgentVersion(ctx context.Context, k state.Key, opts options.RunOptions, userProvided bool) string {
+	if userProvided {
+		return currentAgentVersion(k)
+	}
+	if opts.AgentVersion != "" {
+		return opts.AgentVersion
+	}
+	if recorded := currentAgentVersion(k); recorded != "" {
+		return recorded
+	}
+	if recovered, ok := existingAgentVersion(ctx, k.Slug, k.Agent); ok {
+		return recovered
+	}
+	return ""
 }

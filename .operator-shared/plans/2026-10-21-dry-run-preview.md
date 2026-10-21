@@ -694,3 +694,17 @@ Expected: PASS, with `[no tests to run]` per package (compile-only).
 git add docs/commands.md CHANGELOG.md .operator-shared/specs/upgrade-state-scoping.md .operator-shared/specs/project-state-transactions.md .operator-shared/specs/dry-run-preview.md
 git commit -m "docs: describe the side-effect-free --dry-run preview"
 ```
+
+---
+
+## Review fixes (PR #262)
+
+Greptile flagged that `PreviewSandbox` applied `opts.AgentVersion` even for a user-provided agent, so with a recorded
+`1.0.0` and `--agent-version 9.9.9` the preview reported `9.9.9` and a phantom rebuild, while a real run ignores the
+pin and uses `1.0.0` (`resolveBuildVersion`). Fixed the precedence to match: a user-provided agent reports the recorded
+version, ignores the pin, never recovers a version from the image label, and never carries the `(upgrade check not run)`
+note (a real run does not upgrade-check it either). Recorded in `specs/dry-run-preview.md`.
+
+Codecov's patch gap closed with three tests: `RunnerDockerfileID`'s happy and render-error paths in `image/preview_test.go`
+(the helper is called cross-package at runtime but was not covered by its own package's tests), and the pending-legacy
+-identity error arm of `PreviewSandbox` (a corrupt legacy state document must surface, not be ignored).

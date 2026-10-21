@@ -2,6 +2,8 @@ package image
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -122,6 +124,45 @@ func TestPreviewImageEmptyVersionReportsResolveAtBuild(t *testing.T) {
 	}
 	if p.AgentVersion != "" {
 		t.Errorf("AgentVersion = %q, want empty", p.AgentVersion)
+	}
+}
+
+// TestRunnerDockerfileIDMatchesTheRenderedPlan pins the exported identity
+// helper that higher-layer preview tests seed an image label with: it must equal
+// computeDockerfileID over the rendered project Dockerfile, so a seeded image
+// matches the plan the preview computes.
+func TestRunnerDockerfileIDMatchesTheRenderedPlan(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	a := agentOpencode(t)
+
+	id, err := RunnerDockerfileID(a, testAgentVersion, false)
+	if err != nil {
+		t.Fatalf("RunnerDockerfileID: %v", err)
+	}
+	rendered, err := RenderProjectDockerfile(a, testAgentVersion, false)
+	if err != nil {
+		t.Fatalf("RenderProjectDockerfile: %v", err)
+	}
+	if want := computeDockerfileID(rendered, testAgentVersion); id != want {
+		t.Errorf("RunnerDockerfileID = %q, want %q", id, want)
+	}
+}
+
+// TestRunnerDockerfileIDSurfacesRenderError pins that a project Dockerfile that
+// cannot render propagates the error instead of returning a bogus id.
+func TestRunnerDockerfileIDSurfacesRenderError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	a := agentOpencode(t)
+	dockerfilePath := configpaths.Get().ProjectDockerfile()
+	if err := os.MkdirAll(filepath.Dir(dockerfilePath), 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if err := os.WriteFile(dockerfilePath, []byte("FROM ubuntu:24.04 AS "+baseStageAlias+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	if _, err := RunnerDockerfileID(a, testAgentVersion, false); err == nil {
+		t.Fatal("expected a render error for a reserved stage alias")
 	}
 }
 
