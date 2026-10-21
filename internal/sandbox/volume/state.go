@@ -77,7 +77,11 @@ func (vm *Manager) recoverOrCreateHome(
 ) (string, state.HomeState, error) {
 	recovered, ok := confirmedRecoveredVolume(ctx, client, recoveredVolume)
 	if !ok {
-		return vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
+		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
+		if err == nil {
+			clearAdoptionClaim(k, recoveredVolume, ui)
+		}
+		return volName, hs, err
 	}
 
 	ui.Warnf(
@@ -94,6 +98,10 @@ func (vm *Manager) recoverOrCreateHome(
 		return true, nil
 	}); err != nil {
 		ui.Warnf("failed to recover state file: %v", err)
+	} else {
+		// The recovered volume is now the project's HomeVolume and the marker is
+		// gone, so the adoption claim that recorded ownership is spent.
+		clearAdoptionClaim(k, recovered, ui)
 	}
 	if !callbackRan {
 		// The transaction failed before it could run the callback (lock or read
@@ -102,6 +110,18 @@ func (vm *Manager) recoverOrCreateHome(
 		recoveredState = recoveredHomeState(recovered, info, nil, fingerprints)
 	}
 	return recovered, recoveredState, nil
+}
+
+// clearAdoptionClaim retires a spent adoption claim (#144) after the recovered
+// volume has been folded into the project's own state. Best-effort: a stale
+// claim is harmless once the legacy VM is gone, so a failure only warns.
+func clearAdoptionClaim(k state.Key, volume string, ui termio.UI) {
+	if volume == "" {
+		return
+	}
+	if err := state.ClearAdoptedHomeVolume(k.Slug, volume); err != nil {
+		ui.Warnf("failed to clear the adoption claim for volume %q: %v", volume, err)
+	}
 }
 
 // priorOrNil returns the readable prior document for carry-forward, or nil when

@@ -1154,3 +1154,74 @@ func TestAdoptLegacyIdentityLiveLegacyVMMountsErrorFailsClosed(t *testing.T) {
 		t.Error("legacy VM destroyed despite an unreadable mount")
 	}
 }
+
+// TestAdoptLegacyIdentityClaimsSharedVolumeOnce covers the two-clone race the
+// #244 review found: clone A records a marker for a shared legacy VM's home
+// volume but its destroy fails, so clone B can still adopt the surviving VM.
+// Only one checkout may own the volume: B must not record a marker, and the
+// claim must name A.
+func TestAdoptLegacyIdentityClaimsSharedVolumeOnce(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const legacyVolume = "agents-sandbox-home-widget-aaa-opencode-5"
+	identityA := git.Identity{RepoSlug: adoptRepoSlug, CheckoutSlug: "checkout-aaa"}
+	identityB := git.Identity{RepoSlug: adoptRepoSlug, CheckoutSlug: "checkout-bbb"}
+	checkoutA := state.Key{Slug: "checkout-aaa", Agent: adoptAgentName}
+	checkoutB := state.Key{Slug: "checkout-bbb", Agent: adoptAgentName}
+
+	legacyMount := map[string]msbSdk.MountConfig{
+		mounts.VMHomeDir: msbSdk.Mount.Named(legacyVolume, msbSdk.MountOptions{}),
+	}
+	// Clone A claims the volume and records the marker, then its destroy fails.
+	failing := &msb.MockSandboxHandle{
+		Name_:      adoptLegacyVMName(),
+		DestroyErr: errors.New("destroy boom"),
+		Mounts:     legacyMount,
+	}
+	clientA := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		if name == adoptLegacyVMName() {
+			return failing, nil
+		}
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	uiA := termio.NewTestMock(t)
+	if _, err := AdoptLegacyIdentity(
+		context.Background(), clientA, identityA, adoptAgentName, true, &uiA,
+	); err == nil {
+		t.Fatal("expected clone A's destroy failure to abort adoption")
+	}
+	if stA, err := state.ReadState(checkoutA); err != nil || stA.RecoveredHomeVolume != legacyVolume {
+		t.Fatalf("clone A marker = %+v (err %v), want %q", stA, err, legacyVolume)
+	}
+
+	// Clone B adopts the surviving legacy VM successfully; it must not record the
+	// same volume, which clone A owns.
+	succeeding := &msb.MockSandboxHandle{Name_: adoptLegacyVMName(), Mounts: legacyMount}
+	clientB := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		if name == adoptLegacyVMName() {
+			return succeeding, nil
+		}
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	uiB := termio.NewTestMock(t)
+	if _, err := AdoptLegacyIdentity(
+		context.Background(), clientB, identityB, adoptAgentName, true, &uiB,
+	); err != nil {
+		t.Fatalf("clone B adoption: %v", err)
+	}
+	if !succeeding.Destroyed {
+		t.Error("clone B did not tear down the leftover legacy VM")
+	}
+	if stB, readErr := state.ReadState(checkoutB); readErr == nil && stB.RecoveredHomeVolume != "" {
+		t.Errorf("clone B recorded the shared volume: %+v", stB)
+	}
+
+	root, err := state.ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	claim, ok := root.AdoptedHomeVolume(adoptRepoSlug, adoptAgentName)
+	if !ok || claim.CheckoutSlug != identityA.CheckoutSlug || claim.Volume != legacyVolume {
+		t.Errorf("claim = %+v (present %v), want %q owning %q", claim, ok, identityA.CheckoutSlug, legacyVolume)
+	}
+}

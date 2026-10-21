@@ -1580,3 +1580,59 @@ func TestResolveHomeAction_PromptFails_ReturnsKeep(t *testing.T) {
 		t.Errorf("expected 1 warning on prompt failure, got %d", len(ui.WarnCalls))
 	}
 }
+
+// seedAdoptionClaim records a legacy identity's adoption claim (#144) through the
+// locked root-state transaction, the way an adopting checkout does.
+func seedAdoptionClaim(t *testing.T, legacySlug, agent, checkoutSlug, volume string) {
+	t.Helper()
+	if _, err := state.WithRootState(true, func(txn *state.RootTxn) error {
+		txn.State().ClaimAdoptedHomeVolume(legacySlug, agent, checkoutSlug, volume)
+		return txn.Commit()
+	}); err != nil {
+		t.Fatalf("seed adoption claim: %v", err)
+	}
+}
+
+// TestResolveHomeVolume_ClearsAdoptionClaim covers pruning the ownership record:
+// once recovery folds the preserved volume into the project's own state, the
+// claim that guarded it is spent and must be retired.
+func TestResolveHomeVolume_ClearsAdoptionClaim(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	key := state.Key{Slug: "adoptedwidget", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+	seedAdoptionClaim(t, "widget-aaa", "opencode", key.Slug, recovered)
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		if name == recovered {
+			return msb.MockVolumeHandle{Name_: name}, nil
+		}
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("volume %s not found", name)
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	if _, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:new"},
+		false,
+		state.Fingerprints{},
+		"",
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	root, err := state.ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	if _, ok := root.AdoptedHomeVolume("widget-aaa", "opencode"); ok {
+		t.Errorf("adoption claim survived recovery: %+v", root.AdoptedHomeVolumes)
+	}
+}

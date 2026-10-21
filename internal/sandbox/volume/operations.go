@@ -275,6 +275,9 @@ func volumeOp(
 		vm.cleanupVolume(ctx, client, newVolumeName, ui)
 		return err
 	}
+	// If the operation replaced a volume an identity adoption preserved, its
+	// claim is spent; retire it so it is not left stale (#144).
+	clearAdoptionClaim(k, oldVolume, ui)
 
 	if rmOld {
 		if err := client.RemoveVolume(ctx, oldVolume); err != nil {

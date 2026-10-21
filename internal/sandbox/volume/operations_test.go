@@ -855,6 +855,7 @@ func TestVolumeOp_UsesRecoveredHomeVolumeAsSource(t *testing.T) {
 	key := state.Key{Slug: "testproj-aBc1234D", Agent: "opencode"}
 	const recovered = "agents-sandbox-home-widget-aaa-opencode-7"
 	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+	seedAdoptionClaim(t, "widget-aaa", "opencode", key.Slug, recovered)
 
 	err := CmdReset(
 		context.Background(),
@@ -888,6 +889,13 @@ func TestVolumeOp_UsesRecoveredHomeVolumeAsSource(t *testing.T) {
 	}
 	if st.RecoveredHomeVolume != "" {
 		t.Errorf("RecoveredHomeVolume = %q, want the marker cleared", st.RecoveredHomeVolume)
+	}
+	root, err := state.ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	if _, ok := root.AdoptedHomeVolume("widget-aaa", "opencode"); ok {
+		t.Errorf("adoption claim not cleared after the volume op: %+v", root.AdoptedHomeVolumes)
 	}
 }
 

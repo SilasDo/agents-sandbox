@@ -115,7 +115,7 @@ func AdoptLegacyIdentity(
 	}
 
 	var result IdentityAdoption
-	_, err = state.WithRootState(true, func(_ *state.RootTxn) error {
+	_, err = state.WithRootState(true, func(txn *state.RootTxn) error {
 		// Re-check under the lock: another checkout (or another agent of this
 		// one) may have adopted the shared legacy identity between the pre-lock
 		// check and acquiring the lock. If so there is nothing left to adopt and
@@ -133,7 +133,16 @@ func AdoptLegacyIdentity(
 			return nil
 		}
 		ui.Warnf("%s", adoptionNotice(identity, agentName, source.HomeVolume, true))
-		if adoptErr := adoptLegacyIdentity(ctx, client, identity, slugs, checkoutKey, source, ui); adoptErr != nil {
+		if adoptErr := adoptLegacyIdentity(
+			ctx,
+			client,
+			identity,
+			slugs,
+			checkoutKey,
+			source,
+			txn,
+			ui,
+		); adoptErr != nil {
 			return adoptErr
 		}
 		result = IdentityAdoption{Slug: identity.CheckoutSlug, Pending: true, Applied: true}
@@ -188,6 +197,21 @@ func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
 		return fmt.Errorf("record the recovered home volume for %s: %w", k.Slug, err)
 	}
 	return nil
+}
+
+// claimLegacyHomeVolume records this checkout as the owner of a shared legacy
+// identity's lost-state home volume, within the adoption root transaction. It
+// returns false when another checkout already owns the identity's volume, so
+// this checkout must not record a marker (it starts with its own fresh volume
+// instead of sharing the owner's). A claim by this checkout is re-recorded, so a
+// retried adoption is idempotent.
+func claimLegacyHomeVolume(txn *state.RootTxn, source legacyPendingSource, checkoutKey state.Key) bool {
+	if owner, claimed := txn.State().AdoptedHomeVolume(source.Slug, checkoutKey.Agent); claimed &&
+		owner.CheckoutSlug != checkoutKey.Slug {
+		return false
+	}
+	txn.State().ClaimAdoptedHomeVolume(source.Slug, checkoutKey.Agent, checkoutKey.Slug, source.HomeVolume)
+	return true
 }
 
 // legacyAdoptionPending reports whether a legacy identity is pending: the
@@ -272,6 +296,7 @@ func adoptLegacyIdentity(
 	slugs []string,
 	checkoutKey state.Key,
 	source legacyPendingSource,
+	txn *state.RootTxn,
 	ui termio.UI,
 ) error {
 	primary := slugs[0]
@@ -282,9 +307,18 @@ func adoptLegacyIdentity(
 	// from the checkout state instead of being orphaned. This runs under the root
 	// lock, so a concurrent first-post-upgrade run cannot observe a half-written
 	// migration.
-	if source.FromVM {
+	//
+	// A shared legacy identity has one home volume, so before recording the marker
+	// this checkout must claim the volume under the legacy identity (a second
+	// clone's claim makes its own adoption skip the marker instead of both
+	// recovering the same volume). The claim is committed before the destroy, so
+	// it survives a destroy failure even as the marker does.
+	if source.FromVM && source.HomeVolume != "" && claimLegacyHomeVolume(txn, source, checkoutKey) {
 		if err := persistRecoveredHomeVolume(checkoutKey, source.HomeVolume); err != nil {
 			return err
+		}
+		if err := txn.Commit(); err != nil {
+			return fmt.Errorf("record adoption ownership for %s: %w", source.Slug, err)
 		}
 	}
 
