@@ -126,7 +126,8 @@ func (opencodeProfile) EventStream() EventStreamSpec {
 		ErrorEvents:        []string{sessionErrorEvent},
 		StickyErrorEvents:  []string{sessionErrorEvent},
 		SessionEvents:      []string{"session.created", "session.updated"},
-		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
+		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session",
+		SessionListParse:   parseOpencodeV1SessionList,
 		Name:               opencodeName,
 		Parse:              parseOpencodeV1Event,
 	}
@@ -159,4 +160,32 @@ func parseOpencodeV1Event(payload []byte) (StreamEvent, bool) {
 		SessionID: raw.Payload.Properties.SessionID,
 		ParentID:  raw.Payload.Properties.Info.ParentID,
 	}, true
+}
+
+// sessionParent is the (id, parentID) pair both agents' session lists carry.
+type sessionParent struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentID"`
+}
+
+// childSessionIDs returns the ids of sessions carrying a non-empty parentID,
+// the one rule both agents' session lists share.
+func childSessionIDs(sessions []sessionParent) []string {
+	ids := make([]string, 0, len(sessions))
+	for _, session := range sessions {
+		if session.ParentID != "" {
+			ids = append(ids, session.ID)
+		}
+	}
+	return ids
+}
+
+// parseOpencodeV1SessionList extracts child session ids from v1's /session
+// response, a JSON array of sessions each carrying an optional parentID.
+func parseOpencodeV1SessionList(payload []byte) []string {
+	var sessions []sessionParent
+	if err := json.Unmarshal(payload, &sessions); err != nil {
+		return nil
+	}
+	return childSessionIDs(sessions)
 }

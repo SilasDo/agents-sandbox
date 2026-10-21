@@ -1,6 +1,6 @@
 # Notify for opencode2 + subagent-session filtering — Implementation Plan
 
-> **Status:** Implemented on `notify-opencode2-subagent-filter` (commits `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`); awaiting PR review. A review round rebased it onto `main` and applied three Greptile fixes (v2 in-turn input re-arm via `session.step.started`, v1 seed command `-m 30`, `StickyErrorEvents` comment); see the spec's "Review fixes (PR #245)".
+> **Status:** Implemented on `notify-opencode2-subagent-filter` (commits `dae8ab1`, `ea43e3e`, `edacd52`, `3479830`); awaiting PR review. A review round rebased it onto `main` and applied three Greptile fixes (v2 in-turn input re-arm via `session.step.started`, v1 seed command `-m 30`, `StickyErrorEvents` comment); a second round replaced the seed command's `jq` dependency with an agent-owned `SessionListParse`; see the spec's "Review fixes (PR #245)".
 >
 > **Note:** The steps below are the original TDD checklist, not a verbatim record — they were not executed as written. Two controller rulings moved the v1 decoder test into `internal/agent/decoders_internal_test.go` and pinned the v2 spec-contents test to literal strings in the external test package.
 

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
@@ -164,14 +163,11 @@ func watchOnce(
 	defer handle.Close()
 
 	// Seed the tracker with child sessions created before this stream opened.
-	// Best-effort: an error, non-success, or non-array body is ignored and the
+	// Best-effort: an error, non-success, or unparsable body is ignored and the
 	// stream proceeds, since session.created still teaches new children.
-	if spec.SessionListCommand != "" {
+	if spec.SessionListCommand != "" && spec.SessionListParse != nil {
 		if res, err := sb.Shell(ctx, spec.SessionListCommand); err == nil && res.Success() {
-			var ids []string
-			if json.Unmarshal([]byte(res.Stdout()), &ids) == nil {
-				tracker.SeedChildren(ids)
-			}
+			tracker.SeedChildren(spec.SessionListParse([]byte(res.Stdout())))
 		}
 	}
 

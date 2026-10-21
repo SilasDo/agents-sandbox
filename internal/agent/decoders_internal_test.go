@@ -1,6 +1,9 @@
 package agent
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestParseOpencodeV1Event(t *testing.T) {
 	sessionDiff := `{"directory":"/workspace","project":"cb78d2f0","payload":{"id":"evt_a","type":"session.diff","properties":{"sessionID":"ses_f987482bcffeiws2F2jQHsI18v","diff":[]}}}`
@@ -88,5 +91,36 @@ func TestParseOpencodeV2Event(t *testing.T) {
 				t.Errorf("got %+v, want %+v", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestParseOpencodeV1SessionList(t *testing.T) {
+	payload := `[
+		{"id":"ses_top","parentID":null},
+		{"id":"ses_child","parentID":"ses_top"},
+		{"id":"ses_bare"},
+		{"id":"ses_blank","parentID":""}
+	]`
+	got := parseOpencodeV1SessionList([]byte(payload))
+	if want := []string{"ses_child"}; !slices.Equal(got, want) {
+		t.Errorf("parseOpencodeV1SessionList() = %v, want %v", got, want)
+	}
+	if got := parseOpencodeV1SessionList([]byte("not json")); got != nil {
+		t.Errorf("malformed payload = %v, want nil", got)
+	}
+}
+
+func TestParseOpencodeV2SessionList(t *testing.T) {
+	payload := `{"data":[
+		{"id":"ses_top","parentID":null},
+		{"id":"ses_child","parentID":"ses_top"},
+		{"id":"ses_bare"}
+	]}`
+	got := parseOpencodeV2SessionList([]byte(payload))
+	if want := []string{"ses_child"}; !slices.Equal(got, want) {
+		t.Errorf("parseOpencodeV2SessionList() = %v, want %v", got, want)
+	}
+	if got := parseOpencodeV2SessionList([]byte("not json")); got != nil {
+		t.Errorf("malformed payload = %v, want nil", got)
 	}
 }

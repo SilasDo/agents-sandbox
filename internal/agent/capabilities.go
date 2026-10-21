@@ -164,11 +164,15 @@ type EventStreamSpec struct {
 	// session's parent. A non-empty parent ID marks the session as a subagent
 	// (child) session; no notification ever fires for a child session.
 	SessionEvents []string
-	// SessionListCommand is a one-shot shell command printing a JSON array of
-	// child session IDs, run each time a stream opens to seed the filter with
+	// SessionListCommand is a one-shot shell command printing the daemon's raw
+	// session list, run each time a stream opens to seed the filter with
 	// sessions created before the watcher (re)connected. Empty disables seeding.
 	SessionListCommand string
-	Name               string
+	// SessionListParse extracts the child session IDs from SessionListCommand's
+	// stdout. The agent owns the list's JSON shape, so the command needs no jq
+	// (or other tooling) in the runner image, which a custom base need not have.
+	SessionListParse func(payload []byte) []string
+	Name             string
 	// Parse decodes one SSE data payload into a StreamEvent. ok is false when
 	// the payload carries no event.
 	Parse func(payload []byte) (StreamEvent, bool)

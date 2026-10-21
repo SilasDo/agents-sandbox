@@ -286,6 +286,10 @@ func TestOpencodeEventStream(t *testing.T) {
 		t.Fatal("EventStream().Parse is nil")
 	}
 	got.Parse = nil
+	if got.SessionListParse == nil {
+		t.Fatal("EventStream().SessionListParse is nil")
+	}
+	got.SessionListParse = nil
 	want := agent.EventStreamSpec{
 		StreamCommand:      "curl -N -s http://127.0.0.1:4096/global/event",
 		BusyEvents:         []string{"message.part.updated", "session.updated"},
@@ -294,7 +298,7 @@ func TestOpencodeEventStream(t *testing.T) {
 		ErrorEvents:        []string{"session.error"},
 		StickyErrorEvents:  []string{"session.error"},
 		SessionEvents:      []string{"session.created", "session.updated"},
-		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session | jq -c '[.[] | select(.parentID != null) | .id]'",
+		SessionListCommand: "curl -sf -m 30 http://127.0.0.1:4096/session",
 		Name:               "opencode",
 	}
 	if !reflect.DeepEqual(got, want) {

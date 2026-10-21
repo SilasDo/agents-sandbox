@@ -146,13 +146,21 @@ func TestWatchDedupClearsOnBusy(t *testing.T) {
 func TestWatchOnceSeedsChildrenFromListCommand(t *testing.T) {
 	spec := opencodeSpec()
 	spec.SessionListCommand = "seed-cmd"
+	spec.SessionListParse = func(payload []byte) []string {
+		if string(payload) != `{"data":[{"id":"ses_child","parentID":"ses_top"}]}` {
+			t.Errorf("SessionListParse got %q", payload)
+		}
+		return []string{"ses_child"}
+	}
 	stream := &streamStub{events: []msb.StreamEvent{
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("message.part.updated", "ses_child")},
 		{Kind: msb.StreamEventStdout, Data: sseBlockFor("session.idle", "ses_child")},
 		{Kind: msb.StreamEventExited, ExitCode: 0},
 	}}
 	sb := msb.NewMockSandbox(msb.SandboxOpts{
-		ShellOut:      map[string]msb.ShellResult{"seed-cmd": msb.NewTestResult(true, 0, `["ses_child"]`, "", nil)},
+		ShellOut: map[string]msb.ShellResult{
+			"seed-cmd": msb.NewTestResult(true, 0, `{"data":[{"id":"ses_child","parentID":"ses_top"}]}`, "", nil),
+		},
 		StreamHandle_: stream,
 	})
 	backend := &recordBackend{}
