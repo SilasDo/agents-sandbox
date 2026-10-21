@@ -74,7 +74,7 @@ func TestBuildDockerfileCommandReadsBareRoot(t *testing.T) {
 // TestRunCommandReadsBareRoot asserts the real run path resolves the bare root
 // (reaching EnsureImage) by warning about the ignored worktree .agents-sandbox.
 func TestRunCommandReadsBareRoot(t *testing.T) {
-	cmd, ui, root := setupBareCheckoutFixtures(t, cmdRun, flagDryRun)
+	cmd, ui, root := setupBareCheckoutFixtures(t, cmdRun, flagDryRunVM)
 	ignoredDir := filepath.Join(root, "main", ".agents-sandbox")
 	if err := os.MkdirAll(ignoredDir, 0o750); err != nil {
 		t.Fatalf("MkdirAll(%q): %v", ignoredDir, err)
