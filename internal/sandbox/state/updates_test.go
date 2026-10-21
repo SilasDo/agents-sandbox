@@ -1,6 +1,7 @@
 package state
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -59,5 +60,77 @@ func TestLauncherUpdateAccessorsRoundTrip(t *testing.T) {
 	rs.SetLauncherUpdate(LauncherUpdateState{DismissedVersions: []string{"2.0.0"}})
 	if got := rs.LauncherUpdate().DismissedVersions; len(got) != 1 || got[0] != "2.0.0" {
 		t.Fatalf("LauncherUpdate = %+v", got)
+	}
+}
+
+func TestParseRootStateFoldsLegacyAgentsKey(t *testing.T) {
+	legacy := []byte("agents:\n  opencode:\n    last_checked: 2026-01-01T00:00:00Z\n    latest_version: 1.2.3\n")
+	got, err := parseRootState(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Updates.Agents["opencode"].LatestVersion != "1.2.3" {
+		t.Fatalf("legacy agents key not folded: %+v", got.Updates)
+	}
+}
+
+func TestParseRootStateNewShapeWinsOverLegacyKey(t *testing.T) {
+	both := []byte(
+		"updates:\n  agents:\n    opencode:\n      latest_version: new\nagents:\n  opencode:\n    latest_version: old\n",
+	)
+	got, err := parseRootState(both)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Updates.Agents["opencode"].LatestVersion != "new" {
+		t.Fatalf("new shape did not win: %+v", got.Updates.Agents)
+	}
+}
+
+// TestParseRootStateLegacyKeyKeepsLauncher covers the mixed shape the brief warns
+// about: a legacy top-level agents: key alongside a populated updates.launcher.
+// The fold must adopt the legacy map without rebuilding Updates from scratch and
+// dropping the launcher.
+func TestParseRootStateLegacyKeyKeepsLauncher(t *testing.T) {
+	mixed := []byte(
+		"updates:\n  launcher:\n    last_checked: 2026-01-02T03:04:05Z\nagents:\n  opencode:\n    latest_version: 1.2.3\n",
+	)
+	got, err := parseRootState(mixed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Updates.Agents["opencode"].LatestVersion != "1.2.3" {
+		t.Fatalf("legacy agents key not folded: %+v", got.Updates)
+	}
+	if got.Updates.Launcher.LastChecked.IsZero() {
+		t.Fatalf("fold dropped updates.launcher: %+v", got.Updates)
+	}
+}
+
+func TestRootStateWriteDropsLegacyAgentsKey(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacy := []byte("agents:\n  opencode:\n    latest_version: 1.2.3\n")
+	if err := os.MkdirAll(stateRoot(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootStateFile(), legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := WithRootState(true, func(tx *RootTxn) error {
+		tx.State().SetLauncherUpdate(LauncherUpdateState{DismissedVersions: []string{"1.0.0"}})
+		return tx.Commit()
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(rootStateFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "\nagents:") {
+		t.Fatalf("legacy top-level agents key survived a write:\n%s", data)
+	}
+	if !strings.Contains(string(data), "opencode") {
+		t.Fatalf("folded agent check was lost on write:\n%s", data)
 	}
 }

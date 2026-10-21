@@ -173,12 +173,24 @@ func ReadRootState() (*RootState, error) {
 // parseRootState is the pure unmarshal step of ReadRootState: arbitrary bytes
 // in, RootState or ErrStateUnparsable-wrapped error out, no file I/O. Kept
 // separate so FuzzParseState can drive it without a filesystem.
+//
+// It also folds the legacy top-level agents: key (pre-updates: root documents)
+// into Updates.Agents, so an old document reads correctly and the next write
+// normalizes it. The new shape wins: a non-empty updates.agents is adopted as-is
+// and the legacy key ignored, while updates.launcher survives either way.
 func parseRootState(data []byte) (RootState, error) {
-	var state RootState
-	if err := yaml.Unmarshal(data, &state); err != nil {
+	var wire struct {
+		Migrations   map[string]Migration       `yaml:"migrations"`
+		Updates      Updates                    `yaml:"updates"`
+		LegacyAgents map[string]AgentCheckState `yaml:"agents"`
+	}
+	if err := yaml.Unmarshal(data, &wire); err != nil {
 		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
 	}
-	return state, nil
+	if len(wire.Updates.Agents) == 0 {
+		wire.Updates.Agents = wire.LegacyAgents
+	}
+	return RootState{Migrations: wire.Migrations, Updates: wire.Updates}, nil
 }
 
 // writeRootState atomically writes the launcher-global state to disk. Unexported
