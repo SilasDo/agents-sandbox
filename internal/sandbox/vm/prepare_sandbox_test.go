@@ -210,7 +210,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 // home manifests exactly once: a missing host source is warned about a
 // single time. This guards against the regression where config files were
 // loaded twice (once in decideReconfig and once in setUpSandbox), which made
-// the warning (and the underlying BuildHomeFiles computation) run twice.
+// the warning (and the underlying BuildHomeFilesWithModes computation) run twice.
 func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()

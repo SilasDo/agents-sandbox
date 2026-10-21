@@ -71,7 +71,7 @@ func TestLoadConfigFilesWarnsMissingSource(t *testing.T) {
 func TestLoadConfigFilesBuildHomeFilesError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	// parseEntry rejects a non-string source value, surfacing a BuildHomeFiles error.
+	// parseEntry rejects a non-string source value, surfacing a BuildHomeFilesWithModes error.
 	testutil.WriteFile(t, cp.ProjectConfigDir(), "config.yaml",
 		"home:\n"+
 			"  .tool/x:\n"+
@@ -88,7 +88,7 @@ func TestLoadConfigFilesBuildHomeFilesError(t *testing.T) {
 func TestLoadConfigFilesBuildHooksError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	// A manifest that BuildHomeFiles accepts but BuildHooks rejects via the
+	// A manifest that BuildHomeFilesWithModes accepts but BuildHooks rejects via the
 	// hook validation. An unknown hook value is rejected by parseEntry, so use a
 	// hook value that is invalid for BuildHooks filtering.
 	testutil.WriteFile(t, cp.ProjectConfigDir(), "config.yaml",
