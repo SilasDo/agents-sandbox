@@ -152,6 +152,30 @@ func TestBuildPruneState_SkipsUnparseableName(t *testing.T) {
 	}
 }
 
+// TestBuildPruneStateSkipsNonLauncherSandbox verifies a sandbox that is not
+// launcher-owned (e.g. a foreign sandbox sharing the runtime) is ignored rather
+// than classified as a project VM.
+func TestBuildPruneStateSkipsNonLauncherSandbox(t *testing.T) {
+	client := &msb.MockMsbClient{
+		Sandboxes: []msb.SandboxHandle{
+			&msb.MockSandboxHandle{
+				Name_:      "some-other-sandbox",
+				Status_:    msbSdk.SandboxStatusStopped,
+				UpdatedAt_: time.Now().Add(-15 * 24 * time.Hour),
+			},
+		},
+	}
+	msb.WithMsbMock(t, client)
+
+	pruneState, err := buildPruneState(context.Background(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("buildPruneState: %v", err)
+	}
+	if len(pruneState.ToPrune)+len(pruneState.ToKeep) != 0 {
+		t.Errorf("non-launcher sandbox must be ignored, got %v", pruneState)
+	}
+}
+
 func TestBuildPruneState_ListError(t *testing.T) {
 	client := &msb.MockMsbClient{
 		ListSandboxesFn: func(_ context.Context, _ map[string]string) ([]msb.SandboxHandle, error) {

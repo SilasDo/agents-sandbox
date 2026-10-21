@@ -37,9 +37,6 @@ func HashID(input string) string {
 	sum := sha256.Sum256([]byte(input))
 	num := new(big.Int).SetBytes(sum[:])
 	encoded := num.Text(base)
-	if len(encoded) < hashIDLen {
-		encoded = strings.Repeat("0", hashIDLen-len(encoded)) + encoded
-	}
 	if len(encoded) > hashIDLen {
 		encoded = encoded[:hashIDLen]
 	}

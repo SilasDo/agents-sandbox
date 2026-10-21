@@ -2,6 +2,7 @@ package notify
 
 import (
 	"context"
+	"io"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -190,5 +191,28 @@ func TestWatchReconnectsOnStreamExit(t *testing.T) {
 	}
 	if backend.count() != 1 || backend.notification(0).Trigger != TriggerDone {
 		t.Fatalf("expected one done notification, got %+v", backend.got)
+	}
+}
+
+// eofStreamHandle ends the stream cleanly: Recv reports io.EOF immediately,
+// modelling the in-VM stream command exiting without an error.
+type eofStreamHandle struct{}
+
+func (eofStreamHandle) Recv(context.Context) (msb.StreamEvent, error) {
+	return msb.StreamEvent{}, io.EOF
+}
+
+func (eofStreamHandle) Close() error { return nil }
+
+// TestWatchOnceReportsCleanStreamEnd verifies a stream that ends cleanly is
+// reported as a drop reason so Watch reconnects; unlike an exit code or a read
+// error, a clean end is not an error in itself.
+func TestWatchOnceReportsCleanStreamEnd(t *testing.T) {
+	sb := msb.NewMockSandbox(msb.SandboxOpts{StreamHandle_: eofStreamHandle{}})
+	spec := opencodeSpec()
+
+	err := watchOnce(context.Background(), sb, NewTracker(spec), &recordBackend{}, spec.StreamCommand)
+	if err == nil || err.Error() != "stream ended cleanly" {
+		t.Fatalf("watchOnce() error = %v, want %q", err, "stream ended cleanly")
 	}
 }
