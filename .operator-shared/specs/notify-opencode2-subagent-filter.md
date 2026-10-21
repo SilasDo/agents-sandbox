@@ -435,8 +435,10 @@ A second review (on the rebased head) added:
    of claiming a removed token. Bounded because release happens on the busy events (`SessionBusy`).
    Tests: `TestDedupReleasesInputClaims` (no files left after release),
    `TestDedupLaterInputNotBlockedByAnotherClient`, `TestDedupCrossClientInputsDeliveredOnce`,
-   `TestDedupSameInputEventDeliveredOnce`, `TestAcquireClaimReleaseRemovesFile`. Mutation-verified: a
-   per-session token fails the liveness test, and a non-removing release fails the cleanup test.
+   `TestDedupSameInputEventDeliveredOnce`, `TestAcquireClaimReleaseRemovesFile`,
+   `TestAcquireClaimRetriesWhenFileRemovedUnderIt` and `TestAcquireClaimFlockErrorSurfaces` (via the
+   `claimOpened` test seam), and `TestSameFile`. Mutation-verified: a per-session token fails the
+   liveness test, and a non-removing release fails the cleanup test.
 
 The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
 `CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
