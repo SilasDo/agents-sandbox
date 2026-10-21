@@ -170,40 +170,62 @@ func TestOpencode2DaemonHealthParse(t *testing.T) {
 	}
 }
 
+func TestOpencode2WorktreeResolveCmd(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	got := worktree.WorktreeResolveCmd("/workspace")
+	want := "curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location"
+	if got != want {
+		t.Errorf("WorktreeResolveCmd = %q, want %q", got, want)
+	}
+}
+
 func TestOpencode2WorktreeListCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeListCmd("/workspace")
-	// Exact equality (mirroring the create tests) pins the whole command: a
-	// substring check would be satisfied by the shared location prelude even if
-	// the list curl lost its credential or fell back to a v1 route.
-	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; LIST=$(curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID=$PID) || exit 1; printf '%s' "$LIST" | jq -ce --arg canonical "$CANON" 'if type == "array" and all(.[]; type == "object" and (.directory | type == "string" and length > 0)) then [.[]|select(.directory != $canonical)] else error("worktree list: unexpected payload") end'`
+	got := worktree.WorktreeListCmd(agent.WorktreeProject{ID: "abc"})
+	want := "curl -fsS -m 30 -u opencode:opencode http://127.0.0.1:4096/api/worktree?projectID='abc'"
 	if got != want {
 		t.Errorf("WorktreeListCmd = %q, want %q", got, want)
 	}
 }
 
+// TestOpencode2WorktreeCommandsHaveNoJq is the point of the change: a custom
+// runner base without jq must work, so no worktree command may invoke jq.
+func TestOpencode2WorktreeCommandsHaveNoJq(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	commands := map[string]string{
+		"resolve": worktree.WorktreeResolveCmd("/workspace"),
+		"list":    worktree.WorktreeListCmd(agent.WorktreeProject{ID: "abc"}),
+		"create": worktree.WorktreeCreateCmd(
+			agent.WorktreeSpec{Name: "feature-x"}, agent.WorktreeProject{ID: "abc"},
+		),
+	}
+	for name, cmd := range commands {
+		if strings.Contains(cmd, "jq") {
+			t.Errorf("%s command still requires jq: %q", name, cmd)
+		}
+	}
+}
+
 // TestOpencode2WorktreeCurlsBoundedAndKeepStderr pins that every v2 worktree
-// curl — the shared location prelude plus the list/create calls — carries a
-// bounded timeout and keeps curl's error message, so a hung daemon cannot block
-// the launcher forever and an HTTP failure reaches the user instead of emerging
-// as an empty stderr.
+// curl carries a bounded timeout and keeps curl's error message, so a hung
+// daemon cannot block the launcher forever and an HTTP failure reaches the user
+// instead of emerging as an empty stderr.
 func TestOpencode2WorktreeCurlsBoundedAndKeepStderr(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
 	commands := map[string]string{
-		"list":   worktree.WorktreeListCmd("/workspace"),
-		"create": worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Target: "/workspace"}),
+		"resolve": worktree.WorktreeResolveCmd("/workspace"),
+		"list":    worktree.WorktreeListCmd(agent.WorktreeProject{ID: "abc"}),
+		"create": worktree.WorktreeCreateCmd(
+			agent.WorktreeSpec{Name: "feature-x"}, agent.WorktreeProject{ID: "abc"},
+		),
 	}
 	for name, cmd := range commands {
-		segments := strings.Split(cmd, "curl ")
-		if len(segments) < 3 {
-			t.Fatalf("%s command should issue the location prelude plus one call: %q", name, cmd)
-		}
-		for _, segment := range segments[1:] {
-			if !strings.HasPrefix(segment, "-fsS -m 30 ") {
-				t.Errorf("%s curl is unbounded or silences its error: %q", name, "curl "+segment)
-			}
+		if !strings.HasPrefix(cmd, "curl -fsS -m 30 -u opencode:opencode ") {
+			t.Errorf("%s command must lead with the bounded, authenticated curl: %q", name, cmd)
 		}
 	}
 }
@@ -211,8 +233,8 @@ func TestOpencode2WorktreeCurlsBoundedAndKeepStderr(t *testing.T) {
 func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature/x", Target: "/workspace"})
-	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature/x' '{projectID:$pid,name:$name}')"`
+	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x"}, agent.WorktreeProject{ID: "abc"})
+	want := `curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d '{"projectID":"abc","name":"feature-x"}'`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd = %q, want %q", got, want)
 	}
@@ -221,46 +243,107 @@ func TestOpencode2WorktreeCreateCmd(t *testing.T) {
 func TestOpencode2WorktreeCreateCmdWithBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Base: "main", Target: "/workspace"})
-	want := `LOC=$(curl -fsS -m 30 -u opencode:opencode --get --data-urlencode 'location[directory]=/workspace' http://127.0.0.1:4096/api/location) || exit 1; PID=$(printf '%s' "$LOC" | jq -re '.project.id | select(length > 0)') || exit 1; CANON=$(printf '%s' "$LOC" | jq -re '.project.canonical | select(length > 0)') || exit 1; curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d "$(jq -nc --arg pid "$PID" --arg name 'feature-x' --arg branch 'main' '{projectID:$pid,name:$name,branch:$branch}')"`
+	got := worktree.WorktreeCreateCmd(
+		agent.WorktreeSpec{Name: "feature-x", Base: "main"}, agent.WorktreeProject{ID: "abc"},
+	)
+	want := `curl -fsS -m 30 -u opencode:opencode -X POST http://127.0.0.1:4096/api/worktree -H 'Content-Type: application/json' -d '{"projectID":"abc","name":"feature-x","branch":"main"}'`
 	if got != want {
 		t.Errorf("WorktreeCreateCmd(with base) = %q, want %q", got, want)
 	}
 }
 
-func TestOpencode2WorktreeCreateCmdQuotesTargetAndBase(t *testing.T) {
+// TestOpencode2WorktreeCreateCmdQuotesJSON pins that a base ref with a single
+// quote is JSON-encoded and the whole -d argument single-quoted, so no shell
+// expansion or quoting bug reaches the daemon.
+func TestOpencode2WorktreeCreateCmdQuotesJSON(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	got := worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x", Base: "it's", Target: "/workspace/my notes"})
-	if !strings.Contains(got, `'location[directory]=/workspace/my notes'`) {
-		t.Errorf("target not single-quoted: %q", got)
-	}
-	if !strings.Contains(got, `--arg branch 'it'\''s'`) {
-		t.Errorf("base not shell-quoted: %q", got)
+	got := worktree.WorktreeCreateCmd(
+		agent.WorktreeSpec{Name: "feat-x", Base: "it's"}, agent.WorktreeProject{ID: "abc"},
+	)
+	if !strings.Contains(got, `-d '{"projectID":"abc","name":"feat-x","branch":"it'\''s"}'`) {
+		t.Errorf("create body not shell-quoted as expected: %q", got)
 	}
 }
 
-// TestOpencode2WorktreePreludeGuardsFailClosed pins the two prelude guards: an
-// explicit empty project id must not yield `projectID=`, and a missing/null
-// canonical must abort instead of becoming the literal "null" the list filter
-// would then compare every entry against (keeping the canonical root).
-func TestOpencode2WorktreePreludeGuardsFailClosed(t *testing.T) {
+// TestParseOpencode2WorktreeProject pins the fail-closed resolution: an empty or
+// missing id would send an invalid projectID, and an empty canonical would
+// filter the list against "" and keep the main checkout.
+func TestParseOpencode2WorktreeProject(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	worktree := mustWorktree(t, a)
-	commands := map[string]string{
-		"list":   worktree.WorktreeListCmd("/workspace"),
-		"create": worktree.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feature-x", Target: "/workspace"}),
+	cases := []struct {
+		name string
+		in   string
+		want agent.WorktreeProject
+		ok   bool
+	}{
+		{
+			name: "valid",
+			in:   `{"project":{"id":"abc","canonical":"/repo"}}`,
+			want: agent.WorktreeProject{ID: "abc", Canonical: "/repo"},
+			ok:   true,
+		},
+		{name: "empty id", in: `{"project":{"id":"","canonical":"/repo"}}`, ok: false},
+		{name: "empty canonical", in: `{"project":{"id":"abc","canonical":""}}`, ok: false},
+		{name: "missing project", in: `{}`, ok: false},
+		{name: "invalid json", in: `not json`, ok: false},
 	}
-	for name, got := range commands {
-		if !strings.Contains(got, "jq -re '.project.id | select(length > 0)') || exit 1") {
-			t.Errorf("%s command project-id guard must reject an empty id: %q", name, got)
-		}
-		if !strings.Contains(got, "jq -re '.project.canonical | select(length > 0)') || exit 1") {
-			t.Errorf("%s command canonical guard must reject a missing canonical: %q", name, got)
-		}
-		if strings.Contains(got, "jq -re '.project.id')") || strings.Contains(got, "jq -r '.project.canonical'") {
-			t.Errorf("%s command still has the fail-open guards: %q", name, got)
-		}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := worktree.WorktreeParseProject(tc.in)
+			if ok != tc.ok || got != tc.want {
+				t.Errorf("WorktreeParseProject(%q) = %+v, %v; want %+v, %v", tc.in, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+// TestParseOpencode2WorktreeList pins the strict list parser: the canonical root
+// is dropped, and a non-array payload or an entry without a non-empty string
+// directory fails the whole list rather than being silently ignored.
+func TestParseOpencode2WorktreeList(t *testing.T) {
+	a, _ := agent.Lookup("opencode2")
+	worktree := mustWorktree(t, a)
+	project := agent.WorktreeProject{ID: "abc", Canonical: "/repo"}
+	cases := []struct {
+		name string
+		in   string
+		want []string
+		ok   bool
+	}{
+		{
+			name: "drops canonical",
+			in:   `[{"directory":"/repo"},{"directory":"/wt/feat-x"}]`,
+			want: []string{"/wt/feat-x"},
+			ok:   true,
+		},
+		{
+			name: "server-suffixed survives",
+			in:   `[{"directory":"/repo"},{"directory":"/wt/feat-x-2"}]`,
+			want: []string{"/wt/feat-x-2"},
+			ok:   true,
+		},
+		{name: "canonical only", in: `[{"directory":"/repo"}]`, want: []string{}, ok: true},
+		{name: "empty array", in: `[]`, want: []string{}, ok: true},
+		{name: "non-array object", in: `{"directory":"/repo"}`, ok: false},
+		{name: "null", in: `null`, ok: false},
+		{name: "renamed field", in: `[{"directory":"/repo"},{"path":"/wt/feat-x"}]`, ok: false},
+		{name: "string entry", in: `["/wt/feat-x"]`, ok: false},
+		{name: "missing directory", in: `[{}]`, ok: false},
+		{name: "null directory", in: `[{"directory":null}]`, ok: false},
+		{name: "array entry", in: `[["/wt/feat-x"]]`, ok: false},
+		{name: "stringified object", in: `["{\"directory\":\"/wt/feat-x\"}"]`, ok: false},
+		{name: "blank directory", in: `[{"directory":""}]`, ok: false},
+		{name: "numeric directory", in: `[{"directory":123}]`, ok: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := worktree.WorktreeParseList(tc.in, project)
+			if ok != tc.ok || !slices.Equal(got, tc.want) {
+				t.Errorf("WorktreeParseList(%q) = %v, %v; want %v, %v", tc.in, got, ok, tc.want, tc.ok)
+			}
+		})
 	}
 }
 

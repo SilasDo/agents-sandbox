@@ -31,6 +31,28 @@ func TestResolveTargetListError(t *testing.T) {
 	}
 }
 
+// TestResolveTargetResolveError covers the project-resolve transport failure
+// branch of ResolveTarget: a shell error resolving the project is propagated
+// before any list call.
+func TestResolveTargetResolveError(t *testing.T) {
+	ui := &termio.Mock{}
+	sb := &msb.MockSandbox{ShellErr: errors.New("resolve failed"), ShellCalls: &[]string{}}
+	_, err := ResolveTarget(
+		context.Background(),
+		opencode2Agent(t),
+		sb,
+		options.WorktreeSpec{Name: "feat-x"},
+		mounts.WorkspaceMountPath,
+		ui,
+	)
+	if err == nil {
+		t.Fatal("expected error when resolving the project fails")
+	}
+	if len(*sb.ShellCalls) != 1 {
+		t.Errorf("resolve failure must abort before the list; calls: %v", *sb.ShellCalls)
+	}
+}
+
 // TestResolveTargetListNonSuccessDoesNotCreate pins that a non-success worktree
 // list fails the resolution instead of falling through to create. A transport
 // failure or a non-array payload must never be read as "no worktrees": that
@@ -41,12 +63,12 @@ func TestResolveTargetListError(t *testing.T) {
 func TestResolveTargetListNonSuccessDoesNotCreate(t *testing.T) {
 	ui := &termio.Mock{}
 	provider := mustWorktreeProvider(t)
-	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
+	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}, agent.WorktreeProject{})
 	calls := &[]string{}
 	sb := &msb.MockSandbox{
 		ShellCalls: calls,
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(
+			provider.WorktreeListCmd(agent.WorktreeProject{}): msb.NewTestResult(
 				false, 22, "", "curl: (22) The requested URL returned error: 404", nil),
 			createCmd: msb.NewTestResult(true, 0, `{"directory":"/workspace/worktrees/feat-x"}`, "", nil),
 		},
@@ -73,10 +95,10 @@ func TestResolveTargetListNonSuccessDoesNotCreate(t *testing.T) {
 func TestResolveTargetCreateNonSuccess(t *testing.T) {
 	ui := &termio.Mock{}
 	provider := mustWorktreeProvider(t)
-	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
+	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}, agent.WorktreeProject{})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(agent.WorktreeProject{}): msb.NewTestResult(true, 0, `[]`, "", nil),
 			createCmd: msb.NewTestResult(false, 1, "", "failed", nil),
 		},
 	}
@@ -98,10 +120,10 @@ func TestResolveTargetCreateNonSuccess(t *testing.T) {
 func TestResolveTargetParseError(t *testing.T) {
 	ui := &termio.Mock{}
 	provider := mustWorktreeProvider(t)
-	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"})
+	createCmd := provider.WorktreeCreateCmd(agent.WorktreeSpec{Name: "feat-x"}, agent.WorktreeProject{})
 	sb := &msb.MockSandbox{
 		ShellOut: map[string]msb.ShellResult{
-			provider.WorktreeListCmd(mounts.WorkspaceMountPath): msb.NewTestResult(true, 0, `[]`, "", nil),
+			provider.WorktreeListCmd(agent.WorktreeProject{}): msb.NewTestResult(true, 0, `[]`, "", nil),
 			createCmd: msb.NewTestResult(true, 0, "not-json", "", nil),
 		},
 	}

@@ -74,13 +74,55 @@ func (opencodeProfile) QuestionListCmd() string {
 	return "curl -sf http://127.0.0.1:4096/question"
 }
 
-// WorktreeListCmd lists worktrees via v1's global route; the launch directory
-// is ignored because the daemon resolves the project itself.
-func (opencodeProfile) WorktreeListCmd(string) string {
+// WorktreeResolveCmd: v1's routes are global, so there is no resolution step.
+func (opencodeProfile) WorktreeResolveCmd(string) string { return "" }
+
+// WorktreeParseProject is never called: v1 has no resolve step to produce a
+// project.
+func (opencodeProfile) WorktreeParseProject(string) (WorktreeProject, bool) {
+	return WorktreeProject{}, false
+}
+
+// WorktreeListCmd lists worktrees via v1's global route.
+func (opencodeProfile) WorktreeListCmd(WorktreeProject) string {
 	return "curl -sf http://127.0.0.1:4096/experimental/worktree"
 }
 
-func (opencodeProfile) WorktreeCreateCmd(spec WorktreeSpec) string {
+// WorktreeParseList decodes v1's list — path strings or {directory} objects —
+// into directory paths. A non-array payload, or an entry without a non-empty
+// string directory, is not ok, so a route or field rename never reads as "no
+// worktrees".
+func (opencodeProfile) WorktreeParseList(stdout string, _ WorktreeProject) ([]string, bool) {
+	var entries []json.RawMessage
+	if err := json.Unmarshal([]byte(stdout), &entries); err != nil || entries == nil {
+		return nil, false
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		var directory string
+		if len(entry) > 0 && entry[0] == '"' {
+			// The outer unmarshal already validated entry as JSON, so a value
+			// starting with a quote is a string and decoding it cannot fail; a
+			// rejected value still fails the empty check below.
+			_ = json.Unmarshal(entry, &directory)
+		} else {
+			var info struct {
+				Directory string `json:"directory"`
+			}
+			if json.Unmarshal(entry, &info) != nil {
+				return nil, false
+			}
+			directory = info.Directory
+		}
+		if directory == "" {
+			return nil, false
+		}
+		dirs = append(dirs, directory)
+	}
+	return dirs, true
+}
+
+func (opencodeProfile) WorktreeCreateCmd(spec WorktreeSpec, _ WorktreeProject) string {
 	body := fmt.Sprintf(`{"name":%q}`, spec.Name)
 	if spec.Base != "" {
 		body = fmt.Sprintf(`{"name":%q,"startCommand":"git reset --hard %s"}`, spec.Name, spec.Base)
