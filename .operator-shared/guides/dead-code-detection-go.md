@@ -20,10 +20,10 @@ Run both and diff. The result sorts every reported function into two buckets:
 
 | Bucket | Meaning | Action |
 |---|---|---|
-| In `-test` output only | reachable from tests but never from `main` | Decide: deliberate test seam, or a production symbol whose callers were lost |
+| In default output only | reachable from tests but never from `main` | Decide: deliberate test seam, or a production symbol whose callers were lost |
 | In both outputs | reachable from neither | Strong delete candidate |
 
-The `-test`-only bucket is large and mostly benign. Measured on this repo at `origin/main` `e17a06e`: **249** functions in default mode, **1** with `-test` (`internal/sandbox/docker/docker.go:58 RealClient`, in a package already scheduled for removal per the BuildKit plan). So the interesting signal is almost entirely in the default-only bucket, and it needs per-item triage rather than bulk deletion.
+The default-only bucket is large and mostly benign. Measured on this repo at `origin/main` `e17a06e`: **249** functions in default mode, **1** with `-test` (`internal/sandbox/docker/docker.go:58 RealClient`, in a package already scheduled for removal per the BuildKit plan). So the interesting signal is almost entirely in the default-only bucket, and it needs per-item triage rather than bulk deletion.
 
 ## Noise to filter before reading the default output
 
