@@ -457,3 +457,14 @@ func TestRepoSlugDeterministic(t *testing.T) {
 	second := RepoSlug()
 	require.Equal(t, first, second)
 }
+
+// TestResolvePathFallsBackWhenCwdUnreadable pins the last-resort branch: with the
+// process cwd gone, filepath.Abs cannot make a relative path absolute, so
+// resolvePath returns the input instead of erroring (it is total by design).
+func TestResolvePathFallsBackWhenCwdUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.RemoveAll(dir))
+
+	require.Equal(t, "relative", resolvePath("relative"))
+}
