@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes, and a fourth — after a live probe of the running opencode2 daemon — identified input requests by event id so two approvals asked in one step both notify, and a fifth moved that identity off the claim token (one token per session, delivered ids in memory) so the state dir does not accumulate a claim file per request — see "Review fixes (PR #245)" below.
+Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes, and a fourth — after a live probe of the running opencode2 daemon — identified input requests by event id so two approvals asked in one step both notify, and a fifth kept a token per request but made claim release remove the file, so neither a single client's dropped stream nor an unbounded pile of claim files can silence a later request — see "Review fixes (PR #245)" below.
 
 ## Problem
 
@@ -120,9 +120,11 @@ and `opencode v1.19.3` (installed to a temp HOME for this exercise).
   `parseSSEBlock` (v1 shape only), `handleEvent`, `streamReader`.
 - `internal/notify/event.go` — `Tracker{spec, states}`; `Handle` maps event types to
   bus/aparse input/idle/error transitions.
-- `internal/notify/dedup.go` — cross-client claim keyed on (session, trigger), one per session and
-  trigger so claim files stay bounded; input requests are distinguished in memory by their envelope
-  id. `SessionBusy` releases claims (and the in-memory input set) on the busy events.
+- `internal/notify/dedup.go` — cross-client claim keyed on (session, trigger, and for input the
+  envelope id); a claim's release removes its file, so per-request tokens do not accumulate.
+  `SessionBusy` releases a session's claims on the busy events.
+- `internal/sandbox/state/claim.go` — `AcquireClaim`'s release removes the claim file while holding
+  the flock, with an inode check so a caller that opened a file another holder removed retries.
 
 ## Design
 
@@ -413,24 +415,28 @@ A second review (on the rebased head) added:
    (there is no resume event between the two asks); request identity is required. Fix:
    `agent.StreamEvent` gained `EventID` (the envelope id — v1 `.payload.id`, v2 top-level `.id`, both
    unique per emission), the tracker notifies a same-state input request only when its `EventID` is
-   new (and carries it on the notification), and `Dedup` keeps one input token per session and
-   records the delivered ids in memory, so the token elects a single delivering client while the
-   in-memory set lets it cover several distinct requests. `session.step.started` stays in
-   `BusyEvents` (a step start is still busy), it is just no longer the mechanism. Tests:
+   new (and carries it on the notification), and `Dedup` gives each input request its own token (the
+   envelope id is part of the claim key), so distinct requests each alert and no client's delivery
+   depends on another client's stream. `session.step.started` stays in `BusyEvents` (a step start is
+   still busy), it is just no longer the mechanism. Tests:
    `TestTrackerSameStepInputRequestsBothFire`, `TestTrackerRepeatedInputEventFiresOnce`,
    `TestHandleEventSameStepInputRequestsBothNotify`, `TestHandleEventRepeatedInputEventNotifiesOnce`,
    plus the parser tables' `EventID` cases. Mutation-verified: reverting the tracker's id check fails
    the repeated-input test.
-7. **Per-request claim tokens would leak a file each (P2).** Greptile's first pass at finding 6 keyed
-   the claim token on the event id, but `state.AcquireClaim` creates `<key>.claim` and release only
-   closes the file — it never deletes — so a token per request left one file per permission or form,
-   unbounded within a session (previously the session's input token was reused). Fix: the claim token
-   is one per (session, trigger) again, and `Dedup` tracks the delivered input event ids in memory;
-   the session's single input token elects one delivering client, and the in-memory set lets that
-   token cover several distinct requests while dropping a repeat. `SessionBusy` clears both.
-   Tests: `TestDedupDistinctInputsShareOneClaimKey` (three requests, one token),
-   `TestDedupSameInputEventDeliveredOnce`, `TestDedupCrossClientInputsSingleDeliverer`.
-   Mutation-verified: ignoring the in-memory id set fails the repeat test.
+7. **Per-request tokens must not leak (P2), and a shared token must not couple clients (P1).**
+   Keying the token on the event id (finding 6) left a claim file per request, because
+   `state.AcquireClaim` created `<key>.claim` and release only closed the file. Greptile flagged that
+   leak, so a first pass shared one input token per session — which then coupled a later request to
+   the token holder's stream: if the holder's stream dropped it never saw the later request, and the
+   other client dropped it too, so **neither** client alerted (a P1). The two constraints together
+   force per-request tokens *and* removal: the token stays per (session, trigger, event id), and
+   `state.AcquireClaim`'s release now removes the file while holding the flock, with an inode check
+   (`sameFile`) so a caller that opened a file another holder removed retries on a fresh one instead
+   of claiming a removed token. Bounded because release happens on the busy events (`SessionBusy`).
+   Tests: `TestDedupReleasesInputClaims` (no files left after release),
+   `TestDedupLaterInputNotBlockedByAnotherClient`, `TestDedupCrossClientInputsDeliveredOnce`,
+   `TestDedupSameInputEventDeliveredOnce`, `TestAcquireClaimReleaseRemovesFile`. Mutation-verified: a
+   per-session token fails the liveness test, and a non-removing release fails the cleanup test.
 
 The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
 `CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
