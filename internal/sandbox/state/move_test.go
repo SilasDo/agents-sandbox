@@ -294,6 +294,7 @@ func TestStatefulAgentNames(t *testing.T) {
 	writeFile(t, filepath.Join(SlugDir("widget-abc"), "opencode", "state.yaml"), "home_volume: v1\n")
 	writeFile(t, filepath.Join(SlugDir("widget-abc"), "pi", "state.yaml"), "home_volume: v2\n")
 	writeFile(t, filepath.Join(SlugDir("widget-abc"), "claims", "notify.claim"), "x")
+	writeFile(t, filepath.Join(SlugDir("widget-abc"), "stray-file"), "x")
 
 	names, err := StatefulAgentNames("widget-abc")
 	require.NoError(t, err)
@@ -302,4 +303,16 @@ func TestStatefulAgentNames(t *testing.T) {
 	missing, err := StatefulAgentNames("absent-slug")
 	require.NoError(t, err)
 	require.Empty(t, missing)
+}
+
+// TestStatefulAgentNamesErrorsOnUnreadableSlug covers the fail-closed read: a
+// slug path that is not a readable directory is an error, not "no agents", so
+// adoption never moves state with an unknown legacy VM left behind.
+func TestStatefulAgentNamesErrorsOnUnreadableSlug(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, SlugDir("widget-abc"), "not a directory")
+
+	_, err := StatefulAgentNames("widget-abc")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "read state dir")
 }

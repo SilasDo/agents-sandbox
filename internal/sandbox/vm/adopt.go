@@ -39,6 +39,11 @@ type IdentityAdoption struct {
 // shared legacy identity while this run waited for the root lock.
 var adoptLockHook func()
 
+// renameConfigDir is a seam over os.Rename for the legacy config-directory move.
+// A same-parent rename cannot be made to fail deterministically without
+// permission tricks, so tests force the failure through this seam.
+var renameConfigDir = os.Rename
+
 // AdoptLegacyIdentity moves a project from the legacy origin-keyed identity to
 // its checkout-scoped one on the first run after upgrade (#144).
 //
@@ -305,10 +310,7 @@ func migrateLegacyConfigDirs(identity git.Identity, ui termio.UI) error {
 			ui.Verbosef("kept existing config dir %s; legacy config dir %s left in place", to, from)
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
-			return fmt.Errorf("create config dir %s: %w", filepath.Dir(to), err)
-		}
-		if err := os.Rename(from, to); err != nil {
+		if err := renameConfigDir(from, to); err != nil {
 			return fmt.Errorf("move config dir %s to %s: %w", from, to, err)
 		}
 		ui.Verbosef("moved legacy config dir %s to %s", from, to)

@@ -718,3 +718,137 @@ func TestMigrateLegacyConfigDirsKeepsExistingTarget(t *testing.T) {
 		t.Errorf("legacy config removed although the target existed: %v", err)
 	}
 }
+
+// TestAdoptLegacyIdentityRecheckErrorFailsClosed covers the fail-closed re-check
+// under the lock: if the checkout state becomes unreadable while this run waited
+// for the lock, adoption stops rather than proceeding on a document it cannot read.
+func TestAdoptLegacyIdentityRecheckErrorFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	seedLegacyState(t)
+
+	adoptLockHook = func() {
+		dir := state.KeyDir(adoptCheckoutKey())
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Errorf("mkdir checkout state dir: %v", err)
+			return
+		}
+		testutil.WriteFile(t, dir, "state.yaml", `": [`)
+	}
+	t.Cleanup(func() { adoptLockHook = nil })
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		t.Errorf("GetSandbox(%q) called despite an unreadable re-check", name)
+		return nil, errors.New("GetSandbox must not be called")
+	}}
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err == nil {
+		t.Fatal("expected an unparsable re-check to fail adoption")
+	}
+	if !strings.Contains(err.Error(), "check for a pending legacy identity") {
+		t.Errorf("error = %v, want the fail-closed re-check error", err)
+	}
+}
+
+// TestDestroyLegacyVMsErrorsOnUnreadableSlug covers the enumeration failure: an
+// unreadable legacy slug directory aborts the teardown rather than moving state
+// with an unknown legacy VM possibly left running.
+func TestDestroyLegacyVMsErrorsOnUnreadableSlug(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WritePath(t, state.SlugDir(adoptRepoSlug), "not a directory")
+
+	ui := termio.NewTestMock(t)
+	err := destroyLegacyVMs(context.Background(), &msb.MockMsbClient{}, adoptRepoSlug, &ui)
+	if err == nil {
+		t.Fatal("expected an unreadable slug to fail the teardown")
+	}
+	if !strings.Contains(err.Error(), "list legacy state") {
+		t.Errorf("error = %v, want the enumeration failure", err)
+	}
+}
+
+// TestMigrateLegacyConfigDirsSkipsRepoSlugAndMissingSource covers the two skip
+// branches: a legacy entry equal to the repo slug needs no move, and a legacy
+// slug with no config directory has nothing to move.
+func TestMigrateLegacyConfigDirsSkipsRepoSlugAndMissingSource(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+
+	ui := termio.NewTestMock(t)
+	identity := git.Identity{
+		RepoSlug:        "agents-sandbox-bbb",
+		LegacyRepoSlugs: []string{"agents-sandbox-bbb", "workspace-absent"},
+	}
+	if err := migrateLegacyConfigDirs(identity, &ui); err != nil {
+		t.Fatalf("migrateLegacyConfigDirs: %v", err)
+	}
+}
+
+// TestMigrateLegacyConfigDirsReportsRenameFailure covers the rename failure: a
+// failed config move is reported, not silently swallowed.
+func TestMigrateLegacyConfigDirsReportsRenameFailure(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	from := paths.UserSlugConfigDir("workspace-aaa")
+	if err := os.MkdirAll(from, 0o700); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
+
+	renameConfigDir = func(_, _ string) error { return errors.New("rename boom") }
+	t.Cleanup(func() { renameConfigDir = os.Rename })
+
+	ui := termio.NewTestMock(t)
+	identity := git.Identity{RepoSlug: "agents-sandbox-bbb", LegacyRepoSlugs: []string{"workspace-aaa"}}
+	err := migrateLegacyConfigDirs(identity, &ui)
+	if err == nil {
+		t.Fatal("expected a rename failure to be reported")
+	}
+	if !strings.Contains(err.Error(), "move config dir") {
+		t.Errorf("error = %v, want the config-move failure", err)
+	}
+}
+
+// TestAdoptLegacyIdentityConfigMoveFailurePropagates covers the caller's
+// propagation: a failed config move aborts the adoption after the state move.
+func TestAdoptLegacyIdentityConfigMoveFailurePropagates(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	from := paths.UserSlugConfigDir("workspace-aaa")
+	if err := os.MkdirAll(from, 0o700); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
+	if err := seedHomeState(
+		state.Key{Slug: "workspace-aaa", Agent: adoptAgentName},
+		state.HomeState{HomeVolume: "home-legacy"},
+	); err != nil {
+		t.Fatalf("seed legacy state: %v", err)
+	}
+
+	renameConfigDir = func(_, _ string) error { return errors.New("rename boom") }
+	t.Cleanup(func() { renameConfigDir = os.Rename })
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	}}
+	identity := adoptIdentity()
+	identity.LegacyRepoSlugs = []string{"workspace-aaa"}
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(context.Background(), client, identity, adoptAgentName, true, &ui)
+	if err == nil {
+		t.Fatal("expected the config-move failure to abort adoption")
+	}
+	if !strings.Contains(err.Error(), "move config dir") {
+		t.Errorf("error = %v, want the propagated config-move failure", err)
+	}
+}
