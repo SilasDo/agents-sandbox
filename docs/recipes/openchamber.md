@@ -120,7 +120,9 @@ keep worktree and isolated multi-run features off for the host-side setup.
 
 The VM contains the OpenCode agent, not OpenChamber. OpenChamber's file browser and Git integration run on the host;
 its terminal and project actions run commands as the host user and use that user's network access. The agent's edits
-appear in the shared checkout, but its VM egress policy does not restrict OpenChamber's host-side processes.
+appear in the shared checkout. The VM's egress policy applies only to guest processes: it does not filter network
+requests made by the host-side OpenChamber web server or commands OpenChamber launches for Git, terminals, and project
+actions.
 
 In this recipe, `OPENCODE_HOST` points OpenChamber at an external server, so OpenChamber's own agent-control and
 scheduling tools are unavailable. The agent has no documented tool to invoke OpenChamber's host terminal or manage its
