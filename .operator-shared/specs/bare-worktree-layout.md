@@ -103,6 +103,10 @@ The `git rev-parse` phrasing above describes the *facts*, not the implementation
 host-side, go-git-based repository inspection (`projectSlugAt` / `resolveGitDir` in `internal/git`); a host `git`
 binary is not a runtime prerequisite and must not be introduced.
 
+Project config (`.agents-sandbox`) resolution is **not** part of this rule: the launcher reads it from the CWD, so
+in a bare layout it came from the launched worktree rather than the bare root. That gap and its `core.bare`-based
+fix are owned by [project-config-root.md](project-config-root.md).
+
 The bind *source* is a VM-creation-time property and is not part of the current reconfig change detection (only the
 `/workspace` quota is compared). This change therefore takes effect on **freshly created VMs**; an already-existing VM
 keeps its original bind source until it is recreated or removed. Adding bind-source-change detection to reconfig is

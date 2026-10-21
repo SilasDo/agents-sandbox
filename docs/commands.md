@@ -80,7 +80,7 @@ agents-sandbox shell -w bugfix-fix-thing
 
 ### build
 
-Build or rebuild the runner Docker image. If `.agents-sandbox/Dockerfile` exists in the project directory, it's layered on top of the base image.
+Build or rebuild the runner Docker image. If `.agents-sandbox/Dockerfile` exists in the project directory, it's layered on top of the base image. In a bare checkout the project directory is the bare root next to `.git`, so the Dockerfile is read from there; a worktree-level `.agents-sandbox/` is ignored, with a warning.
 
 ```console
 agents-sandbox build        # build or update if needed
@@ -105,7 +105,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 
 #### build dockerfile
 
-Print the runner Dockerfile exactly as it would be built for the current project, without invoking docker. The output reflects the selected agent profile and the docker switch, and layers the project's `.agents-sandbox/Dockerfile` (if any) on top of the base image.
+Print the runner Dockerfile exactly as it would be built for the current project, without invoking docker. The output reflects the selected agent profile and the docker switch, and layers the project's `.agents-sandbox/Dockerfile` (if any) on top of the base image. In a bare checkout the project Dockerfile is read from the bare root next to `.git`, not the launched worktree.
 
 ```console
 agents-sandbox build dockerfile            # default agent, no docker

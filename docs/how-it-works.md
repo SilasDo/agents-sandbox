@@ -9,7 +9,8 @@ nav_order: 105
 
 ## How It Works
 
-1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image. The image
+1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image (in a
+   bare checkout the project directory is the bare root next to `.git`). The image
    contains the selected coding agent, Node.js 26, and common CLI tools.
 2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<project-slug>-<timestamp>`) for the
    project, preserving editor state, caches, and config across sessions.

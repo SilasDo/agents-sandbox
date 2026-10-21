@@ -242,6 +242,11 @@ command reports the bare version (e.g. `0.1.0`).
   config-path, Docker, doctor, or msb resolution fails fast instead of silently touching the host. The `notify` backend
   now also installs a fail-fast default for its notification-command seam, and `options.FirstFreeHostPort` probes through
   a `probeHostPort` seam so tests need not bind a real socket.
+- Bare checkouts (a bare `.git` with worktrees inside it) now read project config — `.agents-sandbox/Dockerfile`,
+  `config.yaml`, `env`, `env.secret`, home sources, and agent config — from the bare root next to `.git`, as the
+  [bare-checkout recipe](https://inoio.github.io/agents-sandbox/recipes/bare-worktrees.html) intends. A
+  `.agents-sandbox/` inside the launched worktree is now ignored, and the launcher warns and names it. Non-bare checkouts
+  (including their subdirectories) and non-repo folders are unchanged.
 
 ### Changed
 

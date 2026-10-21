@@ -38,6 +38,12 @@ first one found is used.
 
 Place files under `.agents-sandbox/` in your project directory. These override user-level defaults.
 
+In a bare checkout — a bare `.git` with worktrees nested inside it — the project directory is the **bare root**, next to
+`.git`, and `.agents-sandbox/` is read from there rather than from the launched worktree. A `.agents-sandbox/` inside a
+worktree is ignored, with a warning naming it. See
+[Bare Checkout with Worktrees Inside]({% link recipes/bare-worktrees.md %}); non-bare checkouts (including their
+subdirectories) and non-repo folders are unaffected.
+
 | File                                              | Purpose                                                                                           |
 |---------------------------------------------------|---------------------------------------------------------------------------------------------------|
 | `.agents-sandbox/Dockerfile`                    | Custom runner image layers                                                                        |
