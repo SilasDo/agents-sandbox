@@ -144,6 +144,36 @@ and [Environment](https://github.com/openchamber/openchamber/blob/main/packages/
 guides for its UI authentication, enterprise policy, extensions, and network settings. These controls govern
 OpenChamber itself; they do not move its host-side processes into the sandbox.
 
+### Can the agent control OpenChamber or reach the host through it?
+
+In this recipe, OpenChamber connects to an **external** OpenCode server using `OPENCODE_HOST` and
+`OPENCODE_SKIP_START=true`. OpenChamber documents that its `openchamber` agent-control and scheduling tools are not
+available in this mode. The agent therefore has no supported OpenChamber tool for creating host-side projects,
+starting OpenChamber sessions, or invoking OpenChamber's host terminal. Its normal OpenCode tools, project files, and
+any MCP servers or plugins configured in the VM remain available under the VM's own permissions and network policy.
+See OpenChamber's [Agent Control Tool documentation](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/agent-control-tool.mdx).
+
+The OpenChamber UI password and its host-side API credentials stay in the host process; they are not the
+`OPENCODE_PASSWORD` used by the guest daemon. The OpenCode server port is a host-to-guest loopback forward, not a
+listener granting the guest access to host `localhost`. This recipe provides no OpenChamber URL or credentials to the
+guest agent, and OpenChamber's agent-control tools are disabled for this external-server setup. Keep OpenChamber bound
+to `127.0.0.1` and retain the guest's default deny-by-default egress policy; do not add a host-reachable OpenChamber URL
+or credentials to the VM. The VM's `none` network profile is an egress policy, not a complete air gap (ingress is
+allowed), so do not interpret it alone as proof that host services are unreachable. In particular, do not switch to
+`--network host` or allow host egress unless you have separately evaluated the resulting host-service exposure. The
+published OpenCode port itself uses the fixed `opencode:opencode` credential, so any other process that can reach that
+port can control the sandboxed OpenCode server.
+
+That does not remove all risk from running both components. OpenChamber receives and renders agent-generated content,
+so treat links, instructions, and requests for approval in agent output as untrusted. A rendering or browser integration
+vulnerability could create an indirect path from malicious project content to the host UI; keep OpenChamber updated and
+do not run host-side project actions, commands, or extensions merely because an agent recommends them. Repository
+project actions and worktree setup commands can execute on the host after OpenChamber's trust prompt; inspect the exact
+commands before approving them. The agent can also try to persuade a user to run a command or approve a permission in
+the UI, even though it cannot invoke the host terminal through the external-server integration. Any MCP server, plugin,
+extra mount, or network rule you deliberately add can also create capabilities beyond this recipe and should be
+assessed separately.
+
 ## Remote access
 
 OpenChamber's web server binds to localhost by default. To connect its mobile or desktop clients, follow
