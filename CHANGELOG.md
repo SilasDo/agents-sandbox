@@ -163,6 +163,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Docs: the [Deprecations](https://inoio.github.io/agents-sandbox/deprecations.html) page now states the full policy — the
   replacement always wins, renames are shimmed while only default-behaviour changes make a clean break, and a user-facing
   form is never removed without a deprecation cycle (#205).
+- Internal: launcher-global state now lives in one document, the root `state.yaml`, under an `updates:` namespace —
+  `updates.launcher` (the retired `upgrade.json`, whose `last_check` is now `last_checked`) and `updates.agents` (agent
+  update checks). The old top-level `agents:` key and `upgrade.json` fold in silently on first run, so no action is
+  needed on upgrade (#141).
 
 ### Fixed
 

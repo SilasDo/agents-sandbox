@@ -38,7 +38,7 @@ Two documents, split by application:
 **Machine-global `<root>/state.yaml` (`state.RootState`)** - launcher-wide, network-facing:
 
 - `migrations` (unchanged).
-- `agents: map[agentName]AgentCheckState` with:
+- `updates.agents: map[agentName]AgentCheckState` with:
   - `last_checked` - when the releases endpoint was last successfully hit for this agent. One cadence for the whole
     machine, so N projects do not each call GitHub.
   - `latest_version` - the cached newest release, so a project prompt can compare without hitting the network.
@@ -120,7 +120,7 @@ bridges the gap left by dropping the global version.
 ### RootState writer serialization
 
 `RootState` now has two independent writers: `runtimemigration` (the `migrations` map) and the upgrade path (the
-`agents` map). They share one file, so all `RootState` read-modify-write is serialized by a single host-only exclusive
+`updates.agents` map). They share one file, so all `RootState` read-modify-write is serialized by a single host-only exclusive
 flock. `runtimemigration` adopts this shared lock (retiring its private `migration.lock`) and keeps holding it across
 its copy campaign; the upgrade path acquires it **non-blocking** and, if it is held, skips the whole upgrade step for
 this run (no check, no fold), retrying next run. `state.UpdateRootState` stays lock-free and documents that callers must
