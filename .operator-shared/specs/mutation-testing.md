@@ -1,5 +1,5 @@
 ---
-description: Contract for the on-demand, per-package mutation-testing practice (issue #253) — a version-pinned `make mutation` target over gomutants, scoped by default to mutants on lines changed since the last release tag, never a CI or `make check` gate; plus the triage rule that every surviving mutant is either killed by a strengthened test or recorded in source with a reason, and the release-skill/CONTRIBUTING homes for the recurring practice.
+description: Contract for the on-demand, per-package mutation-testing practice (issue #253) — a version-pinned `make mutation` target over gomutants, scoped by default to mutants on lines changed since the last release tag, never a CI or `make check` gate; plus the triage rule that every surviving mutant is killed by a strengthened test, rid by deleting a redundant construct, or recorded in source with a reason, and the release-skill/CONTRIBUTING homes for the recurring practice.
 read_if: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, or the release-skill verify step; or evaluating a Go mutation-testing tool.
 ---
 
@@ -34,12 +34,18 @@ carries, so tests that guard behaviour are strengthened as they land rather than
   check's job and are out of scope here.
 - **Never a score to chase.** No mutation-threshold target, no efficacy percentage as a goal. gomutants' thresholds
   default to `0`, so the target never exits non-zero on survivors.
-- **Triage is mandatory, and every survivor has a home.** A LIVED mutant is closed one of two ways:
+- **Triage is mandatory, and every survivor has a home.** A LIVED mutant is closed one of three ways:
   - **Kill it** — strengthen the test so the mutant now fails it. This is the default and the point.
+  - **Delete it** — when the mutant exposes a redundant construct (e.g. `strings.HasPrefix(p, "!") && p == "!"`, whose
+    first operand `p == "!"` implies), remove the redundancy. Prefer this to recording an equivalent mutant: a 
+    line-scoped `disable` directive is type-scoped, so it cannot name the redundant operand without also suppressing a
+    killable sibling on the same line.
   - **Record it** — if the mutant cannot change behaviour (or is genuinely uninteresting), record it in source next to
     the mutant with a reason: `// gomutants:disable <TYPE> reason="..."`. A project-wide pattern (e.g. logging
     arguments) may use `--exclude-calls` instead.
-  A survivor with neither a killing test nor a recorded reason is an open item, not a finished one.
+  A survivor with neither a killing test nor a recorded reason is an open item, not a finished one. See
+  `guides/mutation-triage.md` for the recurring mutant types, the assertion that kills each, and the equivalent-mutant
+  traps.
 
 ## The tool
 
