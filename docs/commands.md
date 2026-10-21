@@ -28,7 +28,7 @@ Run a coding agent in a microsandbox VM. This is the default command — `agents
 ```console
 agents-sandbox [ARGS...]                          # default: run the configured agent
 agents-sandbox -w bugfix-fix-thing [ARGS...]            # worktree session
-agents-sandbox --dry-run                          # validate only
+agents-sandbox --dry-run                          # read-only preview
 agents-sandbox -m 8G -c 4 -- -c "fix bug"         # CPU/memory + ops
 agents-sandbox -- -c "fix bug"                    # arguments to the agent
 ```
@@ -42,7 +42,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--worktree`   | `-w`  | `""`     | Isolated agent worktree named <name>, optionally starting from base ref <name>:<base>                                  |
 | `--rebuild`    | `-r`  | `false`  | Rebuild runner image before starting (clean rebuild; still offers an agent upgrade if one is available)                                                                                                       |
 | `--agent-version` | —  | `""`     | Pin the version agents-sandbox installs into the runner image (default: latest). Ignored for a user-provided agent. |
-| `--dry-run`    | `-n`  | `false`  | Validate setup without running the agent                                                                                                    |
+| `--dry-run`    | `-n`  | `false`  | Read-only preview of a run: report the agent version (or that it resolves at build time), whether the runner image would build (with the reasons a real build logs) or be reused, and whether the home volume would be created or reused — without building, creating a volume, writing state, starting a VM, attaching, or making any network request. When the reported version is a known, non-pinned one, its line notes `(upgrade check not run)` |
 | `--cpus`       | `-c`  | `0`      | vCPUs for the sandbox (0 = all)                                                                                                            |
 | `--memory`     | `-m`  | `4G`     | Memory limit, e.g. `4G`, `512M`                                                                                                            |
 | `--disk-size`  | —     | `""`     | Project VM root disk size (e.g. 16G). Empty = microsandbox runtime default (~4 GiB). Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |

@@ -129,19 +129,25 @@ func buildVolumeOpsCmd(
 			if err != nil {
 				return err
 			}
-			docker := false
-			if r := resolverFromContext(c.Context()); r != nil {
-				docker = r.Docker()
-			}
-			info, err := image.EnsureImage(
-				c.Context(),
-				a,
-				adoption.Slug,
-				image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: docker},
-				ui,
-			)
-			if err != nil {
-				return fmt.Errorf("ensure image: %w", err)
+			// A dry run only reports the state-derived old volume, so the runner
+			// image is left untouched: ensuring it could build one, which is a
+			// side effect a preview must not have.
+			var info image.ImageInfo
+			if !dryRun {
+				docker := false
+				if r := resolverFromContext(c.Context()); r != nil {
+					docker = r.Docker()
+				}
+				info, err = image.EnsureImage(
+					c.Context(),
+					a,
+					adoption.Slug,
+					image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: docker},
+					ui,
+				)
+				if err != nil {
+					return fmt.Errorf("ensure image: %w", err)
+				}
 			}
 			var volName string
 			if len(args) > 0 {

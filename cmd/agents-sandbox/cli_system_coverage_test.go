@@ -222,12 +222,11 @@ func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
 	mock := &msb.MockMsbClient{}
 	msb.WithMsbMock(t, mock)
 
-	// Capture the runner image the op ensured: with the migration pending it
-	// must stay on the legacy repo slug.
-	var inspectedTag string
+	// A dry run must not ensure (inspect or build) the runner image: the
+	// would-do message needs only the state-derived old volume.
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageInspectFn: func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
-			inspectedTag = ref
+			t.Errorf("volume reset --dry-run must not inspect the runner image, got ref %q", ref)
 			return client.ImageInspectResult{Config: &dockerspec.DockerOCIImageConfig{}}, nil
 		},
 	})
@@ -241,12 +240,6 @@ func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("volume reset --dry-run: %v", err)
-	}
-
-	wantTag := naming.RunnerImageRef(identity.RepoSlug, defaultAgentName)
-	if inspectedTag != wantTag {
-		t.Errorf("ensured runner image = %q, want the legacy repo-slug tag %q while the migration is pending",
-			inspectedTag, wantTag)
 	}
 
 	joined := strings.Join(ui.InfoCalls, "\n")
