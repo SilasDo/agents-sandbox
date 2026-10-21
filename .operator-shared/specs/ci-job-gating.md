@@ -1,5 +1,5 @@
 ---
-description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, `make fuzz` is deliberately absent, and the costly `integration` job runs on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
+description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, the `fuzz` workflow is deliberately outside this gating (see `fuzz-ci.md`), and the costly `integration` job runs on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
 read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, the `run-integration` opt-in label, or deciding whether a check belongs in CI.
 ---
 
@@ -42,10 +42,8 @@ paths:
   publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote them into `release.needs`
   deliberately if that trade-off changes.
 - Adding the label re-runs the whole workflow, so `lint`/`test` run again for that event.
-- `make fuzz` (`go test -fuzz`, `FUZZTIME` per target) is deliberately neither a CI job nor a `make check`/`make verify`
-  step. A session worth running needs a time budget, and Go's fuzzing is nondeterministic, so the durable part is the
-  corpus: the seed corpus and any committed crasher run under `make test`, which is where a found defect becomes a
-  regression test. If it is ever scheduled, give it a real budget rather than shaving it into a per-push gate.
+- `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
+  `fuzz-ci.md` for its triggers, budgets, and corpus handling.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.
 - The gate is not a privilege boundary: `lint`/`test` already execute PR code on the same runner, so labeling adds

@@ -88,11 +88,14 @@ test-race:
 # The seed corpus (and any committed crasher) already runs as part of `make
 # test`, so this only explores new inputs; it needs no network and no VM.
 # Targets are discovered from the test sources because `go test -fuzz` refuses
-# to run against more than one package at once.
+# to run against more than one package at once. FUZZPKG=<package path> narrows
+# the run to one target, which is how CI splits the work per target.
 FUZZTIME ?= 30s
+FUZZPKG ?=
 fuzz:
 	@pkgs=$$(grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u); \
-	if [ -z "$$pkgs" ]; then echo "no fuzz targets found"; exit 1; fi; \
+	if [ -n "$(FUZZPKG)" ]; then pkgs=$$(printf '%s\n' "$$pkgs" | grep -x -F "$(FUZZPKG)" || true); fi; \
+	if [ -z "$$pkgs" ]; then echo "no fuzz targets found for FUZZPKG='$(FUZZPKG)'"; exit 1; fi; \
 	for pkg in $$pkgs; do \
 		echo "== fuzz $$pkg"; \
 		CGO_ENABLED=1 go test -run='^$$' -fuzz='^Fuzz' -fuzztime=$(FUZZTIME) "./$$pkg" || exit 1; \

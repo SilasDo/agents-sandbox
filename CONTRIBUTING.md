@@ -90,8 +90,10 @@ This project defaults to **test-driven development**:
 - `make verify` is the CI-parity check and additionally runs `make test-race` (race detector) and `make vulncheck`
   (`govulncheck` against the Go vulnerability database; needs network on first run). CI runs each as its own job, so run
   `make verify` when a change touches concurrency or dependencies.
-- `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target. The seed corpus and any committed crasher run
-  under `make test`, so a crasher is a regression test first and fuzzing is an on-demand exploration; it is not a CI gate.
+- `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target (`FUZZPKG` narrows it to one). The seed corpus
+  and any committed crasher run under `make test`, so a crasher is a regression test first; the `fuzz` workflow explores
+  the targets nightly and on merges that touch them, and nothing is gated on it, so a red run reports a crasher instead of
+  blocking a merge. A crasher it finds comes back as a build artifact to commit as a seed.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
   there; it always runs on `main` and on releases.
