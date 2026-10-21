@@ -48,12 +48,27 @@ is a separate credential for signing in to OpenChamber.
 ## Project path and host-side features
 
 The OpenCode server runs with the project mounted at `/workspace`. Select `/workspace` as the project directory in
-OpenChamber so its requests refer to the same path. On the host, `/workspace` must resolve to the checkout; if it does
-not, create a symlink to the project root, for example:
+OpenChamber so its requests refer to the same path. On the host, `/workspace` must resolve to the checkout. The setup
+differs by operating system.
+
+On Linux, create a symlink to the project root:
 
 ```console
 sudo ln -s "$PWD" /workspace
 ```
+
+On macOS, the root filesystem is read-only. Add a synthetic root-level symlink pointing to the checkout, then reboot
+for macOS to create it. Back up `/etc/synthetic.conf` first if it already exists; keep any existing entries and add one
+tab-separated line for the current checkout:
+
+```console
+printf 'workspace\t%s\n' "${PWD#/}" | sudo tee -a /etc/synthetic.conf
+sudo reboot
+```
+
+After reboot, verify that `/workspace` resolves to the checkout before starting OpenChamber. The synthetic entry is
+system-wide and tied to this checkout's absolute path; update it if the checkout moves or you want to use a different
+project.
 
 OpenChamber's filesystem, terminal, and preview processes run on the host. They do not inherit the VM's isolation,
 installed tools, or network policy. OpenChamber file operations can therefore access the host checkout through
