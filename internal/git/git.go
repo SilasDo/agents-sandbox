@@ -102,12 +102,7 @@ func originURL(root string) string {
 	if gitDir == "" {
 		return ""
 	}
-	f, err := os.Open(filepath.Join(gitDir, "config"))
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	cfg, err := config.ReadConfig(f)
+	cfg, err := readRepoConfig(gitDir)
 	if err != nil {
 		return ""
 	}
@@ -117,16 +112,24 @@ func originURL(root string) string {
 	return ""
 }
 
+// readRepoConfig parses the config of the repository whose shared git directory
+// is gitDir. go-git does not load a linked worktree's shared config through the
+// repository object, so the config file is read directly. Callers treat a
+// missing or unparseable config as "unknown" rather than failing.
+func readRepoConfig(gitDir string) (*config.Config, error) {
+	f, err := os.Open(filepath.Join(gitDir, "config"))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return config.ReadConfig(f)
+}
+
 // isBare reports whether gitDir (a repository's shared git directory) is a bare
 // repository, read from its config's core.bare. A missing or unreadable config
 // means "not bare": that is today's behavior for an unrecognized repo.
 func isBare(gitDir string) bool {
-	f, err := os.Open(filepath.Join(gitDir, "config"))
-	if err != nil {
-		return false
-	}
-	defer f.Close()
-	cfg, err := config.ReadConfig(f)
+	cfg, err := readRepoConfig(gitDir)
 	if err != nil {
 		return false
 	}

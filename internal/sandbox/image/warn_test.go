@@ -64,6 +64,7 @@ func physicalPath(t *testing.T, path string) string {
 func TestWarnIgnoredProjectConfigWarnsForBareWorktreeConfig(t *testing.T) {
 	worktree := synthesizeBareWorktree(t, true)
 	ignored := physicalPath(t, filepath.Join(worktree, ".agents-sandbox"))
+	bareBase := filepath.Join(physicalPath(t, filepath.Dir(worktree)), ".agents-sandbox")
 
 	ui := &termio.Mock{}
 	WarnIgnoredProjectConfig(ui)
@@ -71,8 +72,15 @@ func TestWarnIgnoredProjectConfigWarnsForBareWorktreeConfig(t *testing.T) {
 	if len(ui.WarnCalls) != 1 {
 		t.Fatalf("WarnCalls = %v, want exactly one warning", ui.WarnCalls)
 	}
-	if !strings.Contains(ui.WarnCalls[0], ignored) {
-		t.Errorf("warning %q does not name the ignored directory %q", ui.WarnCalls[0], ignored)
+	warning := ui.WarnCalls[0]
+	if !strings.Contains(warning, ignored) {
+		t.Errorf("warning %q does not name the ignored directory %q", warning, ignored)
+	}
+	if !strings.Contains(warning, "read from the bare root, not the worktree") {
+		t.Errorf("warning %q does not state that project config is read from the bare root, not the worktree", warning)
+	}
+	if strings.Contains(warning, bareBase) {
+		t.Errorf("warning %q names the bare base %q; it must name the ignored worktree copy instead", warning, bareBase)
 	}
 }
 

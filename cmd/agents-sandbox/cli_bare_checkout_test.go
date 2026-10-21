@@ -46,9 +46,15 @@ func setupBareCheckoutFixtures(t *testing.T, args ...string) (*cobra.Command, *t
 // worktree copy, and warns about that ignored directory.
 func TestBuildDockerfileCommandReadsBareRoot(t *testing.T) {
 	cmd, ui, root := setupBareCheckoutFixtures(t, cmdBuild, cmdDockerfile)
+	bareConfigDir := filepath.Join(root, ".agents-sandbox")
 	ignoredDir := filepath.Join(root, "main", ".agents-sandbox")
-	writeBareFixtureFile(t, filepath.Join(root, ".agents-sandbox", "Dockerfile"), "FROM bare-root\n")
-	writeBareFixtureFile(t, filepath.Join(ignoredDir, "Dockerfile"), "FROM worktree\n")
+	for _, dir := range []string{bareConfigDir, ignoredDir} {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatalf("MkdirAll(%q): %v", dir, err)
+		}
+	}
+	testutil.WritePath(t, filepath.Join(bareConfigDir, "Dockerfile"), "FROM bare-root\n")
+	testutil.WritePath(t, filepath.Join(ignoredDir, "Dockerfile"), "FROM worktree\n")
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -61,7 +67,7 @@ func TestBuildDockerfileCommandReadsBareRoot(t *testing.T) {
 	if strings.Contains(out, "worktree") {
 		t.Errorf("dockerfile output must not contain the ignored worktree copy; got:\n%s", out)
 	}
-	assertWarningNames(t, ui, ignoredDir)
+	assertWarnContains(t, ui, physicalPath(t, ignoredDir))
 }
 
 // TestRunCommandReadsBareRoot asserts the real run path resolves the bare root
@@ -77,31 +83,16 @@ func TestRunCommandReadsBareRoot(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	assertWarningNames(t, ui, ignoredDir)
+	assertWarnContains(t, ui, physicalPath(t, ignoredDir))
 }
 
-// assertWarningNames fails unless a warning names the ignored directory,
-// resolving symlinks the way the resolver derives the bare base.
-func assertWarningNames(t *testing.T, ui *termio.Mock, ignoredDir string) {
+// physicalPath resolves symlinks the way the resolver derives the bare base, so
+// expectations hold even when the temp base contains a symlink.
+func physicalPath(t *testing.T, path string) string {
 	t.Helper()
-	resolved, err := filepath.EvalSymlinks(ignoredDir)
+	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
-		t.Fatalf("EvalSymlinks(%q): %v", ignoredDir, err)
+		t.Fatalf("EvalSymlinks(%q): %v", path, err)
 	}
-	for _, warning := range ui.WarnCalls {
-		if strings.Contains(warning, resolved) {
-			return
-		}
-	}
-	t.Errorf("no warning names the ignored directory %q; got: %v", resolved, ui.WarnCalls)
-}
-
-func writeBareFixtureFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		t.Fatalf("MkdirAll(%q): %v", filepath.Dir(path), err)
-	}
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatalf("WriteFile(%q): %v", path, err)
-	}
+	return resolved
 }

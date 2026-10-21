@@ -241,8 +241,15 @@ func TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing(t *testing.T) {
 	}
 
 	t.Run("missing config", func(t *testing.T) {
-		got := ResolveWorkspaceLayout(newWorktree(t))
+		worktree := newWorktree(t)
+		got := ResolveWorkspaceLayout(worktree)
 
+		if got.BindRoot != filepath.Dir(worktree) {
+			t.Errorf("BindRoot = %q, want %q", got.BindRoot, filepath.Dir(worktree))
+		}
+		if got.CheckoutRoot != filepath.Dir(worktree) {
+			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, filepath.Dir(worktree))
+		}
 		if got.Bare {
 			t.Errorf("Bare = true, want false")
 		}
@@ -260,6 +267,12 @@ func TestResolveWorkspaceLayoutBareUnknownWhenConfigMissing(t *testing.T) {
 
 		got := ResolveWorkspaceLayout(worktree)
 
+		if got.BindRoot != filepath.Dir(worktree) {
+			t.Errorf("BindRoot = %q, want %q", got.BindRoot, filepath.Dir(worktree))
+		}
+		if got.CheckoutRoot != filepath.Dir(worktree) {
+			t.Errorf("CheckoutRoot = %q, want %q", got.CheckoutRoot, filepath.Dir(worktree))
+		}
 		if got.Bare {
 			t.Errorf("Bare = true, want false")
 		}
