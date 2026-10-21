@@ -46,6 +46,23 @@ func TestPreviewHomeVolumeReusesRecordedPresentVolume(t *testing.T) {
 	}
 }
 
+// TestPreviewHomeVolumeRecordedBeatsRecovered pins the precedence the real
+// ResolveHomeVolume uses: a recorded volume that still exists wins over a
+// recovered candidate, so a branch swap cannot silently prefer the live mount.
+func TestPreviewHomeVolumeRecordedBeatsRecovered(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "previewproj", Agent: "opencode"}
+	if err := seedHomeState(k, state.HomeState{HomeVolume: "vol-1"}); err != nil {
+		t.Fatal(err)
+	}
+	mock := noCreateVolumeMock(t, "vol-1", "live-1")
+
+	gotName, gotCreate := PreviewHomeVolume(context.Background(), mock, k, "live-1")
+	if gotName != "vol-1" || gotCreate {
+		t.Errorf("PreviewHomeVolume = (%q, %v), want (%q, false)", gotName, gotCreate, "vol-1")
+	}
+}
+
 func TestPreviewHomeVolumeReusesRecoveredVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "previewproj", Agent: "opencode"}

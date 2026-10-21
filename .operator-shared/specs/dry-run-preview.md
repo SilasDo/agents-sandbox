@@ -64,7 +64,10 @@ It reports, via `termio`:
    version can be recovered does the preview report that no version is known — that is item 1's deferred-resolution
    message — and the image decision then likely reports `would build`.
    The preview does not run the upgrade check, so its image decision reflects the known version, not a possible
-   upgrade; it says so.
+   upgrade. When a concrete version is known and not pinned — the project's recorded `agent_version` or the
+   label-recovered baseline — the agent-version line carries the note `(upgrade check not run)`. An explicit
+   `--agent-version` pin and a deferred build-time resolution carry no suffix: a pin is never upgraded, and a
+   deferred resolution knows no version to disclose.
 3. **Home volume.** Read the project state and check the recorded volume's existence via `GetVolume` (local msb). When
    state is missing or its recorded volume is gone, consult the live VM's mounted volume read-only
    (`liveHomeVolume`, `GetSandbox` + `ConfigMounts`) so the preview reports `would reuse` for the volume a real run

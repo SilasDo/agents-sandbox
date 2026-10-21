@@ -85,6 +85,12 @@ func TestPreviewSandboxReportsBuildAndCreate(t *testing.T) {
 	if p.HomeVolume != "" {
 		t.Errorf("HomeVolume = %q, want empty on the create branch", p.HomeVolume)
 	}
+	if p.ResolveVersionAtBuild != true {
+		t.Error("ResolveVersionAtBuild = false, want true when no version is known yet")
+	}
+	if p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = true, want false when resolution is deferred")
+	}
 }
 
 func TestPreviewSandboxReportsReuse(t *testing.T) {
@@ -134,10 +140,18 @@ func TestPreviewSandboxReportsReuse(t *testing.T) {
 	if p.ResolveVersionAtBuild {
 		t.Error("ResolveVersionAtBuild = true, want false for a recorded version")
 	}
+	if !p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = false, want true for a known recorded version")
+	}
 }
 
 func TestPreviewSandboxRecoversVersionFromImageLabelReadOnly(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	// The seam is what supplies the recovered version; the docker mock below
+	// only feeds PreviewImage's image decision.
+	orig := existingAgentVersion
+	existingAgentVersion = func(context.Context, string, string) (string, bool) { return "1.0.0", true }
+	t.Cleanup(func() { existingAgentVersion = orig })
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageInspectFn: func(
 			context.Context, string, ...client.ImageInspectOption,
@@ -162,6 +176,9 @@ func TestPreviewSandboxRecoversVersionFromImageLabelReadOnly(t *testing.T) {
 	if p.ResolveVersionAtBuild {
 		t.Error("ResolveVersionAtBuild = true, want false for a recovered version")
 	}
+	if !p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = false, want true for a recovered known version")
+	}
 	if _, err := os.Stat(filepath.Join(state.KeyDir(previewKey()), "state.yaml")); !os.IsNotExist(err) {
 		t.Errorf("preview recorded a HomeState: stat error = %v, want not-exist", err)
 	}
@@ -185,6 +202,9 @@ func TestPreviewSandboxPinnedVersionWinsAndNeverChecksNetwork(t *testing.T) {
 	}
 	if p.AgentVersion != "2.0.0" {
 		t.Errorf("AgentVersion = %q, want the pin %q", p.AgentVersion, "2.0.0")
+	}
+	if p.UpgradeCheckSkipped {
+		t.Error("UpgradeCheckSkipped = true, want false for an explicit pin (nothing to disclose)")
 	}
 }
 

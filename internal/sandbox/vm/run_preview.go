@@ -19,11 +19,17 @@ import (
 type Preview struct {
 	AgentVersion          string
 	ResolveVersionAtBuild bool
-	ImageTag              string
-	BuildImage            bool
-	BuildReasons          []string
-	HomeVolume            string
-	CreateHome            bool
+	// UpgradeCheckSkipped is true when a concrete agent version is known
+	// (recorded or recovered from the image label) but the real run's upgrade
+	// check did not run, so the reported version is the known one and not a
+	// possible upgrade. False for an explicit pin (never upgraded) and when
+	// resolution is deferred to build time.
+	UpgradeCheckSkipped bool
+	ImageTag            string
+	BuildImage          bool
+	BuildReasons        []string
+	HomeVolume          string
+	CreateHome          bool
 }
 
 // PreviewSandbox resolves the read-only plan for a run: the agent version, the
@@ -56,10 +62,13 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 		version = currentAgentVersion(k)
 	}
 	if version == "" {
-		if recovered, ok := image.ExistingAgentVersion(ctx, k.Slug, k.Agent); ok {
+		if recovered, ok := existingAgentVersion(ctx, k.Slug, k.Agent); ok {
 			version = recovered
 		}
 	}
+	// A known, non-pinned version came from the project's record or the
+	// recovered image label; the preview never runs the upgrade check, so say so.
+	upgradeCheckSkipped := version != "" && opts.AgentVersion == ""
 
 	img, err := image.PreviewImage(
 		ctx, a, k.Slug,
@@ -76,6 +85,7 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 	return Preview{
 		AgentVersion:          version,
 		ResolveVersionAtBuild: img.ResolveVersionAtBuild,
+		UpgradeCheckSkipped:   upgradeCheckSkipped,
 		ImageTag:              img.Tag,
 		BuildImage:            img.NeedsBuild,
 		BuildReasons:          img.Reasons,

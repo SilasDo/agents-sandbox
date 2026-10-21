@@ -423,8 +423,10 @@ func TestRunShellInvalidSizeFlags(t *testing.T) {
 // setupAbsentImagePreviewMocks makes the fresh-project preview report an absent
 // image: it overrides the command fixture's noop docker mock so the local
 // inspect misses, and fails the test if the preview resolves a version, builds
-// an image, or creates a volume. Call it AFTER setupRunMocks: cleanups run LIFO,
-// so every override is scoped to the calling test.
+// an image, or creates a volume. Call it AFTER setupRunMocks: the two
+// t.Cleanup-based overrides (agent-version resolver, docker) are scoped to the
+// calling test by cleanup ordering, while the CreateVolumeFn assignment is a
+// direct per-test field change on the caller's mock.
 func setupAbsentImagePreviewMocks(t *testing.T, mock *sandboxmsb.MockMsbClient) {
 	t.Helper()
 	image.WithMockAgentVersionResolver(t, func(context.Context, agent.Agent, string) (string, error) {
@@ -492,6 +494,9 @@ func TestRunDryRunPreviewCLI(t *testing.T) {
 	}
 
 	assertPreviewInfoLines(t, ui, false)
+	if len(mock.CreatedSandboxCalls) != 0 {
+		t.Errorf("--dry-run created %d sandbox(es), want 0", len(mock.CreatedSandboxCalls))
+	}
 }
 
 // TestShellDryRunPreviewCLI pins the shell-level preview: same read-only plan,
@@ -508,6 +513,9 @@ func TestShellDryRunPreviewCLI(t *testing.T) {
 	}
 
 	assertPreviewInfoLines(t, ui, true)
+	if len(mock.CreatedSandboxCalls) != 0 {
+		t.Errorf("--dry-run created %d sandbox(es), want 0", len(mock.CreatedSandboxCalls))
+	}
 }
 
 // TestRunDryRunWithPinnedVersionReportsPin verifies an explicit --agent-version

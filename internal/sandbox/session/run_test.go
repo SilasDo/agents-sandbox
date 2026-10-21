@@ -269,6 +269,28 @@ func TestRunDryRunRendersReusePreview(t *testing.T) {
 	})
 }
 
+func TestRunDryRunRendersUpgradeCheckSkippedSuffix(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := &termio.Mock{}
+	stubPreviewSandbox(t, sandbox.Preview{
+		AgentVersion:        "1.0.0",
+		UpgradeCheckSkipped: true,
+		ImageTag:            "agents-sandbox-runner-y",
+		HomeVolume:          "agents-sandbox-home-abc",
+	})
+
+	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	if err != nil {
+		t.Fatalf("Run dry-run: %v", err)
+	}
+	assertInfoCalls(t, ui, []string{
+		"dry-run: agent version 1.0.0 (upgrade check not run)",
+		"dry-run: would reuse runner image agents-sandbox-runner-y",
+		"dry-run: would reuse home volume agents-sandbox-home-abc",
+		"dry-run: would start agent session",
+	})
+}
+
 func TestRunDryRunResolveAtBuildMessage(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}

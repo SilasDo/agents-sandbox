@@ -39,9 +39,12 @@ var previewSandbox = sandbox.PreviewSandbox
 
 // renderPreview reports what a real run would do, without doing it.
 func renderPreview(ui termio.UI, p sandbox.Preview, shell bool) {
-	if p.ResolveVersionAtBuild {
+	switch {
+	case p.ResolveVersionAtBuild:
 		ui.Infof("dry-run: agent version resolved at build time")
-	} else {
+	case p.UpgradeCheckSkipped:
+		ui.Infof("dry-run: agent version %s (upgrade check not run)", p.AgentVersion)
+	default:
 		ui.Infof("dry-run: agent version %s", p.AgentVersion)
 	}
 	if p.BuildImage {
