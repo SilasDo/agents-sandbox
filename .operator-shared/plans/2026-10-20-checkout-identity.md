@@ -546,3 +546,22 @@ cross-clone duplication of the marker itself. Fixes, test-first:
   state or replaced by a volume op. Tests: `TestAdoptLegacyIdentityClaimsSharedVolumeOnce`,
   `TestResolveHomeVolume_ClearsAdoptionClaim`, `TestRootStateAdoptedHomeVolumeRoundTrip`,
   `TestRootStateForgetAdoptedHomeVolumeMatchesCheckoutAndVolume`, `TestClearAdoptedHomeVolumeAbsentIsNoOp`.
+
+### Post-merge review round: claim ordering + fail-closed
+
+Greptile's guidance on the shared-volume claim asked for two things the first claim patch did not do, plus
+coverage of the review-added error branches:
+
+- **Commit the claim before the marker** (`internal/sandbox/vm/adopt.go`): the patch wrote the
+  `recovered_home_volume` marker and then committed the claim. A marker write that succeeded while the commit
+  failed would leave the volume recorded without an owner, so a second clone could claim and recover it —
+  the very race the claim exists to close. Extracted `persistAdoptionOwnership` (claim → `txn.Commit` →
+  marker) so the claim is durable on its own, before the marker and the destroy.
+- **Fail closed on a volume mismatch**: a claim this checkout owns that names a different volume than the live
+  legacy VM mounts is unreconcilable, so `claimLegacyHomeVolume` returns an error instead of re-claiming and
+  overwriting the record.
+- **Coverage** of the review-added branches, first-failing then green:
+  `internal/sandbox/vm/adopt_review_test.go` (`persistRecoveredHomeVolume` empty/read-error,
+  marker-write failure aborts before the destroy, claim-commit failure aborts, volume mismatch refuses, locked
+  re-check error propagates), `TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp`/`CommitError`,
+  `TestResolveHomeVolume_AdoptionClaimClearErrorWarns`, and `TestSlugHasUserConfigEmptySlugIsFalse`.

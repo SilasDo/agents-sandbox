@@ -204,14 +204,57 @@ func persistRecoveredHomeVolume(k state.Key, homeVolume string) error {
 // returns false when another checkout already owns the identity's volume, so
 // this checkout must not record a marker (it starts with its own fresh volume
 // instead of sharing the owner's). A claim by this checkout is re-recorded, so a
-// retried adoption is idempotent.
-func claimLegacyHomeVolume(txn *state.RootTxn, source legacyPendingSource, checkoutKey state.Key) bool {
-	if owner, claimed := txn.State().AdoptedHomeVolume(source.Slug, checkoutKey.Agent); claimed &&
-		owner.CheckoutSlug != checkoutKey.Slug {
-		return false
+// retried adoption is idempotent — but only when it names the volume the live
+// legacy VM actually mounts. A claim that disagrees with the observed volume is
+// a state adoption cannot reconcile, so it fails closed instead of destroying
+// the VM and overwriting the record.
+func claimLegacyHomeVolume(
+	txn *state.RootTxn,
+	source legacyPendingSource,
+	checkoutKey state.Key,
+) (bool, error) {
+	if owner, claimed := txn.State().AdoptedHomeVolume(source.Slug, checkoutKey.Agent); claimed {
+		if owner.CheckoutSlug != checkoutKey.Slug {
+			return false, nil
+		}
+		if owner.Volume != source.HomeVolume {
+			return false, fmt.Errorf(
+				"adoption claim for legacy identity %s records home volume %q but the live VM mounts %q: refusing to destroy it",
+				source.Slug,
+				owner.Volume,
+				source.HomeVolume,
+			)
+		}
 	}
 	txn.State().ClaimAdoptedHomeVolume(source.Slug, checkoutKey.Agent, checkoutKey.Slug, source.HomeVolume)
-	return true
+	return true, nil
+}
+
+// persistAdoptionOwnership durably records a shared legacy identity's lost-state
+// home volume for this checkout, under the adoption root transaction: it claims
+// the volume, commits the claim, then records the recovered reference in the
+// checkout state. Both writes happen before the legacy VM is destroyed, so a
+// destroy failure (or a caller that discards the adoption result) still leaves
+// the volume owned and recoverable, and a marker write that fails cannot leave
+// the volume recorded without an owner — which would let a second clone claim
+// and recover the same volume. It is a no-op when another checkout already owns
+// the volume, so this checkout starts with its own fresh volume instead.
+func persistAdoptionOwnership(
+	txn *state.RootTxn,
+	source legacyPendingSource,
+	checkoutKey state.Key,
+) error {
+	own, err := claimLegacyHomeVolume(txn, source, checkoutKey)
+	if err != nil {
+		return err
+	}
+	if !own {
+		return nil
+	}
+	if err := txn.Commit(); err != nil {
+		return fmt.Errorf("record adoption ownership for %s: %w", source.Slug, err)
+	}
+	return persistRecoveredHomeVolume(checkoutKey, source.HomeVolume)
 }
 
 // legacyAdoptionPending reports whether a legacy identity is pending: the
@@ -301,24 +344,11 @@ func adoptLegacyIdentity(
 ) error {
 	primary := slugs[0]
 
-	// The VM-only arm destroys the only record of its home volume, so persist the
-	// recovered reference first. If the destroy (or any later step, or a caller
-	// that discards the adoption result) fails, the volume is still recoverable
-	// from the checkout state instead of being orphaned. This runs under the root
-	// lock, so a concurrent first-post-upgrade run cannot observe a half-written
-	// migration.
-	//
-	// A shared legacy identity has one home volume, so before recording the marker
-	// this checkout must claim the volume under the legacy identity (a second
-	// clone's claim makes its own adoption skip the marker instead of both
-	// recovering the same volume). The claim is committed before the destroy, so
-	// it survives a destroy failure even as the marker does.
-	if source.FromVM && source.HomeVolume != "" && claimLegacyHomeVolume(txn, source, checkoutKey) {
-		if err := persistRecoveredHomeVolume(checkoutKey, source.HomeVolume); err != nil {
+	// The VM-only arm destroys the only record of its home volume, so the
+	// recovered reference must be durable first. See persistAdoptionOwnership.
+	if source.FromVM && source.HomeVolume != "" {
+		if err := persistAdoptionOwnership(txn, source, checkoutKey); err != nil {
 			return err
-		}
-		if err := txn.Commit(); err != nil {
-			return fmt.Errorf("record adoption ownership for %s: %w", source.Slug, err)
 		}
 	}
 
