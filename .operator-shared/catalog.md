@@ -17,6 +17,9 @@
 - `mutation-testing-go.md`
   - Description: Survey of Go mutation-testing tools (gomutants, gremlins, go-mutesting, ooze, gomu) against the on-demand, per-package `go run module@version` Makefile-target constraint; recommends gomutants, records the `--changed-since` line scoping and its verified flag name (not `-n`), and carries the canonical `make mutation` target.
   - Read If: Adding or changing the on-demand mutation-testing Makefile target, or evaluating a Go mutation-testing tool.
+- `mutation-triage.md`
+  - Description: Field guide for closing gomutants LIVED mutants: the recurring types (`ERRORF_WRAP`, `BRANCH_IF`, `STATEMENT_REMOVE`, `RETURN_*`) and the assertion that kills each, the equivalent-mutant traps (`EXPRESSION_REMOVE` on `A && B`; a guard operationally equal to its fall-through), and the record-with-a-reason fallback; distilled from the first full `internal/agent` sweep.
+  - Read If: Triaging surviving mutants from a `make mutation` sweep, or choosing between strengthening a test and recording a `// gomutants:disable` reason.
 - `opencode2-live-event-probe.md`
   - Description: How to capture and drive the running opencode2 daemon's SSE stream from inside the VM (auth, `/api/event`, `/openapi.json`, creating a session with an `effect: ask` permission rule, replying to permissions, the input-event payload shapes) and the observed ordering — two `permission.asked` in one step with no step boundary — that drove the notify event-id fix.
   - Read If: Needing to observe real opencode/opencode2 events, reproduce an input/awaiting-input trigger, or verify a notify change against the live daemon.
@@ -24,7 +27,7 @@
 ### `specs/` - System contracts for this partition
 
 - `mutation-testing.md`
-  - Description: Contract for the on-demand mutation-testing practice (issue #253): a version-pinned `make mutation` target over gomutants (`GOMUTANTS_VERSION`, `--changed-since $(git describe --tags --abbrev=0)` by default, `FULL=1` for an unscoped run, `CGO_ENABLED=1`), never a CI or `make check` gate; each LIVED mutant is either killed by a strengthened test or recorded in source with `// gomutants:disable <TYPE> reason="..."` (or `--exclude-calls`); `-detect-equivalent` on by default; the release-skill step-2 rw amendment and CONTRIBUTING/NON-GO-DEPS/gitignore homes.
+  - Description: Contract for the on-demand mutation-testing practice (issue #253): a version-pinned `make mutation` target over gomutants (`GOMUTANTS_VERSION`, `--changed-since $(git describe --tags --abbrev=0)` by default, `FULL=1` for an unscoped run, `CGO_ENABLED=1`), never a CI or `make check` gate; each LIVED mutant is killed by a strengthened test, rid by deleting a redundant construct, or recorded in source with `// gomutants:disable <TYPE> reason="..."` (or `--exclude-calls`); `-detect-equivalent` on by default; the release-skill step-2 rw amendment and CONTRIBUTING/NON-GO-DEPS/gitignore homes.
   - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, or the release-skill verify step.
 - `config-paths-seam.md`
   - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).

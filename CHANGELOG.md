@@ -15,6 +15,11 @@ command reports the bare version (e.g. `0.1.0`).
   tag (`PKG=...` narrows to one package, `FULL=1` runs every line). It is deliberately excluded from `make check`,
   `make verify`, and CI. Part of the release flow: every survivor is either killed by a strengthened test or recorded in
   source with a reason (#253).
+- Internal: run the first on-demand mutation sweep (`make mutation FULL=1 PKG=./internal/agent/`) and close every
+  survivor. The strengthened tests now assert error wrapping (`errors.Is`/`errors.As`), outbound request headers, the
+  non-200 and decode error paths, provision-rule validation (which exposed and dropped a redundant `HasPrefix` guard),
+  and per-fetch decode failures; the HTTP client timeout, which no local test can observe, is recorded in source with a
+  `// gomutants:disable` reason (#253).
 - Internal: add `make test-race` (race detector) and `make vulncheck` (`govulncheck` against the Go vulnerability
   database) to `make verify`, and run each as its own CI job. Both stay out of `make check` so the everyday loop stays
   fast; `vulncheck` needs network on first run. The first scan reported nine reachable Go standard-library

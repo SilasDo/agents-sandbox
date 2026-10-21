@@ -77,7 +77,7 @@ func ValidateProvisionRules(rules []ProvisionRule) []string {
 			if p == "" {
 				warnings = append(warnings, "empty pattern in provision rule for "+rule.Dir)
 			}
-			if strings.HasPrefix(p, "!") && p == "!" {
+			if p == "!" {
 				warnings = append(warnings, "bare '!' in provision rule for "+rule.Dir)
 			}
 		}

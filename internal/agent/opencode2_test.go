@@ -2,6 +2,8 @@ package agent_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -159,8 +161,12 @@ func TestOpencode2DaemonHealthParse(t *testing.T) {
 	if err != nil || notOK {
 		t.Errorf("DaemonHealthParse(error body) = %v, %v, want false, nil", notOK, err)
 	}
-	if _, err := daemon.DaemonHealthParse("not json"); err == nil {
-		t.Error("DaemonHealthParse(invalid) should error")
+	parsed, err := daemon.DaemonHealthParse("not json")
+	if parsed {
+		t.Error("DaemonHealthParse(invalid) ok = true, want false")
+	}
+	if _, ok := errors.AsType[*json.SyntaxError](err); !ok {
+		t.Errorf("DaemonHealthParse(invalid) error = %v, want *json.SyntaxError", err)
 	}
 }
 
