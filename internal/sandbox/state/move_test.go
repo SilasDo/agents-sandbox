@@ -182,3 +182,105 @@ func TestMoveSlugDirCreatesDestinationParent(t *testing.T) {
 	require.DirExists(t, SlugDir("new-slug"))
 	require.FileExists(t, filepath.Join(SlugDir("new-slug"), "opencode", "state.yaml"))
 }
+
+// requireNonRoot skips a permission-based branch test when running as root,
+// where a 0500 directory does not deny access.
+func requireNonRoot(t *testing.T) {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("permission-based test is not meaningful as root")
+	}
+}
+
+// makeReadOnly makes path read-and-execute-only (0500) and restores the original
+// mode on cleanup, so a permission-denied branch can be exercised and the test's
+// temp tree stays removable.
+func makeReadOnly(t *testing.T, path string) {
+	t.Helper()
+	original, err := os.Stat(path)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(path, 0o500))
+	t.Cleanup(func() { _ = os.Chmod(path, original.Mode().Perm()) })
+}
+
+// TestMoveSlugDirErrorsWhenSourceIsNotADirectory covers the ReadDir failure: a
+// path that exists but is not a directory is not "missing", so it is an error
+// rather than the missing-source no-op.
+func TestMoveSlugDirErrorsWhenSourceIsNotADirectory(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, SlugDir("old-slug"), "not a directory")
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "read state dir")
+}
+
+// TestMoveSlugDirErrorsWhenDestinationIsNotADirectory covers the Lstat failure:
+// a non-directory destination makes every entry's stat fail with ENOTDIR, which
+// must surface rather than being mistaken for a free name.
+func TestMoveSlugDirErrorsWhenDestinationIsNotADirectory(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, filepath.Join(SlugDir("old-slug"), "opencode", "state.yaml"), "home_volume: v1\n")
+	writeFile(t, SlugDir("new-slug"), "not a directory")
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "stat ")
+}
+
+// TestMoveSlugDirErrorsWhenDestinationCannotBeCreated covers the MkdirAll
+// failure: a read-only state root cannot host the destination directory, and the
+// failure is reported instead of being treated as an empty move.
+func TestMoveSlugDirErrorsWhenDestinationCannotBeCreated(t *testing.T) {
+	requireNonRoot(t)
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, filepath.Join(SlugDir("old-slug"), "opencode", "state.yaml"), "home_volume: v1\n")
+	makeReadOnly(t, stateRoot())
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "create state dir")
+}
+
+// TestMoveSlugDirErrorsWhenDestinationIsNotWritable covers the Rename failure:
+// the destination directory exists but cannot accept the entry.
+func TestMoveSlugDirErrorsWhenDestinationIsNotWritable(t *testing.T) {
+	requireNonRoot(t)
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, filepath.Join(SlugDir("old-slug"), "opencode", "state.yaml"), "home_volume: v1\n")
+	require.NoError(t, os.MkdirAll(SlugDir("new-slug"), 0o700))
+	makeReadOnly(t, SlugDir("new-slug"))
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "move ")
+}
+
+// TestMoveSlugDirErrorsInsideANestedMerge covers the recursive-merge error
+// return: an inner failure stops the merge and propagates to the caller.
+func TestMoveSlugDirErrorsInsideANestedMerge(t *testing.T) {
+	requireNonRoot(t)
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, filepath.Join(SlugDir("old-slug"), "opencode", "state.yaml"), "home_volume: v1\n")
+	inner := filepath.Join(SlugDir("new-slug"), "opencode")
+	require.NoError(t, os.MkdirAll(inner, 0o700))
+	makeReadOnly(t, inner)
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "move ")
+}
+
+// TestMoveSlugDirErrorsWhenEmptiedSourceCannotBeRemoved covers the final Remove
+// failure: the merge emptied the source but a read-only state root denies its
+// removal, which is reported rather than ignored.
+func TestMoveSlugDirErrorsWhenEmptiedSourceCannotBeRemoved(t *testing.T) {
+	requireNonRoot(t)
+	configpaths.WithMockConfigPaths(t)
+	require.NoError(t, os.MkdirAll(SlugDir("old-slug"), 0o700))
+	makeReadOnly(t, stateRoot())
+
+	_, err := MoveSlugDir("old-slug", "new-slug")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "remove state dir")
+}
