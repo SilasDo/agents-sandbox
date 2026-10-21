@@ -51,7 +51,12 @@ func startNotifyWatcher(
 	projectSlug string,
 ) func() error {
 	if sb == nil || !cfg.Active() || spec == nil {
-		ui.Verbosef("not starting notify watcher, sandbox %s, active %v, spec %s", sb, cfg.Active(), spec)
+		ui.Verbosef(
+			"not starting notify watcher, sandbox nil %v, active %v, spec set %v",
+			sb == nil,
+			cfg.Active(),
+			spec != nil,
+		)
 		return func() error { return nil }
 	}
 	backend := notify.NewBackend(cfg, ui)
@@ -63,7 +68,7 @@ func startNotifyWatcher(
 	var watchErr error
 	go func() {
 		defer close(done)
-		ui.Verbosef("starting notify watcher, sandbox %s, active %v, spec %s", sb, cfg.Active(), spec)
+		ui.Verbosef("starting notify watcher, project %s, active %v, spec %s", projectSlug, cfg.Active(), spec)
 		watchErr = notifyWatch(watchCtx, sb, *spec, backend)
 	}()
 	return func() error {

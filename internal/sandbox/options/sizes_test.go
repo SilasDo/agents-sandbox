@@ -107,12 +107,71 @@ func TestParseMemoryOK_Overflow(t *testing.T) {
 	}
 }
 
+func TestParseMemoryOK_PlainNumberAboveUint32(t *testing.T) {
+	got, ok := ParseMemoryOK("4294967296")
+	if ok {
+		t.Fatal("expected not ok for a plain number above uint32")
+	}
+	if got != 0 {
+		t.Errorf("expected 0, got %d", got)
+	}
+}
+
+func TestParseMemoryOK_MegabyteSuffixAboveUint32(t *testing.T) {
+	got, ok := ParseMemoryOK("4294967296M")
+	if ok {
+		t.Fatal("expected not ok for an M-suffixed spec above uint32")
+	}
+	if got != 0 {
+		t.Errorf("expected 0, got %d", got)
+	}
+}
+
+func TestParseMemoryOK_GiBAgainstUint64Overflow(t *testing.T) {
+	// 2^54 GiB overflows the uint64 multiplication, so a bound check written as
+	// a multiply-and-compare lets it through.
+	got, ok := ParseMemoryOK("18014398509481984G")
+	if ok {
+		t.Fatal("expected not ok for a GiB spec whose multiplication overflows uint64")
+	}
+	if got != 0 {
+		t.Errorf("expected 0, got %d", got)
+	}
+}
+
+func TestParseMemoryOK_MaxUint32(t *testing.T) {
+	got, ok := ParseMemoryOK("4294967295")
+	if !ok {
+		t.Fatal("expected ok for the largest representable MiB spec")
+	}
+	if got != 4294967295 {
+		t.Errorf("expected 4294967295, got %d", got)
+	}
+}
+
+func TestParseMemoryOK_LargestGiBSpec(t *testing.T) {
+	got, ok := ParseMemoryOK("4194303G")
+	if !ok {
+		t.Fatal("expected ok for the largest GiB spec that fits in uint32 MiB")
+	}
+	if want := uint32(4194303) * 1024; got != want {
+		t.Errorf("expected %d, got %d", want, got)
+	}
+
+	if _, ok := ParseMemoryOK("4194304G"); ok {
+		t.Fatal("expected not ok for the first GiB spec that does not fit")
+	}
+}
+
 func TestParseMemoryOK_DefaultMemoryFallsThrough(t *testing.T) {
 	if ParseMemory("") != DefaultMemoryMiB {
 		t.Errorf("expected default %d for empty spec", DefaultMemoryMiB)
 	}
 	if ParseMemory("bogus") != DefaultMemoryMiB {
 		t.Errorf("expected default %d for bogus spec", DefaultMemoryMiB)
+	}
+	if ParseMemory("4294967296") != DefaultMemoryMiB {
+		t.Errorf("expected default %d for an out-of-range spec, not a wrapped value", DefaultMemoryMiB)
 	}
 }
 

@@ -10,6 +10,12 @@ on:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
+# Least privilege for every job. The release pipeline's `publish` job raises this
+# for itself (contents + pull-requests write, to publish the Release and open the
+# Homebrew bump PR).
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: lint
@@ -18,7 +24,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: .go-version
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
@@ -38,7 +44,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: .go-version
           cache: true
       - run: make coverage-junit
       - uses: codecov/codecov-action@v7
@@ -54,6 +60,28 @@ jobs:
           report_type: test_results
           files: junit.xml
           fail_ci_if_error: false
+
+  race:
+    name: race
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+          cache: true
+      - run: make test-race
+
+  vulncheck:
+    name: vulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+          cache: true
+      - run: make vulncheck
 
   integration:
     name: integration (docker build)
@@ -71,7 +99,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: .go-version
           cache: true
       - run: make test-integration
 
@@ -122,7 +150,7 @@ jobs:
 
       - uses: actions/setup-go@v7
         with:
-          go-version: "1.27"
+          go-version-file: .go-version
           cache: true
 
       - name: Resolve bare version

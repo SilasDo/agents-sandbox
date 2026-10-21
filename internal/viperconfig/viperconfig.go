@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -407,30 +408,43 @@ func flagTypedDefault(key string, flag *pflag.Flag) any {
 	}
 }
 
+// Bounds for the day/week forms, derived from the multiplier so the multiply
+// cannot wrap int64 into a negative duration.
+const (
+	nanosecondsPerDay = int64(24 * time.Hour)
+	maxDays           = math.MaxInt64 / nanosecondsPerDay
+	maxWeeks          = math.MaxInt64 / (7 * nanosecondsPerDay)
+)
+
 // ParseHumanDuration parses duration strings like "7d", "2w", "6h", "30m"
 // into time.Duration. Go's time.ParseDuration supports ns/us/ms/s/m/h
 // but not "d" (days) or "w" (weeks).
+//
+// Negative durations are rejected: callers use the result as a prune age or an
+// interval, where a negative value silently inverts the comparison — a
+// negative prune age matches every artifact. Oversized day/week counts are
+// rejected for the same reason, since the multiply would wrap negative.
 func ParseHumanDuration(s string) (time.Duration, bool) {
 	s = strings.TrimSpace(s)
 	switch {
 	case strings.HasSuffix(s, "w"):
 		num, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
-		if err != nil {
+		if err != nil || num < 0 || num > maxWeeks {
 			return 0, false
 		}
 		return time.Duration(num) * 7 * 24 * time.Hour, true
 	case strings.HasSuffix(s, "d"):
 		num, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
-		if err != nil {
+		if err != nil || num < 0 || num > maxDays {
 			return 0, false
 		}
 		return time.Duration(num) * 24 * time.Hour, true
 	}
 	d, err := time.ParseDuration(s)
-	if err == nil {
-		return d, true
+	if err != nil || d < 0 {
+		return 0, false
 	}
-	return 0, false
+	return d, true
 }
 
 func durationDecodeHook() mapstructure.DecodeHookFunc {

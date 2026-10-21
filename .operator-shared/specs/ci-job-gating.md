@@ -1,13 +1,14 @@
 ---
-description: Contract for gating the costly integration job in `.github/workflows/ci.yml` — it runs on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
-read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, or the `run-integration` opt-in label.
+description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, the `fuzz` workflow is deliberately outside this gating (see `fuzz-ci.md`), and the costly `integration` job runs on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
+read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, the `run-integration` opt-in label, or deciding whether a check belongs in CI.
 ---
 
 # CI job gating
 
 ## Contract
 
-`.github/workflows/ci.yml` runs `lint` and `test` on every push to `main`, every `v*` tag, and every PR event. The
+`.github/workflows/ci.yml` runs `lint`, `test`, `race` (`make test-race`), and `vulncheck` (`make vulncheck`) on every
+push to `main`, every `v*` tag, and every PR event — all four ungated. The
 `integration` job (`make test-integration`, the `integration`-tagged docker-build suite, ~10 minutes) is gated to four
 paths:
 
@@ -25,6 +26,10 @@ paths:
   `workflow_dispatch` while `on:` declared no dispatch trigger, so the documented manual path did not exist.
 - `on.pull_request.types` must list `labeled` **and** repeat the defaults (`opened`, `synchronize`, `reopened`):
   declaring `types:` replaces the default set rather than extending it.
+- Both workflows declare a workflow-level `permissions: contents: read`; the `publish` job raises its own (`contents:
+  write`, `pull-requests: write`) to publish the Release and open the Homebrew bump PR. CodeQL's
+  `actions/missing-workflow-permissions` query reports one alert **per job** with no effective limitation, so removing the
+  workflow-level block reopens one alert per job rather than one per workflow.
 - GitHub only offers dispatch for workflows whose file exists on the default branch. The `workflow_dispatch` trigger
   therefore becomes usable when it reaches `main`; `gh workflow run ci.yml --ref <branch>` can then dispatch any branch.
 - The label name has no single source of truth: it appears in the job condition, in the job's comment, and in
@@ -37,7 +42,12 @@ paths:
 
 ## Behavior
 
+- `release` gates on `lint`, `test`, and `integration` only. `race` and `vulncheck` run on a tag but do not block
+  publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote them into `release.needs`
+  deliberately if that trade-off changes.
 - Adding the label re-runs the whole workflow, so `lint`/`test` run again for that event.
+- `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
+  `fuzz-ci.md` for its triggers, budgets, and corpus handling.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.
 - The gate is not a privilege boundary: `lint`/`test` already execute PR code on the same runner, so labeling adds

@@ -1,0 +1,92 @@
+name: fuzz
+
+# Fuzzing explores the inputs a user or their files control: the project
+# Dockerfile, the `home:` manifest, `--older-than` durations, and image
+# references. It is deliberately not a PR gate — the seed corpus and any
+# committed crasher already run under `make test`, and a time-budgeted explorer
+# is nondeterministic — so a red run here reports a crasher and never blocks a
+# merge or a release.
+on:
+  push:
+    branches: [main]
+    # Only a merge that can change what these targets parse: one touching none
+    # of them has nothing new for them to find, which also keeps four jobs off
+    # every dependency bump.
+    paths:
+      - internal/viperconfig/**
+      - internal/homeconfig/**
+      - internal/sandbox/image/**
+      - internal/sandbox/naming/**
+  schedule:
+    # Depth comes from the nightly run. GitHub only runs a schedule from the
+    # default branch's copy of this workflow, and always against that branch.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      fuzztime:
+        description: Fuzzing budget per target (the job times out at 45m)
+        default: 15m
+        required: true
+
+# The workflow only checks out and runs Go, so the token needs no write scope.
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.pkg.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      # One target's crasher must not hide the others.
+      fail-fast: false
+      matrix:
+        pkg:
+          - {name: viperconfig, path: internal/viperconfig}
+          - {name: homeconfig, path: internal/homeconfig}
+          - {name: image, path: internal/sandbox/image}
+          - {name: naming, path: internal/sandbox/naming}
+    concurrency:
+      # Never cancel a run in progress: a cancelled run spends its budget
+      # without exploring, so a busy merge rate could starve exploration down to
+      # nothing. A superseded pending job is dropped; the running one finishes.
+      group: fuzz-${{ matrix.pkg.name }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+          # Compile cache only, so the fuzz budget is not spent waiting on the
+          # build; the corpus has its own cache below.
+          cache: true
+      - name: Restore the fuzz corpus
+        # Go keeps the interesting inputs it finds under $GOCACHE/fuzz, so cache
+        # that subtree directly. It cannot ride setup-go's cache: that entry is
+        # keyed on go.sum and GitHub caches are immutable, so an exact hit is
+        # never re-saved and each run's discoveries would be discarded (another
+        # job sharing the key may also save it first). A key unique per run
+        # always saves, and the prefix restores the newest for this target.
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/go-build/fuzz
+          key: fuzz-corpus-${{ matrix.pkg.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-${{ matrix.pkg.name }}-
+      - name: Fuzz ${{ matrix.pkg.path }}
+        # A merge only needs the hint that nothing new broke; the nightly is
+        # where depth comes from, and a dispatch says what it wants.
+        env:
+          FUZZPKG: ${{ matrix.pkg.path }}
+          FUZZTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzztime || github.event_name == 'schedule' && '15m' || '60s' }}
+        run: make fuzz
+      - name: Upload the crasher
+        # Go writes a failing input to the package's testdata/fuzz/<Target>/ and
+        # prints it in the log. CI cannot commit it — committing a corpus seed
+        # needs a push token — so it leaves the runner as an artifact.
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-crasher-${{ matrix.pkg.name }}
+          path: internal/**/testdata/fuzz/**
+          if-no-files-found: ignore
+          retention-days: 30

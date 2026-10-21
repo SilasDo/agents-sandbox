@@ -25,6 +25,23 @@ func TestParseHumanDuration(t *testing.T) {
 		{"", 0, false},
 		{"abc", 0, false},
 		{"d", 0, false},
+		// Zero stays valid; the "must be > 0" rule belongs to the config
+		// validators, not to the parser.
+		{"0d", 0, true},
+		{"0s", 0, true},
+		// Negative durations would invert every age comparison (a negative
+		// prune age matches everything), so they are rejected.
+		{"-1d", 0, false},
+		{"-2w", 0, false},
+		{"-1h", 0, false},
+		// Day/week counts are bounded so the multiply cannot overflow int64
+		// into a negative duration.
+		{"106751d", 106751 * 24 * time.Hour, true},
+		{"106752d", 0, false},
+		{"110000d", 0, false},
+		{"15250w", 15250 * 7 * 24 * time.Hour, true},
+		{"15251w", 0, false},
+		{"99999999999999999999d", 0, false},
 	}
 	for _, tt := range tests {
 		got, ok := ParseHumanDuration(tt.in)
