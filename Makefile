@@ -188,7 +188,7 @@ run:
 check: fmt lint test compile-all docs-linkcheck docs-linkcheck-test deadcode-test
 
 # Read-only check for CI parity: fmt-check + lint + test + race + vulncheck (does not modify files).
-verify: validate-fmt lint test test-race compile-all vulncheck docs-linkcheck docs-linkcheck-test deadcode-test
+verify: validate-fmt lint test test-race compile-all vulncheck deadcode docs-linkcheck docs-linkcheck-test deadcode-test
 
 all: fmt lint test docs-linkcheck docs-linkcheck-test build
 

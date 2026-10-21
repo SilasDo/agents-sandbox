@@ -36,6 +36,11 @@ cd "$ROOT"
 
 : "${DEADCODE_VERSION:?DEADCODE_VERSION must be set, e.g. DEADCODE_VERSION=v0.52.0}"
 
+# The microsandbox SDK needs cgo, so the analysis must not silently run with it
+# off: an environment without a C compiler fails the analysis (exit 2) rather
+# than reporting a package set the module is not really built from.
+export CGO_ENABLED=1
+
 PKG="${PKG:-./...}"
 
 # A configuration's report file is named after its tags, so a diagnosis can say
