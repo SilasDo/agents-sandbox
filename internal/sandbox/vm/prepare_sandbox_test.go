@@ -841,7 +841,7 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 
 	// The existing VM's persisted mounts carry the previous tmp size. Its image
