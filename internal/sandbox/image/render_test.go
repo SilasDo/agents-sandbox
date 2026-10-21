@@ -369,6 +369,21 @@ func TestRenderDockerfileNoGuestToolsForDaemonlessAgents(t *testing.T) {
 	}
 }
 
+// emptyGuestToolsAgent declares the GuestToolRequirer capability with no tools,
+// covering guestToolsBlock's empty-list guard. The interface contract is that a
+// daemonless agent does not implement it, but a capability that returns an empty
+// list must still emit no check.
+type emptyGuestToolsAgent struct{ agent.Agent }
+
+func (emptyGuestToolsAgent) Name() string         { return "stub" }
+func (emptyGuestToolsAgent) GuestTools() []string { return nil }
+
+func TestGuestToolsBlockEmptyListEmitsNothing(t *testing.T) {
+	if got := guestToolsBlock(emptyGuestToolsAgent{}); got != "" {
+		t.Errorf("guestToolsBlock with an empty tool list = %q, want empty", got)
+	}
+}
+
 // TestRenderDockerfilePostBodyBlocksResetUserRoot guards I2: a user body ending
 // in a non-root USER must not leak into the tool-owned adoption RUN blocks.
 func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {
