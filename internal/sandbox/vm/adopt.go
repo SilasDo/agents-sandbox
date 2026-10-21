@@ -61,17 +61,12 @@ func AdoptLegacyIdentity(
 	repoKey := state.Key{Slug: identity.RepoSlug, Agent: agentName}
 	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: agentName}
 
-	pending, err := legacyStatePending(repoKey, checkoutKey)
+	legacy, pending, err := legacyStatePending(repoKey, checkoutKey)
 	if err != nil {
 		return IdentityAdoption{}, fmt.Errorf("check for a pending legacy identity: %w", err)
 	}
 	if !pending {
 		return IdentityAdoption{Slug: identity.CheckoutSlug}, nil
-	}
-
-	legacy, err := state.ReadState(repoKey)
-	if err != nil {
-		return IdentityAdoption{}, fmt.Errorf("read legacy state: %w", err)
 	}
 
 	ui.Warnf("%s", adoptionNotice(identity, agentName, legacy.HomeVolume, apply))
@@ -89,8 +84,10 @@ func AdoptLegacyIdentity(
 	return IdentityAdoption{Slug: identity.CheckoutSlug, Pending: true, Applied: true}, nil
 }
 
-// legacyStatePending reports whether the legacy origin-keyed state exists and
-// the checkout-keyed state file does not — the adoption trigger.
+// legacyStatePending reports whether the adoption trigger holds and returns the
+// legacy origin-keyed state it read: the legacy state file exists and the
+// checkout-keyed one does not. Returning the state avoids a second read that
+// would race a concurrent writer after the predicate already proved it readable.
 //
 // The predicate is state-file absence, not directory absence, so a stray or
 // aborted run that created the empty checkout directory cannot permanently skip
@@ -99,21 +96,22 @@ func AdoptLegacyIdentity(
 // It fails closed on reads: an unparsable or otherwise unreadable legacy state
 // is returned as an error rather than treated as absent, so an unknown document
 // can never lead to destroying the legacy VM or moving state nobody has read.
-func legacyStatePending(repoKey, checkoutKey state.Key) (bool, error) {
-	if _, err := state.ReadState(repoKey); err != nil {
+func legacyStatePending(repoKey, checkoutKey state.Key) (*state.HomeState, bool, error) {
+	legacy, err := state.ReadState(repoKey)
+	if err != nil {
 		if errors.Is(err, state.ErrStateNotFound) {
-			return false, nil
+			return nil, false, nil
 		}
-		return false, err
+		return nil, false, err
 	}
 
 	if _, err := state.ReadState(checkoutKey); err != nil {
 		if errors.Is(err, state.ErrStateNotFound) {
-			return true, nil
+			return legacy, true, nil
 		}
-		return false, err
+		return nil, false, err
 	}
-	return false, nil
+	return nil, false, nil
 }
 
 // adoptLegacyIdentity destroys the legacy VM and merges the legacy state
@@ -144,19 +142,18 @@ func adoptLegacyIdentity(
 	// a fresh home volume and losing the agent's auth. Failing loudly is the only
 	// outcome that cannot lose the user's volume, so never fall back here. The
 	// notice has already promised a move and the legacy VM is gone by now, so the
-	// error has to say what is half-done and what to clear to finish it.
+	// error has to say what is half-done and what to clear to finish it; the read
+	// error is wrapped for a non-not-found failure (I/O, parse).
 	if _, verifyErr := state.ReadState(checkoutKey); verifyErr != nil {
-		if errors.Is(verifyErr, state.ErrStateNotFound) {
-			return fmt.Errorf(
-				"migration to the checkout identity did not complete: the legacy state file %s did not arrive at %s (the move skipped [%s]); the legacy project VM %s is already gone, so clear those entries under the checkout state directory %s and rerun",
-				filepath.Join(state.KeyDir(repoKey), "state.yaml"),
-				filepath.Join(state.KeyDir(checkoutKey), "state.yaml"),
-				strings.Join(skipped, ", "),
-				projectVMName(repoKey),
-				state.SlugDir(identity.CheckoutSlug),
-			)
-		}
-		return fmt.Errorf("verify adopted state: %w", verifyErr)
+		return fmt.Errorf(
+			"migration to the checkout identity did not complete: the legacy state file %s did not arrive at %s (the move skipped [%s], read error: %w); the legacy project VM %s is already gone, so clear those entries under the checkout state directory %s and rerun",
+			filepath.Join(state.KeyDir(repoKey), "state.yaml"),
+			filepath.Join(state.KeyDir(checkoutKey), "state.yaml"),
+			strings.Join(skipped, ", "),
+			verifyErr,
+			projectVMName(repoKey),
+			state.SlugDir(identity.CheckoutSlug),
+		)
 	}
 	return nil
 }

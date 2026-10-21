@@ -419,3 +419,123 @@ func TestAdoptLegacyIdentityStrandedStateFileFailsLoudly(t *testing.T) {
 		t.Errorf("legacy state file gone after a loud failure: %v", statErr)
 	}
 }
+
+// TestAdoptLegacyIdentityUnparsableCheckoutState pins the fail-closed predicate
+// on the checkout side: a corrupt checkout-keyed document is an error, not
+// "absent", so adoption never runs on top of a state it cannot read.
+func TestAdoptLegacyIdentityUnparsableCheckoutState(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	seedLegacyState(t)
+	checkoutDir := state.KeyDir(adoptCheckoutKey())
+	if err := os.MkdirAll(checkoutDir, 0o700); err != nil {
+		t.Fatalf("create checkout state dir: %v", err)
+	}
+	testutil.WriteFile(t, checkoutDir, "state.yaml", `": [`)
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {
+		t.Errorf("GetSandbox(%q) called despite an unreadable checkout state", name)
+		return nil, errors.New("GetSandbox must not be called")
+	}}
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err == nil {
+		t.Fatal("expected an unparsable checkout state to fail adoption")
+	}
+	if !strings.Contains(err.Error(), "check for a pending legacy identity") {
+		t.Errorf("error = %v, want the fail-closed predicate error", err)
+	}
+}
+
+// TestAdoptLegacyIdentityStateMoveFailureFailsLoudly covers the state-move
+// failure: the trigger sees no checkout state file through a dangling
+// destination symlink, but the merge then cannot create the destination, so
+// adoption fails loudly instead of continuing with no state.
+func TestAdoptLegacyIdentityStateMoveFailureFailsLoudly(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	seedLegacyState(t)
+	if err := os.Symlink(
+		filepath.Join(t.TempDir(), "nowhere"),
+		state.SlugDir(adoptCheckoutSlug),
+	); err != nil {
+		t.Fatalf("create dangling destination symlink: %v", err)
+	}
+
+	handle := &msb.MockSandboxHandle{Name_: adoptLegacyVMName()}
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		return handle, nil
+	}}
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err == nil {
+		t.Fatal("expected a failed state move to fail adoption")
+	}
+	if !strings.Contains(err.Error(), "move project state to") {
+		t.Errorf("error = %v, want the state-move failure", err)
+	}
+	if statePresent(t, adoptCheckoutKey()) {
+		t.Error("state present after a failed move")
+	}
+}
+
+// TestAdoptLegacyIdentityGetSandboxErrorAborts covers a non-not-found failure
+// resolving the legacy VM: adoption must abort rather than move state and leave
+// an unknown VM running against the shared home volume.
+func TestAdoptLegacyIdentityGetSandboxErrorAborts(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	seedLegacyState(t)
+
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		return nil, errors.New("msb unreachable")
+	}}
+	ui := termio.NewTestMock(t)
+
+	_, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err == nil {
+		t.Fatal("expected a GetSandbox failure to abort adoption")
+	}
+	if !strings.Contains(err.Error(), "check legacy project VM") {
+		t.Errorf("error = %v, want the legacy-VM check failure", err)
+	}
+	if statePresent(t, adoptCheckoutKey()) {
+		t.Error("state moved despite a failed legacy-VM check")
+	}
+}
+
+// TestAdoptLegacyIdentityLegacyVMAlreadyGoneOnDestroy covers the identity-safe
+// teardown's already-gone outcome: the name vanished between the check and the
+// destroy, so the move continues and the caller is told.
+func TestAdoptLegacyIdentityLegacyVMAlreadyGoneOnDestroy(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	seedLegacyState(t)
+
+	handle := &msb.MockSandboxHandle{
+		Name_:      adoptLegacyVMName(),
+		DestroyErr: &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"},
+	}
+	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+		return handle, nil
+	}}
+	ui := termio.NewTestMock(t)
+
+	got, err := AdoptLegacyIdentity(context.Background(), client, adoptIdentity(), adoptAgentName, true, &ui)
+	if err != nil {
+		t.Fatalf("AdoptLegacyIdentity: %v", err)
+	}
+	if !statePresent(t, adoptCheckoutKey()) {
+		t.Error("state not moved although the legacy VM vanished before the destroy")
+	}
+	if !got.Applied {
+		t.Errorf("adoption = %+v, want it applied", got)
+	}
+	var sawNote bool
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "was already gone; continuing") {
+			sawNote = true
+		}
+	}
+	if !sawNote {
+		t.Errorf("expected the already-gone verbose note; got %v", ui.VerboseCalls)
+	}
+}
