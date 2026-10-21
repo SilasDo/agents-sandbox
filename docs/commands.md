@@ -385,6 +385,33 @@ The trailing label is `primary` when the agent's own namespace is used, or `lega
 
 Each host file is listed as `merged` (its VM path is the merged config path or part of the removed config-file family) or `not merged` (copied verbatim). Verbatim mirror files are listed as their host source path → VM path.
 
+#### config paths
+
+Print the launcher-config layers in precedence order (lowest to highest), the resolved path of each, and the repo slug.
+
+```console
+agents-sandbox config paths
+```
+
+Each file layer is shown with its path, flagged `(missing)` when the file does not exist; the two environment layers show
+their variable-name globs, and `flags` is the CLI-flag layer:
+
+```
+config layers (lowest to highest precedence):
+  generic user config  /home/me/.config/agents-sandbox
+  per-project user config  /home/me/.config/agents-sandbox/myproject-<hash>  (missing)
+  project config  /work/repo/.agents-sandbox  (missing)
+  legacy env  OPENCODE_SANDBOX_*
+  env  AGENTS_SANDBOX_*
+  flags
+repo slug:  myproject-<hash>
+```
+
+The layer lines are stdout; a guidance line naming the committed project config (`.agents-sandbox/config.yaml`) and the
+generic user config is stderr and survives `--quiet`. The command takes no flags (the global `--quiet` suppresses the
+layer block). The per-slug user config dir is keyed by the **repo** slug, so every clone of one remote shares it; that is
+the slug reported here (see [Per-slug configuration]({% link configuration/launcher.md %}#per-slug-configuration)).
+
 #### config home
 
 List the resolved home-file mappings from the config `home:` key (VM target path ← host source path).

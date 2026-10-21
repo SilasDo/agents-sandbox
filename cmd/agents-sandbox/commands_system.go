@@ -17,6 +17,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/humanize"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
+	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/sandbox/reprovision"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
@@ -113,9 +114,18 @@ func buildVolumeOpsCmd(
 			if !doctor.CheckAll(c.Context(), ui) {
 				return errors.New("preflight failed")
 			}
-			projectSlug := git.ProjectSlug()
 			dryRun, _ := c.Flags().GetBool(flagDryRun)
 			a, err := resolveAgentFlag(c)
+			if err != nil {
+				return err
+			}
+			// Adopt like PrepareSandbox does, and use the adopted slug for both
+			// the image and the state key. Never re-derive it from git: adoption
+			// may have just moved the state, and a dry run deliberately returns
+			// the legacy repo slug while the migration stays pending.
+			adoption, err := sandbox.AdoptLegacyIdentity(
+				c.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+			)
 			if err != nil {
 				return err
 			}
@@ -126,7 +136,7 @@ func buildVolumeOpsCmd(
 			info, err := image.EnsureImage(
 				c.Context(),
 				a,
-				projectSlug,
+				adoption.Slug,
 				image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: docker},
 				ui,
 			)
@@ -139,7 +149,7 @@ func buildVolumeOpsCmd(
 			}
 			return fn(
 				c.Context(),
-				state.Key{Slug: projectSlug, Agent: a.Name()},
+				state.Key{Slug: adoption.Slug, Agent: a.Name()},
 				volName,
 				info,
 				*rmVar,
@@ -279,6 +289,8 @@ func buildConfigCmd(ui termio.UI) *cobra.Command {
 
 	cmd.AddCommand(buildConfigAgentCmd(ui))
 
+	cmd.AddCommand(buildConfigPathsCmd(ui))
+
 	cmd.AddCommand(&cobra.Command{
 		Use:   cmdHome,
 		Args:  cobra.NoArgs,
@@ -311,6 +323,70 @@ func buildConfigCmd(ui termio.UI) *cobra.Command {
 	})
 
 	return cmd
+}
+
+// buildConfigPathsCmd returns the config paths subcommand: it prints the
+// launcher-config layers in precedence order and names the resolved repo slug.
+// The per-slug user config dir is keyed by the repo slug, so every clone of one
+// origin shares it; the hint explains where repo-wide settings belong.
+func buildConfigPathsCmd(ui termio.UI) *cobra.Command {
+	return &cobra.Command{
+		Use:   cmdPaths,
+		Args:  cobra.NoArgs,
+		Short: "Print the config layers in precedence order",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			identity := git.ResolveIdentity(".")
+			// The layer block goes through Outf, which the quiet printer
+			// suppresses; the hint goes through Infof so it survives --quiet.
+			if !ui.Quiet() {
+				printConfigLayers(ui, effectiveConfigSlug(identity), identity.RepoSlug)
+			}
+			ui.Infof(
+				"Repo-wide settings belong in the committed project config (%s) so every clone shares them; "+
+					"machine-specific settings belong in the generic user config (%s).",
+				projectConfigDisplayPath,
+				configpaths.Get().UserConfigDir(),
+			)
+			return nil
+		},
+	}
+}
+
+// projectConfigDisplayPath is the committed project config the hint names.
+const projectConfigDisplayPath = ".agents-sandbox/config.yaml"
+
+// printConfigLayers writes the launcher-config layers lowest precedence first,
+// naming the resolved dir of each file layer and flagging the missing ones. It
+// reads the per-slug layer from slug (the effective config slug) but labels the
+// repo slug separately, so a bare root's pre-migration layer dir is not misread
+// as the repo slug.
+func printConfigLayers(ui termio.UI, slug, repoSlug string) {
+	ui.Outf("config layers (lowest to highest precedence):")
+	for _, layer := range viperconfig.ConfigLayers(slug) {
+		if layer.Path == "" {
+			ui.Outf("  %s%s", layer.Name, envLayerGlob(layer.Name))
+			continue
+		}
+		missing := ""
+		if !layer.Present {
+			missing = "  (missing)"
+		}
+		ui.Outf("  %s  %s%s", layer.Name, layer.Path, missing)
+	}
+	ui.Outf("repo slug:  %s", repoSlug)
+}
+
+// envLayerGlob returns the variable-name glob shown as the second column of an
+// env layer, or "" for the flags layer.
+func envLayerGlob(name string) string {
+	switch name {
+	case viperconfig.LayerNameLegacyEnv:
+		return "  OPENCODE_SANDBOX_*"
+	case viperconfig.LayerNameEnv:
+		return "  AGENTS_SANDBOX_*"
+	default:
+		return ""
+	}
 }
 
 // reservedHomeConfigTargets returns the home-relative VM paths the agent
@@ -483,18 +559,33 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			if !cmd.Flags().Changed(flagAgentVersion) && cmd.Flags().Changed(flagOpenCodeVersion) {
 				openCodeVersion, _ = cmd.Flags().GetString(flagOpenCodeVersion)
 			}
-			if dryRun {
-				ui.Infof("dry-run: Would build runner image")
-				return nil
-			}
-			if err := doctor.CheckDocker(cmd.Context()); err != nil {
-				return fmt.Errorf("docker not available: %w", err)
-			}
 			a, err := resolveAgentFlag(cmd)
 			if err != nil {
 				return err
 			}
-			return image.Build(cmd.Context(), a, git.ProjectSlug(), image.BuildOptions{
+			// Check the Docker prerequisite before adopting, like run/shell and
+			// the volume ops do: the check does not need the slug, and a failing
+			// build must not destroy the legacy VM and move the state first.
+			if !dryRun {
+				if dockerErr := doctor.CheckDocker(cmd.Context()); dockerErr != nil {
+					return fmt.Errorf("docker not available: %w", dockerErr)
+				}
+			}
+			// Adopt like PrepareSandbox does, and use the adopted slug for the
+			// image tag. It runs before the dry-run gate so the migration notice
+			// prints; a dry run passes apply=false, so the migration stays
+			// pending and adoption returns the legacy repo slug.
+			adoption, err := sandbox.AdoptLegacyIdentity(
+				cmd.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+			)
+			if err != nil {
+				return err
+			}
+			if dryRun {
+				ui.Infof("dry-run: Would build runner image")
+				return nil
+			}
+			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: openCodeVersion, UserProvided: false, Docker: resolveBuildDocker(cmd),
 			}, ui)
 		},

@@ -31,6 +31,7 @@ type Session struct {
 	cwd           string
 	guestCWD      string
 	serveHostPort int
+	key           state.Key
 }
 
 // Cleanup releases the sandbox handle. It is safe to call on a nil session.
@@ -61,6 +62,13 @@ func (s *Session) GuestCWD() string {
 // at in serve-only mode (0 when not serving).
 func (s *Session) ServeHostPort() int {
 	return s.serveHostPort
+}
+
+// Key returns the state key the session was prepared with: the checkout-scoped
+// project slug and the agent. Callers key the notify dedup, the client lease and
+// the attach reap off it instead of re-resolving identity from the cwd.
+func (s *Session) Key() state.Key {
+	return s.key
 }
 
 // offerRuntimeHomeMigration is the session-start hook for the opt-in legacy
@@ -96,16 +104,12 @@ func PrepareSandbox(
 	if err != nil {
 		return nil, err
 	}
-
-	layout, guestCWD := resolveBindLayout(cwd, ui)
-
-	projectSlug := git.ProjectSlug()
-
-	a, ok := agent.Lookup(opts.Agent)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent %q", opts.Agent)
+	a, identity, adoption, err := resolveSessionIdentity(ctx, cwd, opts.Agent, opts, ui)
+	if err != nil {
+		return nil, err
 	}
-	k := state.Key{Slug: projectSlug, Agent: a.Name()}
+	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
+	guestCWD := guestWorkspacePath(identity.BindRoot, cwd)
 	// Known --dry-run gates: determineAgentVersion (skips the upgrade check and
 	// legacy fold) and prepareHomeVolume (skips the migration offer) here, plus
 	// volume.ApplyHomeAction (skips the migrate/reset action) and
@@ -125,7 +129,7 @@ func PrepareSandbox(
 	imageInfo, err := image.EnsureImage(
 		ctx,
 		a,
-		projectSlug,
+		k.Slug,
 		buildOptions(opts, agentVersion, opts.Rebuild, currentAgentSource(k) == agentSourceUser),
 		ui,
 	)
@@ -141,7 +145,9 @@ func PrepareSandbox(
 	// Compute the desired config fingerprints once: they seed a fresh home
 	// volume's state (issue #183) and are what persistConfigHashes records.
 	fingerprints := desiredFingerprints(opts, ui)
-	client, vm, homeVol, vs, err := prepareHomeVolume(ctx, k, imageInfo, opts, fingerprints, ui)
+	client, vm, homeVol, vs, err := prepareHomeVolume(
+		ctx, k, imageInfo, opts, fingerprints, ui,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +181,7 @@ func PrepareSandbox(
 	opts.Recreate = recreate
 	opts.ServeHostPort = resolveServeHostPort(opts, serveHostPort)
 
-	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, layout.BindRoot, k, ui)
+	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +210,35 @@ func PrepareSandbox(
 		cwd:           cwd,
 		guestCWD:      guestCWD,
 		serveHostPort: opts.ServeHostPort,
+		key:           k,
 	}, nil
+}
+
+// resolveSessionIdentity looks up the agent and derives the workspace identity
+// for cwd, then adopts a legacy origin-keyed identity (#144). Adoption runs
+// before any other work so its notice explains the pause and the runner image
+// builds under the effective (checkout-scoped) tag; both dry-run gates make it
+// read-only, so the rest of the run keeps resolving against the legacy location.
+// It returns the adoption so the caller can use the effective slug; a home
+// volume a VM-only adoption preserved is recorded in the checkout state, not in
+// the adoption value.
+func resolveSessionIdentity(
+	ctx context.Context,
+	cwd, agentName string,
+	opts options.RunOptions,
+	ui termio.UI,
+) (agent.Agent, git.Identity, IdentityAdoption, error) {
+	a, ok := agent.Lookup(agentName)
+	if !ok {
+		return nil, git.Identity{}, IdentityAdoption{}, fmt.Errorf("unknown agent %q", agentName)
+	}
+	identity := git.ResolveIdentity(cwd)
+	apply := !opts.DryRun && !opts.DryRunVM
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), apply, ui)
+	if err != nil {
+		return nil, git.Identity{}, IdentityAdoption{}, err
+	}
+	return a, identity, adoption, nil
 }
 
 // determineAgentVersion decides the agent version for the run. A side-effect-free
@@ -263,22 +297,6 @@ func resolveWorkspacePath(dir string) (string, error) {
 	return resolved, nil
 }
 
-// resolveBindLayout decides which host directory to bind at /workspace and the
-// guest directory the agent should start in. A worktree outside its enclosing
-// checkout is bound as-is (keeping today's binding) with a warning, since its
-// shared git dir would not be reachable in the VM.
-func resolveBindLayout(cwd string, ui termio.UI) (git.WorkspaceLayout, string) {
-	layout := git.ResolveWorkspaceLayout(cwd)
-	if layout.OutsideWorktree {
-		ui.Warnf(
-			"worktree %q is outside its checkout %q; git may not resolve inside the VM — keep worktrees inside the checkout",
-			cwd,
-			layout.CheckoutRoot,
-		)
-	}
-	return layout, guestWorkspacePath(layout.BindRoot, cwd)
-}
-
 // guestWorkspacePath maps the host cwd to the directory the agent should start
 // in inside the VM, given the host directory bound at /workspace. When cwd is
 // the bind root (or cannot be related to it) the workspace mount path itself is
@@ -307,6 +325,11 @@ func resolveServeHostPort(opts options.RunOptions, planned int) int {
 // side-effect-free --dry-run), then resolves the project's home volume and its
 // state. It returns the msb client and volume manager for the caller's
 // subsequent reconfig/VM steps.
+//
+// A home volume preserved by a VM-only identity adoption (#144) is not passed
+// here: adoption records it in the checkout state's RecoveredHomeVolume, which
+// ResolveHomeVolume recovers, so the reference survives any caller that discards
+// the adoption result or any step that fails before home resolution.
 func prepareHomeVolume(
 	ctx context.Context,
 	k state.Key,
@@ -361,6 +384,29 @@ func persistOfferedVersion(k state.Key, version string, ui termio.UI) {
 	}
 }
 
+// projectVMHomeVolume reports whether the project VM for k exists and the home
+// volume it has mounted. A nil handle counts as "no VM". A mounts read failure
+// returns exists=true together with the error, so a caller that would destroy the
+// VM on the strength of this result can fail closed instead of dropping its
+// volume; the best-effort home-recovery caller swallows it.
+func projectVMHomeVolume(ctx context.Context, client msb.Client, k state.Key) (string, bool, error) {
+	handle, err := client.GetSandbox(ctx, projectVMName(k))
+	if err != nil {
+		if msb.IsNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	if handle == nil {
+		return "", false, nil
+	}
+	liveMounts, err := handle.ConfigMounts()
+	if err != nil {
+		return "", true, err
+	}
+	return liveMounts[mounts.VMHomeDir].Named, true, nil
+}
+
 // liveHomeVolume returns the home volume currently mounted by the project VM,
 // or "" when the project has no VM or its mounts cannot be read. It lets home
 // resolution recover the volume when the state file was lost (issue #219). The
@@ -369,22 +415,12 @@ func persistOfferedVersion(k state.Key, version string, ui termio.UI) {
 // not-found VM is expected (first run); any other lookup error is logged so a
 // transient failure is visible rather than silently orphaning the volume.
 func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui termio.UI) string {
-	handle, err := client.GetSandbox(ctx, projectVMName(k))
+	volume, _, err := projectVMHomeVolume(ctx, client, k)
 	if err != nil {
-		if !msb.IsNotFound(err) {
-			ui.Verbosef("project VM lookup for home-volume recovery failed: %v (continuing)", err)
-		}
+		ui.Verbosef("project VM lookup for home-volume recovery failed: %v (continuing)", err)
 		return ""
 	}
-	if handle == nil {
-		return ""
-	}
-	liveMounts, err := handle.ConfigMounts()
-	if err != nil {
-		ui.Verbosef("reading VM mounts for home-volume recovery failed: %v (continuing)", err)
-		return ""
-	}
-	return liveMounts[mounts.VMHomeDir].Named
+	return volume
 }
 
 // resolveHomeVolume resolves the project home volume, reusing the existing one

@@ -150,13 +150,13 @@ func TestStartNotifyWatcherReturnsWatchError(t *testing.T) {
 // --- Run serve-only: client lease acquisition fails ---
 
 func TestRunServeOnlyClientLeaseFailureWarns(t *testing.T) {
-	slug := git.ProjectSlug()
-	blockClientLease(t, slug)
+	key := state.Key{Slug: "serveonlyleasefail", Agent: "opencode"}
+	blockClientLease(t, key.Slug)
 	ui := &termio.Mock{}
 	sb := msb.NewMockSandbox(msb.SandboxOpts{})
 	orig := prepareSandbox
 	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
-		return &fakePrepared{sb: sb}, nil
+		return &fakePrepared{sb: sb, key: key}, nil
 	}
 	defer func() { prepareSandbox = orig }()
 
@@ -190,6 +190,54 @@ func TestRunServeOnlyClientLeaseFailureWarns(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected client lease warning, got %v", ui.WarnCalls)
+	}
+}
+
+// --- Run: the client lease is keyed by the session's prepared key ---
+
+// TestRunUsesSessionKeyForLease pins the session-key wiring: Run keys the client
+// lease (and therefore the reap) off the key PrepareSandbox prepared instead of
+// re-resolving identity from the cwd, so the lease lands under the session's
+// checkout slug. The lease file is removed on release, but its clients/
+// directory remains, which is what the assertion observes.
+func TestRunUsesSessionKeyForLease(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	key := state.Key{Slug: "sessionkeyslug", Agent: "opencode"}
+	ui := &termio.Mock{}
+	sb := &msb.MockSandbox{AttachCode: 0, Name_: "test-vm"}
+	sb.ShellOut = map[string]msb.ShellResult{
+		"curl -sf http://127.0.0.1:4096/session/status": msb.NewTestResult(
+			true, 0, `{"s1":{"type":"idle","attempt":0}}`, "", nil,
+		),
+	}
+	sb.ExecOut = map[string]msb.ShellResult{
+		"sleep 1h": msb.NewTestResult(true, 0, "", "", nil),
+	}
+	orig := prepareSandbox
+	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+		return &fakePrepared{sb: sb, target: "/workspace", key: key}, nil
+	}
+	defer func() { prepareSandbox = orig }()
+
+	if err := Run(
+		context.Background(),
+		options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)},
+		ui,
+	); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if _, statErr := os.Stat(filepath.Join(state.KeyDir(key), "clients")); statErr != nil {
+		t.Errorf("client lease did not land under the session key dir %s: %v", state.KeyDir(key), statErr)
+	}
+
+	ambientSlug := git.CheckoutSlug()
+	if ambientSlug == key.Slug {
+		t.Fatalf("fixture session slug %q must differ from the ambient slug", key.Slug)
+	}
+	ambientKeyDir := filepath.Join(state.KeyDir(state.Key{Slug: ambientSlug, Agent: "opencode"}), "clients")
+	if _, statErr := os.Stat(ambientKeyDir); statErr == nil {
+		t.Errorf("client lease landed under the ambient checkout slug %q; Run re-resolved identity", ambientSlug)
 	}
 }
 

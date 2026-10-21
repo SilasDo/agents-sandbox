@@ -23,6 +23,13 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := cfgPaths.UserConfigDir(); got != filepath.Join(base, "userconfig") {
 		t.Errorf("UserConfigDir() = %q, want %q", got, filepath.Join(base, "userconfig"))
 	}
+	if got := cfgPaths.UserSlugConfigDir("widget-bbb"); got != filepath.Join(base, "userconfig", "widget-bbb") {
+		t.Errorf(
+			"UserSlugConfigDir() = %q, want %q",
+			got,
+			filepath.Join(base, "userconfig", "widget-bbb"),
+		)
+	}
 	if got := cfgPaths.UserCacheDir(); got != filepath.Join(base, "usercache") {
 		t.Errorf("UserCacheDir() = %q, want %q", got, filepath.Join(base, "usercache"))
 	}

@@ -77,6 +77,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 ### `state/` — State locking (flock, clientlock, claims) and project state
 
 - `claim.go`, `clientlock.go`, `flock.go`, `state.go`, `root.go`, `fingerprint.go` (`state.go`/`root.go` hold the pure `parseHomeState`/`parseRootState` unmarshal steps the readers delegate to)
+- `move.go` — `SlugDir` and `MoveSlugDir`: a project's state slug directory, and the recursive merge that migrates a legacy origin-keyed state onto its checkout slug, returning the source-relative paths it could not move (#144).
 - `references.go` — fail-closed project-state reference scan: `HomeVolumeReferences` and `ImageReferences` (the image analogue), both built on the shared `projectStateReferences` walk
 - `fuzz_test.go` — `FuzzParseState`: both state documents must never panic, classify malformed bytes as `ErrStateUnparsable`, and serialize stably (a re-read of the writer's output yields the same bytes)
 
@@ -87,7 +88,8 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 ### `vm/` — VM lifecycle and orchestration (largest)
 
-- `daemon.go`, `dockerd.go`, `exit.go`, `inspect.go`, `list.go`, `provenance.go`, `reconfig.go`, `run_envstate.go`, `run_orchestrate.go`, `upgrade.go`, `upgrade_state.go`, `vm_control.go`, `vm_env.go`, `vm_lifecycle.go`, `vm_name.go`, `vm_resources.go`, `worktree.go` (`inspect.go` is `InspectSandbox`: the sandbox-inspect detail seam)
+- `daemon.go`, `dockerd.go`, `exit.go`, `inspect.go`, `list.go`, `provenance.go`, `reconfig.go`, `run_envstate.go`, `run_orchestrate.go`, `upgrade.go`, `upgrade_state.go`, `vm_control.go`, `vm_env.go`, `vm_lifecycle.go`, `vm_name.go`, `vm_resources.go`, `worktree.go` (`inspect.go` is `InspectSandbox`: the sandbox-inspect detail seam; `run_orchestrate.go` holds `resolveRunTarget`, the single place that resolves the identity, adopts a legacy one and builds the state key)
+- `adopt.go` — `AdoptLegacyIdentity`/`IdentityAdoption`: the #144 first-run migration (destroy the legacy repo-slug VM, then merge the state onto the checkout slug) and the notice block, including the dry-run variant that stays on the legacy slug; the lost-state VM-only arm records the destroyed VM's home volume in the checkout state (`recovered_home_volume`) before the destroy, and keeps the trigger live until the legacy VM is gone.
 - `create_project_vm_test.go`, `ensure_project_vm_test.go`, `prepare_sandbox_test.go`, `setupsandbox_test.go` — lifecycle setup tests
 - `fuzz_test.go` — `FuzzParseLegacyUpdaterState`: the retired `updater.yaml` reader is panic-free and folds a flat `last_checked` into the opencode agent entry
 

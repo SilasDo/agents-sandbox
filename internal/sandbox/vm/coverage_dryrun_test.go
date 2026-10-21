@@ -55,7 +55,7 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -107,9 +107,7 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 
 // TestPrepareSandboxDryRunVMLaunchSubdirectory covers the guest-CWD derivation:
 // when launched from a repository subdirectory the bound /workspace is the
-// checkout root and the agent starts in the launched subdirectory. The dry-run
-// harness creates no VM, so the /workspace bind source is asserted indirectly
-// via resolveBindLayout (see TestResolveBindLayoutOutsideWorktreeWarns).
+// checkout root and the agent starts in the launched subdirectory.
 func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -142,7 +140,7 @@ func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -228,7 +226,7 @@ func TestPrepareSandboxVolumeError(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.ProjectSlug(), Agent: "opencode"},
+		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
 	)
 
@@ -273,7 +271,7 @@ func TestPrepareSandboxEnsureVMError(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -340,7 +338,7 @@ func TestPrepareSandboxSetUpError(t *testing.T) {
 		},
 	})
 
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellErr: errors.New("shell failed")}
 	sh := &msb.MockSandboxHandle{

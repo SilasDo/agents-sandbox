@@ -18,6 +18,9 @@ import (
 type RootState struct {
 	Migrations map[string]Migration       `yaml:"migrations,omitempty"`
 	Agents     map[string]AgentCheckState `yaml:"agents,omitempty"`
+	// AdoptedHomeVolumes records, per legacy project identity, the checkout that
+	// adopted its lost-state home volume (#144). See AdoptedHomeVolume.
+	AdoptedHomeVolumes map[string]AdoptedHomeVolume `yaml:"adopted_home_volumes,omitempty"`
 }
 
 // MigrationStatus is the terminal or in-flight state of a one-time migration.
@@ -69,6 +72,69 @@ func (s *RootState) SetMigration(name string, m Migration) {
 		s.Migrations = map[string]Migration{}
 	}
 	s.Migrations[name] = m
+}
+
+// AdoptedHomeVolume records the checkout that adopted a legacy project
+// identity's lost-state home volume (#144). A legacy identity (every clone of
+// one origin) has one VM and therefore one home volume, so exactly one checkout
+// may own it. The record is keyed under the *legacy* identity so a second clone
+// can see the claim and start fresh, instead of both recovering the same volume
+// and sharing one home between two VMs.
+//
+//exhaustruct:ignore
+type AdoptedHomeVolume struct {
+	CheckoutSlug string `yaml:"checkout_slug"`
+	Volume       string `yaml:"volume"`
+}
+
+// adoptedHomeVolumeKey keys an adoption claim by the legacy project identity;
+// neither a slug nor an agent name contains "/", so the join is unambiguous.
+func adoptedHomeVolumeKey(slug, agent string) string { return slug + "/" + agent }
+
+// AdoptedHomeVolume returns the adoption claim for a legacy project identity.
+func (s *RootState) AdoptedHomeVolume(slug, agent string) (AdoptedHomeVolume, bool) {
+	claim, ok := s.AdoptedHomeVolumes[adoptedHomeVolumeKey(slug, agent)]
+	return claim, ok
+}
+
+// ClaimAdoptedHomeVolume records checkoutSlug as the owner of the home volume a
+// legacy project identity's VM mounted, initializing the registry if nil.
+func (s *RootState) ClaimAdoptedHomeVolume(slug, agent, checkoutSlug, volume string) {
+	if s.AdoptedHomeVolumes == nil {
+		s.AdoptedHomeVolumes = map[string]AdoptedHomeVolume{}
+	}
+	s.AdoptedHomeVolumes[adoptedHomeVolumeKey(slug, agent)] = AdoptedHomeVolume{
+		CheckoutSlug: checkoutSlug,
+		Volume:       volume,
+	}
+}
+
+// ForgetAdoptedHomeVolume removes every claim a checkout holds for the given
+// volume, once the volume has been recovered into the checkout's own state.
+func (s *RootState) ForgetAdoptedHomeVolume(checkoutSlug, volume string) {
+	for key, claim := range s.AdoptedHomeVolumes {
+		if claim.CheckoutSlug == checkoutSlug && claim.Volume == volume {
+			delete(s.AdoptedHomeVolumes, key)
+		}
+	}
+}
+
+// ClearAdoptedHomeVolume retires a checkout's adoption claim for a recovered
+// volume. It is best-effort bookkeeping: callers warn on error, since a stale
+// claim is harmless once the legacy VM is gone (no other checkout can adopt it).
+func ClearAdoptedHomeVolume(checkoutSlug, volume string) error {
+	if volume == "" {
+		return nil
+	}
+	_, err := WithRootState(true, func(txn *RootTxn) error {
+		before := len(txn.State().AdoptedHomeVolumes)
+		txn.State().ForgetAdoptedHomeVolume(checkoutSlug, volume)
+		if len(txn.State().AdoptedHomeVolumes) == before {
+			return nil
+		}
+		return txn.Commit()
+	})
+	return err
 }
 
 // AgentCheckInterval is the minimum time between network upgrade checks for an

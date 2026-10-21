@@ -336,3 +336,91 @@ func assertNoRootStateTempFiles(t *testing.T) {
 		t.Errorf("leftover root state temp files = %v, want none", matches)
 	}
 }
+
+func TestRootStateAdoptedHomeVolumeRoundTrip(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := writeRootState(RootState{AdoptedHomeVolumes: map[string]AdoptedHomeVolume{
+		adoptedHomeVolumeKey("widget-aaa", "opencode"): {CheckoutSlug: "widget-bbb", Volume: "home-1"},
+	}}); err != nil {
+		t.Fatalf("writeRootState: %v", err)
+	}
+	got, err := ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	claim, ok := got.AdoptedHomeVolume("widget-aaa", "opencode")
+	if !ok || claim.CheckoutSlug != "widget-bbb" || claim.Volume != "home-1" {
+		t.Fatalf("claim = %+v (ok %v)", claim, ok)
+	}
+	if _, ok := got.AdoptedHomeVolume("widget-aaa", "pi"); ok {
+		t.Error("claim leaked across agents")
+	}
+}
+
+func TestRootStateForgetAdoptedHomeVolumeMatchesCheckoutAndVolume(t *testing.T) {
+	var s RootState
+	s.ClaimAdoptedHomeVolume("r", "opencode", "checkout-a", "vol-a")
+	s.ClaimAdoptedHomeVolume("r", "pi", "checkout-a", "vol-b")
+	s.ClaimAdoptedHomeVolume("r2", "opencode", "checkout-b", "vol-a")
+
+	s.ForgetAdoptedHomeVolume("checkout-a", "vol-a")
+
+	if _, ok := s.AdoptedHomeVolume("r", "opencode"); ok {
+		t.Error("matching claim not removed")
+	}
+	if _, ok := s.AdoptedHomeVolume("r", "pi"); !ok {
+		t.Error("another agent's claim of the same checkout removed")
+	}
+	if _, ok := s.AdoptedHomeVolume("r2", "opencode"); !ok {
+		t.Error("the same volume under another checkout removed")
+	}
+}
+
+// TestClearAdoptedHomeVolumeAbsentIsNoOp covers the write-skipping guard: clearing
+// a claim that is not there must not create a root state file where none existed.
+func TestClearAdoptedHomeVolumeAbsentIsNoOp(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := ClearAdoptedHomeVolume("checkout-a", "vol-a"); err != nil {
+		t.Fatalf("ClearAdoptedHomeVolume: %v", err)
+	}
+	if _, err := os.Stat(rootStateFile()); !os.IsNotExist(err) {
+		t.Errorf("ClearAdoptedHomeVolume created a root state file (stat err %v)", err)
+	}
+}
+
+// TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp covers the guard for a volume-less
+// call: a recovered volume string that is empty has no claim to retire, so the
+// transaction must not run at all.
+func TestClearAdoptedHomeVolumeEmptyVolumeIsNoOp(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := ClearAdoptedHomeVolume("checkout-a", ""); err != nil {
+		t.Fatalf("ClearAdoptedHomeVolume: %v", err)
+	}
+	if _, err := os.Stat(rootStateFile()); !os.IsNotExist(err) {
+		t.Errorf("ClearAdoptedHomeVolume created a root state file (stat err %v)", err)
+	}
+}
+
+// TestClearAdoptedHomeVolumeCommitError covers the persistence failure: a claim
+// that is present is removed from the document, so the change is written and a
+// write failure is returned rather than silently dropped.
+func TestClearAdoptedHomeVolumeCommitError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	if err := writeRootState(RootState{AdoptedHomeVolumes: map[string]AdoptedHomeVolume{
+		adoptedHomeVolumeKey("widget-aaa", "opencode"): {CheckoutSlug: "checkout-a", Volume: "vol-a"},
+	}}); err != nil {
+		t.Fatalf("seed claim: %v", err)
+	}
+
+	wantErr := errors.New("marshal boom")
+	orig := marshalRootState
+	marshalRootState = func(any) ([]byte, error) { return nil, wantErr }
+	t.Cleanup(func() { marshalRootState = orig })
+
+	if err := ClearAdoptedHomeVolume("checkout-a", "vol-a"); !errors.Is(err, wantErr) {
+		t.Fatalf("ClearAdoptedHomeVolume() error = %v, want %v", err, wantErr)
+	}
+}

@@ -828,6 +828,63 @@ func TestResolveHomeVolume_RecoversLiveVMVolumeOnMissingState(t *testing.T) {
 	}
 }
 
+// TestResolveHomeVolume_RecoversPersistedAdoptionVolume covers the durable
+// VM-only identity adoption (#144): the checkout state records the home volume a
+// destroyed legacy VM mounted, and resolution finishes the recovery into
+// HomeVolume with the current digest, seeds fingerprints, and clears the marker.
+func TestResolveHomeVolume_RecoversPersistedAdoptionVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	key := state.Key{Slug: "adoptedwidget", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		if name == recovered {
+			return msb.MockVolumeHandle{Name_: name}, nil
+		}
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("volume %s not found", name)
+	}
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
+		return msb.MockVolumeHandle{Name_: name}, nil
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	volName, hs, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:new"},
+		false,
+		state.Fingerprints{Env: state.EnvState{Hash: "envhash"}},
+		"",
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if volName != recovered {
+		t.Errorf("volume = %q, want recovered %q", volName, recovered)
+	}
+	if hs.HomeVolume != recovered || hs.ImageDigest != "sha256:new" || hs.RecoveredHomeVolume != "" {
+		t.Errorf("state = %+v, want the marker recovered into HomeVolume with the digest and cleared", hs)
+	}
+	if hs.EnvState.Hash != "envhash" {
+		t.Errorf("fingerprints used to seed = %+v, want envhash", hs.EnvState)
+	}
+	persisted, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("state not written: %v", err)
+	}
+	if persisted.HomeVolume != recovered || persisted.RecoveredHomeVolume != "" {
+		t.Errorf("persisted state = %+v, want the marker cleared", persisted)
+	}
+}
+
 // TestResolveHomeVolume_RecoveredVolumeMissingStartsFresh verifies that a live
 // VM mount that no longer resolves (e.g. the volume was removed) does not wedge
 // resolution: it falls back to a fresh prefill.
@@ -1521,5 +1578,108 @@ func TestResolveHomeAction_PromptFails_ReturnsKeep(t *testing.T) {
 	}
 	if len(ui.WarnCalls) != 1 {
 		t.Errorf("expected 1 warning on prompt failure, got %d", len(ui.WarnCalls))
+	}
+}
+
+// seedAdoptionClaim records a legacy identity's adoption claim (#144) through the
+// locked root-state transaction, the way an adopting checkout does.
+func seedAdoptionClaim(t *testing.T, legacySlug, agent, checkoutSlug, volume string) {
+	t.Helper()
+	if _, err := state.WithRootState(true, func(txn *state.RootTxn) error {
+		txn.State().ClaimAdoptedHomeVolume(legacySlug, agent, checkoutSlug, volume)
+		return txn.Commit()
+	}); err != nil {
+		t.Fatalf("seed adoption claim: %v", err)
+	}
+}
+
+// TestResolveHomeVolume_ClearsAdoptionClaim covers pruning the ownership record:
+// once recovery folds the preserved volume into the project's own state, the
+// claim that guarded it is spent and must be retired.
+func TestResolveHomeVolume_ClearsAdoptionClaim(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	key := state.Key{Slug: "adoptedwidget", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+	seedAdoptionClaim(t, "widget-aaa", "opencode", key.Slug, recovered)
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		if name == recovered {
+			return msb.MockVolumeHandle{Name_: name}, nil
+		}
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("volume %s not found", name)
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	if _, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:new"},
+		false,
+		state.Fingerprints{},
+		"",
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	root, err := state.ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	if _, ok := root.AdoptedHomeVolume("widget-aaa", "opencode"); ok {
+		t.Errorf("adoption claim survived recovery: %+v", root.AdoptedHomeVolumes)
+	}
+}
+
+// TestResolveHomeVolume_AdoptionClaimClearErrorWarns covers the best-effort
+// clear: a spent claim that cannot be retired (an unreadable root state document)
+// only warns, because the recovery itself already succeeded.
+func TestResolveHomeVolume_AdoptionClaimClearErrorWarns(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	key := state.Key{Slug: "adoptedwidget", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{RecoveredHomeVolume: recovered})
+	seedAdoptionClaim(t, "widget-aaa", "opencode", key.Slug, recovered)
+
+	// Corrupt the root state document after seeding the claim, so clearing the
+	// claim's transaction fails to read it.
+	rootStatePath := filepath.Join(configpaths.Get().UserStateDir(), "state.yaml")
+	if err := os.WriteFile(rootStatePath, []byte("{ corrupt: yaml: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		if name == recovered {
+			return msb.MockVolumeHandle{Name_: name}, nil
+		}
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("volume %s not found", name)
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	if _, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:new"},
+		false,
+		state.Fingerprints{},
+		"",
+		ui,
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(strings.Join(ui.WarnCalls, "\n"), "failed to clear the adoption claim") {
+		t.Errorf("expected a warning about the unretired adoption claim, got %v", ui.WarnCalls)
 	}
 }

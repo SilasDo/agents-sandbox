@@ -114,7 +114,7 @@ func TestDecideReconfigResolveReconfigError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.ProjectSlug()
+	slug := git.CheckoutSlug()
 
 	release, err := state.AcquireClientLease(state.Key{Slug: slug, Agent: "opencode"})
 	if err != nil {

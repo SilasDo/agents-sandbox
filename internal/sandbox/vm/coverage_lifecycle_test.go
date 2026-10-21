@@ -69,6 +69,7 @@ func TestEnsureProjectVMConnectRetryReconnectSucceeds(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -110,6 +111,7 @@ func TestEnsureProjectVMConnectRetryThenStart(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -151,6 +153,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err == nil {
@@ -188,6 +191,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -233,6 +237,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err == nil {
@@ -271,6 +276,7 @@ func TestEnsureProjectVMPostLockConnectReconcileWarn(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -318,6 +324,7 @@ func TestEnsureProjectVMPostLockStartReconcileWarn(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -357,6 +364,7 @@ func TestEnsureProjectVMConnectRetryRefreshError(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err == nil {
@@ -394,6 +402,7 @@ func TestEnsureProjectVMConnectRetryReconcileWarn(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -438,6 +447,7 @@ func TestEnsureProjectVMConnectRetryStartError(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err == nil {
@@ -475,6 +485,7 @@ func TestEnsureProjectVMConnectRetryStartReconcileWarn(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {

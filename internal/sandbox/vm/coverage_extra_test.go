@@ -199,6 +199,7 @@ func TestStopProjectVMStopFnError(t *testing.T) {
 // TestKillProjectVMDryRunRemove covers the kill dry-run branch and the
 // actionWord selection.
 func TestKillProjectVMDryRunRemove(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
 	ui := termio.NewTestMock(t)
 	client := &msb.MockMsbClient{}
 	client.SetGotSandbox(&msb.MockSandboxHandle{
@@ -319,6 +320,7 @@ func TestEnsureProjectVMDryRunVM(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err != nil {
@@ -348,6 +350,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 		"vol",
 		"/workspace",
 		testVMKey(),
+		testVMKey().Slug,
 		&ui,
 	)
 	if err == nil {

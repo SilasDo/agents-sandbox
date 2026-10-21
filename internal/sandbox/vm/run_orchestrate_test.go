@@ -180,7 +180,7 @@ func TestLiveHomeVolumeMountsError(t *testing.T) {
 	if got := liveHomeVolume(context.Background(), mock, k, &ui); got != "" {
 		t.Errorf("liveHomeVolume() = %q, want empty on mounts error", got)
 	}
-	if !strings.Contains(strings.Join(ui.VerboseCalls, " "), "VM mounts") {
+	if !strings.Contains(strings.Join(ui.VerboseCalls, " "), "home-volume recovery") {
 		t.Errorf("expected a verbose mounts-read log, got %v", ui.VerboseCalls)
 	}
 }
@@ -378,5 +378,56 @@ func TestPrepareSandboxResolveWorkspaceDirError(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
 		t.Fatal("expected error when the workspace directory cannot be resolved")
+	}
+}
+
+// TestPrepareHomeVolumeRecoversPersistedAdoptionVolume covers the lost-state
+// migration path (#144): adoption recorded the destroyed legacy VM's home volume
+// in the checkout state and the run never received it in memory, so home
+// resolution must recover it from the state rather than mint a fresh one.
+func TestPrepareHomeVolumeRecoversPersistedAdoptionVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-widget-aaa-opencode-9"
+	k := state.Key{Slug: adoptCheckoutSlug, Agent: adoptAgentName}
+	if err := seedHomeState(k, state.HomeState{RecoveredHomeVolume: recovered}); err != nil {
+		t.Fatalf("seed adoption-recovered state: %v", err)
+	}
+
+	mock := &msb.MockMsbClient{
+		GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "legacy VM already destroyed"}
+		},
+		GetVolumeFn: func(_ context.Context, name string) (msb.VolumeHandle, error) {
+			if name == recovered {
+				return &msb.MockVolumeHandle{Name_: name}, nil
+			}
+			return nil, fmt.Errorf("volume %s not found", name)
+		},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
+			return nil, errors.New("unexpected CreateVolume")
+		},
+	}
+	msb.WithMsbMock(t, mock)
+
+	origOffer := offerRuntimeHomeMigration
+	offerRuntimeHomeMigration = func(_ context.Context, _ msb.Client, _ termio.UI) error { return nil }
+	t.Cleanup(func() { offerRuntimeHomeMigration = origOffer })
+
+	ui := termio.NewTestMock(t)
+	_, _, homeVol, _, err := prepareHomeVolume(
+		context.Background(),
+		k,
+		sandboximage.ImageInfo{Digest: "sha256:def"},
+		options.RunOptions{},
+		state.Fingerprints{},
+		&ui,
+	)
+	if err != nil {
+		t.Fatalf("prepareHomeVolume() error = %v", err)
+	}
+	if homeVol != recovered {
+		t.Errorf("home volume = %q, want the adoption-recovered %q", homeVol, recovered)
 	}
 }

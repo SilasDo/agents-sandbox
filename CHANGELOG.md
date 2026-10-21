@@ -44,6 +44,10 @@ command reports the bare version (e.g. `0.1.0`).
   system store. The script is vendored verbatim from microsandbox v0.7.8 (`data/msb-trust.LICENSE` records the source,
   the hash, and the re-sync command), and its bytes participate in the runner image's content identity (#152). The
   helper's Apache-2.0 license ships with it at `/usr/share/licenses/msb-trust/LICENSE`.
+- CLI: `config paths` prints the launcher-config layers in precedence order (each file layer's resolved path, flagged
+  `(missing)` when absent) and the resolved repo slug, making the per-slug user config dir discoverable. The layer block
+  is stdout; the guidance naming the committed project config and the generic user config is stderr and survives
+  `--quiet`. #144.
 - CLI: `image remove <ref>...` (`rm`) deletes cached runner images by reference and `sandbox remove <name>` (`rm`)
   removes a project VM. `image remove` accepts only `agents-sandbox/runner-*` references and refuses an in-use image
   unless `-f`/`--force` (naming the referencing projects); `sandbox remove` refuses a running VM unless
@@ -158,6 +162,27 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- **Breaking** Project identity is split by scope: a checkout-scoped slug (the resolved git common dir) keys the state
+  directory, VM name, home volume, locks, and runner image tag, while a repo-scoped slug (the origin URL) keys the
+  per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get separate
+  VMs and home volumes, sharing a runner image only best-effort through the build cache; a checkout and the worktrees
+  *inside* it keep sharing everything; a worktree *outside* its checkout gets its own identity instead of being refused.
+  The first post-upgrade run migrates automatically with a notice — it destroys the legacy origin-keyed VM of every
+  agent whose state the move carries, then recursively merges the state directory onto the checkout slug, never
+  overwriting an existing file (anything it cannot move is reported and left in place). A bare root also adopts its
+  pre-split path-derived identity, so a bare-checkout user's saved home volume and per-slug config are not stranded.
+  A surviving legacy VM is itself adopted even when its state file was lost (an issue #219 recovery): its mounted
+  home volume is recorded durably in the checkout state *before* the VM is destroyed, so the previous home volume —
+  credentials and files — is reused by the next run instead of a fresh one being minted, even when the adopting
+  command is not a run (or the run fails before home resolution). A `--dry-run` leaves the legacy
+  layout in place. The adoption trigger skips migration rather than aborting the run when the *checkout* state is
+  corrupt (so the caller's recovery path can still repair it), a bare root reads its pre-split per-slug config before
+  the rename so the first post-upgrade run honours the user's saved settings, and `volume migrate`/`reset`/`edit`
+  accept a pending recovered volume as their source and clear the marker when they commit. A shared legacy
+  identity's recovered home volume is claimed under the legacy identity in the launcher-global root state, so a
+  second clone cannot recover the same volume; the claim is committed before the recovery marker, and a checkout that
+  destroys the shared legacy VM without owning the volume first materializes the owner's marker from the claim (failing
+  the migration closed if it cannot), so the owner's volume is never stranded by another clone's destroy. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the

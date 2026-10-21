@@ -45,6 +45,24 @@ func TestHomeVolumeReferencesScansBothLayouts(t *testing.T) {
 	}
 }
 
+func TestHomeVolumeReferencesProtectsPendingRecoveredVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	key := Key{Slug: "proj-aBc1234D", Agent: "opencode"}
+	vol := "agents-sandbox-home-legacy-aBc1234D-opencode-20260812T123456"
+	if err := writeState(key, HomeState{RecoveredHomeVolume: vol}); err != nil {
+		t.Fatalf("write state: %v", err)
+	}
+
+	references, err := HomeVolumeReferences()
+	if err != nil {
+		t.Fatalf("HomeVolumeReferences: %v", err)
+	}
+	keys := references[vol]
+	if len(keys) != 1 || keys[0] != key {
+		t.Fatalf("references[%q] = %v, want [%v]", vol, keys, key)
+	}
+}
+
 func TestHomeVolumeReferencesIgnoresRootState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	if err := writeRootState(RootState{Migrations: map[string]Migration{
