@@ -233,6 +233,7 @@ func (opencode2Profile) EventStream() EventStreamSpec {
 // data.info.parentID.
 func parseOpencodeV2Event(payload []byte) (StreamEvent, bool) {
 	var raw struct {
+		ID   string `json:"id"`
 		Type string `json:"type"`
 		Data struct {
 			SessionID string `json:"sessionID"`
@@ -259,7 +260,7 @@ func parseOpencodeV2Event(payload []byte) (StreamEvent, bool) {
 	if parentID == "" {
 		parentID = raw.Data.Info.ParentID
 	}
-	return StreamEvent{Type: raw.Type, SessionID: sessionID, ParentID: parentID}, true
+	return StreamEvent{Type: raw.Type, SessionID: sessionID, ParentID: parentID, EventID: raw.ID}, true
 }
 
 // parseOpencodeV2SessionList extracts child session ids from v2's /api/session

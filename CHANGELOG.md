@@ -155,11 +155,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
-- Notifications: a second permission or form request inside one `opencode2` turn now notifies. After the first
-  request the session stayed in its awaiting-input state, so later requests in the same turn were silent; a
-  `session.step.started` event now re-arms the session. v1's seed request is also time-limited, so a stalled
-  `/session` can no longer stop the notify watcher for the rest of the run, and the seed no longer needs `jq`
-  in the runner image, so child-session filtering also works on custom bases.
+- Notifications: a second permission or form request inside one turn now notifies, even when both are asked back
+  to back in a single step. After the first request the session stayed in its awaiting-input state, so a later
+  request in the same turn was silent; each request is now identified by its event id, so distinct requests alert
+  while a replayed one does not. v1's seed request is also time-limited, so a stalled `/session` can no longer stop
+  the notify watcher for the rest of the run, and the seed no longer needs `jq` in the runner image, so
+  child-session filtering also works on custom bases.
 - CLI: a negative or overflow-sized duration is now rejected instead of silently accepted. `--older-than` (and the
   deprecated `--age`) plus the `auto-prune-age`, `manual-prune-age`, `auto-stop-timeout`, and `upgrade-interval` config
   keys used to accept `-1d`, and an oversized day/week count such as `110000d` wrapped `int64` into a negative duration.

@@ -139,6 +139,7 @@ func (opencodeProfile) EventStream() EventStreamSpec {
 func parseOpencodeV1Event(payload []byte) (StreamEvent, bool) {
 	var raw struct {
 		Payload struct {
+			ID         string `json:"id"`
 			Type       string `json:"type"`
 			Properties struct {
 				SessionID string `json:"sessionID"`
@@ -158,6 +159,7 @@ func parseOpencodeV1Event(payload []byte) (StreamEvent, bool) {
 		Type:      raw.Payload.Type,
 		SessionID: raw.Payload.Properties.SessionID,
 		ParentID:  raw.Payload.Properties.Info.ParentID,
+		EventID:   raw.Payload.ID,
 	}, true
 }
 

@@ -143,6 +143,12 @@ type StreamEvent struct {
 	Type      string
 	SessionID string
 	ParentID  string
+	// EventID is the event's envelope id, unique per emission. It tells two
+	// input requests apart when a session already awaits input: a turn can ask
+	// for two approvals back to back in one step, so neither a step boundary
+	// nor the session state distinguishes them, but their ids do. Empty when
+	// the envelope carries no id.
+	EventID string
 }
 
 // EventStreamSpec describes the SSE event stream notify watches for an agent:

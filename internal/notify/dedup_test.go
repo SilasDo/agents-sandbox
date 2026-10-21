@@ -110,24 +110,41 @@ func TestDedupSameClientSecondNotifyDropped(t *testing.T) {
 	}
 }
 
-// TestHandleEventSecondInputInTurnNotifies drives the full path for the v2
-// within-turn gap: the first request claims the input token, a step start
-// releases it, and the second request notifies again.
-func TestHandleEventSecondInputInTurnNotifies(t *testing.T) {
+// TestHandleEventSameStepInputRequestsBothNotify drives the full path for the
+// v2 gap: two approvals asked back to back in one step, with no step boundary
+// between them. The first request claims the input token; the second carries a
+// distinct envelope id, claims its own token, and notifies too.
+func TestHandleEventSameStepInputRequestsBothNotify(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	sink := &sharedSink{}
-	dedup := NewDedup("dedupinturn-a", StateClaimer{}, sink)
+	dedup := NewDedup("dedupinturn-b", StateClaimer{}, sink)
 	tr := NewTracker(opencode2Spec())
 	sid := "ses_top"
 
 	handleEvent(tr, dedup, agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
-	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid})
-	// The user answers; the next step starts, releasing the input claim.
-	handleEvent(tr, dedup, agent.StreamEvent{Type: "session.step.started", SessionID: sid})
-	handleEvent(tr, dedup, agent.StreamEvent{Type: "form.created", SessionID: sid})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_2"})
 
 	if sink.count() != 2 {
-		t.Fatalf("expected both in-turn input requests to notify, got %d", sink.count())
+		t.Fatalf("expected both same-step input requests to notify, got %d", sink.count())
+	}
+}
+
+// TestHandleEventRepeatedInputEventNotifiesOnce is the other direction: the
+// same envelope id (a replayed event) claims the same token and notifies once.
+func TestHandleEventRepeatedInputEventNotifiesOnce(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	sink := &sharedSink{}
+	dedup := NewDedup("dedupinturn-c", StateClaimer{}, sink)
+	tr := NewTracker(opencode2Spec())
+	sid := "ses_top"
+
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"})
+	handleEvent(tr, dedup, agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"})
+
+	if sink.count() != 1 {
+		t.Fatalf("expected a repeat of the same input event to notify once, got %d", sink.count())
 	}
 }
 

@@ -11,6 +11,7 @@ func TestParseOpencodeV1Event(t *testing.T) {
 	serverConnected := `{"payload":{"id":"evt_c","type":"server.connected","properties":{}}}`
 	childCreated := `{"payload":{"type":"session.created","properties":{"sessionID":"ses_child","info":{"id":"ses_child","parentID":"ses_parent"}}}}`
 	topLevelCreated := `{"payload":{"type":"session.created","properties":{"sessionID":"ses_root","info":{"id":"ses_root"}}}}`
+	permissionAsked := `{"payload":{"id":"evt_p","type":"permission.asked","properties":{"sessionID":"ses_1","id":"per_1"}}}`
 
 	cases := []struct {
 		name string
@@ -18,9 +19,25 @@ func TestParseOpencodeV1Event(t *testing.T) {
 		want StreamEvent
 		ok   bool
 	}{
-		{"v1 diff", sessionDiff, StreamEvent{Type: "session.diff", SessionID: "ses_f987482bcffeiws2F2jQHsI18v"}, true},
-		{"v1 idle", sessionIdle, StreamEvent{Type: "session.idle", SessionID: "ses_f987482bcffeiws2F2jQHsI18v"}, true},
-		{"no session id", serverConnected, StreamEvent{Type: "server.connected"}, true},
+		{
+			"v1 diff",
+			sessionDiff,
+			StreamEvent{Type: "session.diff", SessionID: "ses_f987482bcffeiws2F2jQHsI18v", EventID: "evt_a"},
+			true,
+		},
+		{
+			"v1 idle",
+			sessionIdle,
+			StreamEvent{Type: "session.idle", SessionID: "ses_f987482bcffeiws2F2jQHsI18v", EventID: "evt_b"},
+			true,
+		},
+		{
+			"v1 permission carries envelope id",
+			permissionAsked,
+			StreamEvent{Type: "permission.asked", SessionID: "ses_1", EventID: "evt_p"},
+			true,
+		},
+		{"no session id", serverConnected, StreamEvent{Type: "server.connected", EventID: "evt_c"}, true},
 		{
 			"child parent",
 			childCreated,
@@ -49,8 +66,8 @@ func TestParseOpencodeV2Event(t *testing.T) {
 	topLevelCreated := `{"type":"session.created","data":{"sessionID":"ses_root"}}`
 	execStarted := `{"type":"session.execution.started","data":{"sessionID":"ses_1"}}`
 	execSucceeded := `{"type":"session.execution.succeeded","data":{"sessionID":"ses_1"}}`
-	formCreated := `{"type":"form.created","data":{"form":{"id":"frm_1","sessionID":"ses_1","title":"q"}}}`
-	permissionAsked := `{"type":"permission.asked","data":{"sessionID":"ses_1","id":"per_1"}}`
+	formCreated := `{"id":"evt_3","type":"form.created","data":{"form":{"id":"frm_1","sessionID":"ses_1","title":"q"}}}`
+	permissionAsked := `{"id":"evt_2","type":"permission.asked","data":{"sessionID":"ses_1","id":"per_1"}}`
 	connected := `{"type":"server.connected","data":{}}`
 	infoShape := `{"type":"session.updated","data":{"sessionID":"ses_9","info":{"parentID":"ses_root"}}}`
 
@@ -63,14 +80,24 @@ func TestParseOpencodeV2Event(t *testing.T) {
 		{
 			"child",
 			childCreated,
-			StreamEvent{Type: "session.created", SessionID: "ses_child", ParentID: "ses_root"},
+			StreamEvent{Type: "session.created", SessionID: "ses_child", ParentID: "ses_root", EventID: "evt_1"},
 			true,
 		},
 		{"top-level", topLevelCreated, StreamEvent{Type: "session.created", SessionID: "ses_root"}, true},
 		{"exec started", execStarted, StreamEvent{Type: "session.execution.started", SessionID: "ses_1"}, true},
 		{"exec succeeded", execSucceeded, StreamEvent{Type: "session.execution.succeeded", SessionID: "ses_1"}, true},
-		{"form nests session id", formCreated, StreamEvent{Type: "form.created", SessionID: "ses_1"}, true},
-		{"permission", permissionAsked, StreamEvent{Type: "permission.asked", SessionID: "ses_1"}, true},
+		{
+			"form nests session id",
+			formCreated,
+			StreamEvent{Type: "form.created", SessionID: "ses_1", EventID: "evt_3"},
+			true,
+		},
+		{
+			"permission carries envelope id",
+			permissionAsked,
+			StreamEvent{Type: "permission.asked", SessionID: "ses_1", EventID: "evt_2"},
+			true,
+		},
 		{"no session id", connected, StreamEvent{Type: "server.connected"}, true},
 		{
 			"info parent fallback",

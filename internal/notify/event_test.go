@@ -75,22 +75,37 @@ func opencode2Spec() agent.EventStreamSpec {
 	}
 }
 
-// TestTrackerSecondInputInTurnFiresInput guards the v2 gap where a session that
-// awaited input stayed in that state, so a later request in the same turn
-// produced no notification. A step start re-arms busy.
-func TestTrackerSecondInputInTurnFiresInput(t *testing.T) {
+// TestTrackerSameStepInputRequestsBothFire guards the v2 gap where a session
+// that has asked for input stays in stateAwaitingInput. A live probe showed a
+// turn asking for two approvals back to back in one step (two permission.asked
+// events with no step boundary between them), so the second request matched
+// neither the busy nor the idle arm of Handle and produced no notification. The
+// two events are told apart by their envelope ids, not by a step boundary.
+func TestTrackerSameStepInputRequestsBothFire(t *testing.T) {
 	tr := NewTracker(opencode2Spec())
 	sid := "ses_top"
 	tr.Handle(agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
-	first := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid})
+	first := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"})
 	if first == nil || first.Trigger != TriggerInput {
 		t.Fatalf("expected first input notification, got %+v", first)
 	}
-	// The user answers, the turn resumes with a new step, then asks again.
-	tr.Handle(agent.StreamEvent{Type: "session.step.started", SessionID: sid})
-	second := tr.Handle(agent.StreamEvent{Type: "form.created", SessionID: sid})
+	second := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_2"})
 	if second == nil || second.Trigger != TriggerInput {
-		t.Fatalf("expected second input notification after a step started, got %+v", second)
+		t.Fatalf("expected second same-step input notification, got %+v", second)
+	}
+}
+
+// TestTrackerRepeatedInputEventFiresOnce guards the other direction: a replayed
+// or re-delivered input event (same envelope id) must not notify again.
+func TestTrackerRepeatedInputEventFiresOnce(t *testing.T) {
+	tr := NewTracker(opencode2Spec())
+	sid := "ses_top"
+	tr.Handle(agent.StreamEvent{Type: "session.execution.started", SessionID: sid})
+	if n := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"}); n == nil {
+		t.Fatalf("expected first input notification")
+	}
+	if n := tr.Handle(agent.StreamEvent{Type: "permission.asked", SessionID: sid, EventID: "evt_1"}); n != nil {
+		t.Fatalf("same input event should not notify again, got %+v", n)
 	}
 }
 

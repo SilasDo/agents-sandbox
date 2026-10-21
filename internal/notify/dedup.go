@@ -22,17 +22,19 @@ func (StateClaimer) Acquire(slug, key string) (func(), bool, error) {
 	return sandboxstate.AcquireClaim(slug, key)
 }
 
-// Dedup wraps a Backend so a given (session, trigger) transition notifies at
-// most once across every running client of the same project. The first client
-// to claim the token forwards the notification to inner; the rest drop it.
-// Claims are released via SessionBusy when the session returns to work, so a
-// later transition for it can notify again.
+// Dedup wraps a Backend so a given transition notifies at most once across
+// every running client of the same project. The first client to claim the token
+// forwards the notification to inner; the rest drop it. For input triggers the
+// token also carries the source event's envelope id, so two distinct requests
+// within one turn each notify while a replayed event does not. Claims are
+// released via SessionBusy when the session returns to work, so a later
+// transition for it can notify again.
 type Dedup struct {
 	slug    string
 	claimer claimer
 	inner   Backend
 	mu      sync.Mutex
-	claims  map[string]map[Trigger]func()
+	claims  map[string]map[string]func()
 }
 
 // NewDedup builds a Backend that deduplicates notifications for slug across
@@ -43,13 +45,19 @@ func NewDedup(slug string, c claimer, inner Backend) *Dedup {
 		claimer: c,
 		inner:   inner,
 		mu:      sync.Mutex{},
-		claims:  map[string]map[Trigger]func(){},
+		claims:  map[string]map[string]func(){},
 	}
 }
 
-// claimKey derives the stable claim token for a session and trigger.
-func claimKey(sessionID string, t Trigger) string {
-	return fmt.Sprintf("%s-%d", sessionID, int(t))
+// claimKey derives the stable claim token for a notification. An input
+// notification includes its envelope id, so distinct requests get distinct
+// tokens (a turn can ask for two approvals in one step) while a re-delivery of
+// the same event maps back to the same token.
+func claimKey(n Notification) string {
+	if n.Trigger == TriggerInput && n.EventID != "" {
+		return fmt.Sprintf("%s-%d-%s", n.SessionID, int(n.Trigger), n.EventID)
+	}
+	return fmt.Sprintf("%s-%d", n.SessionID, int(n.Trigger))
 }
 
 // Notify claims the token for n and forwards it to inner only when this client
@@ -59,10 +67,10 @@ func (d *Dedup) Notify(n Notification) {
 		d.inner.Notify(n)
 		return
 	}
-	if d.held(n.SessionID, n.Trigger) {
+	key := claimKey(n)
+	if d.held(n.SessionID, key) {
 		return
 	}
-	key := claimKey(n.SessionID, n.Trigger)
 	release, claimed, err := d.claimer.Acquire(d.slug, key)
 	if err != nil {
 		// Fail open: deliver rather than risk dropping a real notification.
@@ -74,23 +82,19 @@ func (d *Dedup) Notify(n Notification) {
 	}
 	d.mu.Lock()
 	if d.claims[n.SessionID] == nil {
-		d.claims[n.SessionID] = map[Trigger]func(){}
+		d.claims[n.SessionID] = map[string]func(){}
 	}
-	d.claims[n.SessionID][n.Trigger] = release
+	d.claims[n.SessionID][key] = release
 	d.mu.Unlock()
 	d.inner.Notify(n)
 }
 
 // held reports whether this client already owns the claim for the session and
-// trigger (a per-process shortcut over the authoritative flock).
-func (d *Dedup) held(sessionID string, t Trigger) bool {
+// token (a per-process shortcut over the authoritative flock).
+func (d *Dedup) held(sessionID, key string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	perSession := d.claims[sessionID]
-	if perSession == nil {
-		return false
-	}
-	_, ok := perSession[t]
+	_, ok := d.claims[sessionID][key]
 	return ok
 }
 

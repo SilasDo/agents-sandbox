@@ -12,6 +12,11 @@ type Tracker struct {
 	spec     agent.EventStreamSpec
 	states   map[string]state
 	children map[string]bool
+	// lastInput records, per session, the envelope id of the input event that
+	// last notified. A turn can ask for two approvals back to back in one step,
+	// so the session is already awaiting input when the second arrives; its
+	// distinct event id is what lets it notify again without a step boundary.
+	lastInput map[string]string
 }
 
 type state int
@@ -26,7 +31,12 @@ const (
 // NewTracker returns a Tracker starting with no known sessions and driven by
 // spec. An absent session is treated as stateIdle.
 func NewTracker(spec agent.EventStreamSpec) *Tracker {
-	return &Tracker{spec: spec, states: map[string]state{}, children: map[string]bool{}}
+	return &Tracker{
+		spec:      spec,
+		states:    map[string]state{},
+		children:  map[string]bool{},
+		lastInput: map[string]string{},
+	}
 }
 
 // SeedChildren marks each non-empty id as a child session, so a subagent
@@ -58,11 +68,18 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 			t.states[e.SessionID] = stateBusy
 		}
 	case eventTypeIn(e.Type, t.spec.AwaitingInput):
-		if st == stateBusy || st == stateIdle {
+		// A request notifies from busy or idle as before. From awaiting input it
+		// notifies only when its envelope id is new, so a second request in the
+		// same step (no step boundary to re-arm busy) still alerts while a
+		// repeat of the same event does not.
+		newRequest := e.EventID != "" && e.EventID != t.lastInput[e.SessionID]
+		if st != stateError && (st == stateBusy || st == stateIdle || newRequest) {
+			t.lastInput[e.SessionID] = e.EventID
 			t.states[e.SessionID] = stateAwaitingInput
 			return &Notification{
 				SessionID: e.SessionID,
 				Trigger:   TriggerInput,
+				EventID:   e.EventID,
 				Title:     t.spec.Name + ": input needed",
 				Body:      "The agent is waiting for your input.",
 			}
@@ -73,6 +90,7 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 			return &Notification{
 				SessionID: e.SessionID,
 				Trigger:   TriggerDone,
+				EventID:   "",
 				Title:     t.spec.Name + ": done",
 				Body:      "The agent finished.",
 			}
@@ -86,6 +104,7 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 		return &Notification{
 			SessionID: e.SessionID,
 			Trigger:   TriggerError,
+			EventID:   "",
 			Title:     t.spec.Name + ": error",
 			Body:      "The session reported an error.",
 		}
@@ -95,7 +114,7 @@ func (t *Tracker) Handle(e agent.StreamEvent) *Notification {
 
 // HandleEventType is a convenience wrapper for tests.
 func (t *Tracker) HandleEventType(typ string) *Notification {
-	return t.Handle(agent.StreamEvent{Type: typ, SessionID: "", ParentID: ""})
+	return t.Handle(agent.StreamEvent{Type: typ, SessionID: "", ParentID: "", EventID: ""})
 }
 
 func eventTypeIn(typ string, eventTypes []string) bool {
