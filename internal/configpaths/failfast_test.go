@@ -36,6 +36,7 @@ func TestFailFastConfigPathsPanics(t *testing.T) {
 		{"ProjectEnvSecretFile", func() { f.ProjectEnvSecretFile() }},
 		{"ProjectEnvSecretYAMLFile", func() { f.ProjectEnvSecretYAMLFile() }},
 		{"ProjectDockerfile", func() { f.ProjectDockerfile() }},
+		{"IgnoredWorktreeConfigDir", func() { f.IgnoredWorktreeConfigDir() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

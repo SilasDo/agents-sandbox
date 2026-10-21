@@ -147,6 +147,10 @@ func (m *mockConfigPaths) ProjectDockerfile() string {
 	return filepath.Join(m.ProjectConfigDir(), dockerfileName)
 }
 
+func (m *mockConfigPaths) IgnoredWorktreeConfigDir() string {
+	return ""
+}
+
 // failFastConfigPaths is the default ConfigPaths installed for tests. Any of
 // its methods panicking signals that a test called production code without
 // installing an isolated or explicit config-paths implementation.
@@ -201,3 +205,8 @@ func (f *failFastConfigPaths) ProjectEnvSecretYAMLFile() string {
 }
 func (f *failFastConfigPaths) UserEnvSecretYAMLFile() string { f.mustMock(); return "" }
 func (f *failFastConfigPaths) ProjectDockerfile() string     { f.mustMock(); return "" }
+
+func (f *failFastConfigPaths) IgnoredWorktreeConfigDir() string {
+	f.mustMock()
+	return ""
+}

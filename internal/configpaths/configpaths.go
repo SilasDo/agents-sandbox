@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/git"
 )
 
 type ConfigPaths interface {
@@ -30,6 +31,7 @@ type ConfigPaths interface {
 	ProjectEnvSecretFile() string
 	ProjectEnvSecretYAMLFile() string
 	ProjectDockerfile() string
+	IgnoredWorktreeConfigDir() string
 }
 
 type realConfigPaths struct{}
@@ -125,19 +127,61 @@ func (c *realConfigPaths) UserHomeDir() (string, error) {
 	return os.UserHomeDir()
 }
 
-// ProjectConfigDir returns the tool's project-config directory: $PWD/agents-sandbox.
-func (c *realConfigPaths) ProjectConfigDir() string { return projectConfigDir }
+// ProjectConfigDir returns the project-config directory: the relative
+// .agents-sandbox resolved against the CWD, or, in a bare checkout whose
+// worktrees live inside the bare root, the absolute <bare-root>/.agents-sandbox.
+// It never creates the directory.
+func (c *realConfigPaths) ProjectConfigDir() string { return c.projectConfigBase() }
 
-// ProjectConfigDirAbs returns the project-config directory as an absolute path by
-// resolving the relative ProjectConfigDir against the current directory, so
-// display can name an explicit location regardless of where it is read. If the
-// current directory cannot be read it degrades to the relative ProjectConfigDir.
-func (c *realConfigPaths) ProjectConfigDirAbs() string {
+// resolveProjectConfig returns the directory project config is read from and,
+// when a bare checkout ignores a worktree-level .agents-sandbox, its path. In a
+// bare checkout the base is the absolute bare-root .agents-sandbox; the worktree
+// is inside the bare root, so a copy there is ignored. Everywhere else the base
+// is the relative constant, resolved against the CWD by the callers.
+func resolveProjectConfig(cwd string) (string, string) {
+	physical, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		physical = cwd
+	}
+	layout := git.ResolveWorkspaceLayout(physical)
+	if !layout.Bare || layout.OutsideWorktree || layout.CheckoutRoot == "" {
+		return projectConfigDir, ""
+	}
+	base := filepath.Join(layout.CheckoutRoot, projectConfigDir)
+	ignored := filepath.Join(physical, projectConfigDir)
+	if info, statErr := os.Stat(ignored); statErr == nil && info.IsDir() {
+		return base, ignored
+	}
+	return base, ""
+}
+
+// projectConfigBase returns the config dir for this process's CWD. It never
+// creates a directory. When os.Getwd fails it degrades to the relative constant,
+// as ProjectConfigDirAbs does.
+func (c *realConfigPaths) projectConfigBase() string {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return projectConfigDir
 	}
-	return filepath.Join(cwd, projectConfigDir)
+	base, _ := resolveProjectConfig(cwd)
+	return base
+}
+
+// ProjectConfigDirAbs returns the project-config directory as an absolute path by
+// resolving the base against the current directory, so display can name an
+// explicit location regardless of where it is read. A bare checkout already
+// yields an absolute base. If the current directory cannot be read it degrades to
+// the relative base.
+func (c *realConfigPaths) ProjectConfigDirAbs() string {
+	base := c.projectConfigBase()
+	if filepath.IsAbs(base) {
+		return base
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return base
+	}
+	return filepath.Join(cwd, base)
 }
 
 // UserEnvFile returns the user-level environment definitions file.
@@ -176,7 +220,7 @@ const (
 
 // ProjectDockerfile returns the project Dockerfile path.
 func (c *realConfigPaths) ProjectDockerfile() string {
-	return filepath.Join(projectConfigDir, dockerfileName)
+	return filepath.Join(c.projectConfigBase(), dockerfileName)
 }
 
 // ProjectAgentConfigDir returns the project-local config dir for the agent,
@@ -186,16 +230,28 @@ func (c *realConfigPaths) ProjectAgentConfigDir(a agent.Agent) string {
 }
 
 func (c *realConfigPaths) ProjectEnvFile() string {
-	return filepath.Join(projectConfigDir, envFileName)
+	return filepath.Join(c.projectConfigBase(), envFileName)
 }
 
 func (c *realConfigPaths) ProjectEnvSecretFile() string {
-	return filepath.Join(projectConfigDir, envSecretFileName)
+	return filepath.Join(c.projectConfigBase(), envSecretFileName)
 }
 
 // ProjectEnvSecretYAMLFile returns the project-level structured secret file.
 func (c *realConfigPaths) ProjectEnvSecretYAMLFile() string {
 	return filepath.Join(c.ProjectConfigDir(), envSecretYAMLFileName)
+}
+
+// IgnoredWorktreeConfigDir returns the worktree-level .agents-sandbox that a
+// bare checkout's base ignores, or "" when none is ignored. It lets callers warn
+// about config the user must move to the bare root.
+func (c *realConfigPaths) IgnoredWorktreeConfigDir() string {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return ""
+	}
+	_, ignored := resolveProjectConfig(cwd)
+	return ignored
 }
 
 // xdgBaseDir resolves an XDG base directory for the given environment variable,
