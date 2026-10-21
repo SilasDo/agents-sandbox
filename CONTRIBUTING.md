@@ -49,6 +49,7 @@ Run these from the module root:
 |----------------------|------------------------------------------------------------|
 | `make test`          | Run the test suite                                         |
 | `make test-race`     | Run the test suite under the race detector                 |
+| `make fuzz`          | Fuzz the parsers for `FUZZTIME` per target (default `30s`)  |
 | `make vulncheck`     | Scan for reachable vulnerabilities (`govulncheck`)         |
 | `make compile-all`   | Compile all code incl. `integration`-tagged test files      |
 | `make lint`          | Run the linter                                             |
@@ -89,6 +90,8 @@ This project defaults to **test-driven development**:
 - `make verify` is the CI-parity check and additionally runs `make test-race` (race detector) and `make vulncheck`
   (`govulncheck` against the Go vulnerability database; needs network on first run). CI runs each as its own job, so run
   `make verify` when a change touches concurrency or dependencies.
+- `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target. The seed corpus and any committed crasher run
+  under `make test`, so a crasher is a regression test first and fuzzing is an on-demand exploration; it is not a CI gate.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
   there; it always runs on `main` and on releases.
