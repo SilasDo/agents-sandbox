@@ -19,21 +19,6 @@ const (
 	labelQuit    = "quit"
 )
 
-func (a VolumeAction) String() string {
-	switch a {
-	case ActionKeep:
-		return labelKeep
-	case ActionMigrate:
-		return labelMigrate
-	case ActionReset:
-		return labelReset
-	case ActionQuit:
-		return labelQuit
-	default:
-		return "unknown"
-	}
-}
-
 // FromKey maps the letter prompt key ("k"/"m"/"r"/"q") to a VolumeAction.
 func FromKey(key string) (VolumeAction, error) {
 	switch key {

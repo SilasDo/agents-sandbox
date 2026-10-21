@@ -20,6 +20,10 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
+// opencodeMergedConfigPath is where the merged opencode config lands in the
+// sandbox home (reprovision exposes it as ConfigFiles.MergedPath).
+const opencodeMergedConfigPath = "/home/dev/.config/opencode/opencode.jsonc"
+
 func TestBuildMountsIncludesTmpfsAtTmp(t *testing.T) {
 	mounts := buildMounts(
 		"test-home-vol",
@@ -228,7 +232,7 @@ func setUpSandboxProvisionsConfig(t *testing.T, provisionMsg string) {
 	}
 
 	wroteConfig := fs.Writes != nil &&
-		fs.Writes[reprovision.AgentConfigPath(opencodeAgent(t), reprovision.VMHomeDir)] != nil
+		fs.Writes[opencodeMergedConfigPath] != nil
 	if !wroteConfig {
 		t.Errorf(
 			"expected config to be provisioned on %s, but opencode.json was never written",
@@ -395,7 +399,7 @@ func TestSetUpSandboxProvisionsUpdatedConfigOnKeep(t *testing.T) {
 	// This simulates attaching to a running VM and choosing "keep": no daemon
 	// restart, but the updated config must still be provisioned so the next
 	// daemon start picks it up.
-	ocPath := reprovision.AgentConfigPath(opencodeAgent(t), reprovision.VMHomeDir)
+	ocPath := opencodeMergedConfigPath
 	fs := msb.NewTestFS(map[string][]byte{
 		ocPath: []byte(`{"model":"old"}`),
 	}, nil)

@@ -6,17 +6,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
 
-func TestHandleEventType(t *testing.T) {
-	tr := NewTracker(opencodeSpec())
-	if n := tr.HandleEventType("message.part.updated"); n != nil {
-		t.Fatalf("busy event should not notify, got %+v", n)
-	}
-	n := tr.HandleEventType("session.idle")
-	if n == nil || n.Trigger != TriggerDone {
-		t.Fatalf("expected done notification, got %+v", n)
-	}
-}
-
 func TestTrackerAwaitingInputFromIdle(t *testing.T) {
 	tr := NewTracker(opencodeSpec())
 	n := tr.Handle(agent.StreamEvent{Type: "question.asked"})

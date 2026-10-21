@@ -31,13 +31,14 @@ func TestComputeImageIdentityRecordsInputs(t *testing.T) {
 	}
 }
 
-func TestImageIdentityValuesUseIdentityLabelKeys(t *testing.T) {
-	id := computeImageIdentity([]byte("FROM ubuntu:24.04\n"), "1.2.3", true)
-	values := id.values()
-	for _, key := range []string{projectDockerfileHashLabelKey, agentVersionLabelKey, dockerLabelKey} {
-		if _, ok := values[key]; !ok {
-			t.Errorf("values() missing key %q", key)
-		}
+// identityLabels is the label map an image built from id carries. Production
+// writes those labels through the identity build args and the Dockerfile's LABEL
+// lines, so this is a test-side oracle only.
+func identityLabels(id imageIdentity) map[string]string {
+	return map[string]string{
+		projectDockerfileHashLabelKey: id.ProjectDockerfileHash,
+		agentVersionLabelKey:          id.AgentVersion,
+		dockerLabelKey:                id.Docker,
 	}
 }
 
@@ -56,7 +57,7 @@ func TestEffectiveDindImpliedByManagedDindBase(t *testing.T) {
 
 func TestBuildReasonsSkipsWhenDockerfileIDMatches(t *testing.T) {
 	id := computeImageIdentity([]byte("FROM ubuntu:24.04\n"), "1.2.3", false)
-	state := runnerImageState{Present: true, DockerfileID: "abc", Labels: id.values()}
+	state := runnerImageState{Present: true, DockerfileID: "abc", Labels: identityLabels(id)}
 	needsBuild, reasons := buildReasons(state, "abc", id)
 	if needsBuild {
 		t.Error("expected no build when the dockerfile-id matches")
@@ -77,7 +78,7 @@ func TestBuildReasonsMissingImage(t *testing.T) {
 }
 
 func TestBuildReasonsNamesChangedComponents(t *testing.T) {
-	existing := computeImageIdentity(nil, "", false).values()
+	existing := identityLabels(computeImageIdentity(nil, "", false))
 	desired := computeImageIdentity([]byte("FROM ubuntu:24.04\n"), "2.0.0", true)
 	state := runnerImageState{Present: true, DockerfileID: "old", Labels: existing}
 	needsBuild, reasons := buildReasons(state, "new", desired)

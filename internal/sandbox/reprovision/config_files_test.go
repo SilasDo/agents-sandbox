@@ -113,7 +113,7 @@ func TestProvisionChownsHomeFiles(t *testing.T) {
 	cf := &ConfigFiles{
 		HasSnippets: true,
 		Merged:      []byte(`{"model":"x"}`),
-		MergedPath:  AgentConfigPath(opencodeTestAgent(), VMHomeDir),
+		MergedPath:  opencodeMergedPath,
 		HomeFiles: map[string][]byte{
 			"/home/dev/.gitconfig":            []byte("user.name=X\n"),
 			"/home/dev/.config/tool/cfg.toml": []byte("k=v\n"),
@@ -134,7 +134,7 @@ func TestProvisionChownsHomeFiles(t *testing.T) {
 			t.Errorf("home file %s was not written", path)
 		}
 	}
-	if _, ok := fs.Writes[AgentConfigPath(opencodeTestAgent(), VMHomeDir)]; !ok {
+	if _, ok := fs.Writes[opencodeMergedPath]; !ok {
 		t.Error("opencode config was not written")
 	}
 
@@ -448,9 +448,9 @@ func TestProvisionRemovesStalePaths(t *testing.T) {
 	cf := &ConfigFiles{
 		HasSnippets: true,
 		Merged:      []byte(`{"model":"x"}`),
-		MergedPath:  AgentConfigPath(opencodeTestAgent(), VMHomeDir),
+		MergedPath:  opencodeMergedPath,
 		Remove: configFileFamilyPaths(
-			AgentConfigPath(opencodeTestAgent(), VMHomeDir),
+			opencodeMergedPath,
 			configFamilyNames(opencodeTestAgent()),
 		),
 	}
@@ -468,7 +468,7 @@ func TestProvisionRemovesStalePaths(t *testing.T) {
 			break
 		}
 	}
-	if fs.Writes[AgentConfigPath(opencodeTestAgent(), VMHomeDir)] == nil {
+	if fs.Writes[opencodeMergedPath] == nil {
 		t.Error("expected merged config written after removal")
 	}
 }
@@ -986,7 +986,7 @@ func TestLoadConfigFilesKeysMergedFirstAndSorted(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadConfigFilesForHost: %v", err)
 		}
-		merged := AgentConfigPath(a, vmHome)
+		merged := filepath.Join(vmHome, ".config", "opencode", "opencode.jsonc")
 		if len(cf.Keys) < 3 {
 			t.Fatalf("Keys = %v, want merged, mirror, and home paths", cf.Keys)
 		}

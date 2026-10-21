@@ -102,13 +102,6 @@ func runtimeConfig() msbSdk.RuntimeConfig {
 // keeping normal command tests on their mocked msb client.
 var runtimeClientIsReal = sandboxmsb.IsRealClient
 
-// InspectRuntime identifies the msb executable selected by the SDK before the
-// SDK itself initializes. It intentionally does not call any SDK operation.
-func InspectRuntime() (Inspection, error) {
-	requiredVersion := msbSdk.SDKVersion()
-	return inspectRuntime(requiredVersion)
-}
-
 // inspectRuntime contains the version-independent inspection logic so invalid
 // SDK metadata can be tested without mutating the linked SDK package.
 func inspectRuntime(requiredVersion string) (Inspection, error) {

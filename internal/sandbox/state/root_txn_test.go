@@ -37,11 +37,11 @@ func TestWithRootStateCommitsState(t *testing.T) {
 	}
 }
 
-func TestWithRootStateMissingIsNotExisting(t *testing.T) {
+func TestWithRootStateMissingGetsZeroState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ok, err := WithRootState(true, func(tx *RootTxn) error {
-		if tx.Exists() {
-			t.Error("Exists() = true, want false for a missing file")
+		if got := tx.State().AgentCheck("opencode"); got != (AgentCheckState{}) {
+			t.Errorf("AgentCheck = %+v, want zero for a missing file", got)
 		}
 		return nil
 	})
@@ -50,7 +50,7 @@ func TestWithRootStateMissingIsNotExisting(t *testing.T) {
 	}
 }
 
-func TestWithRootStatePresentExistsTrue(t *testing.T) {
+func TestWithRootStatePresentLoadsState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	if err := writeRootState(RootState{Updates: Updates{Agents: map[string]AgentCheckState{
 		"opencode": {LatestVersion: "1.0.0"},
@@ -58,9 +58,6 @@ func TestWithRootStatePresentExistsTrue(t *testing.T) {
 		t.Fatalf("seed: %v", err)
 	}
 	ok, err := WithRootState(true, func(tx *RootTxn) error {
-		if !tx.Exists() {
-			t.Error("Exists() = false, want true for a present file")
-		}
 		if tx.State().AgentCheck("opencode").LatestVersion != "1.0.0" {
 			t.Errorf("state not loaded: %+v", tx.State())
 		}
@@ -108,19 +105,6 @@ func TestWithRootStateLockError(t *testing.T) {
 	ok, err := WithRootState(true, func(*RootTxn) error { return nil })
 	if ok || !errors.Is(err, wantErr) {
 		t.Fatalf("ok=%v err=%v, want ok=false and %v", ok, err, wantErr)
-	}
-}
-
-func TestWithRootStateStatError(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	wantErr := errors.New("stat boom")
-	orig := statRootStateFile
-	statRootStateFile = func(string) (os.FileInfo, error) { return nil, wantErr }
-	t.Cleanup(func() { statRootStateFile = orig })
-
-	ok, err := WithRootState(true, func(*RootTxn) error { return nil })
-	if !ok || !errors.Is(err, wantErr) {
-		t.Fatalf("ok=%v err=%v, want ok=true and %v", ok, err, wantErr)
 	}
 }
 

@@ -30,7 +30,7 @@ func TestEnsureImageVerboseNamesChangedInputs(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	WithMockAgentVersion(t, "2.0.0")
 	a := agentOpencode(t)
-	oldLabels := computeImageIdentity(nil, "1.0.0", false).values()
+	oldLabels := identityLabels(computeImageIdentity(nil, "1.0.0", false))
 	oldLabels[dockerfileIDLabelKey] = "stale"
 	built := false
 	docker.WithDockerMock(t, &docker.MockDockerClient{

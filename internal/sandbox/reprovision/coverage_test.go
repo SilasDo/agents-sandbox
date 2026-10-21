@@ -20,6 +20,10 @@ func opencodeTestAgent() agent.Agent {
 	return a
 }
 
+// opencodeMergedPath is where production writes the merged opencode config
+// (ConfigFiles.MergedPath) under VMHomeDir.
+const opencodeMergedPath = "/home/dev/.config/opencode/opencode.jsonc"
+
 // TestLoadConfigFilesWithSnippet verifies that a snippet produces a non-empty
 // OpenCode config and includes the opencode.json key.
 func TestLoadConfigFilesWithSnippet(t *testing.T) {
@@ -38,7 +42,7 @@ func TestLoadConfigFilesWithSnippet(t *testing.T) {
 	if len(cf.Merged) == 0 {
 		t.Error("expected non-empty OpenCode config")
 	}
-	if len(cf.Keys) == 0 || cf.Keys[0] != AgentConfigPath(opencodeTestAgent(), VMHomeDir) {
+	if len(cf.Keys) == 0 || cf.Keys[0] != opencodeMergedPath {
 		t.Errorf("expected opencode config key in Keys, got %v", cf.Keys)
 	}
 }

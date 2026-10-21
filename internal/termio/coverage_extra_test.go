@@ -83,26 +83,6 @@ func TestOutfHiddenAtQuietLevel(t *testing.T) {
 	}
 }
 
-// ---- OutToVerboseRedirect ----
-
-func TestOutToVerboseRedirectOut(t *testing.T) {
-	m := &Mock{}
-	v := &OutToVerboseRedirect{UI: m}
-	v.Out("redirected")
-	if len(m.VerboseCalls) != 1 || m.VerboseCalls[0] != "redirected" {
-		t.Errorf("expected Verbose call with message, got %v", m.VerboseCalls)
-	}
-}
-
-func TestOutToVerboseRedirectOutf(t *testing.T) {
-	m := &Mock{}
-	v := &OutToVerboseRedirect{UI: m}
-	v.Outf("kept repo %s on branch %s", "/p", "feat")
-	if len(m.VerboseCalls) != 1 || m.VerboseCalls[0] != "kept repo /p on branch feat" {
-		t.Errorf("expected formatted Verbose call, got %v", m.VerboseCalls)
-	}
-}
-
 // ---- spinner: animate and finish branches ----
 
 func TestSpinnerColorAnimateAndDone(t *testing.T) {
