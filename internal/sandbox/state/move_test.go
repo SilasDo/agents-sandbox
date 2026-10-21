@@ -284,3 +284,22 @@ func TestMoveSlugDirErrorsWhenEmptiedSourceCannotBeRemoved(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "remove state dir")
 }
+
+// TestStatefulAgentNames covers the enumeration the identity adoption uses to
+// learn every agent whose state a slug-directory move carries: only directories
+// holding a state file are agents; a project-level subdirectory without one (a
+// claim) is not, and a missing slug is empty rather than an error.
+func TestStatefulAgentNames(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	writeFile(t, filepath.Join(SlugDir("widget-abc"), "opencode", "state.yaml"), "home_volume: v1\n")
+	writeFile(t, filepath.Join(SlugDir("widget-abc"), "pi", "state.yaml"), "home_volume: v2\n")
+	writeFile(t, filepath.Join(SlugDir("widget-abc"), "claims", "notify.claim"), "x")
+
+	names, err := StatefulAgentNames("widget-abc")
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"opencode", "pi"}, names)
+
+	missing, err := StatefulAgentNames("absent-slug")
+	require.NoError(t, err)
+	require.Empty(t, missing)
+}

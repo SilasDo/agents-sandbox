@@ -15,6 +15,34 @@ func SlugDir(slug string) string {
 	return slugDir(slug)
 }
 
+// StatefulAgentNames returns the agent names that have a state file under slug,
+// i.e. the agents whose state a slug-directory move will carry. It is how the
+// identity adoption learns every agent it must tear down before moving the whole
+// directory (#144): migrating one agent moves all of their state, so every moved
+// agent's legacy VM has to be destroyed, not only the one the current command
+// names. A missing slug directory, or a subdirectory without a state file, is
+// not an agent and is skipped.
+func StatefulAgentNames(slug string) ([]string, error) {
+	dir := SlugDir(slug)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("read state dir %s: %w", dir, err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, entry.Name(), "state.yaml")); err == nil {
+			names = append(names, entry.Name())
+		}
+	}
+	return names, nil
+}
+
 // MoveSlugDir moves the entries of SlugDir(fromSlug) into SlugDir(toSlug) and
 // returns the source-relative path of every entry it left behind. It is the
 // state-moving half of the per-checkout identity adoption (#144).

@@ -5,7 +5,9 @@ read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), th
 
 # Per-checkout project identity (issue #144)
 
-Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge).
+Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge); rebased onto main and
+reconciled with #247's bare project-config resolver, and the migration hardened for the multi-agent and
+concurrent-adopter cases.
 Date: 2026-10-19.
 
 ## Problem
@@ -40,7 +42,10 @@ slugs keep the `<folder>-<hash>` shape they already parse.
 
 - **repo slug** = `sanitize(origin repo last path segment) + "-" + HashID(origin URL)`; falls back to
   the checkout folder/basename when there is no origin, and to the CWD path when not in a repo. This is
-  the current `projectSlugAt` behavior, unchanged.
+  the current `projectSlugAt` behavior, unchanged. **Exception:** a bare root (a bare repository, which
+  has no worktree) records the old path-derived slug as an additional legacy identity
+  (`Identity.LegacyRepoSlugs`) instead of dropping it, because that is where its pre-split state and
+  per-slug config live; see Migration.
 - **checkout slug** = `sanitize(origin repo last path segment, or checkout basename when no origin) +
   "-" + HashID(resolved git common dir path)`. The folder name still comes from the origin so two
   clones read `foo-<hashA>`, `foo-<hashB>`. The hash input is the symlink-resolved common dir, so all
@@ -53,8 +58,9 @@ slugs keep the `<folder>-<hash>` shape they already parse.
   bind root from #145.
 - **outside worktree**: its own identity (below) — it cannot share its checkout's VM, so it gets one of its own.
 
-`ResolveWorkspaceLayout` already computes `CheckoutRoot` from `resolveGitDir`; the checkout slug reuses
-that derivation (go-git / plain-file inspection, no host `git` binary).
+`ResolveIdentity` folds the former `ResolveWorkspaceLayout` and `projectSlugAt` into one pass and exposes
+`WorktreeRoot` and `Bare` (read from the common git dir's `core.bare`) so the bare project-config resolver
+(`configpaths.resolveProjectConfig`, #247) can consume it.
 
 ## Which artifact uses which slug
 
@@ -93,7 +99,9 @@ builder working and, on a cold cache or offline, network for the base/agent laye
 ## Config
 
 Config stays on the **repo slug**, so its path is byte-identical to today and is shared by every clone
-of a remote. No config migration.
+of a remote. No config migration — except for a bare root, whose pre-split per-slug config directory
+(the path-derived slug) is renamed onto the repo slug during adoption, and only when the target does not
+already exist (see Migration).
 
 The only real gap is discoverability: nothing today prints the slug or the per-slug dir. Add
 `agents-sandbox config paths` (plural) printing every config layer in precedence order, including the
@@ -132,10 +140,12 @@ takes the legacy state, and the others start fresh.
 
 ## Migration (automatic, with a notice)
 
-**Trigger**: in a repo, a legacy origin-keyed **state file** exists at `<state>/<repoSlug>/<agent>/state.yaml`
-and no checkout-keyed **state file** exists at `<state>/<checkoutSlug>/<agent>/state.yaml`. The predicate
-is state-**file** absence, not directory absence, so a stray or aborted run that creates the empty
-checkout directory cannot permanently skip migration. Re-evaluated on each run until it fires.
+**Trigger**: in a repo, a legacy **state file** exists for the agent under one of the identity's legacy slugs
+(the repo slug, plus any `Identity.LegacyRepoSlugs` — a bare root's path-derived slug) at
+`<state>/<legacySlug>/<agent>/state.yaml` and no checkout-keyed **state file** exists at
+`<state>/<checkoutSlug>/<agent>/state.yaml`. The predicate is state-**file** absence, not directory absence,
+so a stray or aborted run that creates the empty checkout directory cannot permanently skip migration.
+Re-evaluated on each run until it fires.
 
 **Entry points: uniform.** Every cwd-derived command that resolves the checkout slug attempts adoption —
 `run`, `shell`, `stop`, `kill`, the `volume …` ops and `build` — not only the paths that write state. A
@@ -146,14 +156,18 @@ permanently un-match the trigger, and orphan the legacy auth and home volume.
 **Serialization.** Adoption runs under the host-only root flock (`state.WithRootState`,
 `internal/sandbox/state/root.go:106`), the existing precedent for a launcher-global operation that does msb
 I/O (`internal/sandbox/runtimemigration/copy.go:52-56`), so two concurrent first-post-upgrade runs cannot
-both destroy and move.
+both destroy and move. The trigger is re-checked while the lock is held: a run that loses the race to
+another checkout sees the state already moved and continues under the checkout identity instead of tripping
+the incomplete-migration failure on a source that is already gone.
 
 **Actions**
 
-1. **Destroy the legacy VM first.** Derive `projectVMName({Slug: repoSlug, Agent})` and destroy it
-   identity-safely if it exists (best-effort; a gone name is fine). This keeps the old VM from running
-   against the shared home volume and from becoming a `ToPrune[<repoSlug>]` entry (see Prune safety).
-2. **Then move** `<state>/<repoSlug>/` to `<state>/<checkoutSlug>/` (project state, `claims/`,
+1. **Destroy the legacy VMs first.** For every legacy slug, enumerate the agents whose state lives there
+   (`state.StatefulAgentNames`) and destroy `projectVMName({Slug: legacySlug, Agent})` identity-safely
+   (best-effort; a gone name is fine). The move carries every agent's state, so a sibling agent's VM left
+   running would keep writing the shared home volume while its next run recreates it under the checkout name
+   over the same volume — and would become a `ToPrune[<legacySlug>]` entry (see Prune safety).
+2. **Then move** `<state>/<legacySlug>/` to `<state>/<checkoutSlug>/` (project state, `claims/`,
    `<agent>/clients/`) as a **recursive merge that never overwrites an existing file**: a free destination
    name is renamed, both-sides-directories recurses, and a colliding file or a file/directory type mismatch
    is left in the legacy location and reported. A plain rename of the whole directory fails with
@@ -182,12 +196,13 @@ so deferring it costs nothing.
 
 **Notice**: emitted once, and **explicit about everything that moved, with absolute paths** — the state
 directory (old → new), the destroyed legacy VM name, the preserved home volume name, the old → new VM
-name, and the old → new image tag. The move is the idempotence record: the legacy state file is gone
-afterward, so the notice does not re-fire. A legacy identity is shared by every clone of one origin, so
-whichever clone runs first adopts it; the others then find no legacy state, start with their own fresh
-state and home volume, and get **no notice at all** — from their side there was nothing to migrate. That
-asymmetry is inherent in moving one shared identity rather than copying it: warning the later clones would
-need the adoption to record something they can read.
+name, and the old → new image tag. With an extra legacy identity (a bare root), the block adds a second
+state-dir row and a `config dir` row for the per-slug config directory renamed onto the repo slug. The move
+is the idempotence record: the legacy state file is gone afterward, so the notice does not re-fire. A legacy
+identity is shared by every clone of one origin, so whichever clone runs first adopts it; the others then
+find no legacy state, start with their own fresh state and home volume, and get **no notice at all** — from
+their side there was nothing to migrate. That asymmetry is inherent in moving one shared identity rather
+than copying it: warning the later clones would need the adoption to record something they can read.
 
 ## Prune safety
 
@@ -246,13 +261,15 @@ adoption, dry-run, prune and outside-worktree refinements from the same design r
 sections above.
 
 - **Identity API.** `git.ProjectSlug()` retires. `internal/git` gains `ResolveIdentity(cwd)` returning the
-  bind root, checkout root, outside-worktree flag, repo slug and checkout slug, plus the accessors
-  `RepoSlug()` and `CheckoutSlug()`. Explicit names, because after the split every call site is a
-  judgement call. `internal/git` stays a leaf — hashing and layout inspection only, no knowledge of state
-  paths or config dirs — which is what keeps `cmd`/`session`/`vm` cycle-free.
+  bind root, checkout root, worktree root, outside-worktree flag, bare flag, repo slug, checkout slug and
+  `LegacyRepoSlugs`, plus the accessors `RepoSlug()` and `CheckoutSlug()`. Explicit names, because after the
+  split every call site is a judgement call. `internal/git` stays a leaf — hashing and layout inspection
+  only, no knowledge of state paths or config dirs — which is what keeps `cmd`/`session`/`vm` cycle-free.
 - **One git-inspection pass.** `ResolveIdentity` folds `ResolveWorkspaceLayout` (`internal/git/workspace.go:25`)
   and `projectSlugAt` (`internal/git/git.go:63`) together and resolves symlinks internally, so `run` and
-  `stop` cannot compute different checkout slugs on macOS (`/tmp` vs `/private/tmp`).
+  `stop` cannot compute different checkout slugs on macOS (`/tmp` vs `/private/tmp`). `ResolveWorkspaceLayout`
+  and `WorkspaceLayout` are deleted; `configpaths.resolveProjectConfig` (#247) consumes `Identity.Bare`/
+  `WorktreeRoot` instead.
 - **Adoption lives in `internal/sandbox/vm`**, reachable from every entry point (`vm` imports
   `git`/`state`/`msb`/`naming` and is imported by `cmd` and `session`). The destroy half reuses
   `GetSandbox` → `SandboxHandle.Destroy` with the `IsReplaced` fail-closed handling of

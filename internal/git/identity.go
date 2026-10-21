@@ -24,6 +24,13 @@ type Identity struct {
 	Bare            bool   // the shared git dir is a bare repository
 	RepoSlug        string // origin-derived; shared by every clone of a remote
 	CheckoutSlug    string // common-dir-derived, or worktree-root-derived when outside
+	// LegacyRepoSlugs lists additional origin-keyed identities whose project state
+	// and per-slug config predate this one and must still be adopted. It is only
+	// non-empty for the bare root itself: a bare repository has no worktree, so
+	// the old ProjectSlug fell back to the cwd path there while every worktree
+	// inside it kept the origin-derived slug. Adopting both keeps a bare-root
+	// user's saved home and config instead of stranding them.
+	LegacyRepoSlugs []string
 }
 
 // ResolveIdentity derives the workspace layout and both project slugs for cwd in
@@ -62,15 +69,29 @@ func ResolveIdentity(cwd string) Identity {
 		checkoutHashInput = worktreeRoot
 	}
 	repoSlug, checkoutSlug := identitySlugs(worktreeRoot, bindRoot, checkoutHashInput)
-	return Identity{
+	bare := isBare(commonGitDir)
+	identity := Identity{
 		BindRoot:        bindRoot,
 		CheckoutRoot:    checkoutRoot,
 		WorktreeRoot:    worktreeRoot,
 		OutsideWorktree: outsideWorktree,
-		Bare:            isBare(commonGitDir),
+		Bare:            bare,
 		RepoSlug:        repoSlug,
 		CheckoutSlug:    checkoutSlug,
+		LegacyRepoSlugs: nil,
 	}
+	// The bare root is not a linked worktree, so bindRoot is the worktree root
+	// itself: this is the cwd that predates the split with a path-derived slug.
+	if bare && bindRoot == worktreeRoot {
+		if legacy := projectSlug(
+			sanitizeFolderName(filepath.Base(worktreeRoot)),
+			worktreeRoot,
+		); legacy != repoSlug &&
+			legacy != checkoutSlug {
+			identity.LegacyRepoSlugs = []string{legacy}
+		}
+	}
+	return identity
 }
 
 // RepoSlug returns the repo slug of the current working directory: the value
@@ -107,9 +128,12 @@ func nonRepoIdentity(resolved string) Identity {
 	return Identity{
 		BindRoot:        resolved,
 		CheckoutRoot:    "",
+		WorktreeRoot:    "",
 		OutsideWorktree: false,
+		Bare:            false,
 		RepoSlug:        slug,
 		CheckoutSlug:    slug,
+		LegacyRepoSlugs: nil,
 	}
 }
 

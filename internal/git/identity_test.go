@@ -396,6 +396,43 @@ func TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot(t *testing.T) {
 	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
 }
 
+// TestResolveIdentityBareRootRecordsLegacySlug pins the extra legacy identity a
+// bare root carries. Before the identity split a bare repository (which has no
+// worktree) fell back to a cwd-path-derived slug, while every worktree inside it
+// kept the origin-derived one; the bare root must therefore adopt from both so a
+// bare-root user's saved home and per-slug config are not stranded.
+func TestResolveIdentityBareRootRecordsLegacySlug(t *testing.T) {
+	origin := testutil.InitRepo(t)
+	root := resolvePath(t.TempDir())
+	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
+	testutil.RunGit(t, filepath.Join(root, ".git"), "worktree", "add", filepath.Join(root, "main"))
+
+	bare := ResolveIdentity(root)
+	legacy := projectSlug(sanitizeFolderName(filepath.Base(root)), root)
+
+	require.Equal(t, []string{legacy}, bare.LegacyRepoSlugs)
+	require.NotEqual(t, legacy, bare.RepoSlug)
+	require.NotEqual(t, legacy, bare.CheckoutSlug)
+
+	// A worktree inside the bare root has no extra legacy source: its pre-split
+	// slug was already the origin-derived one.
+	require.Empty(t, ResolveIdentity(filepath.Join(root, "main")).LegacyRepoSlugs)
+}
+
+// TestResolveIdentityBareRootWithoutOriginHasNoExtraLegacySlug keeps the common
+// no-origin case from double-counting: there the repo slug already is the
+// path-derived one, so there is nothing extra to adopt.
+func TestResolveIdentityBareRootWithoutOriginHasNoExtraLegacySlug(t *testing.T) {
+	origin := testutil.InitRepo(t)
+	root := resolvePath(t.TempDir())
+	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
+	testutil.RunGit(t, filepath.Join(root, ".git"), "remote", "remove", "origin")
+
+	id := ResolveIdentity(root)
+
+	require.Empty(t, id.LegacyRepoSlugs)
+}
+
 func TestRepoSlugWithoutOriginUnchanged(t *testing.T) {
 	root := newRepo(t, "")
 	folder := sanitizeFolderName(filepath.Base(root))

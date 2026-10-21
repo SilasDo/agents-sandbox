@@ -160,9 +160,11 @@ command reports the bare version (e.g. `0.1.0`).
   per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get separate
   VMs and home volumes, sharing a runner image only best-effort through the build cache; a checkout and the worktrees
   *inside* it keep sharing everything; a worktree *outside* its checkout gets its own identity instead of being refused.
-  The first post-upgrade run migrates automatically with a notice — it destroys the legacy origin-keyed VM, then
-  recursively merges the state directory onto the checkout slug, never overwriting an existing file (anything it cannot
-  move is reported and left in place). A `--dry-run` leaves the legacy layout in place. #144.
+  The first post-upgrade run migrates automatically with a notice — it destroys the legacy origin-keyed VM of every
+  agent whose state the move carries, then recursively merges the state directory onto the checkout slug, never
+  overwriting an existing file (anything it cannot move is reported and left in place). A bare root also adopts its
+  pre-split path-derived identity, so a bare-checkout user's saved home volume and per-slug config are not stranded.
+  A `--dry-run` leaves the legacy layout in place. #144.
 - `opencode2` now reads its agent config from `~/.config/agents-sandbox/opencode2/` (and the project equivalent
   `.agents-sandbox/opencode2/`) instead of the shared `opencode` dir. While no `opencode2` dir exists it falls back to the
   old `opencode` dir — which the `opencode` agent also uses — and warns on every run while it does; creating the
