@@ -23,6 +23,17 @@ would break the fictional test slugs and the fuzz round-trip property; a foreign
 home always fails not-found) and `pruning/state.go`'s name-only task heuristic (every task sandbox we
 create carries both the label and the digit suffix).
 
+A second, adversarial red-team review then found a real parser regression: `findHashSuffix` anchored
+on the *first* hash-shaped segment, so a folder whose own last segment is 14 alphanumerics
+(`go-1234567890abcd-<hash>`) shadowed the real slug hash, and the prefix-free home-volume parser (new
+here) mis-parsed it, defeating `volume.checkForActiveVMs`. Fixed by scanning right-to-left for the
+rightmost 14-alnum run that is a whole hyphen-delimited segment — a naive last match is wrong, because
+a task sandbox's 19-digit nanos run also holds a `-`-preceded 14-alnum window. Pinned by regression
+tests and a new `FuzzArtifactNameRoundTrip` (the pre-existing fuzz only covered `ParseImageTag`, which
+is why the bug slipped through). The adversarial review's other findings were accepted as positional
+ownership (`python:3.12`-shaped no-slash refs) or unproven/unreachable (mixed-version concurrency,
+transient `ImageInspect` errors).
+
 ## Global Constraints
 
 - Target name shapes (exact): project VM `<slug>-<agent>`; task sandbox `<slug>-<agent>-<nanos>`; home volume `<slug>-<agent>-<ts>`; msb runner image ref `<slug>:<agent>-latest`; Docker runner image `agents-sandbox/runner-<slug>:<agent>-latest` (unchanged).
