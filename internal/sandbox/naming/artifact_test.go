@@ -62,6 +62,24 @@ func TestParseVMNameBothSchemes(t *testing.T) {
 	}
 }
 
+// TestParseNamesWithHashShapedFolderSegment pins the anchor against a folder
+// whose own last segment is 14 alphanumerics: the real slug hash is the
+// rightmost segment-bounded run, so the folder segment must not be taken as the
+// hash (which would fold the hash and agent into the slug).
+func TestParseNamesWithHashShapedFolderSegment(t *testing.T) {
+	slug := "go-1234567890abcd-1mjusbm3wikhb0"
+	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
+		ParseVMName(ProjectVMName(slug, "opencode")))
+	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
+		ParseVMName(LegacyProjectVMName(slug, "opencode")))
+	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "claude-code", Task: true},
+		ParseVMName(TaskSandboxName(slug, "claude-code", 1729000000000000000)))
+	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
+		ParseHomeVolumeName(HomeVolumeName(slug, "opencode", "20260812T123456")))
+	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
+		ParseHomeVolumeName(LegacyHomeVolumeName(slug, "opencode", "20260812T123456")))
+}
+
 func TestParseHomeVolumeNameHyphenatedAgent(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "claude-code"},
 		ParseHomeVolumeName("myproj-1mjusbm3wikhb0-claude-code-20260812T123456"))

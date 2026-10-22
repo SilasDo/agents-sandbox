@@ -61,12 +61,26 @@ func DockerImageRef(slug, agent string) string {
 	return DockerImagePrefix + slug + ":" + agent + "-latest"
 }
 
-// findHashSuffix finds the start index of a 14-character base36 hash suffix
-// in the name remainder (e.g. "agents-sandbox-1mjusbm3wikhb0" -> returns 6, pointing
-// at the '1' in the 14-char hash). Returns -1 when no such suffix is found.
+// findHashSuffix finds the start index of the 14-character base36 project-slug
+// hash in a name remainder. It scans right-to-left for the last 14-character
+// lowercase-alphanumeric run that forms a whole hyphen-delimited segment
+// (preceded by '-', and followed by '-' or the end of the name).
+//
+// Right-to-left with the segment boundary is what makes the anchor unambiguous.
+// The layer name immediately following the hash is an agent and then, for a task
+// sandbox, an all-digit nanos run; a folder's own last segment may itself be
+// hash-shaped. Anchoring on the *first* run would pick that folder segment, and
+// anchoring on the last run without a boundary would pick the nanos run (whose
+// first 14 digits are preceded by '-'). The real hash is the rightmost run that
+// is bounded by '-' or the end, so it is the only one that satisfies both.
+//
+// Returns -1 when no such suffix is found.
 func findHashSuffix(name string) int {
-	for i := 1; i < len(name)-13; i++ {
+	for i := len(name) - 14; i >= 1; i-- {
 		if name[i-1] != '-' {
+			continue
+		}
+		if i+14 != len(name) && name[i+14] != '-' {
 			continue
 		}
 		ok := true

@@ -13,6 +13,14 @@ func TestHashSuffix(t *testing.T) {
 		{"hash followed by branch", "agents-sandbox-1mjusbm3wikhb0-main", 15},
 		{"hash embedded in multi-dash slug", "my-project-1mjusbm3wikhb0-develop", 11},
 		{"no hash - short string", "abc-def", -1},
+		// A folder whose own last segment is hash-shaped must not shadow the
+		// real hash: the rightmost bounded run is the slug hash.
+		{"hash-shaped folder segment", "go-1234567890abcd-1mjusbm3wikhb0-opencode", 18},
+		// A task sandbox's all-digit nanos run is longer than 14, so its interior
+		// is not a bounded segment and must not be mistaken for the hash.
+		{"task nanos after the hash", "myproj-1mjusbm3wikhb0-opencode-1729000000000000000", 7},
+		// A trailing run that is not the last segment is not the hash either.
+		{"hash not at end", "myproj-1mjusbm3wikhb0-opencode", 7},
 	}
 	for _, c := range cases {
 		got := findHashSuffix(c.in)

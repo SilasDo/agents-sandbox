@@ -29,7 +29,10 @@ func imageSize(bytes *int64) string {
 	return humanize.FormatBytes(uint64(*bytes))
 }
 
-// ListImages returns the cached runner images.
+// ListImages returns the cached runner images. Ownership is positional: the
+// private runtime home holds only objects agents-sandbox created, so a reference
+// is a runner image when ParseImageTag resolves it to a single-segment slug; a
+// registry/repository reference (a slash) parses empty and is excluded.
 func ListImages(ctx context.Context) ([]Info, error) {
 	handles, err := msb.Get().ImageList(ctx)
 	if err != nil {

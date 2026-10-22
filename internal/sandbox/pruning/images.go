@@ -23,7 +23,9 @@ type ImageReport struct {
 // PruneImages prunes MSB runner-image references that are no longer referenced
 // by a live slug, then asks microsandbox to reclaim unreferenced image data.
 // Kept are per-agent "-latest" tags and any image a kept sandbox still
-// references, plus host-side dangling Docker images.
+// references, plus host-side dangling Docker images. Ownership is positional
+// (see ListImages), so a reference is a runner image when ParseImageTag resolves
+// it to a single-segment slug.
 func PruneImages(
 	ctx context.Context,
 	pruneState PruneState,
