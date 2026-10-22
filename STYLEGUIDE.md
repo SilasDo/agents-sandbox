@@ -46,17 +46,16 @@ reader has no reason to know yet.
 
 ```text
 Before:  Each project gets one sandbox per (checkout, agent).
-After:   Each project checkout gets its own sandbox, and each agent in it gets its own.
-         The two names in that sentence identify that pair.
+After:   Each project checkout gets its own sandbox. Switching agents creates independent sandboxes.
 ```
 
 **2. Lead a section with its applicability.** The first sentence of a conditional section names who it applies to, so
 everyone else can skip it.
 
 ```text
-Before:  The sandbox stops after a period of inactivity.
-After:   opencode only: the sandbox stops after a period of inactivity.
-         opencode2, pi, and Claude Code stop only when you stop them.
+Before:  The sandbox stops after a period of inactivity. opencode waits for active agent sessions before stopping.
+After:   opencode only: the sandbox waits for active sessions before stopping.
+         opencode2, pi, and Claude Code skip that wait and stop when the idle timeout expires.
 ```
 
 **3. Order by universality and search intent, not taxonomy.** Actions that apply to everyone and are commonly

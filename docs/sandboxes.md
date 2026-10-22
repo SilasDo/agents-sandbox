@@ -22,7 +22,28 @@ where you do; the sections that follow carry the detail.
 | Reclaim stale sandboxes, volumes, and images | `agents-sandbox prune --dry-run`, then `agents-sandbox prune --yes` |
 | See storage use | `agents-sandbox df` |
 
-### Listing sandboxes
+## Stopping and removing a sandbox
+
+```console
+agents-sandbox stop                    # graceful stop; keeps the sandbox for the next run
+agents-sandbox stop -f                 # stop and delete the sandbox
+agents-sandbox kill                    # force power-off; runtime state may be corrupted
+agents-sandbox kill -f                 # kill and delete the sandbox
+agents-sandbox sandbox remove <name>   # delete the sandbox
+```
+
+`stop` is graceful and keeps the sandbox, so the next run starts from where you left off. `kill` powers the sandbox
+off immediately, without a graceful shutdown, so its runtime state may be corrupted. The `-f` (`--force`) flag on
+`stop` or `kill` also deletes the sandbox once it has stopped. `sandbox remove` deletes the sandbox too, but refuses
+a running one unless `--force` is set, which stops it first.
+
+Deleting the sandbox is not a reset: the project's saved state stays. The launcher keeps the project's state file
+(which records the current home volume) and the home volume itself, so the next run recreates the sandbox against the
+same home volume.
+
+> **Note:** The home volume holds the agent's configuration and session history. Only `prune` reclaims it; see Pruning.
+
+## Listing sandboxes
 
 ```console
 agents-sandbox list
@@ -46,7 +67,7 @@ A sandbox follows microsandbox's state machine:
 
 Unknown statuses are treated as unsafe and are not pruned or reused automatically.
 
-### Pruning
+## Pruning
 
 Reclaim stale sandboxes, home volumes, and images:
 
@@ -109,31 +130,9 @@ Each run follows this lifecycle:
 - Cleanup: Detach
 ```
 
-## Stopping and removing a sandbox
-
-```console
-agents-sandbox stop                    # graceful stop; state stays for the next run
-agents-sandbox stop -f                 # stop and remove the sandbox's persisted state
-agents-sandbox kill                    # force power-off; state may be corrupted
-agents-sandbox kill -f                 # kill and remove the sandbox's persisted state
-agents-sandbox sandbox remove <name>   # remove the sandbox
-```
-
-`stop` is graceful and keeps the sandbox's state, so the next run starts from where you left off. `kill` powers the
-sandbox off immediately, without a graceful shutdown, and its state may be corrupted. The `-f` (`--force`) flag on `stop`
-or `kill` also removes the sandbox's persisted state. `sandbox remove` deletes the sandbox but leaves that state in
-place, so the next run recreates the sandbox against the same recorded home volume, and it refuses a running sandbox
-unless `--force` is set, which stops it first.
-
-> **Note:** Stopping or removing a sandbox never deletes its home volume. The volume holds the agent's state and
-> configuration, and `prune` reclaims it; see Pruning.
-
 ## Identity: one sandbox per checkout and agent
 
-Each checkout gets its own sandbox, and each agent inside it gets its own. The two names that follow identify that
-pair.
-
-The sandbox name is built from the checkout and the agent:
+Each checkout gets its own sandbox, and each agent inside it gets its own. The sandbox name is built from the checkout and the agent:
 
 ```text
 agents-sandbox-vm-<checkout-slug>-<agent>
