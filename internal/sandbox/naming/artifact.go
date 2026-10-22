@@ -296,6 +296,9 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	if hashStart := findHashSuffix(remainder); hashStart != -1 {
+		if slug, digest, ok := legacyDigestName(remainder, hashStart); ok {
+			return ArtifactInfo{Slug: slug, Digest: digest, Agent: "", Task: false}
+		}
 		folderName := remainder[:hashStart-1]
 		hash := remainder[hashStart : hashStart+14]
 		slug := folderName + "-" + hash
@@ -337,6 +340,24 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 		Agent:  "",
 		Task:   false,
 	}
+}
+
+// legacyDigestName recognises a legacy digest-named home volume body, whose
+// final hash-shaped segment is a content digest and the segment before it is the
+// project hash. findHashSuffix anchors on that digest, so the project slug is
+// recovered from the segment to its left. Example remainder
+// "myproject-1mjusbm3wikhb0-4e8oeqohbmalok" -> slug "myproject-1mjusbm3wikhb0",
+// digest "4e8oeqohbmalok".
+func legacyDigestName(remainder string, hashStart int) (string, string, bool) {
+	if hashStart+14 != len(remainder) {
+		return "", "", false
+	}
+	inner := remainder[:hashStart-1]
+	innerHashStart := findHashSuffix(inner)
+	if innerHashStart == -1 || innerHashStart+14 != len(inner) {
+		return "", "", false
+	}
+	return inner[:innerHashStart-1] + "-" + inner[innerHashStart:innerHashStart+14], remainder[hashStart : hashStart+14], true
 }
 
 // isHomeTimestamp reports whether s looks like a UTC home-volume timestamp

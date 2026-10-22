@@ -111,6 +111,23 @@ func TestParseHomeVolumeNameHyphenatedAgent(t *testing.T) {
 		ParseHomeVolumeName("agents-sandbox-home-myproj-1mjusbm3wikhb0-claude-code-20260812T123456"))
 }
 
+// TestParseHomeVolumeNameLegacyDigest pins the legacy digest format when both
+// the project hash and the digest are lowercase 14-char base36 runs, the only
+// shape findHashSuffix cannot tell apart by segment shape: it anchors on the
+// digest, and the parser must step back to the project hash so prune can still
+// match the saved volume to its project.
+func TestParseHomeVolumeNameLegacyDigest(t *testing.T) {
+	const digest = "4e8oeqohbmalok"
+	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Digest: digest},
+		ParseHomeVolumeName("agents-sandbox-home-myproj-1mjusbm3wikhb0-"+digest))
+
+	// A legacy digest name still parses when the folder's own last segment is
+	// hash-shaped.
+	hashShapedFolder := "go-1234567890abcd-1mjusbm3wikhb0"
+	require.Equal(t, ArtifactInfo{Slug: hashShapedFolder, Digest: digest},
+		ParseHomeVolumeName("agents-sandbox-home-go-1234567890abcd-1mjusbm3wikhb0-"+digest))
+}
+
 func TestParseImageTagBothSchemes(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "opencode"},
 		ParseImageTag("myproj-1mjusbm3wikhb0:opencode-latest"))
