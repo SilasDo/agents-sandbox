@@ -41,7 +41,8 @@ Deleting the sandbox is not a reset: the project's saved state stays. The launch
 (which records the current home volume) and the home volume itself, so the next run recreates the sandbox against the
 same home volume.
 
-> **Note:** The home volume holds the agent's configuration and session history. Only `prune` reclaims it; see Pruning.
+> **Note:** The home volume holds the agent's configuration and session history. Stopping or deleting a sandbox
+> does not delete it; see [Home volumes](#home-volumes) for the ways to remove one.
 
 ## Listing sandboxes
 
@@ -210,14 +211,16 @@ Manual management:
 agents-sandbox volume migrate   # new volume, copy old volume files on top
 agents-sandbox volume reset     # fresh volume from image
 agents-sandbox volume edit      # new volume alongside old, manual transfer in a shell environment
+agents-sandbox volume remove    # delete a home volume
 ```
 
 The chosen volume is recorded in the state file, and the next run recreates the project sandbox so the new volume is
 mounted at `$HOME`. Until then the running sandbox keeps the previous home volume mounted.
 
-Home volumes are pruned when:
+Home volumes are deleted when:
 
-- You run `volume migrate|reset` with `--rm` (removes the old volume)
+- You run `volume remove <name>`
+- You run `volume migrate|reset|edit` with `--rm` (removes the old volume)
 - `prune` is run with an age threshold older than the volume's last use
 - The state file is missing and a fresh volume is created (old volumes become orphaned)
 
