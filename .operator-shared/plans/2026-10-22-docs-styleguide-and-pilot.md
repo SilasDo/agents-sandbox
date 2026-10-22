@@ -213,3 +213,12 @@ Not in this phase; captured so scope stays honest:
 - **Correctness fixes** found in review: the truncated cell in `index.md`, the Windows line in `install/prerequisites.md`, the opencode2 omissions in `_config.yml`/`index.md`, the `build dockerfile --agent` list.
 - **De-duplication** of the prune-confirmation boilerplate and the home-volume keep/migrate/reset explanation.
 - **An automated terminology lint** in `ci/check-docs.sh` scoped to a list of migrated pages, grown as the rollout proceeds.
+
+## Post-implementation notes
+
+Implemented on `docs/styleguide` (a nested worktree of the bare `/workspace`), commits `b8a3452..9b15af4`, pending merge.
+
+- Task 1 landed `STYLEGUIDE.md` and the contributor-doc pointers; Task 2 rewrote `docs/sandboxes.md` as the reference implementation; Task 3 verified (`make check` EXIT=0).
+- **Recorded deviation from this plan's fixed heading text:** Task 2 mandated the H2 `## Identity: one VM per checkout and agent`; it was renamed to `## Identity: one sandbox per checkout and agent`, and the inbound anchor in `docs/configuration/agent.md` was retargeted. The styleguide's Terminology rule is the binding authority; the plan's heading text was its argument. Also fixed, as consequences of the heading renames: a stale `#vm-identity` anchor in `agent.md` and a dead `#why-agents-sandbox-runs-its-own-microsandbox` fragment in `docs/install/upgrading.md`.
+- A whole-branch review fix wave (`7fcd1da`, `9b15af4`) softened the styleguide's command-output rule (not fabricated output), fixed four of the styleguide's own "above/below" self-violations, added rule 3's example, mapped the "In short" template item to a `> **Note:**` callout, added the `{% link %}` linking line, softened the "need not know Jekyll" claim, restored two idle-timeout qualifiers, and added the one-kind clarification.
+- Deferred from review (rollout): `docs/switch.md:11` links `{% link index.md %}#install`, but `index.md` has no `#install` heading — `ci/check-docs.sh` validates a `{% link %}` target's file, not its fragment, so no CI check catches a dead fragment; and `docs/configuration/agent.md:49` still says "the VM name, home volume, and state file".
