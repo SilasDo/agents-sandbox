@@ -95,6 +95,7 @@ Always use your superpowers for appropriate tasks, never skip user approval.
 
 ## Documentation
 
+- User-facing docs follow [`STYLEGUIDE.md`](STYLEGUIDE.md).
 - When changing or adding behavior, keep `README.md` and `docs` directory (except `docs/superpowers`) in sync and
   current, and add a line to the `[Unreleased]` section in `CHANGELOG.md`.
 - Linking style: root-level docs (README.md, SECURITY.md, ...) link into `docs/` with rendered HTML links

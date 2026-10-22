@@ -16,6 +16,7 @@ read_if: Navigating the codebase.
 ## Project Index
 
 - `README.md` — Overview, comparison table, boundary/tradeoffs.
+- `STYLEGUIDE.md` — Documentation styleguide for user-facing docs.
 - `AGENTS.md` — Authoritative agent instructions (dev workflow, toolchain, lint/test commands).
 - `CHANGELOG.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE.md`, `SECURITY.md` — Project metadata and policy.
 - `Makefile` — fmt/lint/test/build targets.

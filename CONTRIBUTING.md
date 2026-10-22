@@ -120,6 +120,8 @@ Keep user documentation current with any behavior change:
 - `README.md` for anything visible at a glance (quick start, installation, badges).
 - `docs/` for commands, configuration, sandbox lifecycle, and troubleshooting.
 
+User-facing docs follow [`STYLEGUIDE.md`](STYLEGUIDE.md).
+
 If you change a CLI command or flag, update the relevant docs in the same PR.
 
 ## Submitting a PR

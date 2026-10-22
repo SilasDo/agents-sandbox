@@ -10,6 +10,7 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- docs: add `STYLEGUIDE.md` defining the documentation voice, structure, ordering, terminology, and formatting rules.
 - Runner image: the in-VM tools the selected agent's runtime uses are now declared per agent and checked at build
   time. A daemon agent (`opencode`, `opencode2`) needs `curl` (the daemon health probe, session and worktree calls, and
   notifications), `nohup`, and `pkill` (daemon start/stop); `pi` and `claude-code` run no daemon and need none. A custom
