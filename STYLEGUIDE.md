@@ -7,7 +7,8 @@ confused.
 ## Who this is for
 
 Anyone editing a page under `docs/` or the user-facing parts of `README.md`. You do not need to know the codebase or
-how Jekyll works. You do need to keep the pages you touch consistent with the rules below.
+how Jekyll works, though a new page needs front-matter (`title`, `layout`, `nav_order`) so it appears in the
+navigation. You do need to keep the pages you touch consistent with the rules that follow.
 
 A behaviour change and the documentation change that describes it go in the same pull request.
 
@@ -31,7 +32,8 @@ Every page is one of three kinds. Do not mix more than one kind in the top-level
 - **Explanation** — background that answers "why", such as how the isolation works.
 
 This split is [Diátaxis](https://diataxis.fr/). A task page often needs one explanatory sentence; keep it to one and
-link to the explanation page. When a page grows a second kind as a first-class section, split the page instead.
+link to the explanation page. A reference or explanation page may still carry a quick-reference table and a few
+example commands. When a page grows a second kind as a first-class section, split the page instead.
 
 ## Ordering: the three rules
 
@@ -45,7 +47,7 @@ reader has no reason to know yet.
 ```text
 Before:  Each project gets one sandbox per (checkout, agent).
 After:   Each project checkout gets its own sandbox, and each agent in it gets its own.
-         The two names below identify that pair.
+         The two names in that sentence identify that pair.
 ```
 
 **2. Lead a section with its applicability.** The first sentence of a conditional section names who it applies to, so
@@ -58,8 +60,13 @@ After:   opencode only: the sandbox stops after a period of inactivity.
 ```
 
 **3. Order by universality and search intent, not taxonomy.** Actions that apply to everyone and are commonly
-searched for come before conditional or specialized behaviour. "Stop a sandbox now" belongs above the idle-timeout
-details, even if a taxonomy would file them together.
+searched for come before conditional or specialized behaviour. "Stop a sandbox now" comes before the idle-timeout
+section, even if a taxonomy would file them together.
+
+```text
+Before:  Idle-timeout details, then "Stop a sandbox now".
+After:   "Stop a sandbox now", then the idle-timeout details.
+```
 
 Two supporting habits: an inverted pyramid per page and per section (the most useful sentence first), and one term
 per concept for the whole site.
@@ -70,7 +77,7 @@ Use this shape for every page:
 
 1. **Lead sentence.** One or two plain sentences that say what the page is for and what the reader gets from it.
 2. **"In short" callout or quick reference table.** A short summary or the handful of commands most readers want,
-   before any detail.
+   before any detail. When you use the callout, write it as a `> **Note:**` block.
 3. **Body in short chunks.** One idea per paragraph, under one heading that names it.
 4. **Detail and the "why" last.** Edge cases, internals, and background go at the end, where only an interested
    reader reaches them.
@@ -116,8 +123,10 @@ test vocabulary and does not appear in `docs/`.
 
 - **Headings** are sentence case: "Stopping a sandbox", not "Stopping A Sandbox". The page has exactly one `#`
   heading, and it matches the page title in its front matter.
-- **Code blocks** are fenced and carry a language: `console` for shell sessions with their output, `sh` for scripts,
-  `yaml`, `json`, `markdown`, and `text` for the rest. Leave the language off only when none fits.
+- **Code blocks** are fenced and carry a language: `console` for shell sessions, with their output when it clarifies;
+  `sh` for scripts, `yaml`, `json`, `markdown`, and `text` for the rest. Leave the language off only when none fits.
+- **Links.** A page under `docs/` links to another with `{% link path/to/page.md %}`; a root-level document links into
+  `docs/` with the rendered HTML URL (`https://inoio.github.io/agents-sandbox/<page>.html`).
 - **Callouts** use one convention, on the first line of a blockquote: `> **Note:**`, `> **Warning:**`, or
   `> **Beta**`. Do not invent new markers.
 - **Tables** carry enumerations: commands, flags, fields, and options. Prefer a table to a bulleted list of the same
@@ -133,6 +142,6 @@ Walk this list before you open the pull request. It is the same list a reviewer 
 - [ ] Every conditional section names its audience in its first sentence.
 - [ ] Every concept is explained in a plain sentence before it is named.
 - [ ] No paragraph is longer than about six sentences.
-- [ ] Every command example runs unedited, with the output it produces.
-- [ ] The terminology matches the table above; the word "harness" is absent.
+- [ ] Every command example runs unedited.
+- [ ] The terminology matches the Terminology table; the word "harness" is absent.
 - [ ] Navigation depth from the docs home is at most two levels.
