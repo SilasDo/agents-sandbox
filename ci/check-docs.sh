@@ -168,9 +168,27 @@ check_terminology() {
     while IFS= read -r msg; do
       report "$msg"
     done < <(awk -v rel="$rel" '
-      /^[[:space:]]*(>[[:space:]]*)*```/ || /^[[:space:]]*(>[[:space:]]*)*~~~/ { fence = !fence; next }
-      fence { next }
       {
+        # A code block is delimited by a run of >=3 backticks or tildes; the
+        # close must use the same character and be at least as long as the
+        # opening run, so a longer fence can contain a shorter run as content
+        # (e.g. a four-backtick block showing a three-backtick example).
+        body = $0
+        sub(/^[[:space:]]*(>[[:space:]]*)*/, "", body)
+        if (fence == 0) {
+          if (body ~ /^(`{3,}|~{3,})/) {
+            marker = substr(body, 1, 1)
+            openlen = 0
+            while (substr(body, openlen + 1, 1) == marker) openlen++
+            # A backtick fence info string may not contain a backtick.
+            if (!(marker == "`" && index(substr(body, openlen + 1), "`") > 0)) { fence = 1; next }
+          }
+        } else {
+          trimmed = body
+          sub(/[[:space:]]+$/, "", trimmed)
+          if (trimmed ~ /^(`+|~+)$/ && substr(trimmed, 1, 1) == marker && length(trimmed) >= openlen) fence = 0
+          next
+        }
         scrub = $0
         gsub(/`[^`]*`/, "", scrub)
         gsub(/https?:\/\/[^[:space:]]+/, "", scrub)

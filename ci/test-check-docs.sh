@@ -180,6 +180,20 @@ printf '\n```text\nharness simply above\n```\n\n> ```console\n> harness\n> ```\n
 expect "terminology fenced code ignored" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# A longer fence opening may contain a shorter run as content; it must not be
+# mistaken for the close, which would leak the enclosed prose into the checks.
+d="$(new_fixture)"
+cat >>"$d/docs/introduction.md" <<'EOF'
+
+````markdown
+```console
+harness simply above
+```
+````
+EOF
+expect "terminology nested fence ignored" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
 # Terminology: the old OPENCODE_SANDBOX_ prefix is flagged off the migration pages.
 d="$(new_fixture)"
 printf '\nSet OPENCODE_SANDBOX_FOO.\n' >>"$d/docs/introduction.md"

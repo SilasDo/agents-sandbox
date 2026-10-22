@@ -44,7 +44,8 @@ The agent's own interface opens inside the sandbox. The project is mounted at `/
 as your host checkout, so edits the agent makes are visible on the host.
 
 Detach with the agent's own exit key (for example `Ctrl-D`). The sandbox keeps running and stops on its own when idle;
-to stop it now, run `agents-sandbox stop`.
+to stop it now, run `agents-sandbox stop`, passing the same `--agent` value you started with (for example
+`agents-sandbox stop --agent pi`).
 
 Next, make the sandbox the home for your real setup:
 

@@ -9,7 +9,7 @@ nav_order: 0
 
 agents-sandbox runs coding agents — [opencode](https://opencode.ai), [opencode2](https://opencode.ai), [pi](https://pi.dev), and [Claude Code](https://claude.com/product/claude-code) — inside a dedicated [microsandbox](https://microsandbox.dev/) VM for each project, instead of directly on your machine, with your project mounted at `/workspace`.
 
-It provisions its own microsandbox runtime and keeps credentials on the host, so the VM sees only a placeholder that the proxy substitutes for the hosts you allow.
+It provisions its own microsandbox runtime and keeps secrets on the host: credentials supplied through `env.secret` reach the VM only as placeholders that the proxy substitutes for the hosts you allow. The default opencode and opencode2 setup copies `auth.json` into the VM instead — see [Agent configuration]({% link configuration/agent.md %}#default-drop-in-provisioning) to change that.
 
 ## Comparison
 
