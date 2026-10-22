@@ -85,7 +85,9 @@ Classification and identity **are** still needed, and both come from labels on a
   prefix (a folder literally named `agents-sandbox-vm`/`-task`/`-home`) produces a prefix-free name that *starts with
   that prefix*. `ParseVMName`/`ParseHomeVolumeName` therefore strip a legacy prefix only when the stripped remainder
   is a hash-anchored legacy body, otherwise they parse the whole name prefix-free. This also anchors on the *rightmost*
-  whole 14-char segment, so a hash-shaped folder segment does not shadow the real slug hash.
+  whole 14-char segment, so a hash-shaped folder segment does not shadow the real slug hash — and a legacy digest-named
+  home volume (`<folder>-<hash>-<digest>`, two hash-shaped segments) is split between the digest and the project hash
+  rather than folding the digest into the slug.
 - Pruning keeps transient task sandboxes out of the project-key sets: `PruneState.Tasks` holds them (reclaimed by
   `PruneSandboxes`) while `ToPrune`/`ToKeep` hold only project VMs. A leftover stopped task can therefore never mark
   its still-active project stale (which otherwise reclaims the project's runner image and an unrecorded home volume).

@@ -47,6 +47,13 @@ sandbox now carries `org.agents-sandbox.type` (`project`/`task`), `.slug` and `.
 `pruning/state.go`, `volume/operations.go` and `image/references.go`. Legacy labels are read, not
 written.
 
+A second Greptile round raised one P2: `findHashSuffix`'s rightmost-segment anchor made a legacy
+digest-named home volume (`agents-sandbox-home-<folder>-<hash>-<digest>`, both 14-char base36) parse
+its digest *as* the project hash, folding the digest into the slug so `pruneHomeVolumes` could not
+match the saved volume to its stale project and left it on disk. Fixed in `legacyDigestName`: when
+the final hash-shaped segment has nothing after it and a hash-shaped segment directly before it, the
+right segment is the digest and the left one the project hash.
+
 ## Global Constraints
 
 - Target name shapes (exact): project VM `<slug>-<agent>`; task sandbox `<slug>-<agent>-<nanos>`; home volume `<slug>-<agent>-<ts>`; msb runner image ref `<slug>:<agent>-latest`; Docker runner image `agents-sandbox/runner-<slug>:<agent>-latest` (unchanged).
