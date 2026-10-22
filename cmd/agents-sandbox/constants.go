@@ -66,6 +66,7 @@ const (
 	// flagDind is the deprecated alias for --docker.
 	flagDind            = "dind"
 	flagAgentVersion    = "agent-version"
+	flagChannel         = "channel"
 	flagOpenCodeVersion = "opencode-version"
 	flagLabel           = "label"
 	flagLimit           = "limit"

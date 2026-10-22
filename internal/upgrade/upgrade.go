@@ -39,7 +39,8 @@ const (
 
 var (
 	latestURL    = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
-	downloadBase = fmt.Sprintf("https://github.com/%s/releases/latest/download", githubRepo)
+	releasesURL  = fmt.Sprintf("https://api.github.com/repos/%s/releases", githubRepo)
+	downloadBase = fmt.Sprintf("https://github.com/%s/releases/download", githubRepo)
 )
 
 // Mode selects how a detected newer release is handled.
@@ -88,6 +89,15 @@ type Options struct {
 	Interval       time.Duration
 	UI             termio.UI
 
+	// Channel selects which releases to offer. The zero value means stable.
+	Channel Channel
+
+	// AllowAnyVersion is the undocumented dev-build lever: with it set, an
+	// unparseable current version (empty, "dev", or garbage) counts as older
+	// than any release, so a locally built binary exercises the real check and
+	// install. It is never set from config or a flag.
+	AllowAnyVersion bool
+
 	// Store persists the launcher's update-check state. When nil, the check
 	// runs against an in-memory store: it still works, but nothing outlives
 	// the process.
@@ -110,14 +120,15 @@ func (o Options) store() Store {
 }
 
 // Check looks for a newer agents-sandbox release than CurrentVersion and
-// acts on it according to Mode. It is a no-op for development builds, for
-// Homebrew-managed installs (which update via `brew upgrade`), and when a check
-// happened within Interval. Transient network or parsing failures are
-// silently ignored so an offline run never blocks startup. An explicitly
-// configured interval below MinInterval is a misconfiguration and fails
-// loudly rather than being silently clamped.
+// acts on it according to Mode. It is a no-op for development builds unless
+// the undocumented dev lever is set, for Homebrew-managed installs (which
+// update via `brew upgrade`), and when a check happened within Interval.
+// Transient network or parsing failures are silently ignored so an offline
+// run never blocks startup. An explicitly configured interval below
+// MinInterval is a misconfiguration and fails loudly rather than being
+// silently clamped.
 func Check(ctx context.Context, opts Options) (Result, error) {
-	if opts.CurrentVersion == "" || opts.CurrentVersion == devVersion {
+	if !opts.AllowAnyVersion && (opts.CurrentVersion == "" || opts.CurrentVersion == devVersion) {
 		return Result{}, nil
 	}
 	if InstalledViaHomebrew() {
@@ -133,6 +144,12 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		interval = DefaultInterval
 	case interval < MinInterval:
 		return Result{}, fmt.Errorf("upgrade interval %s is below the minimum %s", interval, MinInterval)
+	}
+	// The dev lever reduces the check window to the floor rather than removing
+	// the throttle: a check spends one unauthenticated GitHub request, so an
+	// unthrottled check on every run would hit the rate limit.
+	if opts.AllowAnyVersion && interval > MinInterval {
+		interval = MinInterval
 	}
 	updateFunc := opts.UpdateFunc
 	if updateFunc == nil {
@@ -164,13 +181,13 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, nil
 	}
 
-	latest, err := latestRelease(ctx)
+	latest, err := latestForChannel(ctx, opts.Channel)
 	if err != nil {
 		opts.UI.Verbosef("upgrade check failed: %v", err)
 		return Result{}, nil
 	}
 
-	newer, err := isNewer(opts.CurrentVersion, latest)
+	newer, err := newerThan(opts.CurrentVersion, latest, opts.AllowAnyVersion)
 	if err != nil {
 		opts.UI.Verbosef("upgrade check failed: %v", err)
 		return Result{}, nil
@@ -222,6 +239,28 @@ func isNewer(current, latest string) (bool, error) {
 		return false, fmt.Errorf("parse latest version %q: %w", latest, err)
 	}
 	return cv.LessThan(lv), nil
+}
+
+// isParseable reports whether s is a semantic version, with or without a
+// leading "v".
+func isParseable(s string) bool {
+	_, err := semver.NewVersion(strings.TrimPrefix(s, "v"))
+	return err == nil
+}
+
+// newerThan reports whether latest should be offered over current. With
+// allowAnyVersion an unparseable current version (empty, "dev", or garbage)
+// counts as older than any parseable release. That is the undocumented dev
+// lever: it is what lets a locally built binary exercise the real check and
+// install instead of being skipped.
+func newerThan(current, latest string, allowAnyVersion bool) (bool, error) {
+	if allowAnyVersion && !isParseable(current) {
+		if _, err := semver.NewVersion(strings.TrimPrefix(latest, "v")); err != nil {
+			return false, fmt.Errorf("parse latest version %q: %w", latest, err)
+		}
+		return true, nil
+	}
+	return isNewer(current, latest)
 }
 
 // applyMode handles a detected newer release according to the configured mode
@@ -320,31 +359,44 @@ func prompt(ui termio.UI, current, latest string) promptAction {
 	}
 }
 
-// Upgrade checks for a newer release than current and installs it over the
-// running binary, reporting progress via ui. It is the on-demand counterpart
-// to Check's automatic modes. Homebrew-managed installs are directed to
-// `brew upgrade` instead of replacing the keg binary out from under Homebrew.
-func Upgrade(ctx context.Context, ui termio.UI, current string) error {
-	if current == "" || current == devVersion {
+// UpgradeOptions configures Upgrade.
+//
+//exhaustruct:ignore
+type UpgradeOptions struct {
+	CurrentVersion string
+	Channel        Channel
+
+	// AllowAnyVersion is the undocumented dev-build lever, mirroring
+	// Options.AllowAnyVersion: it lets a locally built binary install a release.
+	AllowAnyVersion bool
+}
+
+// Upgrade checks for a newer release than opts.CurrentVersion and installs it
+// over the running binary, reporting progress via ui. It is the on-demand
+// counterpart to Check's automatic modes. Homebrew-managed installs are directed
+// to `brew upgrade` instead of replacing the keg binary out from under
+// Homebrew.
+func Upgrade(ctx context.Context, ui termio.UI, opts UpgradeOptions) error {
+	if !opts.AllowAnyVersion && (opts.CurrentVersion == "" || opts.CurrentVersion == devVersion) {
 		return errors.New("cannot upgrade a development build; use the released binary")
 	}
 	if InstalledViaHomebrew() {
 		ui.Infof("agents-sandbox is managed by Homebrew; run `brew update && brew upgrade agents-sandbox` to update it")
 		return nil
 	}
-	latest, err := LatestVersion(ctx)
+	latest, err := LatestVersion(ctx, opts.Channel)
 	if err != nil {
 		return err
 	}
-	newer, err := isNewer(current, latest)
+	newer, err := newerThan(opts.CurrentVersion, latest, opts.AllowAnyVersion)
 	if err != nil {
 		return err
 	}
 	if !newer {
-		ui.Infof("agents-sandbox is up to date (%s)", current)
+		ui.Infof("agents-sandbox is up to date (%s)", opts.CurrentVersion)
 		return nil
 	}
-	ui.Infof("upgrading agents-sandbox %s -> %s", current, latest)
+	ui.Infof("upgrading agents-sandbox %s -> %s", opts.CurrentVersion, latest)
 	if err := Update(ctx, latest); err != nil {
 		return err
 	}
@@ -352,9 +404,9 @@ func Upgrade(ctx context.Context, ui termio.UI, current string) error {
 	return nil
 }
 
-// LatestVersion returns the newest stable agents-sandbox release string
-// (leading "v" stripped) by querying the GitHub releases/latest endpoint.
-var LatestVersion = latestRelease
+// LatestVersion returns the newest release version for the channel (leading "v"
+// stripped) by querying the GitHub releases API.
+var LatestVersion = latestForChannel
 
 func latestRelease(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)
@@ -385,15 +437,14 @@ func latestRelease(ctx context.Context) (string, error) {
 // the running executable.
 var Update = updateExecutable
 
-// updateExecutable downloads the latest release binary for the current
-// platform and atomically replaces the running executable with it. The latest
-// version is pinned by the "latest" release asset download endpoint.
-func updateExecutable(ctx context.Context, _ string) error {
+// updateExecutable downloads the release binary for the given version and the
+// current platform and atomically replaces the running executable with it.
+func updateExecutable(ctx context.Context, latest string) error {
 	exe, err := executablePath()
 	if err != nil {
 		return err
 	}
-	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exe))
+	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exe), latest)
 	if err != nil {
 		return err
 	}
@@ -401,11 +452,15 @@ func updateExecutable(ctx context.Context, _ string) error {
 	return replaceExecutable(assetPath, exe)
 }
 
-// downloadAssetToDir downloads the release binary for the current platform
-// into dir and returns the downloaded file path.
-func downloadAssetToDir(ctx context.Context, dir string) (string, error) {
+// downloadAssetToDir downloads the release binary for the given version and the
+// current platform into dir and returns the downloaded file path.
+//
+// The download is addressed by release tag rather than the "latest" endpoint,
+// which GitHub never serves for a prerelease; the tag is "v" + version by this
+// repository's tagging convention (every release tag is v<version>).
+func downloadAssetToDir(ctx context.Context, dir string, version string) (string, error) {
 	asset := fmt.Sprintf("agents-sandbox-%s-%s", runtime.GOOS, runtime.GOARCH)
-	url := fmt.Sprintf("%s/%s", downloadBase, asset)
+	url := fmt.Sprintf("%s/v%s/%s", downloadBase, version, asset)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("build download request: %w", err)

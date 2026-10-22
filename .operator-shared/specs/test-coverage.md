@@ -1,0 +1,57 @@
+---
+description: Contract for the coverage bar on added and changed lines — every added line must be executed by a test (including error, transport, and status branches), a branch unreachable by construction must be removed rather than left uncovered, and a red `codecov/patch`/`codecov/project` check is a real finding to classify Important, not Minor. Records that the numeric thresholds live in Codecov's app settings (there is no `codecov.yml` in the repo) and that codecov is not a required status check on `main`.
+read_if: Adding or changing production code and deciding what to test, reviewing a diff for coverage gaps, or triaging a failing `codecov/patch` or `codecov/project` check on a PR.
+---
+
+# Test coverage
+
+## Intent
+
+Line coverage proves a test *executes* a line; mutation testing (see `mutation-testing.md`) proves a test would *notice*
+the line changing. Both matter, and they are different jobs. `mutation-testing.md` explicitly defers uncovered lines
+here: "`NOT COVERED` mutants are already the patch-coverage check's job."
+
+The practical gate is **patch coverage**: the coverage of the lines a change adds or alters. A PR that adds code its own
+tests never execute is the failure mode this catches.
+
+## Contract
+
+- **Every added or changed line must be executed by a test.** Error, transport, non-OK-status, and decode branches
+  count. They are almost always coverable because this codebase puts IO and endpoints behind seams: a `package var` for
+  a URL (`latestURL`, `downloadBase`, `releasesURL`), a `var` for a function (`LatestVersion`, `Update`,
+  `InstalledViaHomebrew`), or an injected client. Reach for the seam rather than declaring a branch untestable.
+- **A branch unreachable by construction must be removed, not left uncovered.** Two shapes recur, and both are defects
+  in the line itself rather than gaps in the tests:
+  - an error return that cannot fail given adjacent code (e.g. `Flags().GetString(name)` for a flag registered as a
+    string two lines below — bind the flag with `pflag`'s `StringVar` and read the variable instead);
+  - a re-parse or re-check whose success the preceding call already guaranteed (e.g. parsing a tag again after a
+    predicate proved it parses — return the parsed value from the predicate, so there is only one parse).
+- **Match the coverage of the sibling you mirror.** The existing tests show the expected depth: `TestLatestReleaseNon200`
+  and `TestLatestReleaseDecodeError` cover `latestRelease`'s status and decode failures, and
+  `TestDownloadAssetNetworkError` covers a transport failure. New code of the same shape carries the same tests.
+- **Tests that mutate a package-level seam restore it with `t.Cleanup` and do not call `t.Parallel`,** matching the
+  existing `serveReleases`/`serveLatest` helpers.
+
+## Where the bar lives (and why it surprises)
+
+- **The numeric thresholds are not in this repo.** There is no `codecov.yml`/`.codecov.yml`; `patch` and `project`
+  targets are configured in Codecov's app settings, so they cannot be read from the checkout. `.github/workflows/ci.yml`
+  only uploads the profile via `codecov/codecov-action`.
+- **codecov is not a required status check on `main`** (`branches/main/protection` has no required contexts). A failing
+  `codecov/patch` therefore leaves a PR `MERGEABLE` with `mergeStateStatus: UNSTABLE` — mergeable with a failing
+  non-required check. Do not read `UNSTABLE` as "nothing is wrong".
+- **Observed behaviour (PR #271, 2026-10-22):** `codecov/patch` failed at 93.88% (6 of 98 patch lines missing) and
+  `codecov/project` failed at 98.77% against a 98.81% base — i.e. the project status does not tolerate a drop, and the
+  patch status does not tolerate several uncovered lines.
+- **Therefore: treat a red `codecov/patch`/`codecov/project` as a real finding and classify uncovered new production
+  lines as Important in review, never Minor.** The `upgrade.channel` feature's whole-branch review accepted five
+  uncovered `internal/upgrade` branches as non-blocking; CI rejected them and a follow-up commit had to add the tests
+  and delete two unreachable branches. A reviewer's "mirrors the sibling's coverage profile" is a claim to check against
+  the sibling, not to accept.
+
+## Verification
+
+`make coverage` runs the suite and prints the total; `make coverage-junit` also writes `junit.xml`. Neither is a gate and
+neither computes patch coverage — the per-PR patch number comes only from Codecov. So there is nothing to run locally
+that reproduces the check exactly; the honest local substitute is reading `go tool cover -func` output for the files a
+change touches and confirming every added line appears.

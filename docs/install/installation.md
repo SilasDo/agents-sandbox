@@ -49,3 +49,16 @@ nav_order: 20
   chmod u+x agents-sandbox
   mv agents-sandbox ~/.local/bin # or any other directory in your PATH 
   ```
+
+* Or install a canary prerelease:
+
+  Canary builds are GitHub prereleases, so they are not served by `/latest`. Download the asset from that prerelease's
+  tag URL instead, substituting the canary version and your platform's `<os>-<arch>` suffix
+  (`linux-amd64`, `darwin-arm64`, or `linux-arm64`):
+
+  ```console
+  curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/download/v<version>/agents-sandbox-<os>-<arch>
+  ```
+
+  Then set `upgrade.channel: canary` (or `AGENTS_SANDBOX_UPGRADE_CHANNEL=canary`) so later upgrades follow the canary
+  line — see [self-upgrade]({% link configuration/self-upgrade.md %}). Homebrew cannot install canaries.

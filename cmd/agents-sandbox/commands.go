@@ -229,12 +229,30 @@ func buildVersionCmd(rootCmd *cobra.Command, ui termio.UI) *cobra.Command {
 }
 
 func buildUpgradeCmd(ui termio.UI) *cobra.Command {
-	return &cobra.Command{
+	var channelFlag string
+	cmd := &cobra.Command{
 		Use:   cmdUpgrade,
 		Args:  cobra.NoArgs,
 		Short: "Check for and install the latest release",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return upgrade.Upgrade(cmd.Context(), ui, version)
+			channel := upgrade.ChannelStable
+			if r := resolverFromContext(cmd.Context()); r != nil {
+				channel = r.UpgradeChannel()
+			}
+			if cmd.Flags().Changed(flagChannel) {
+				parsed, err := upgrade.ParseChannel(channelFlag)
+				if err != nil {
+					return err
+				}
+				channel = parsed
+			}
+			return upgrade.Upgrade(cmd.Context(), ui, upgrade.UpgradeOptions{
+				CurrentVersion:  version,
+				Channel:         channel,
+				AllowAnyVersion: upgradeAnyVersionEnabled(),
+			})
 		},
 	}
+	cmd.Flags().StringVar(&channelFlag, flagChannel, "", "release channel to upgrade from (stable or canary)")
+	return cmd
 }

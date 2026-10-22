@@ -3,10 +3,12 @@ package upgrade
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -259,6 +261,33 @@ func TestCheckNotify(t *testing.T) {
 	}
 }
 
+func TestCheckCanaryOffersPrerelease(t *testing.T) {
+	serveReleases(t, `[{"tag_name":"v1.9.0-canary.1","draft":false}]`)
+	opts := mockOptions(t, "1.8.0", ModeNotify)
+	opts.Channel = ChannelCanary
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "1.9.0-canary.1" {
+		t.Fatalf("expected a canary offer, got %+v", res)
+	}
+}
+
+func TestCheckStableNeverOffersPrerelease(t *testing.T) {
+	serveLatest(t, "1.8.0", nil)
+	serveReleases(t, `[{"tag_name":"v1.9.0-canary.1","draft":false}]`)
+	opts := mockOptions(t, "1.7.0", ModeNotify)
+	opts.Channel = ChannelStable
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "1.8.0" {
+		t.Fatalf("stable must resolve only the latest release, got %+v", res)
+	}
+}
+
 func TestCheckAutoUpgrade(t *testing.T) {
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}
@@ -376,7 +405,7 @@ func TestDownloadAndReplace(t *testing.T) {
 	target := filepath.Join(dir, "agents-sandbox")
 	_ = os.WriteFile(target, []byte("old"), 0o750)
 
-	asset, err := downloadAssetToDir(context.Background(), dir)
+	asset, err := downloadAssetToDir(context.Background(), dir, "2.0.0")
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
@@ -394,6 +423,27 @@ func TestDownloadAndReplace(t *testing.T) {
 	info, _ := os.Stat(target)
 	if info.Mode().Perm() != 0o750 {
 		t.Fatalf("replaced binary mode = %o, want 750 (preserve original permissions)", info.Mode().Perm())
+	}
+}
+
+func TestDownloadAssetUsesTaggedURL(t *testing.T) {
+	asset := []byte("binary")
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write(asset)
+	}))
+	t.Cleanup(srv.Close)
+	orig := downloadBase
+	downloadBase = srv.URL
+	t.Cleanup(func() { downloadBase = orig })
+
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "1.9.0-canary.3"); err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	want := fmt.Sprintf("/v1.9.0-canary.3/agents-sandbox-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if gotPath != want {
+		t.Fatalf("download path = %q, want %q", gotPath, want)
 	}
 }
 
@@ -539,17 +589,17 @@ func TestCheckPromptInstallFailure(t *testing.T) {
 
 func TestUpgrade(t *testing.T) {
 	t.Run("dev build rejected", func(t *testing.T) {
-		if err := Upgrade(context.Background(), &termio.Mock{}, "dev"); err == nil {
+		if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "dev"}); err == nil {
 			t.Fatal("expected error for dev build")
 		}
 	})
 
 	t.Run("up to date", func(t *testing.T) {
 		orig := LatestVersion
-		LatestVersion = func(context.Context) (string, error) { return "1.0.0", nil }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "1.0.0", nil }
 		t.Cleanup(func() { LatestVersion = orig })
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(ui.InfoCalls) == 0 || !strings.Contains(ui.InfoCalls[0], "up to date") {
@@ -559,12 +609,12 @@ func TestUpgrade(t *testing.T) {
 
 	t.Run("upgrades", func(t *testing.T) {
 		origLatest, origUpdate := LatestVersion, Update
-		LatestVersion = func(context.Context) (string, error) { return "2.0.0", nil }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
 		var installed string
 		Update = func(_ context.Context, latest string) error { installed = latest; return nil }
 		t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if installed != "2.0.0" {
@@ -577,7 +627,7 @@ func TestUpgrade(t *testing.T) {
 		InstalledViaHomebrew = func() bool { return true }
 		t.Cleanup(func() { InstalledViaHomebrew = origHomebrew })
 		origLatest, origUpdate := LatestVersion, Update
-		LatestVersion = func(context.Context) (string, error) {
+		LatestVersion = func(context.Context, Channel) (string, error) {
 			t.Fatal("LatestVersion must not be consulted for a Homebrew install")
 			return "", nil
 		}
@@ -588,7 +638,7 @@ func TestUpgrade(t *testing.T) {
 		t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
 
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(ui.InfoCalls) == 0 || !strings.Contains(ui.InfoCalls[0], "brew") {
@@ -598,12 +648,113 @@ func TestUpgrade(t *testing.T) {
 
 	t.Run("latest lookup failure", func(t *testing.T) {
 		orig := LatestVersion
-		LatestVersion = func(context.Context) (string, error) { return "", errors.New("boom") }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "", errors.New("boom") }
 		t.Cleanup(func() { LatestVersion = orig })
-		if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+		if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 			t.Fatal("expected error on lookup failure")
 		}
 	})
+}
+
+func TestNewerThan(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		latest   string
+		allowAny bool
+		want     bool
+		wantErr  bool
+	}{
+		{name: "normal newer", current: "1.0.0", latest: "1.1.0", want: true},
+		{name: "normal not newer", current: "1.1.0", latest: "1.1.0"},
+		{name: "dev ignored without the lever", current: "dev", latest: "1.1.0", wantErr: true},
+		{name: "empty ignored without the lever", current: "", latest: "1.1.0", wantErr: true},
+		{name: "dev offered with the lever", current: "dev", latest: "1.1.0", allowAny: true, want: true},
+		{name: "empty offered with the lever", current: "", latest: "1.1.0", allowAny: true, want: true},
+		{name: "garbage offered with the lever", current: "not-a-version", latest: "1.1.0", allowAny: true, want: true},
+		{name: "unparsable latest still errors", current: "dev", latest: "nope", allowAny: true, wantErr: true},
+		{name: "parseable current is unaffected by the lever", current: "1.1.0", latest: "1.1.0", allowAny: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newerThan(tc.current, tc.latest, tc.allowAny)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("newerThan(%q,%q,%v) = %v, want %v", tc.current, tc.latest, tc.allowAny, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckDevLeverOffersRelease(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	opts := mockOptions(t, "dev", ModeNotify)
+	opts.AllowAnyVersion = true
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "2.0.0" {
+		t.Fatalf("expected the dev lever to offer 2.0.0, got %+v", res)
+	}
+}
+
+func TestCheckDevLeverShortensInterval(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	opts := mockOptions(t, "dev", ModeNotify)
+	opts.AllowAnyVersion = true
+	opts.Interval = DefaultInterval
+	// Checked two hours ago: within the default window, outside the capped one.
+	opts.Store = &fakeStore{state: LauncherState{LastChecked: time.Now().Add(-2 * time.Hour)}}
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate {
+		t.Fatalf("the dev lever must cap the interval at MinInterval, got %+v", res)
+	}
+
+	// Negative baseline: the same stored timestamp with the lever off sits
+	// inside DefaultInterval, so no update is offered. A parseable current
+	// version keeps this off the dev-build no-op path, so it is the throttle
+	// (not the absence of a newer release) that suppresses the update.
+	opts.AllowAnyVersion = false
+	opts.CurrentVersion = "1.0.0"
+	opts.Store = &fakeStore{state: LauncherState{LastChecked: time.Now().Add(-2 * time.Hour)}}
+	baseline, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if baseline.HasUpdate {
+		t.Fatalf("without the dev lever the default interval must throttle the check, got %+v", baseline)
+	}
+}
+
+func TestUpgradeDevLeverAllowed(t *testing.T) {
+	origLatest, origUpdate := LatestVersion, Update
+	LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
+	var installed string
+	Update = func(_ context.Context, latest string) error { installed = latest; return nil }
+	t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
+
+	if err := Upgrade(
+		context.Background(),
+		&termio.Mock{},
+		UpgradeOptions{CurrentVersion: "dev", AllowAnyVersion: true},
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installed != "2.0.0" {
+		t.Fatalf("installed = %q, want 2.0.0", installed)
+	}
 }
 
 func TestIsNewer(t *testing.T) {
@@ -668,7 +819,7 @@ func TestDownloadAssetNon200(t *testing.T) {
 	orig := downloadBase
 	downloadBase = srv.URL
 	t.Cleanup(func() { downloadBase = orig })
-	if _, err := downloadAssetToDir(context.Background(), t.TempDir()); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error on non-200 download")
 	}
 }
@@ -725,19 +876,19 @@ func TestPromptSelectErrorContinues(t *testing.T) {
 
 func TestUpgradeIsNewerError(t *testing.T) {
 	orig := LatestVersion
-	LatestVersion = func(context.Context) (string, error) { return "not-a-version", nil }
+	LatestVersion = func(context.Context, Channel) (string, error) { return "not-a-version", nil }
 	t.Cleanup(func() { LatestVersion = orig })
-	if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+	if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 		t.Fatal("expected error when the latest version is unparsable")
 	}
 }
 
 func TestUpgradeUpdateError(t *testing.T) {
 	origLatest, origUpdate := LatestVersion, Update
-	LatestVersion = func(context.Context) (string, error) { return "2.0.0", nil }
+	LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
 	Update = func(context.Context, string) error { return errors.New("boom") }
 	t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
-	if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+	if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 		t.Fatal("expected error when the install fails")
 	}
 }
@@ -746,7 +897,7 @@ func TestDownloadAssetNetworkError(t *testing.T) {
 	orig := downloadBase
 	downloadBase = "http://127.0.0.1:1"
 	t.Cleanup(func() { downloadBase = orig })
-	if _, err := downloadAssetToDir(context.Background(), t.TempDir()); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error on unreachable download endpoint")
 	}
 }

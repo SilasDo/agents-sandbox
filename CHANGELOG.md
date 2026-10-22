@@ -173,6 +173,11 @@ command reports the bare version (e.g. `0.1.0`).
   CI job on every PR and in `make verify`, deliberately not as a release prerequisite. Ship-green: 12 internal functions
   unreachable from any `main` package were deleted and 11 test seams plus 10 test-support files were marked — no
   user-visible behavior change.
+- Self-upgrade: a new `upgrade.channel` setting (`stable` default, `canary`) lets an install opt into canary
+  prereleases. The canary channel follows the newest release eligible for it — the newest canary prerelease, and then
+  the real release once it ships, so testers roll forward automatically. `agents-sandbox upgrade` accepts a one-shot
+  `--channel` override. Homebrew installs are unaffected. Set it back to `stable` to leave the canary line at the next
+  release.
 
 ### Changed
 
@@ -348,6 +353,9 @@ command reports the bare version (e.g. `0.1.0`).
   live VM's mounts are now read from its persisted config. The same empty `cfg.Volumes` also silently disabled two other
   readers: home-volume recovery after a lost `state.yaml` never found the surviving volume (always minting the duplicate
   #219 was filed for), and `sandbox inspect` reported `mounts (0)` for a fully mounted VM (#223).
+- Release CI: a `v*-canary.N` tag is now published as a GitHub prerelease and no longer bumps the Homebrew formula, so a
+  canary is never served by `/releases/latest` to stable installs. The self-upgrade download is addressed by the
+  resolved release tag instead of `/latest`, so a prerelease can be installed.
 
 ### Changed
 
