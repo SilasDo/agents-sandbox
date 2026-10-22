@@ -55,7 +55,7 @@ ANTHROPIC_API_KEY:
 
 Then reference it in your config with `{env:ANTHROPIC_API_KEY}` (opencode) instead of the literal key.
 
-## 4. Provision files & hooks
+## 4. Provision files and hooks
 
 Map dotfiles and startup hooks into the VM home — see
 [Home provisioning & startup hooks]({% link configuration/home-provisioning.md %}).

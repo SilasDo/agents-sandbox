@@ -6,7 +6,9 @@ parent: Get started
 nav_order: 20
 ---
 
-## Installation
+# Installation
+
+Install agents-sandbox with Homebrew or a release binary.
 
 * Via Homebrew (macOS and Linux):
 

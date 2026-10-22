@@ -28,7 +28,7 @@ your project at `/workspace`.
 > and how you already do, including managing config via the agents' TUI on the host, and it stays in sync
 > with the sandbox.
 
-## ⚠️ What to know
+## What to know
 
 The fast path shares your host config **and** credentials (for opencode, `auth.json`) into the
 VM. This is fine for trying it out or low-sensitivity work. When you want no secrets exposed to agents, 
