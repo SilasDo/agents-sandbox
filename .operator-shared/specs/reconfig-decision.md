@@ -1,5 +1,5 @@
 ---
-description: Contract for the per-startup project-VM reconfiguration decision: how changed settings are detected via persisted fingerprints, which changes recreate the VM vs restart the daemon, the fingerprint-preservation invariant, and the known state-write race.
+description: Contract for the per-startup project-VM reconfiguration decision: how changed settings are detected via persisted fingerprints, which changes recreate the VM vs restart the daemon, the fingerprint-preservation invariant, and the #183 seeding fix that closes the state-write race.
 read_if: Changing decideReconfig/PlanReconfig, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
 ---
 
@@ -80,4 +80,4 @@ reads those from the persisted config JSON through `msb.SandboxHandle.ConfigMoun
 
 Until #223 landed, all three compared against an always-empty `cfg.Volumes` and never fired, so a changed `tmp_size`
 or `workspace-quota` on an existing VM was silently ignored until an unrelated recreate — behaviour the launcher's own
-docs already describe as triggering recreation. Plan: `plans/2026-10-20-live-mount-readback.md`.
+docs already describe as triggering recreation.

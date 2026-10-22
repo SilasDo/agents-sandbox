@@ -1,28 +1,24 @@
 # Shared Operator Instructions
 
+`AGENTS.md` is authoritative for code, toolchain, and dev commands; this file adds only
+what `AGENTS.md` does not cover.
+
 ## Workflow
 
-- Fill:
-  - Workflow rules if any
-  - Plan / proceed / approval norms?
-  - Ask vs act workflows?
-  - Blockers report or workaround?
+- Agree on the approach before large or creative work; proceed directly on small, clear,
+  well-specified changes.
+- When dispatching subagents, always use the `litellm/deepseek-v4-1-flash-0910-greenpt`
+  model.
 
-## Rules
+## Brain
 
-- When dispatching subagents, always use the `litellm/deepseek-v4-1-flash-0910-greenpt` model.
-- Fill: Project Rules
-  - Never / always project constraints
-  - Tool / command bans, stack rules, quality bar if any
-
-## Style
-
-- Fill: Code / Markdown / docs style guide
+- When adding or editing a catalog entry, spec, plan, or guide, follow
+  `guides/operator-brain-maintenance.md`.
 
 ## Private / Shared Policy
 
-- Fill:
-  - What may be shared?
-  - If in private instructions: What must NOT be shared?
-    - Do not mention private details in shared partition.
-  - Standing share patterns
+- **Shared** (`.operator-shared/`, published with the repo): durable project truth.
+- **Private** (`.operator/`, local only): operational or coordination detail that should
+  not ship with the repo. Currently none.
+- A private document may reference shared content; a shared document must never reference
+  private files, paths, or data.

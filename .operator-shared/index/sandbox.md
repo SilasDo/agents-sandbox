@@ -28,6 +28,10 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 - `doctor.go`, `install.go`, `shell_rc.go` — health checks and shell setup
 - `doctor_darwin.go`, `doctor_linux.go` — platform variants
 
+### `envsecret/` — Host env-var files and secret specs
+
+- `env.go`, `secrets.go` — loads host environment variable files and secret specs
+
 ### `image/` — Runner image build, Dockerfile, fetch, inspect, tags
 
 - `build.go`, `dockerfile.go`, `fetch.go`, `format.go`, `image.go`, `inspect.go`, `inspect_detail.go`, `list.go`, `tags.go`, `embed.go` — image pipeline (`inspect_detail.go` is `InspectImage`: the image-inspect detail seam)
@@ -62,6 +66,10 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 - `cleanup.go`, `helpers.go`, `images.go`, `prune.go`, `report.go`, `sandboxes.go`, `state.go`, `volumes.go`
 
+### `reconfig/` — Reconfiguration planning
+
+- `plan.go`, `prompts.go` — plans and resolves a project VM's reconfiguration (fingerprint diff → recreate vs restart) and its prompt
+
 ### `reprovision/` — Reconfig and reprovision planning
 
 - `config_files.go`, `plan.go`, `prompts.go`, `reprovision.go`, `secrets.go`
@@ -69,6 +77,10 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 ### `runtime/` — Runtime selection
 
 - `runtime.go`
+
+### `runtimemigration/` — Legacy runtime-home copy campaign
+
+- `copy.go`, `legacy.go`, `notice.go`, `offer.go` — the opt-in legacy home-volume copy campaign (host-owned `migrations` registry) and the post-migration legacy-runtime notice
 
 ### `session/` — Session run and reaper
 

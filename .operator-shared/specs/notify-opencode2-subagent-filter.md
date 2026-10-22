@@ -1,7 +1,7 @@
 # Design: notify for opencode2 + subagent-session filtering
 
 Date: 2026-10-20
-Status: Implemented on `notify-opencode2-subagent-filter`; PR #245 open, pending merge. A PR-review round rebased it onto `main` and fixed three Greptile findings, a second round added the jq removal, a third folded the seed command and parser into one `NewSessionList` value and pinned all three seed outcomes, and a fourth — after a live probe of the running opencode2 daemon — identified input requests by event id so two approvals asked in one step both notify, and a fifth kept a token per request but made claim release remove the file, so neither a single client's dropped stream nor an unbounded pile of claim files can silence a later request — see "Review fixes (PR #245)" below.
+Status: implemented (PR #245, pending merge). The review-driven refinements — event-id input identity, the `NewSessionList` seed value, per-request claim files — are in "Review fixes (PR #245)" below.
 
 ## Problem
 
@@ -198,7 +198,8 @@ the decoder:
   `.data.sessionID`, falling back to `.data.form.sessionID` (`form.created` nests it in `form`);
   parentID = `.data.parentID`, falling back to `.data.info.parentID`.
 - Each profile sets `Parse` in its `EventStream()` return value. Keep the rule that a payload with
-  no type is not an event.
+  no type is not an event. A payload that carries a type but no session id (e.g. v2's
+  `server.connected`) is still a decoded event; the tracker must neither panic nor notify for it.
 - Parser table tests move from `internal/notify` to the agent package (and gain v2 fixtures).
 - The existing `reflect.DeepEqual` assertion on the spec (`opencode_test.go`) cannot compare a
   non-nil func: compare a copy with `Parse` nilled and test the decoder separately.
@@ -219,7 +220,8 @@ The tracker consumes `agent.StreamEvent` instead of the removed local `Event`.
      `lastInput[e.SessionID] = e.EventID` and carries the id on the notification. So a second
      request in the same step notifies while a replayed event does not. From `stateError` nothing
      fires (the sticky latch holds).
-- `SeedChildren(ids []string)` marks every id as a child. Called by the watcher.
+- `SeedChildren(ids []string)` marks every non-empty id as a child (the empty id is skipped, so a malformed
+  seed can never mark the empty session id a child). Called by the watcher.
 
 ### 4. Seeding on (re)connect (`internal/notify/watch.go`)
 

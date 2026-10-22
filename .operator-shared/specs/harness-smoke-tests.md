@@ -32,7 +32,7 @@ runtime it requires, as `integration` names a real docker daemon). `make test-ms
 tagged-only compile regression is caught on every PR.
 
 **Scope of the assertion.** For every name in `agent.Names()`, the suite starts the harness the way a user does
-(`agents-sandbox run --agent <name>` under a pseudo-terminal) and asserts:
+(`agents-sandbox run --agent <name>` under a pseudo-terminal, `github.com/creack/pty`) and asserts:
 
 1. the attach client reached its full-screen TUI, within a timeout; a first-run/login screen counts. A harness
    whose UI takes over the alternate screen (`ESC [ ? 1049 h`) announces this while the process is still alive; one
@@ -93,7 +93,8 @@ configuration or state. Each run creates one temp root, shared by all subtests (
   "sandbox runtime socket path is too long"; a fast unit test pins the budget (`msb` appends a fixed 50-byte
   suffix and rejects a home above 55 bytes on Linux, microsandbox v0.7.8);
 - the child environment is built from an **allowlist**, dropping inherited `HOME`, `XDG_*`,
-  `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; it sets `HOME=<root>/home`,
+  `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; the inherited variables kept include `PATH`, `TERM`, `LANG`,
+  `LC_ALL`, `LC_CTYPE`, and the `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` family. It sets `HOME=<root>/home`,
   `XDG_CONFIG_HOME=<root>/config`, `XDG_DATA_HOME=<root>/data`, `XDG_STATE_HOME=<root>/state`,
   `XDG_CACHE_HOME=<root>/cache`, and `TMPDIR=<root>/tmp`; `TERM` defaults to `xterm-256color` when the
   inherited value is absent, empty, or `dumb`;
@@ -128,9 +129,10 @@ that cannot run the suite never pays for it.
 
 **Teardown.** A clean quit lets the launcher stop its VM. A deferred cleanup best-effort destroys any sandbox
 left in the isolated home before the temp root is removed, so a failed subtest cannot leak a VM pointing at a
-deleted home. The temp root's removal is registered as soon as the root is created, so a skip (the docker
-preflight) or a failed launcher build removes it too; the sandbox sweep stays separate because it needs the
-binary and a reachable docker daemon.
+deleted home; it lists with `sandbox list -q` and removes each name with `sandbox remove --force --yes` (`--yes`
+is required, or the non-interactive remove blocks on its confirmation). The temp root's removal is registered as
+soon as the root is created, so a skip (the docker preflight) or a failed launcher build removes it too; the
+sandbox sweep stays separate because it needs the binary and a reachable docker daemon.
 
 ## Non-goals
 

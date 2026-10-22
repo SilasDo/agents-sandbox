@@ -1,7 +1,7 @@
 # Contract: opencode2 worktree API (v2 routes, project scoping, base refs, tool-free commands)
 
 Date: 2026-10-19 (revised 2026-10-21 for issue #257)
-Status: implemented and merged — the v2 routes/project scoping (#235) on `fix/opencode2-worktree-api` (PR #238) and the guest-`jq` removal (#257) on `fix/opencode2-worktree-jq` (PR #261). The remaining in-guest `curl` dependency is now a build-checked custom-base requirement and is tracked for removal as #263.
+Status: implemented and merged — the v2 routes/project scoping (#235, PR #238) and the guest-`jq` removal (#257, PR #261). The remaining in-guest `curl` dependency is a build-checked custom-base requirement, tracked for removal as #263.
 
 ## Problem
 
@@ -127,7 +127,8 @@ both before the list, each naming the resolve failure (mirroring the list's abor
     (`$HOME/.local/share/opencode/worktree/<short project id>/<name>`). Choosing a location is not
     part of this fix.
   - No `from`: `--worktree` has no stacked-worktree concept, and `from` is a directory, not a ref.
-- **All v2 calls keep the baked credential** (`-u opencode:opencode`, `opencode2CurlAuth`).
+- **All v2 calls keep the baked credential** (`-u opencode:opencode`, `opencode2CurlAuth`) and the bounded flags
+  (`opencode2CurlFlags`, `-fsS -m 30`), so a hung daemon cannot block a run.
 - **Reuse matching is unchanged in effect**: `findWorktreeDir(dirs []string, slug string)` over the
   normalized directory list, exact because `--worktree` names are slugs (no separators; see below).
   It lives in `vm`, not in the profile: the base-name rule is not daemon-shape knowledge.

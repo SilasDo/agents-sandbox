@@ -16,7 +16,7 @@ This change turns that report into a **hard gate**. The contract is not "no test
 seams are legitimate and numerous. It is: *every function unreachable from production is either deleted, or carries an
 explicit reason-bearing marker*. A function that is merely dead fails the build.
 
-Implemented on the `dead-code-gate` branch; the mechanism and rules below describe what the code does today.
+The mechanism and rules below describe what the code does today.
 
 ## Evidence this design is built on
 
@@ -135,8 +135,15 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   label fixture through a test-side oracle), and `RootTxn.Exists` (which took its whole substrate with it — the `exists`
   field, `rootStatePresent`, the `statRootStateFile` seam — because `ReadRootState` already returns a zero state for a
   missing file and an error otherwise, leaving the stat redundant). The ten test-support files holding the other 228
-  findings get one file-scope marker each. Marking a genuinely dead function to silence the gate is the rubber stamp the
-  anti-goals forbid. See `plans/2026-10-21-dead-code-gate.md` for the per-symbol disposition.
+  findings get one file-scope marker each, reason `test support: referenced only by _test.go files`. Each marked
+  declaration's reason names its justification: `agent.Register` "internal registry extension point; only registry tests
+  register stubs"; `git.RepoSlug`/`git.CheckoutSlug` "cwd-derived convenience for tests; production reads the
+  ResolveIdentity fields"; `viperconfig.NewResolverWithConfig` "construction seam for cmd tests; see doc comment";
+  `docker.RealClient` "integration tests opt back into the real docker daemon"; `image.WithMockAgentVersion` "test seam
+  establishing a pinned agent version"; `image.WithMockAgentVersionResolver` "test seam establishing a custom agent
+  version resolver"; `vm.SetDaemonShellFunc` "test seam replacing the daemon shell"; `vm.SetRuntimeHomeMigrationOffer`
+  "test seam replacing the runtime migration offer". Marking a genuinely dead function to silence the gate is the rubber
+  stamp the anti-goals forbid.
 - **The gate has flagged two more seams on code that landed after it was designed** — the dry-run preview's
   `image.RunnerDockerfileID` (exported so higher-layer preview tests can seed a matching label) and
   `vm.SetAgentLatestVersion` (keeps the upgrade check off the network) — both marked in the same declaration-scope

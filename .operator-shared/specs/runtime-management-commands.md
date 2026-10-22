@@ -7,13 +7,8 @@ read_if: Adding or reviewing volume/image/sandbox inspection and removal command
 
 Date: 2026-10-15
 
-Status: **design; Slices 0–4 implemented** (Slices 0–3 merged; Slice 4 on
-branch `issue-172-runtime-management-slice-4`, PR pending).
-Tracked as issue #165; delivered as sub-issues #168 (Slice 0, implemented),
-#169 (Slice 1, implemented), #170 (Slice 2, implemented), #171 (Slice 3,
-implemented), #172 (Slice 4, implemented), and #155 (Slice 5). Slice 6 is
-dropped. Builds on `specs/runtime-home-decoupling.md` (the private `$MSB_HOME`
-home) and the reference in `guides/microsandbox-release-notes.md`.
+Status: **design; Slices 0–5 implemented, Slice 6 dropped**.
+Tracked as issue #165; delivered as sub-issues #168–#172 and #155. Builds on `specs/runtime-home-decoupling.md` (the private `$MSB_HOME` home).
 
 ## Intent
 
@@ -94,8 +89,8 @@ No new user-facing command. Land the cross-cutting seam every later slice uses:
 
 - A shared list-output path so a list can render, in addition to its default
   table, `--format json` (structured output on stdout) and `-q/--quiet`
-  (identifiers only). Extend the existing `printItems` helper rather than
-  duplicating per command.
+  (identifiers only). A shared `resolveListOutput`/`printList` seam renders every
+  list, rather than duplicating per command.
 - A shared `--yes` flag and non-interactive confirmation helper for destructive
   commands, distinct from `--force` (which overrides a guard).
 - Make `--older-than` the canonical age flag on prune commands (human-duration
@@ -156,7 +151,10 @@ Implemented (issue #170) in `internal/sandbox/storage`: `Observe` emits the six
 microsandbox categories (nil counters stay unknown) followed by a `runtime`
 category that walks the private home's `bin`/`lib` for the runtime/FFI
 artifacts. `ErrUnsupportedOperation` records a report-level note and leaves the
-six categories unknown. The host-side buildkit cache and docker images were
+six categories unknown. A missing `bin`/`lib` subtree is a known zero, whereas a
+walk error and any observation error other than `ErrUnsupportedOperation`
+propagate. Per-object rows are opt-in via `Options.IncludeObjects` (`Objects`
+stays nil, not empty, when not requested). The host-side buildkit cache and docker images were
 **deferred out of this seam**: the buildkit cache is a named msb volume already
 covered by the `volumes` category, and host Docker's store is outside the
 private home. Revisit when a docker-backend image store lands.
@@ -189,7 +187,8 @@ key/value block by default). `volume list`/`image list` were already wired onto
 the Slice 0 output by Slice 0 itself. Two seam additions made the inspection
 possible: `msb.ImageInspectDetail` (a local `msb.ImageDetail` mapping, keeping
 the existing `ImageInspect` config-only method untouched) and `SandboxHandle.ID`
-(the stable identity, first needed here).
+(the stable identity, first needed here). `vm.InspectSandbox` sorts mounts by
+guest path so the render is deterministic.
 
 ### Slice 4 — Object removal
 
@@ -221,7 +220,10 @@ run recreates the VM against it. Both commands, and the retrofitted
 is set; a refusal runs before the prompt, so it fails fast without prompting.
 Declining returns the `termio.ErrCancelled` sentinel. Ownership/scope guards are
 hard (VMPrefix / ImagePrefix); only the in-use and running-state guards are
-`--force`-overridable.
+`--force`-overridable. `state.FormatKeys` renders the referencing keys as sorted
+`slug/agent` labels (a bare `slug` for a legacy agent-less key), and the shared
+`naming.IsProjectSandbox`/`IsTaskSandbox`/`IsLauncherSandbox` predicates replace
+the duplicated prefix checks across `image` and `pruning`.
 
 ### Slice 5 — Storage accounting
 
@@ -283,7 +285,7 @@ The full per-group contract, as the slices deliver it.
 - `sandbox remove <name>` (`rm`) — Slice 4; project VMs only, refuses a running
   VM unless `-f/--force` (stops it first), leaves persisted state intact.
 - `sandbox inspect <name>` — Slice 3.
-- `sandbox copy`/`cp` — Slice 6 (optional).
+- `sandbox copy`/`cp` — Slice 6 (dropped).
 - `sandbox start`/`restart`/`exec`/`logs`/`metrics`/`pause`/`resume`/`wait`
   **excluded** — lifecycle/exec surface agents-sandbox does not expose.
 - `sandbox modify`/`fork`/`snap`/`ssh`/`install` **excluded** — no fit for the
@@ -306,7 +308,11 @@ docker images, and msb images, but not runtime RAM.
 ## Cross-cutting conventions (delivered by Slice 0)
 
 - **Listing**: every list supports `-q/--quiet` and `--format json`; human tables
-  remain the default.
+  remain the default. Identifiers mode writes through `termio.UI.Print`, which
+  bypasses the global `--quiet` stdout suppression, so `-q` still emits
+  identifiers. JSON renders an empty list as `[]`, never `null`. `--format json`
+  with `--quiet`, or any `--format` other than `json`, is an error ("mutually
+  exclusive" / "unsupported format").
 - **Destructive**: every removal/prune supports `--yes` to authorize
   non-interactively, and every removal exposes `-f/--force` to override its
   reference/in-use/running-state guard. `--force` overrides those guards;
@@ -315,12 +321,19 @@ docker images, and msb images, but not runtime RAM.
   distinct from `--force`, and they may coexist. Every removal command prompts
   (Slice 4 retrofitted `volume remove`, which previously never did), and the guard
   runs before the prompt so a refusal fails fast. A declined prompt returns the
-  `termio.ErrCancelled` sentinel.
-- **Age threshold**: `--older-than` is the canonical flag (msb's spelling);
-  `--age` is deprecated (hidden, warns, still honored; both set together is an
-  error).
+  `termio.ErrCancelled` sentinel; a non-interactive invocation without `--yes`
+  fails fast with `termio.ErrConfirmationRequired` and never parks on stdin.
+  Removal `--force` flags bind with `BoolVarP` so the closure variable updates
+  (`BoolP` parses the flag but leaves that variable false).
+- **Age threshold**: `--older-than` is the canonical flag (msb's spelling),
+  defaulting to `7d` and parsed with `viperconfig.ParseHumanDuration`; `--age` is
+  deprecated (hidden, warns, still honored; both set together is an error).
 - **Prune report**: `prune` and each group `prune` support `--format json` and
-  `-q`. The report is rendered before an error is returned: a prune whose
+  `-q`. The JSON object carries the per-group counts (`sandboxes`, `volumes`,
+  `images`, `docker_images`), a `dry_run` flag, and a `details` array of
+  `type`/`name`/`slug`/`digest`/`stale_for_seconds` entries; each group prune's
+  object carries only its own counts plus `dry_run`/`details`. The report is
+  rendered before an error is returned: a prune whose
   per-group errors are joined (top-level `prune` and `AutoPrune`) still reports
   what it removed first ("summary, then error"). Output mode and flag validation
   (`--format`/`--quiet` mutex) run before the confirmation prompt so bad flags
@@ -365,6 +378,8 @@ docker images, and msb images, but not runtime RAM.
   degradation instead of erroring on `ErrUnsupportedOperation` (the note is
   surfaced on non-verbose output so an all-`-` table is explained), and our
   global `-q` printing category display labels (bare minimum, list-style).
+  The non-verbose footer reads `logical sizes; '-' means unknown. use --verbose
+  for details.`, and the `runtime` category leaves its `in_use` nil.
   `--verbose` affects only the human render; JSON always includes `items`
   (msb behaviour). The Slice 2 seam was realigned (snake_case names, msb order,
   `InUse`) to keep one source of truth; the CLI derives display labels and
