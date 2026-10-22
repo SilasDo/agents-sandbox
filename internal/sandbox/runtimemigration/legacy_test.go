@@ -397,7 +397,7 @@ func TestLegacyScanMatchesOnlyPrefixedArtifacts(t *testing.T) {
 	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"proj-1abc1234defg5-opencode-20260812T123456")
 	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj-1abc1234defg5-opencode")
 	addVolumeDir(t, legacy, naming.HomeVolumeName("proj-1abc1234defg5", "opencode", "20260812T123456"))
-	addSandboxDir(t, legacy, naming.ProjectVMName("proj-1abc1234defg5", "opencode"))
+	addSandboxDir(t, legacy, "proj-1abc1234defg5-opencode")
 	addVolumeDir(t, legacy, "theirs")
 	addSandboxDir(t, legacy, "theirs")
 

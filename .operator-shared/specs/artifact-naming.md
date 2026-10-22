@@ -44,8 +44,10 @@ ref.
 ## Write-new, read-both
 
 New artifacts are created under the new scheme; lookups accept either scheme, so existing artifacts keep working and
-are neither renamed, reimported nor rebuilt. `naming` owns both constructors per family (new and `Legacy…`) and its
-parsers accept both shapes.
+are neither renamed, reimported nor rebuilt. `naming` owns the production constructors (`TaskSandboxName`,
+`HomeVolumeName`, `RunnerImageRef`, `DockerImageRef`) and its parsers accept both shapes; the project-VM name is built
+in `vm` (it needs truncation) and legacy names are only ever parsed, never constructed in production. Tests build
+scheme-shaped fixtures from the exported prefixes.
 
 - **Home volume — recorded, therefore free.** The name is persisted in `HomeState.HomeVolume`, so an existing project
   resolves its volume by the recorded name and never rotates it. Only the list/parse paths must accept the legacy

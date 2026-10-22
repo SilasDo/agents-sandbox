@@ -26,9 +26,9 @@ func FuzzArtifactNameRoundTrip(f *testing.F) {
 		}
 		slug := folder + "-" + hash
 
-		vm := ParseVMName(ProjectVMName(slug, agent))
+		vm := ParseVMName(projectVMName(slug, agent))
 		if vm.Slug != slug || vm.Agent != agent || vm.Task {
-			t.Fatalf("ParseVMName(ProjectVMName(%q, %q)) = %+v", slug, agent, vm)
+			t.Fatalf("ParseVMName(projectVMName(%q, %q)) = %+v", slug, agent, vm)
 		}
 		task := ParseVMName(TaskSandboxName(slug, agent, 1729000000000000000))
 		if task.Slug != slug || task.Agent != agent || !task.Task {
@@ -38,9 +38,9 @@ func FuzzArtifactNameRoundTrip(f *testing.F) {
 		if volume.Slug != slug || volume.Agent != agent {
 			t.Fatalf("ParseHomeVolumeName(HomeVolumeName(%q, %q)) = %+v", slug, agent, volume)
 		}
-		legacyVolume := ParseHomeVolumeName(LegacyHomeVolumeName(slug, agent, "20260812T123456"))
+		legacyVolume := ParseHomeVolumeName(legacyHomeVolumeName(slug, agent, "20260812T123456"))
 		if legacyVolume.Slug != slug || legacyVolume.Agent != agent {
-			t.Fatalf("ParseHomeVolumeName(LegacyHomeVolumeName(%q, %q)) = %+v", slug, agent, legacyVolume)
+			t.Fatalf("ParseHomeVolumeName(legacyHomeVolumeName(%q, %q)) = %+v", slug, agent, legacyVolume)
 		}
 	})
 }

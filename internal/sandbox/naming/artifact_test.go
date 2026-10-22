@@ -10,24 +10,14 @@ import (
 // base36 hash, the only shape findHashSuffix recognises.
 const fixtureSlug = "myproj-1mjusbm3wikhb0"
 
-func TestProjectVMNameIsPrefixFree(t *testing.T) {
-	require.Equal(t, "myproj-1mjusbm3wikhb0-opencode", ProjectVMName(fixtureSlug, "opencode"))
-	require.Equal(t, "agents-sandbox-vm-myproj-1mjusbm3wikhb0-opencode",
-		LegacyProjectVMName(fixtureSlug, "opencode"))
-}
-
 func TestTaskSandboxNameIsPrefixFree(t *testing.T) {
 	require.Equal(t, "myproj-1mjusbm3wikhb0-opencode-1729000000000000000",
 		TaskSandboxName(fixtureSlug, "opencode", 1729000000000000000))
-	require.Equal(t, "agents-sandbox-task-myproj-1mjusbm3wikhb0-opencode-1729000000000000000",
-		LegacyTaskSandboxName(fixtureSlug, "opencode", 1729000000000000000))
 }
 
 func TestHomeVolumeNameIsPrefixFree(t *testing.T) {
 	require.Equal(t, "myproj-1mjusbm3wikhb0-opencode-20260812T123456",
 		HomeVolumeName(fixtureSlug, "opencode", "20260812T123456"))
-	require.Equal(t, "agents-sandbox-home-myproj-1mjusbm3wikhb0-opencode-20260812T123456",
-		LegacyHomeVolumeName(fixtureSlug, "opencode", "20260812T123456"))
 }
 
 func TestRunnerImageRefIsPrefixFree(t *testing.T) {
@@ -69,15 +59,15 @@ func TestParseVMNameBothSchemes(t *testing.T) {
 func TestParseNamesWithHashShapedFolderSegment(t *testing.T) {
 	slug := "go-1234567890abcd-1mjusbm3wikhb0"
 	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
-		ParseVMName(ProjectVMName(slug, "opencode")))
+		ParseVMName(projectVMName(slug, "opencode")))
 	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
-		ParseVMName(LegacyProjectVMName(slug, "opencode")))
+		ParseVMName(legacyProjectVMName(slug, "opencode")))
 	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "claude-code", Task: true},
 		ParseVMName(TaskSandboxName(slug, "claude-code", 1729000000000000000)))
 	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
 		ParseHomeVolumeName(HomeVolumeName(slug, "opencode", "20260812T123456")))
 	require.Equal(t, ArtifactInfo{Slug: slug, Agent: "opencode"},
-		ParseHomeVolumeName(LegacyHomeVolumeName(slug, "opencode", "20260812T123456")))
+		ParseHomeVolumeName(legacyHomeVolumeName(slug, "opencode", "20260812T123456")))
 }
 
 // TestParseNamesWithLegacyPrefixFolder pins the prefix-collision fix: a
@@ -87,21 +77,21 @@ func TestParseNamesWithHashShapedFolderSegment(t *testing.T) {
 func TestParseNamesWithLegacyPrefixFolder(t *testing.T) {
 	taskFolder := "agents-sandbox-task-1mjusbm3wikhb0"
 	require.Equal(t, ArtifactInfo{Slug: taskFolder, Agent: "opencode"},
-		ParseVMName(ProjectVMName(taskFolder, "opencode")))
+		ParseVMName(projectVMName(taskFolder, "opencode")))
 
 	vmFolder := "agents-sandbox-vm-1mjusbm3wikhb0"
 	require.Equal(t, ArtifactInfo{Slug: vmFolder, Agent: "opencode"},
-		ParseVMName(ProjectVMName(vmFolder, "opencode")))
+		ParseVMName(projectVMName(vmFolder, "opencode")))
 
 	homeFolder := "agents-sandbox-home-1mjusbm3wikhb0"
 	require.Equal(t, ArtifactInfo{Slug: homeFolder, Agent: "opencode"},
-		ParseVMName(ProjectVMName(homeFolder, "opencode")))
+		ParseVMName(projectVMName(homeFolder, "opencode")))
 	require.Equal(t, ArtifactInfo{Slug: homeFolder, Agent: "opencode"},
 		ParseHomeVolumeName(HomeVolumeName(homeFolder, "opencode", "20260812T123456")))
 
 	// A genuine legacy name still parses.
 	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "opencode"},
-		ParseVMName(LegacyProjectVMName(fixtureSlug, "opencode")))
+		ParseVMName(legacyProjectVMName(fixtureSlug, "opencode")))
 }
 
 func TestParseHomeVolumeNameHyphenatedAgent(t *testing.T) {
@@ -134,4 +124,24 @@ func TestParseImageTagBothSchemes(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "opencode"},
 		ParseImageTag("agents-sandbox/runner-myproj-1mjusbm3wikhb0:opencode-latest"))
 	require.Equal(t, ArtifactInfo{}, ParseImageTag("docker.io/library/foo:1"))
+	// A foreign reference without a tag is not ours either.
+	require.Equal(t, ArtifactInfo{}, ParseImageTag("docker.io/library/foo"))
+}
+
+// TestParseHomeVolumeNameEdgeCases pins the small branches of the home-volume
+// parser: an empty input, a hash with no tail, a hash-anchored prefix-free
+// volume whose folder begins with a legacy VM prefix, and a legacy prefixed
+// name carrying no hash at all.
+func TestParseHomeVolumeNameEdgeCases(t *testing.T) {
+	require.Equal(t, ArtifactInfo{}, ParseHomeVolumeName(""))
+	require.Equal(t, ArtifactInfo{Slug: fixtureSlug}, ParseHomeVolumeName(fixtureSlug))
+	require.Equal(t, ArtifactInfo{Slug: "agents-sandbox-vm-1mjusbm3wikhb0", Agent: "opencode"},
+		ParseHomeVolumeName("agents-sandbox-vm-1mjusbm3wikhb0-opencode-20260812T123456"))
+	require.Equal(t, ArtifactInfo{Slug: "single"}, ParseHomeVolumeName("agents-sandbox-home-single"))
+}
+
+func TestAllDigits(t *testing.T) {
+	require.False(t, allDigits(""))
+	require.False(t, allDigits("12a"))
+	require.True(t, allDigits("12"))
 }

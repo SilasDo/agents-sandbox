@@ -18,6 +18,40 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
+// TestEnsureLoadedFallsBackToDockerTagWhenRefEmpty pins the legacy-only
+// resolution: an ImageInfo built before the ref was resolved carries only the
+// Docker tag, so loading falls back to it as the microsandbox reference.
+func TestEnsureLoadedFallsBackToDockerTagWhenRefEmpty(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	legacyRef := naming.DockerImageRef("test-project", "opencode")
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageSaveFn: func(
+			_ context.Context, _ []string, _ ...client.ImageSaveOption,
+		) (client.ImageSaveResult, error) {
+			return io.NopCloser(strings.NewReader("tar")), nil
+		},
+	})
+	msbClient := &msb.MockMsbClient{
+		ImageGetFn: func(_ context.Context, _ string) error { return errors.New("not cached") },
+	}
+
+	info, err := EnsureLoaded(
+		context.Background(),
+		msbClient,
+		ImageInfo{DockerTag: legacyRef, Ref: "", Digest: "sha256:new"},
+		&termio.Mock{},
+	)
+	if err != nil {
+		t.Fatalf("EnsureLoaded: %v", err)
+	}
+	if info.Ref != legacyRef {
+		t.Errorf("info.Ref = %q, want the Docker tag %q", info.Ref, legacyRef)
+	}
+	if len(msbClient.LoadedImages) != 1 || msbClient.LoadedImages[0] != legacyRef {
+		t.Errorf("LoadedImages = %v, want [%s]", msbClient.LoadedImages, legacyRef)
+	}
+}
+
 // TestEnsureLoadedReusesLegacyRefWhenContentMatches pins the no-reimport rule:
 // when a pre-change install already cached the image under the legacy reference
 // with the same content, that reference is reused instead of loading a second

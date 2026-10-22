@@ -14,36 +14,16 @@ type ArtifactInfo struct {
 	Task   bool
 }
 
-// ProjectVMName returns the prefix-free project VM name for a slug and agent.
-func ProjectVMName(slug, agent string) string {
-	return slug + "-" + agent
-}
-
-// LegacyProjectVMName returns the pre-change project VM name.
-func LegacyProjectVMName(slug, agent string) string {
-	return LegacyVMPrefix + slug + "-" + agent
-}
-
 // TaskSandboxName returns the prefix-free task sandbox name for a slug, agent
 // and creation timestamp in nanoseconds.
 func TaskSandboxName(slug, agent string, nanos int64) string {
 	return slug + "-" + agent + "-" + strconv.FormatInt(nanos, 10)
 }
 
-// LegacyTaskSandboxName returns the pre-change task sandbox name.
-func LegacyTaskSandboxName(slug, agent string, nanos int64) string {
-	return LegacyTaskPrefix + slug + "-" + agent + "-" + strconv.FormatInt(nanos, 10)
-}
-
 // HomeVolumeName returns the prefix-free home volume name for a slug, agent and
 // timestamp.
 func HomeVolumeName(slug, agent, timestamp string) string {
 	return slug + "-" + agent + "-" + timestamp
-}
-
-// LegacyHomeVolumeName returns the pre-change home volume name.
-func LegacyHomeVolumeName(slug, agent, timestamp string) string {
-	return LegacyHomePrefix + slug + "-" + agent + "-" + timestamp
 }
 
 // RunnerImageRef returns the prefix-free microsandbox runner image reference

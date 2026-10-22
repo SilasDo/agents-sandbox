@@ -47,9 +47,6 @@ func projectStateReferences(extract func(Key, *HomeState) []string) (map[string]
 			return readErr
 		}
 		for _, name := range extract(key, st) {
-			if name == "" {
-				continue
-			}
 			references[name] = append(references[name], key)
 		}
 		return nil

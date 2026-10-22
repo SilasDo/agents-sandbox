@@ -27,7 +27,7 @@ func TestProjectVMNameIsPrefixFreeAndTruncated(t *testing.T) {
 func TestFindProjectVMFallsBackToLegacyName(t *testing.T) {
 	k := state.Key{Slug: "myproj-1mjusbm3wikhb0", Agent: "opencode"}
 	legacy := &msb.MockSandboxHandle{
-		Name_:   naming.LegacyProjectVMName(k.Slug, k.Agent),
+		Name_:   legacyProjectVMName(k),
 		Status_: msbSdk.SandboxStatusRunning,
 	}
 	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, name string) (msb.SandboxHandle, error) {

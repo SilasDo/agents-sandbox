@@ -15,6 +15,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -67,6 +68,29 @@ func TestCheckForActiveVMs_IgnoresPrefixFreeTaskSandbox(t *testing.T) {
 		state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"},
 	); err != nil {
 		t.Fatalf("a prefix-free task sandbox must not block volume operations, got: %v", err)
+	}
+}
+
+// TestCheckForActiveVMs_UsesLabelsForTaskSandbox pins that a sandbox whose name
+// looks like a project VM but whose labels mark it a task does not block volume
+// operations: the label is authoritative over the name shape.
+func TestCheckForActiveVMs_UsesLabelsForTaskSandbox(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{
+			Name_:   "someproj-1mjusbm3wikhb0-opencode",
+			Status_: msbSdk.SandboxStatusRunning,
+			Cfg: &msbSdk.SandboxConfig{
+				Labels: map[string]string{naming.LabelType: naming.SandboxTypeTask},
+			},
+		},
+	}
+
+	if err := checkForActiveVMs(
+		context.Background(),
+		state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"},
+	); err != nil {
+		t.Fatalf("a label-identified task sandbox must not block volume operations, got: %v", err)
 	}
 }
 
