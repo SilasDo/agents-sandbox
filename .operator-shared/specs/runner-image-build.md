@@ -12,7 +12,7 @@ How the rendered Dockerfile is arranged into stages (so layer caching works as a
 `EnsureImageWithClient` makes two independent decisions from one input, `BuildOptions.Force`:
 
 - **Build at all:** `buildDecision` (`internal/sandbox/image/inspect.go`) short-circuits on `Force`, then `buildReasons`
-  requests a build when the msb image is absent or its recorded `dockerfile-id` differs from the rendered one. The
+  requests a build when the host Docker image is absent or its recorded `dockerfile-id` differs from the rendered one. The
   `dockerfile-id` label is the source
   signature (rendered Dockerfile + resolved agent version + every build-context file with its name, mode, and content;
   the files travel via the build context rather than the Dockerfile text, so each is folded into the signature for an
