@@ -217,7 +217,7 @@ git commit -m "feat(ci): decide the dead-code gate and expose it as a command"
 - Consumes: the `ci/deadcodecheck` CLI (`-reports <dir>`, source paths on stdin, exit 0/1/2).
 - Produces: `ci/check-deadcode.sh`, read by `make deadcode` (Task 5) and by `ci/test-check-deadcode.sh`.
 
-Environment the script reads: `DEADCODE_VERSION` (required, from the Makefile), `PKG` (default `./...`), `TAGS` (default: the four-configuration matrix; when set, a single configuration). Test seams, documented as test-only in a comment: `DEADCODE_FIXTURE_DIR` (report JSON per configuration instead of running the tool) and `DEADCODE_FILES` (a file listing source paths instead of `git ls-files '*.go'`). The checker is always invoked as `go run ./ci/deadcodecheck` from the module root, so the test must not change the working directory.
+Environment the script reads: `DEADCODE_VERSION` (required, from the Makefile), `PKG` (default `./...`), `TAGS` (default: the four-configuration matrix; when set, a single configuration). Test seams, documented as test-only in a comment: `DEADCODE_FIXTURE_DIR` (report JSON per configuration instead of running the tool) and `DEADCODE_FILES` (a file listing source paths instead of `git ls-files '*.go'`). The checker is built once into a temporary binary and run directly (never `go run`, which collapses the checker's exit 2 to 1) from the module root, so the test must not change the working directory.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -241,7 +241,7 @@ Expected: FAIL, `ci/check-deadcode.sh: not found`
 
 - [ ] **Step 3: Implement `ci/check-deadcode.sh`**
 
-`set -eu`; require `DEADCODE_VERSION`. Build the configuration list (matrix or `$TAGS`) and, per configuration, write the JSON into a `mktemp -d` report directory; run the pinned tool with `-json -tags "$tags" "$PKG"` and abort with exit 2 unless it exits 0. Then feed the source-path list on stdin to `go run ./ci/deadcodecheck -reports "$report_dir"` and propagate its status. `PKG`-scoped runs pass `-scope` so the checker skips the stale-marker pass and says so (Review Focus 6).
+`set -eu`; require `DEADCODE_VERSION`. Build the configuration list (matrix or `$TAGS`, using `[[ -n "${TAGS+set}" ]]` so an unset `TAGS` means the matrix and an explicit `TAGS=''` means a single no-tags run) and, per configuration, write the JSON into a `mktemp -d` report directory; run the pinned tool with `-json -tags "$tags" "$PKG"` and abort with exit 2 unless it exits 0. Then build the checker once (`go build -o "$checker_dir/deadcodecheck" ./ci/deadcodecheck` — never `go run`, which reports any non-zero program exit as 1 and would erase the checker's diagnosis-vs-untrusted distinction), feed the source-path list on stdin to the built binary with `-reports "$report_dir"`, and propagate its status. `PKG`-scoped runs pass `-scope` so the checker skips the stale-marker pass and says so (Review Focus 6).
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -264,7 +264,7 @@ git commit -m "feat(ci): add the dead-code gate script and its tests"
 
 **Interfaces:**
 - Consumes: `ci/check-deadcode.sh`.
-- Produces: `make deadcode`, `DEADCODE_VERSION`.
+- Produces: `make deadcode`, `make deadcode-test`, `DEADCODE_VERSION`.
 
 `make deadcode` is **not** added to `verify` in this task — the baseline is still red. Task 10 wires it.
 
@@ -274,7 +274,7 @@ git commit -m "feat(ci): add the dead-code gate script and its tests"
 DEADCODE_VERSION = v0.52.0
 ```
 
-Add `deadcode` to `.PHONY`, and after `vulncheck`:
+Add `deadcode` and `deadcode-test` to `.PHONY`, and after `vulncheck`:
 
 ```make
 # Hard gate: production code unreachable from any main package must be deleted or
@@ -284,10 +284,14 @@ Add `deadcode` to `.PHONY`, and after `vulncheck`:
 #   make deadcode PKG=./internal/foo    # inspection only; stale markers not checked
 #   make deadcode TAGS=integration      # one configuration instead of the matrix
 deadcode:
-	DEADCODE_VERSION='$(DEADCODE_VERSION)' PKG='$(PKG)' TAGS='$(TAGS)' ci/check-deadcode.sh
+	DEADCODE_VERSION='$(DEADCODE_VERSION)' PKG='$(PKG)' $(if $(TAGS),TAGS='$(TAGS)',) ci/check-deadcode.sh
+
+# Test the gate script itself (fixtures only: never runs deadcode).
+deadcode-test:
+	ci/test-check-deadcode.sh
 ```
 
-`PKG` and `TAGS` need defaults: `PKG ?= ./...` already exists for `mutation`; add `TAGS ?=`.
+`PKG ?= ./...` already exists for `mutation`. Do **not** add a `TAGS ?=` default: an unset `TAGS` must mean the full four-configuration matrix while an explicit `TAGS=''` must mean a single no-tags run, so the recipe passes `TAGS` through only when it is set (`$(if $(TAGS),TAGS='$(TAGS)',)`) and the script distinguishes unset from empty (`[[ -n "${TAGS+set}" ]]`).
 
 - [ ] **Step 2: Verify it runs and fails on the unmarked baseline**
 
@@ -475,15 +479,15 @@ git commit -m "refactor: remove functions unreachable from any main package"
 ### Task 10: Wire the gate in
 
 **Files:**
-- Modify: `Makefile` (the `verify` target), `.github/workflows/ci.yml`
+- Modify: `Makefile` (the `verify` and `check` targets), `.github/workflows/ci.yml`
 
 **Interfaces:**
-- Consumes: `make deadcode`.
+- Consumes: `make deadcode`, `make deadcode-test`.
 - Produces: the CI job name `deadcode`.
 
 - [ ] **Step 1: Add the prerequisite**
 
-`verify:` gains `deadcode` after `vulncheck`. Leave `check` untouched.
+`verify:` gains `deadcode` after `vulncheck`, and both `verify:` and `check:` gain `deadcode-test` (the script's own fixture test, mirroring `docs-linkcheck-test`), so the everyday loop tests the gate script without running the analysis. `make check` gains only `deadcode-test`; the analysis itself stays out of the fast loop.
 
 - [ ] **Step 2: Add the CI job**
 

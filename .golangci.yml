@@ -526,3 +526,6 @@ linters:
           - nonamedreturns
           - reassign
           - wrapcheck
+
+run:
+  allow-parallel-runners: true
