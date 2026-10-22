@@ -203,6 +203,26 @@ func TestResolveProjectConfigUnresolvableCwdFallsBack(t *testing.T) {
 	}
 }
 
+// TestResolveProjectConfigUnresolvableCwdInsideBareWorktree covers the same
+// fallback inside a bare checkout: the raw path lets the upward walk still find
+// the enclosing bare root, while dropping to an empty path would resolve to no
+// repository at all and return the relative base.
+func TestResolveProjectConfigUnresolvableCwdInsideBareWorktree(t *testing.T) {
+	isolateProjectConfig(t)
+	root := physicalDir(t, writeBareCheckout(t))
+	missing := filepath.Join(root, "main", "gone")
+
+	base, ignored := resolveProjectConfig(missing)
+
+	wantBase := filepath.Join(root, ".agents-sandbox")
+	if base != wantBase {
+		t.Errorf("base = %q, want the bare root base %q", base, wantBase)
+	}
+	if ignored != "" {
+		t.Errorf("ignored = %q, want empty: no .agents-sandbox exists in the worktree", ignored)
+	}
+}
+
 func TestIgnoredWorktreeConfigDir(t *testing.T) {
 	isolateProjectConfig(t)
 	root := writeBareCheckout(t)
