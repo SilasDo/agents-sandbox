@@ -29,6 +29,9 @@
 - `opencode2-live-event-probe.md`
   - Description: How to capture and drive the running opencode2 daemon's SSE stream from inside the VM (auth, `/api/event`, `/openapi.json`, creating a session with an `effect: ask` permission rule, replying to permissions, the input-event payload shapes) and the observed ordering — two `permission.asked` in one step with no step boundary — that drove the notify event-id fix.
   - Read If: Needing to observe real opencode/opencode2 events, reproduce an input/awaiting-input trigger, or verify a notify change against the live daemon.
+- `agent-link-opening.md`
+  - Description: What each agent shells out to when it opens a link on Linux (opencode v1 hardcoded `xdg-open`, opencode2's `open` package, pi's `openBrowser`, claude-code's own scheme allowlist plus its `no_display` headless guard and `$BROWSER` honouring), the OSC 8 wrinkle (the TUIs capture mouse input, so the host terminal never sees the click), and the network-free VM→host transport constraint for a host-side opener (the home volume's host-side `VolumeHandle.Path()`, so it works under `network: none`). Context for issue #273.
+  - Read If: Working on opening links/URLs on the host from inside the VM (#273), an in-VM `xdg-open` shim, agent opener behavior, or any VM→host action channel.
 
 ### `specs/` - System contracts for this partition
 
