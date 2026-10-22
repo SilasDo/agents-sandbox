@@ -176,7 +176,7 @@ check_terminology() {
         body = $0
         sub(/^[[:space:]]*(>[[:space:]]*)*/, "", body)
         if (fence == 0) {
-          if (body ~ /^(`{3,}|~{3,})/) {
+          if (body ~ /^(```|~~~)/) {
             marker = substr(body, 1, 1)
             openlen = 0
             while (substr(body, openlen + 1, 1) == marker) openlen++
