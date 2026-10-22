@@ -46,6 +46,9 @@ updates:
 - Field name is `last_checked` everywhere; `upgrade.json`'s `last_check` is gone.
 - `dismissed_versions` ("the user said do not notify me") and the per-agent
   `latest_version` cache keep their existing semantics.
+- `updates:` and its `launcher`/`agents` children omit themselves when empty via
+  an `IsZero()` method (yaml.v3 honours `IsZeroer` for `omitempty` on a value
+  struct; `time.Time` is handled natively).
 
 This spec owns the **shape and placement** of launcher-global state.
 `upgrade-state-scoping.md` owns the **semantics** of the agent check state
@@ -96,7 +99,8 @@ anything writes `updates.launcher`, so the union is normally a straight copy).
 takes an injected `Store` (`Load`, `Update`) so it does **not** import
 `internal/sandbox/state`; `cmd` wires `launcherStore`, which maps the seam onto
 `updates.launcher` through `state.WithRootState`. A nil `Store` falls back to an
-in-memory one, preserving the unlimited test seam.
+in-memory one, preserving the unlimited test seam. A `Load` error is non-fatal:
+`Check` reports it verbose and returns no result rather than failing the run.
 
 `Update(mutate func(*LauncherState)) error` is the **only** mutation, and it
 applies `mutate` to the state as it exists at write time, inside one locked
@@ -131,8 +135,6 @@ noted in `CHANGELOG.md` and here, following the `updater.yaml` precedent (#225).
 ## Left to the builder
 
 - The exact shape of the `internal/upgrade` store seam and its wiring in `cmd`.
-- How `updates:` (and its children) is omitted when empty (pointer vs an
-  `IsZero` method, matching yaml.v3).
 - The call site and ordering of the `upgrade.json` fold relative to
   `upgrade.Check` and `migrateLegacyUpdaterState`.
 - Docs sync, if any user-facing page describes the state layout.

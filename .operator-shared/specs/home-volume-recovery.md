@@ -33,7 +33,7 @@ second clone from adopting the same volume; see `checkout-identity.md`.
 
 `liveHomeVolume` originally read `cfg.Volumes[mounts.VMHomeDir].Named`, which the SDK always leaves empty on a
 read-back, so until #223 this branch never fired and recovery always fell through to a fresh prefill (a silent
-duplicate volume, the very failure #219 was filed for). See `plans/2026-10-20-live-mount-readback.md`.
+duplicate volume, the very failure #219 was filed for).
 
 The live VM config is authoritative for which volume is *current*, unlike probing the volume list: a project can
 legitimately own several home volumes (migrate/reset keep the old one), so a name-prefix match is ambiguous. Adopting

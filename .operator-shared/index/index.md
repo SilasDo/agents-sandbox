@@ -1,5 +1,5 @@
 ---
-description: Main codebase map for agents-sandbox, a Go CLI that launches coding agents (opencode, pi, Claude Code) inside a microsandbox VM.
+description: Main codebase map for agents-sandbox, a Go CLI that launches coding agents (opencode, opencode2, pi, Claude Code) inside a microsandbox VM.
 read_if: Navigating the codebase.
 ---
 
@@ -18,6 +18,7 @@ read_if: Navigating the codebase.
 - `README.md` — Overview, comparison table, boundary/tradeoffs.
 - `STYLEGUIDE.md` — Documentation styleguide for user-facing docs.
 - `AGENTS.md` — Authoritative agent instructions (dev workflow, toolchain, lint/test commands).
+- `GLOSSARY.md` — Project terminology.
 - `CHANGELOG.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE.md`, `SECURITY.md` — Project metadata and policy.
 - `Makefile` — fmt/lint/test/build targets.
 - `go.mod`, `go.sum` — Module deps (cobra, viper, go-git, msb SDK, docker/moby, testify).
@@ -29,6 +30,7 @@ read_if: Navigating the codebase.
 
 - `main.go` — Entry point; wires termio UI and calls `execute`.
 - `cli.go` — Cobra root, `execute`, injection seams (msb/docker mocks).
+- `launcher_store.go` — Adapter binding the root-state transaction API to the `internal/upgrade` store seam (turns a contended non-blocking lock into an error so the check defers rather than reading a false empty state).
 - `commands.go` — Root/tree/version/upgrade commands and wiring.
 - `commands_cli.go` — run/shell/stop/kill commands.
 - `commands_system.go` — doctor/list/config/home/agent/build/dockerfile/image/volume/sandbox/prune commands, including `config paths` (the config layers in precedence order, driven by `viperconfig.ConfigLayers`).
@@ -43,10 +45,11 @@ read_if: Navigating the codebase.
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `configfile/` — Comment/order-preserving launcher-config editor (`Config`, `Parse`, `LoadDir`, `WriteAtomic`); shared by `configmigration` and the setup wizard.
+- `configfile/` — Comment/order-preserving launcher-config editor (`Config`, `Parse`, `LoadDir`, `WriteAtomic`); shared by `configmigration` and the setup wizard. *(Guided-onboarding work; not on `main` yet.)*
 - `configmerge/` — Merge config with precedence.
-- `configmigration/` — **See [configmigration subindex](configmigration.md)** (native agent config migration, guided onboarding, network plan).
+- `configmigration/` — **See [configmigration subindex](configmigration.md)** (native agent config migration, guided onboarding, network plan). *(Guided-onboarding work; not on `main` yet.)*
 - `configpaths/` — Config/home path resolution and guards.
+- `filewalk/` — Best-effort recursive file walk shared by the tool.
 - `git/` — Git helpers (go-git wrapper) and project identity: `Identity`/`ResolveIdentity` with the repo slug (origin-derived; keys the per-slug user config dir and the grouping label) and the checkout slug (git common dir; keys state/VM/volume/locks/image tag), plus the bind-root rule (#144).
 - `homeconfig/` — Home config provisioning.
 - `humanize/` — Human-readable formatting.

@@ -1,7 +1,7 @@
 # Design: fork the opencode2 launcher config namespace
 
 Date: 2026-10-19
-Status: implemented on `opencode2-config-fork` (pending merge)
+Status: implemented (pending merge).
 
 ## Intent
 
@@ -235,17 +235,10 @@ migration (a primary dir plus leftover legacy files): that case stays silent.
   unchanged guest path/drop-in.
 - `CHANGELOG.md` — `Unreleased` → `Changed`.
 
-Implementation notes (post-build): `configpaths.agentConfigDirCandidates` does no
-de-duplication (aliases are distinct legacy names by contract). An adversarial
-review round then added (a) per-name validation in `configpaths` (see above),
-(b) a candidate-pair guard plus non-"not exist" `os.Stat` error propagation in
-`ResolveConfigSource`, and (c) the clarified fallback warning. A second review
-round tightened name validation to reject any separator (the bare `/` had
-slipped), made the primary path constructors validate intrinsically, made
-`anyDirExists` try every candidate before surfacing an error, and had
-`config agent` print the effective source plus a legacy-fallback marker. The deliberate
-tradeoff stands unchanged: an empty or partial primary dir silently disables the
-fallback (no warning) — now stated explicitly in the user docs. `ConfigFiles.Source`
+Implementation notes: `configpaths.agentConfigDirCandidates` does no
+de-duplication (aliases are distinct legacy names by contract), and
+`anyDirExists` tries every candidate before surfacing an error. `config agent`
+prints the effective source plus a legacy-fallback marker. `ConfigFiles.Source`
 is set once per load and reused by `Describe`.
 
 ## Left to the builder

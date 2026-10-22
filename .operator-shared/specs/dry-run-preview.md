@@ -5,7 +5,7 @@ read_if: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-ru
 
 # `--dry-run` preview
 
-Status: implemented on `issue-228-dry-run-preview`.
+Status: implemented.
 
 Closes [issue #228](https://github.com/inoio/agents-sandbox/issues/228). Supersedes the "`--dry-run` is side-effect-free"
 clause in [upgrade-state-scoping.md](upgrade-state-scoping.md) (which held only for the upgrade check) and the
@@ -98,6 +98,9 @@ plus the session line) so it is asserted as data in unit tests and as the render
 - The `prepareHomeVolume` migration-offer gate and the `determineAgentVersion` gate stay as they are; they already
   match the pure preview. The `--dry-run` note in `vm/run_orchestrate.go:109-115` is updated to state the new
   contract.
+- Project identity is resolved read-only too: the preview runs `AdoptLegacyIdentity` with `apply=false`, so it reports
+  against the slug a real run would find first (the legacy slug while a migration is pending) without moving state, and
+  an error from that resolution (e.g. a corrupt legacy state document) surfaces rather than being ignored.
 
 ### Test seam
 

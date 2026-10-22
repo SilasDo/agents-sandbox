@@ -73,7 +73,9 @@ document that exists; no new project-level file is introduced (see Non-goals).
    (e.g. a corrupt `state.yaml`) must never be overwritten, so the `migrations` registry and every other agent's cached
    check survive.
 2. Read the global `AgentCheckState` for `a`.
-3. If `dueForCheck(now)`: call the agent's `LatestVersion`. On error, warn and return no offer (the window stays open).
+3. If the check is due (`state.AgentCheckState.DueForCheck`: never checked, or at least `state.AgentCheckInterval`
+   = 24h since the last check): call the agent's `LatestVersion`. On error, warn and return no offer (the window stays
+   open).
    On success, set `last_checked = now` and `latest_version = latest`, and persist the root state.
 4. `latest := cached latest_version`; if empty, no offer.
 5. Compare `NewerThan(latest, current)`. If not newer, no offer.
@@ -128,6 +130,11 @@ its copy campaign; the upgrade path acquires it **non-blocking** and, if it is h
 this run (no check, no fold), retrying next run. `state.UpdateRootState` stays lock-free and documents that callers must
 hold the lock; this avoids the non-reentrant double-lock that a lock-inside-`UpdateRootState` design would cause for
 `runtimemigration` (flock is not reentrant).
+
+> **Superseded in part.** `state.UpdateRootState` and the standalone root lock are retired by the transaction API
+> (`WithRootState`) in [`project-state-transactions.md`](project-state-transactions.md); the upgrade path and the legacy
+> fold are `WithRootState` closures acquired non-blocking. The non-blocking-deferral intent still holds; read that spec
+> for the current mutation API.
 
 ### HomeState write serialization
 

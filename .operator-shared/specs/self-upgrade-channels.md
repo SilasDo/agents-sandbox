@@ -99,7 +99,9 @@ choosing the maximum.
 
 Resolution must yield the exact release to install, not a floating "latest": the download is addressed by the resolved
 release's tag (below). Because this repo's release tags are always `v<version>` — the publish job only triggers on `v*`
-tags — the tag is reconstructed from the resolved version.
+tags — the tag is reconstructed from the resolved version. The asset name stays
+`agents-sandbox-<os>-<arch>`, so the planted URL is
+`https://github.com/inoio/agents-sandbox/releases/download/v<version>/agents-sandbox-<os>-<arch>`.
 
 ### Download
 
@@ -181,6 +183,8 @@ Two constraints fall out of the design and belong to the publishing side:
 - `docs/configuration/self-upgrade.md`: a Channels section (what `canary` means, the opt-in, leaving, the Homebrew
   note, the roll-forward onto the real release).
 - `docs/install/installation.md`: a canary install snippet pinned to a prerelease tag.
+- `docs/configuration/launcher.md`'s config-key and env-var tables and `docs/commands.md`'s `### upgrade` section (the
+  `--channel` flag) are kept in sync too.
 - `CHANGELOG.md` `[Unreleased]`: one line for the channel, one for the canary publishing fix.
 - No deprecation-register entry: a new key, nothing removed.
 

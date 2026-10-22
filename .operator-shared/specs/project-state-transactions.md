@@ -7,8 +7,8 @@ read_if: Changing anything that reads or writes the per-project HomeState or the
 
 ## Intent
 
-State handling has been reworked repeatedly (#225 review rounds), yet Greptile keeps finding defects. The root cause is
-that correctness is per-call-site discipline: every writer must independently (a) pick the right lock and acquisition
+The root cause of the recurring state-handling defects is that correctness is per-call-site discipline: every writer
+must independently (a) pick the right lock and acquisition
 mode, (b) pick between `UpdateHomeState` / `UpdateExistingHomeState` / `ReplaceHomeState` / lock-free `WriteState`, and
 (c) carry forward every field of a wide document it does not own. Good call sites exist, but correctness depends on every
 caller getting all three right, so each round finds a new one that did not.
@@ -52,7 +52,7 @@ recovery as the only wholesale writer.
 - The root lock is held for a long time by an in-flight runtime-home copy campaign (minutes); non-blocking acquirers
   must defer, not queue.
 - Many test packages seed state directly with `state.WriteState`; the migration to the transaction API touches them.
-- `~/.operator-shared/specs/test-isolation.md` fail-fast seams and the near-100% coverage bar apply.
+- The `.operator-shared/specs/test-isolation.md` fail-fast seams and the near-100% coverage bar apply.
 
 ## Current failure surface (what this fixes)
 
@@ -64,8 +64,8 @@ recovery as the only wholesale writer.
    the write lands much later (`volume/operations.go:196`→`:250`, `RecordHomeImage` `state.go:168`→`:174`). The lock
    covers a single write, not read→decide→write.
 3. **Field preservation is convention, not structure.** One wide `HomeState` (volume + digest + 3 upgrade fields +
-   `offered_versions` + 4 fingerprints) is rewritten whole by every writer; three review rounds were "writer dropped a
-   field".
+   `offered_versions` + 4 fingerprints) is rewritten whole by every writer; a dropped field is a recurring failure
+   mode.
 4. **Recovery can silently drop fields.** `recoverOrCreateHome` with `prior==nil` (corrupt/missing) loses
    `agent_version`/source/`offered_versions` (`volume/state.go:58`); `EnsureNewHome` drops all upgrade fields;
    `ReplaceHomeState` is exported so any caller can wholesale-write.
@@ -119,7 +119,7 @@ intentional, not a regression.
 The home lock is **never held across external msb I/O** (volume creation, prefill, or a whole-home copy, which can take
 minutes). Those flows keep I/O outside the lock and close the TOCTOU with a compare-and-set guard inside the final
 transaction: re-read, verify the precondition still holds (e.g. `cur.HomeVolume == oldVolume`), and either commit the
-new value or fail with a "state changed concurrently" error the caller surfaces. This closes the lost-update in finding 2
+new value or fail with a CAS error (`home volume changed concurrently (want …, have …)`) the caller surfaces. This closes the lost-update in finding 2
 without a minutes-long lock, and is why the callback returns an error rather than only a bool.
 
 Resolution reads (`ResolveHomeVolume`, `volumeOp`, `RecordHomeImage`) stay lock-free *snapshots*: the volume flows are
@@ -131,9 +131,8 @@ The copy campaign legitimately checkpoints (writes after each volume) so a crash
 primitive serves both by exposing an explicit commit within a held lock:
 
 ```go
-type RootTxn struct { /* current *RootState; exists bool */ }
+type RootTxn struct { /* current *RootState */ }
 func (t *RootTxn) State() *RootState
-func (t *RootTxn) Exists() bool
 func (t *RootTxn) Commit() error // write current; repeatable
 
 // WithRootState acquires the root lock (blocking or non-blocking) for the
@@ -154,30 +153,34 @@ lock-and-write, so there is no import cycle.
 
 - `exists` (readable prior): carry `agent_version`, `agent_source`, `docker_source`, `offered_versions`, and the
   fingerprints forward; overwrite `home_volume`/`image_digest` with the recovered values.
-- corrupt or missing: rebuild from reality — `agent_version` from the live image label (`image.ExistingAgentVersion`),
-  fingerprints seeded from the desired set (`#183`) — rather than writing blanks. `agent_source`/`docker_source` require
-  a running sandbox to read (`/etc/agents-sandbox/agent-source`) and are not re-read here; they self-heal when
-  `recordImageProvenance` next runs on boot. `offered_versions` is not recoverable and is left empty (accepted cost).
+- corrupt or missing: rebuild from reality — `home_volume`/`image_digest` from the recovered values, fingerprints
+  seeded from the desired set (`#183`) — rather than writing blanks. `agent_version` is left empty here (this callback
+  does not read the image label) and self-heals via `recordImageProvenance` on the next boot; `agent_source`/`docker_source`
+  likewise require a running sandbox to read (`/etc/agents-sandbox/agent-source`) and self-heal the same way.
+  `offered_versions` is not recoverable and is left empty (accepted cost).
 
 `ReplaceHomeState` is unexported, so no other package can wholesale-write a `HomeState` except through
 `RecoverHomeState`.
 
 ### Locks are never deleted, and removal is locked
 
-Lock files move to a dedicated `<root>/locks/` directory (`locks/root.lock`, `locks/<key>.lock`) that `RemoveState`,
-pruning, and every other path never touch. `RemoveState` continues to remove the key's state directory (state file,
-`clients/`, `claims/`) but never the lock. (This changes the lock path once; there are no cross-change holders.)
+Lock files move to a dedicated `<root>/locks/` directory (`locks/root.lock`, `locks/<slug>/<agent>.lock` — or
+`locks/<slug>/legacy.lock` for an agent-less legacy key) that `RemoveHomeState`, pruning, and every other path never
+touch. `RemoveHomeState` continues to remove the key's state directory (the state file and `clients/`) but never the
+lock; `claims/` is per-slug, outside the key dir, and is untouched. (This changes the lock path once; there are no
+cross-change holders.)
 
 Because the lock now outlives the state directory, removal must itself take the home lock: `RemoveHomeState(k)` removes
-under `WithHomeState`, so a prune cannot delete the directory between a writer's read and its `atomicwrite` (which would
-recreate the directory and resurrect a just-pruned key). Legacy agent-less keys and `clients/`/`claims/` cleanup keep
-their current semantics, ordered inside the lock.
+under the home lock (`withHomeLock`) directly, so a prune cannot delete the directory between a writer's read and its
+`atomicwrite` (which would recreate the directory and resurrect a just-pruned key). Legacy agent-less keys and
+`clients/` cleanup keep their current semantics, ordered inside the lock.
 
 ### Reentrancy fail-fast
 
 A process-local set of currently-held lock paths is checked before flock; a second acquisition of the same path in the
 same process returns a descriptive error instead of deadlocking. This covers both recursive calls and two goroutines in
-one process.
+one process. The guard applies to **blocking** acquires only: a non-blocking self-acquire still returns `ok=false`
+rather than an error, because it cannot deadlock and is the contention-deferral path callers rely on.
 
 ### `--dry-run` guard
 
@@ -197,6 +200,7 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 ## Edge cases
 
 - Missing state file, `WithHomeState`: `exists=false`; the writer decides (create or skip).
+- Missing root file, `WithRootState`: `fn` sees a zero `RootState` (there is no existence accessor).
 - Present-but-corrupt file, `WithHomeState`: returns an error, writes nothing (never clobbers an unknown document).
 - Present-but-corrupt file, `RecoverHomeState`: hands `fn` an empty document; recovery rebuilds and repairs the file.
 - Present-but-corrupt root file: `ReadRootState` wraps `ErrStateUnparsable` too — both documents share the sentinel — and
@@ -209,13 +213,13 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 ## Testing
 
 - Transaction primitive: absent / present / corrupt × `WithHomeState` / `RecoverHomeState` × commit / no-commit, plus
-  contention (`ok=false`), reentrancy fail-fast, and lock-file persistence across `RemoveState`.
+  contention (`ok=false`), reentrancy fail-fast, and lock-file persistence across `RemoveHomeState`.
 - Property test per writer: applying it preserves every field it does not own (the finding-3 guard).
 - Recovery: readable-prior carry-forward; corrupt rebuild-from-image; `offered_versions` documented-empty.
 - Migrate existing state-seeding tests off `WriteState` onto the transaction API (unchanged `ReadState`/`ReadRootState`
   reads are fine); corrupt fixtures via raw `os.WriteFile`.
-- CAS guard: a volume flow whose snapshot precondition no longer holds fails with a "state changed concurrently" error
-  and writes nothing.
+- CAS guard: a volume flow whose snapshot precondition no longer holds fails with a
+  `home volume changed concurrently` error and writes nothing.
 - `RemoveHomeState` under lock: a prune racing a writer cannot resurrect pruned state.
 - Same-process lock tests assert the reentrancy fail-fast; true cross-process *blocking* waiting is flock's contract and
   is not directly tested in-process (a subprocess test is a possible future addition).
