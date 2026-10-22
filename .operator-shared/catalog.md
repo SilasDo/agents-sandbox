@@ -155,6 +155,9 @@
 
 ### `plans/` - TDD implementation plans
 
+- `2026-10-22-docs-styleguide-and-pilot.md`
+  - Description: Phased plan (3 tasks) for documentation quality: write the contributor-facing `STYLEGUIDE.md` (voice, one-kind-per-page, the three ordering rules — explain-before-you-name, lead-with-applicability, order-by-universality — plus terminology, formatting, page template, review checklist) and rewrite `docs/sandboxes.md` as the reference implementation. Records the "agent" (not "harness") terminology decision, the no-prior-knowledge audience, and the deferred rollout (nav regroup, remaining page rewrites, tutorial, correctness fixes, dedup, terminology lint).
+  - Read If: Writing or reviewing agents-sandbox user documentation, applying or changing the documentation styleguide, or resuming the docs-quality rollout.
 - `2026-10-10-buildkit-builder-vm.md`
   - Description: TDD plan for `specs/buildkit-builder-vm.md` (#15): the `internal/sandbox/builder` package, BuildKit deps, rewiring `image`, VM creation, cache pruning, and removing `internal/sandbox/docker` + `doctor.CheckDocker`. Not yet implemented.
   - Read If: Resuming the (unimplemented) BuildKit builder plan.

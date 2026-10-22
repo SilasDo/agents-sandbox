@@ -23,7 +23,7 @@ it does not own. `agents-sandbox doctor` reports the private runtime home and it
 location.
 
 For the durable "why" behind this split, see
-[Sandboxes]({% link sandboxes.md %}#why-agents-sandbox-runs-its-own-microsandbox).
+[Sandboxes]({% link sandboxes.md %}#why-agents-sandbox-runs-its-own-runtime).
 This page covers what to do about the old home.
 
 ## Migrating your old home volumes
