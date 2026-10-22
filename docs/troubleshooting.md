@@ -7,7 +7,10 @@ nav_order: 20
 ---
 # Troubleshooting
 
-Common issues and how to resolve them.
+Fixes for the problems you are most likely to hit while installing or running agents-sandbox.
+
+> **Note:** Run `agents-sandbox doctor` first. It checks the host prerequisites and reports what is missing; the
+> sections on this page cover the cases it cannot resolve on its own.
 
 ## `agents-sandbox doctor` fails
 
@@ -37,13 +40,13 @@ If you encounter a runtime error, submit a bug report at:
 ### Legacy home volumes after upgrading
 
 For the upgrade overview — what changed, the migration choices, and how to retire
-`~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). The
-notes below cover diagnosing an interrupted or unclear copy.
+`~/.microsandbox` — see [Upgrading to 0.6]({% link install/upgrading.md %}). See
+[Private volumes with unclear status](#private-volumes-with-unclear-status) for diagnosing an interrupted or unclear copy.
 
 An interrupted copy resumes where it stopped, because progress is tracked in
 agents-sandbox's host state. If a private volume already exists under a legacy
 name — for example after `~/.local/state/agents-sandbox/state.yaml` was removed —
-its status is unclear; the note below covers that case.
+its status is unclear; [Private volumes with unclear status](#private-volumes-with-unclear-status) covers that case.
 
 #### Private volumes with unclear status
 
@@ -135,25 +138,10 @@ Common causes:
 
 ## Stale sandboxes consume resources
 
-### List and prune
+A sandbox that is no longer in use is stopped by its idle policy and reclaimed by auto-pruning. To list, stop, or
+reclaim sandboxes by hand, see [Sandboxes]({% link sandboxes.md %}) for the `list`, `stop`, `kill`, and `prune` commands.
 
-```console
-# See what's running
-agents-sandbox list
-
-# Remove old resources
-agents-sandbox prune --dry-run    # preview
-agents-sandbox prune --yes        # remove (skips the confirmation prompt)
-```
-
-### Stop a specific VM
-
-```console
-agents-sandbox stop               # graceful stop
-agents-sandbox kill               # force kill
-```
-
-## Branch session issues
+## Worktree session issues
 
 ### "failed to create worktree"
 
@@ -170,9 +158,9 @@ Then retry the command. If the problem persists, check for uncommitted changes o
 git worktree list
 ```
 
-### Branch prompt hangs
+### Worktree prompt hangs
 
-If the branch creation prompt doesn't respond, check that the repository has a remote configured:
+If the worktree creation prompt doesn't respond, check that the repository has a remote configured:
 
 ```console
 git remote -v
