@@ -11,7 +11,7 @@ has_toc: false
 
 agents-sandbox is configurable through configuration files and environment variables.
 
-- [Configuration files & Environment variables]({% link configuration/launcher.md %}) — config locations, fields, env vars, precedence
+- [Configuration files and environment variables]({% link configuration/launcher.md %}) — config locations, fields, env vars, precedence
 - [Secrets]({% link configuration/secrets.md %})
 - [Networking]({% link configuration/networking.md %})
 - [Host mounts]({% link configuration/mounts.md %})

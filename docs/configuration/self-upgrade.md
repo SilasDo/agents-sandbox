@@ -26,7 +26,7 @@ The `upgrade` command (`agents-sandbox upgrade`) checks for and installs the lat
 (`agents-sandbox-<os>-<arch>` from the GitHub release assets); because a running process cannot swap its own binary, an
 upgrade (or `auto-exit`) takes effect on the next invocation.
 
-## Release Channels
+## Release channels
 
 By default an install follows full releases only: GitHub's `latest` release, which never points at a prerelease.
 `upgrade.channel` opts an install into a prerelease line instead:
@@ -59,7 +59,7 @@ Homebrew installs ignore the setting: the tap serves full releases only, so a ke
 release-binary instructions on the [installation page]({% link install/installation.md %}) and set the channel to
 `canary` so future upgrades follow the same line.
 
-## Homebrew Installs
+## Homebrew installs
 
 When agents-sandbox detects that the running binary is a Homebrew-managed keg (it lives under a `Cellar` directory), it
 defers version management to Homebrew so the launcher never replaces the binary out from under `brew`:
