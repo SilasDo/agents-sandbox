@@ -300,12 +300,16 @@ func TestIsHomeTimestamp(t *testing.T) {
 
 func TestRunnerImageRefRoundTrips(t *testing.T) {
 	ref := RunnerImageRef("myproject-1mjusbm3wikhb0", "opencode")
-	if ref != "agents-sandbox/runner-myproject-1mjusbm3wikhb0:opencode-latest" {
+	if ref != "myproject-1mjusbm3wikhb0:opencode-latest" {
 		t.Fatalf("RunnerImageRef = %q", ref)
 	}
 	info := ParseImageTag(ref)
 	if info.Slug != "myproject-1mjusbm3wikhb0" || info.Agent != "opencode" {
 		t.Fatalf("ParseImageTag(RunnerImageRef(...)) = %+v, want the slug and agent back", info)
+	}
+	if DockerImageRef("myproject-1mjusbm3wikhb0", "opencode") !=
+		"agents-sandbox/runner-myproject-1mjusbm3wikhb0:opencode-latest" {
+		t.Fatalf("DockerImageRef = %q", DockerImageRef("myproject-1mjusbm3wikhb0", "opencode"))
 	}
 }
 

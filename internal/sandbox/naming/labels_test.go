@@ -9,4 +9,7 @@ func TestLabelConstants(t *testing.T) {
 	if LabelImage != "org.agents-sandbox.image" {
 		t.Errorf("LabelImage = %q, want org.agents-sandbox.image", LabelImage)
 	}
+	if LabelTask != "org.agents-sandbox.task" {
+		t.Errorf("LabelTask = %q, want org.agents-sandbox.task", LabelTask)
+	}
 }

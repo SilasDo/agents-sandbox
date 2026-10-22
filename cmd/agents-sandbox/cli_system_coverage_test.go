@@ -76,7 +76,7 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	want := naming.RunnerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
+	want := naming.DockerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
 	if !slices.Contains(mock.LoadedImages, want) {
 		t.Errorf("build loaded images %v, want the second clone's checkout tag %q", mock.LoadedImages, want)
 	}
@@ -301,7 +301,7 @@ func TestVolumeOpAppliesLegacyIdentity(t *testing.T) {
 		t.Fatalf("volume reset: %v", err)
 	}
 
-	if want := naming.RunnerImageRef(identity.CheckoutSlug, defaultAgentName); inspectedTag != want {
+	if want := naming.DockerImageRef(identity.CheckoutSlug, defaultAgentName); inspectedTag != want {
 		t.Errorf("ensured runner image = %q, want the moved checkout-slug tag %q", inspectedTag, want)
 	}
 	if _, err := state.ReadState(checkoutKey); err != nil {

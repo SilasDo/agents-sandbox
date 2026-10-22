@@ -40,14 +40,14 @@ func RemoveImages(ctx context.Context, refs []string, force bool, ui termio.UI) 
 	return nil
 }
 
-// refuseNonRunnerRefs fails closed on a reference that is not an agents-sandbox
-// runner image. Unlike the in-use guard, this ownership boundary is not
-// overridable by --force: the command removes only the objects agents-sandbox
-// builds, never arbitrary cached images.
+// refuseNonRunnerRefs fails closed on a reference that does not resolve to a
+// runner image under either scheme. Unlike the in-use guard, this ownership
+// boundary is not overridable by --force: the command removes only the objects
+// agents-sandbox builds, never arbitrary cached images.
 func refuseNonRunnerRefs(refs []string) error {
 	var foreign []string
 	for _, ref := range refs {
-		if !strings.HasPrefix(ref, naming.ImagePrefix) {
+		if naming.ParseImageTag(ref).Slug == "" {
 			foreign = append(foreign, ref)
 		}
 	}
@@ -55,8 +55,8 @@ func refuseNonRunnerRefs(refs []string) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"refusing to remove image(s) not managed by agents-sandbox (want prefix %q): %s",
-		naming.ImagePrefix, strings.Join(foreign, ", "),
+		"refusing to remove image(s) not managed by agents-sandbox: %s",
+		strings.Join(foreign, ", "),
 	)
 }
 
