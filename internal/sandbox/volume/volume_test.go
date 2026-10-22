@@ -24,7 +24,7 @@ import (
 
 func TestHomeVolumeNameScopesAgent(t *testing.T) {
 	got := HomeVolumeName(state.Key{Slug: "proj-abc123", Agent: "pi"})
-	prefix := "agents-sandbox-home-proj-abc123-pi-"
+	prefix := "proj-abc123-pi-"
 	if !strings.HasPrefix(got, prefix) {
 		t.Errorf("HomeVolumeName = %q, want prefix %q", got, prefix)
 	}
@@ -35,7 +35,7 @@ func TestHomeVolumeNameScopesAgent(t *testing.T) {
 
 func TestHomeVolumeName(t *testing.T) {
 	got := HomeVolumeName(state.Key{Slug: "myproj-aBc1234D", Agent: "opencode"})
-	expectedPrefix := "agents-sandbox-home-myproj-aBc1234D-opencode-"
+	expectedPrefix := "myproj-aBc1234D-opencode-"
 	if !strings.HasPrefix(got, expectedPrefix) {
 		t.Errorf("expected prefix %q, got %q", expectedPrefix, got)
 	}
@@ -47,7 +47,7 @@ func TestHomeVolumeName(t *testing.T) {
 
 func TestHomeVolumeNameDifferentInputs(t *testing.T) {
 	got := HomeVolumeName(state.Key{Slug: "myproj-aBc1234D", Agent: "opencode"})
-	if !strings.HasPrefix(got, "agents-sandbox-home-myproj-aBc1234D-opencode-") {
+	if !strings.HasPrefix(got, "myproj-aBc1234D-opencode-") {
 		t.Errorf("unexpected name format: %q", got)
 	}
 }
@@ -57,10 +57,10 @@ func TestHomeVolumeNameTimestamp(t *testing.T) {
 	got := HomeVolumeName(state.Key{Slug: "myproject", Agent: "opencode"})
 	after := time.Now().UTC().Add(time.Second)
 
-	if !strings.HasPrefix(got, "agents-sandbox-home-myproject-opencode-") {
+	if !strings.HasPrefix(got, "myproject-opencode-") {
 		t.Fatalf("expected prefix, got %q", got)
 	}
-	suffix := strings.TrimPrefix(got, "agents-sandbox-home-myproject-opencode-")
+	suffix := strings.TrimPrefix(got, "myproject-opencode-")
 	if len(suffix) != 15 {
 		t.Fatalf("expected 15-char timestamp, got %d chars: %q", len(suffix), suffix)
 	}
@@ -659,8 +659,8 @@ func TestResolveHomeVolume_NoStateFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(volName, "agents-sandbox-home-testproj-") {
-		t.Errorf("volume = %q, expected prefix %q", volName, "agents-sandbox-home-testproj-")
+	if !strings.HasPrefix(volName, "testproj-") {
+		t.Errorf("volume = %q, expected prefix %q", volName, "testproj-")
 	}
 	if st.ImageDigest != "sha256:def" {
 		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
@@ -701,8 +701,8 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(volName, "agents-sandbox-home-corruptproj-") {
-		t.Errorf("volume = %q, expected prefix %q", volName, "agents-sandbox-home-corruptproj-")
+	if !strings.HasPrefix(volName, "corruptproj-") {
+		t.Errorf("volume = %q, expected prefix %q", volName, "corruptproj-")
 	}
 	if st.ImageDigest != "sha256:def" {
 		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
@@ -744,8 +744,8 @@ func TestResolveHomeVolume_VolumeNotFoundInSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(volName, "agents-sandbox-home-orphanproj-") {
-		t.Errorf("volume = %q, expected prefix %q", volName, "agents-sandbox-home-orphanproj-")
+	if !strings.HasPrefix(volName, "orphanproj-") {
+		t.Errorf("volume = %q, expected prefix %q", volName, "orphanproj-")
 	}
 	if st.ImageDigest != "sha256:def" {
 		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
@@ -1535,7 +1535,7 @@ func TestEnsureNewHome_DryRunVM_NoSandbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.HasPrefix(volName, "agents-sandbox-home-testproj-") {
+	if !strings.HasPrefix(volName, "testproj-") {
 		t.Errorf("expected home volume prefix, got %q", volName)
 	}
 	if len(mock.CreatedSandboxes) != 0 {

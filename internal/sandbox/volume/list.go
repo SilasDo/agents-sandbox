@@ -3,7 +3,6 @@ package volume
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/humanize"
@@ -38,7 +37,7 @@ func ListVolumes(ctx context.Context) ([]VolumeInfo, error) {
 	var result []VolumeInfo
 	for _, h := range handles {
 		name := h.Name()
-		if !strings.HasPrefix(name, naming.HomePrefix) {
+		if naming.ParseHomeVolumeName(name).Slug == "" {
 			continue
 		}
 		result = append(result, VolumeInfo{

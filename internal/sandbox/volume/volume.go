@@ -21,11 +21,11 @@ const (
 	dstMount = "/dst"
 )
 
-// HomeVolumeName generates a volume name for the given project/agent key using
-// the standard home volume prefix and a UTC timestamp.
+// HomeVolumeName generates a prefix-free volume name for the given
+// project/agent key with a UTC timestamp.
 func HomeVolumeName(k state.Key) string {
 	ts := time.Now().UTC().Format("20060102T150405")
-	return naming.HomePrefix + k.Slug + "-" + k.Agent + "-" + ts
+	return naming.HomeVolumeName(k.Slug, k.Agent, ts)
 }
 
 // Manager manages home-volume lifecycle for projects.

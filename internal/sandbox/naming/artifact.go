@@ -216,16 +216,16 @@ func ParseVMName(name string) ArtifactInfo {
 func ParseHomeVolumeName(name string) ArtifactInfo {
 	switch {
 	case strings.HasPrefix(name, LegacyHomePrefix):
-		return parseHomeVolumeRemainder(name[len(LegacyHomePrefix):])
+		return parseHomeVolumeRemainder(name[len(LegacyHomePrefix):], true)
 	case strings.HasPrefix(name, LegacyVMPrefix), strings.HasPrefix(name, LegacyTaskPrefix),
 		strings.HasPrefix(name, DockerImagePrefix):
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	default:
-		return parseHomeVolumeRemainder(name)
+		return parseHomeVolumeRemainder(name, false)
 	}
 }
 
-func parseHomeVolumeRemainder(remainder string) ArtifactInfo {
+func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	if remainder == "" {
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
@@ -243,6 +243,11 @@ func parseHomeVolumeRemainder(remainder string) ArtifactInfo {
 			return ArtifactInfo{Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Digest: "", Task: false}
 		}
 		return ArtifactInfo{Slug: slug, Digest: last, Agent: "", Task: false}
+	}
+	// A prefix-free home volume always embeds the project-slug hash; without it
+	// the name is not ours.
+	if !prefixed {
+		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	// No embedded hash: the positional split still recognises the legacy digest
 	// names.
