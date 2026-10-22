@@ -22,8 +22,8 @@
   | --- | --- | --- |
   | — (home) | `index.md` | — |
   | Get started | `get-started.md` (new) | `introduction.md`, `install/installation.md`, `install/prerequisites.md`, `install/upgrading.md`, `switch.md`, `manage-config.md`, `tutorial.md` (new) |
-  | Guides | `guides.md` (new) | `sandboxes.md`, `runner-image.md`, `branch-sessions.md` |
-  | Recipes | `recipes.md` (retained) | `recipes/connect-desktop.md`, `recipes/bare-worktrees.md`, `recipes/java-ca-trust.md`, `recipes/openchamber.md` |
+  | Guides | `guides.md` (new) | `sandboxes.md`, `runner-image.md` |
+  | Recipes | `recipes.md` (retained) | `branch-sessions.md`, `recipes/connect-desktop.md`, `recipes/bare-worktrees.md`, `recipes/java-ca-trust.md`, `recipes/openchamber.md` |
   | Configuration | `configuration/index.md` (retained) | the eight `configuration/*.md` pages |
   | Concepts | `concepts.md` (new) | `how-it-works.md` |
   | Reference | `reference.md` (new) | `commands.md`, `troubleshooting.md`, `deprecations.md` |
@@ -316,7 +316,7 @@ git commit -m "docs: restructure the Commands reference per styleguide"
 
 Required changes:
 - Lead: one sentence, plus a `> **Note:**` pointing at `doctor` first.
-- Fold the resource-management block (`## Stale sandboxes consume resources`, `### List and prune`, `### Stop a specific VM`) — it duplicates `docs/sandboxes.md`; replace it with a one-line pointer to the Sandboxes page (see Task 15).
+- Fold the resource-management block (`## Stale sandboxes consume resources`, `### List and prune`, `### Stop a specific VM`) — it duplicates `docs/sandboxes.md`; replace it with a one-line pointer to the Sandboxes page (see Task 14).
 - Rename the stale `## Branch session issues` section to `## Worktree session issues` and its "branch prompt" wording to worktree terminology.
 - Remove "above"/"below" (lines 40, 45) — name the section.
 - Sentence-case headings.
@@ -431,25 +431,30 @@ git commit -m "docs: styleguide pass over the Get started pages"
 
 ---
 
-### Task 11: Light pass — Guides group
+### Task 11: Light pass — Recipes group
 
 **Files:**
-- Modify: `docs/branch-sessions.md`
+- Modify: `docs/recipes.md`, `docs/branch-sessions.md`, `docs/recipes/connect-desktop.md`, `docs/recipes/bare-worktrees.md`, `docs/recipes/java-ca-trust.md`, `docs/recipes/openchamber.md`
 
-**Interfaces:** Consumes Task 1's `Guides` group. (`sandboxes.md` is already conformant; `runner-image.md` is Task 5.)
+**Interfaces:** Consumes Task 1's `Recipes` group. (Guides has only `sandboxes.md`, already conformant, and `runner-image.md`, Task 5.)
 
 - [ ] **Step 1: Apply the light pass**
 
-Add a one-sentence lead after the H1 before the `--worktree` explanation; sentence-case the headings (`## Basic Usage` → `## Basic usage`); keep the daemon-agent `> **Requires a daemon-based agent.**` callout first in its section (applicability-first).
+- `docs/branch-sessions.md`: add a one-sentence lead after the H1 before the `--worktree` explanation; sentence-case the headings (`## Basic Usage` → `## Basic usage`); keep the daemon-agent `> **Requires a daemon-based agent.**` callout first in its section (applicability-first).
+- `docs/recipes.md`: it is a landing — keep the AGENTS.md example, sentence-case `## Agent Context (AGENTS.md)` and change the example's fence from `dotenv` to `markdown` (the snippet is an `AGENTS.md`, not a `.env`), and ensure the `{% link %}` child list is present.
+- `docs/recipes/openchamber.md`: remove the three "above" references (lines 36, 94, 152) by naming the section or repeating the short fact; remove "below" (line 52).
+- `docs/recipes/connect-desktop.md`, `bare-worktrees.md`, `java-ca-trust.md`: sentence-case headings, lead sentence, callout and fence conformance.
 
 - [ ] **Step 2: Verify and commit**
 
-Run: `grep -n '^#\{1,2\} ' docs/branch-sessions.md`; `grep -c '^# ' docs/branch-sessions.md`
-Expected: sentence-case sequence; `1`.
+Run: `grep -n '^#\{1,2\} ' docs/branch-sessions.md`; `rg -n -i '\b(above|below)\b' docs/recipes.md docs/recipes docs/branch-sessions.md`; `for f in docs/branch-sessions.md docs/recipes.md docs/recipes/*.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
+Expected: sentence-case sequence; no above/below matches; each page `: 1`.
+Run: `make docs-linkcheck`
+Expected: valid.
 
 ```bash
-git add docs/branch-sessions.md
-git commit -m "docs: styleguide pass over the Guides pages"
+git add docs/recipes.md docs/recipes docs/branch-sessions.md
+git commit -m "docs: styleguide pass over the Recipes pages"
 ```
 
 ---
@@ -483,34 +488,7 @@ git commit -m "docs: styleguide pass over the Configuration pages"
 
 ---
 
-### Task 13: Light pass — Recipes group
-
-**Files:**
-- Modify: `docs/recipes.md`, `docs/recipes/connect-desktop.md`, `docs/recipes/bare-worktrees.md`, `docs/recipes/java-ca-trust.md`, `docs/recipes/openchamber.md`
-
-**Interfaces:** Consumes Task 1's `Recipes` group.
-
-- [ ] **Step 1: Apply the light pass**
-
-- `docs/recipes.md`: it is a landing — keep the AGENTS.md example, sentence-case `## Agent Context (AGENTS.md)` and the code fence (currently `dotenv`; use `markdown` for an AGENTS.md snippet), and ensure the `{% link %}` child list is present.
-- `docs/recipes/openchamber.md`: remove the three "above" references (lines 36, 94, 152) by naming the section or repeating the short fact; remove "below" (line 52).
-- Others: sentence-case headings, lead sentence, callout conformance.
-
-- [ ] **Step 2: Verify and commit**
-
-Run: `rg -n -i '\b(above|below)\b' docs/recipes.md docs/recipes`; `for f in docs/recipes/*.md docs/recipes.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
-Expected: no matches; each page `: 1`.
-Run: `make docs-linkcheck`
-Expected: valid.
-
-```bash
-git add docs/recipes.md docs/recipes
-git commit -m "docs: styleguide pass over the Recipes pages"
-```
-
----
-
-### Task 14: Light pass — Reference group (Deprecations)
+### Task 13: Light pass — Reference group (Deprecations)
 
 **Files:**
 - Modify: `docs/deprecations.md`
@@ -533,7 +511,7 @@ git commit -m "docs: styleguide pass over Deprecations"
 
 ---
 
-### Task 15: De-duplicate repeated explanations
+### Task 14: De-duplicate repeated explanations
 
 **Files:**
 - Modify: `docs/sandboxes.md`, `docs/configuration/launcher.md`, `docs/runner-image.md`, `docs/troubleshooting.md`, `docs/install/upgrading.md`, `docs/how-it-works.md`
@@ -562,13 +540,13 @@ git commit -m "docs: de-duplicate prune and home-volume explanations"
 
 ---
 
-### Task 16: First-run tutorial
+### Task 15: First-run tutorial
 
 **Files:**
 - Create: `docs/tutorial.md`
 - Modify: `docs/get-started.md` (add the child), `docs/index.md` if its Explore list enumerates tutorial, `docs/install/installation.md` (link forward)
 
-**Interfaces:** Consumes Task 1's `Get started` landing; Task 15's de-duplicated sandbox explanation.
+**Interfaces:** Consumes Task 1's `Get started` landing; Task 14's de-duplicated sandbox explanation.
 
 - [ ] **Step 1: Write the tutorial as a task page**
 
@@ -603,7 +581,7 @@ git commit -m "docs: add a first-run tutorial"
 
 ---
 
-### Task 17: Terminology lint in `ci/check-docs.sh`
+### Task 16: Terminology lint in `ci/check-docs.sh`
 
 **Files:**
 - Modify: `ci/check-docs.sh`
@@ -642,7 +620,7 @@ git commit -m "docs: add a terminology lint to the docs check"
 
 ---
 
-### Task 18: Whole-rollout verification and handoff
+### Task 17: Whole-rollout verification and handoff
 
 **Files:**
 - Modify: `CHANGELOG.md` (`## [Unreleased]` → `### Changed` / `### Added`)
