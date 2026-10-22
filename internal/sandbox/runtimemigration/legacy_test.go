@@ -389,6 +389,33 @@ func TestDetectLegacyArtifactsFindsLauncherSandboxes(t *testing.T) {
 	}
 }
 
+// TestLegacyScanMatchesOnlyPrefixedArtifacts pins the foreign-scan boundary: in a
+// shared legacy ~/.microsandbox the prefix is the only ownership signal, so a
+// prefix-free launcher artifact (or a foreign name) must not be copied.
+func TestLegacyScanMatchesOnlyPrefixedArtifacts(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"proj-1abc1234defg5-opencode-20260812T123456")
+	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj-1abc1234defg5-opencode")
+	addVolumeDir(t, legacy, naming.HomeVolumeName("proj-1abc1234defg5", "opencode", "20260812T123456"))
+	addSandboxDir(t, legacy, naming.ProjectVMName("proj-1abc1234defg5", "opencode"))
+	addVolumeDir(t, legacy, "theirs")
+	addSandboxDir(t, legacy, "theirs")
+
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.HomeVolumes) != 1 || len(got.Sandboxes) != 1 {
+		t.Fatalf("artifacts = %+v, want only the prefixed home volume and sandbox", got)
+	}
+	if got.HomeVolumes[0] != naming.LegacyHomePrefix+"proj-1abc1234defg5-opencode-20260812T123456" {
+		t.Errorf("HomeVolumes = %v, want the prefixed volume", got.HomeVolumes)
+	}
+	if got.Sandboxes[0] != naming.LegacyVMPrefix+"proj-1abc1234defg5-opencode" {
+		t.Errorf("Sandboxes = %v, want the prefixed sandbox", got.Sandboxes)
+	}
+}
+
 func TestDetectLegacyArtifactsSilentForUnrelatedHome(t *testing.T) {
 	legacy := newHome(t)
 	addVolumeDir(t, legacy, "user-own-volume")

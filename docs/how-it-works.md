@@ -16,7 +16,7 @@ describes that flow and how a project's identity and state are laid out.
 1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image (in a
    bare checkout the project directory is the bare root next to `.git`). The image
    contains the selected coding agent, Node.js (when the agent needs it), and common CLI tools.
-2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<checkout-slug>-<timestamp>`) for the
+2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `<checkout-slug>-<agent>-<timestamp>`) for the
    checkout, preserving editor state, caches, and config across sessions.
 3. **VM creation or reuse** — Creates a new project VM on first boot; subsequent runs connect to the existing VM (or
    restart it if it stopped).
@@ -39,6 +39,14 @@ dir) keys the state directory, VM name, home volume, locks, and runner image tag
 origin URL) keys the per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one
 remote therefore get separate VMs and home volumes and share a runner image only best-effort through the build cache; a
 checkout and the worktrees *inside* it share everything, while a worktree *outside* its checkout gets its own identity.
+
+The artifacts a project owns — its project VM (`<checkout-slug>-<agent>`), transient task sandboxes
+(`<checkout-slug>-<agent>-<nanos>`), home volume (`<checkout-slug>-<agent>-<timestamp>`) and microsandbox image reference
+(`<checkout-slug>:<agent>-latest`) — carry no vendor prefix. (The Docker image tag keeps the
+`agents-sandbox/runner-` prefix so it stays distinguishable in the system Docker daemon; see
+[Runner Image]({% link runner-image.md %}).) Artifacts created by an earlier version keep their `agents-sandbox-…`
+prefix and are still found and reused, never rebuilt or reimported; only newly created artifacts use the prefix-free
+names, so a reused legacy VM is renamed to the new scheme the next time it is recreated.
 
 The first run after upgrading from a version that keyed everything by the origin slug migrates automatically, with a
 warning notice rather than a prompt. It destroys the legacy origin-keyed VM first, then recursively merges the legacy

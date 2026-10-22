@@ -486,7 +486,7 @@ entrypoint, working dir, user, labels, stop signal), and every layer (diff ID,
 blob digest, media type, compressed and erofs sizes).
 
 ```console
-agents-sandbox image inspect agents-sandbox/runner-myproj-aBc1234D:latest
+agents-sandbox image inspect myproj-aBc1234D:opencode-latest
 agents-sandbox image inspect <ref> --format json   # structured output
 agents-sandbox image inspect <ref> --quiet         # reference only
 ```
@@ -498,9 +498,11 @@ agents-sandbox image inspect <ref> --quiet         # reference only
 
 #### image remove
 
-Remove one or more cached runner images by reference. Only agents-sandbox runner
-images (`agents-sandbox/runner-*`) are accepted; any other reference is refused,
-and `--force` does not override that ownership boundary. Refuses when a runner
+Remove one or more cached runner images by reference. Only runner images are
+accepted — the prefix-free microsandbox reference (`<slug>:<agent>-latest`) or a
+reference created by an earlier version (`agents-sandbox/runner-<slug>:<agent>-latest`);
+any other reference is refused, and `--force` does not override that ownership
+boundary. Refuses when a runner
 image is still in use — recorded by a project's state file or held by a live
 project/task sandbox — naming the referencing projects, so an in-use image is
 never silently deleted; pass `--force` to remove it anyway. Prompts for
@@ -508,7 +510,7 @@ confirmation unless the global `--yes` is set; non-interactively, `--yes` is
 required.
 
 ```console
-agents-sandbox image remove agents-sandbox/runner-myproj-aBc1234D:latest
+agents-sandbox image remove myproj-aBc1234D:opencode-latest
 agents-sandbox image remove <ref>... --force   # remove even when still in use
 ```
 
@@ -539,7 +541,7 @@ agents-sandbox sandbox list
 agents-sandbox sandbox shell
 agents-sandbox sandbox stop
 agents-sandbox sandbox kill
-agents-sandbox sandbox inspect agents-sandbox-vm-aBc1234D
+agents-sandbox sandbox inspect myproj-aBc1234D-opencode
 ```
 
 **Aliases:** `sb`
@@ -551,7 +553,7 @@ backend kind, creation and update times, labels, mounts (guest path, kind, and
 source), and resources (memory and CPUs).
 
 ```console
-agents-sandbox sandbox inspect agents-sandbox-vm-aBc1234D
+agents-sandbox sandbox inspect myproj-aBc1234D-opencode
 agents-sandbox sandbox inspect <name> --format json   # structured output
 agents-sandbox sandbox inspect <name> --quiet         # name only
 ```
@@ -563,15 +565,16 @@ agents-sandbox sandbox inspect <name> --quiet         # name only
 
 #### sandbox remove
 
-Remove a project sandbox VM by name. Only agents-sandbox project VMs
-(`agents-sandbox-vm-*`) are accepted. Refuses a running VM unless `--force` is
+Remove a project sandbox VM by name. Only project VMs are accepted — the
+prefix-free `<slug>-<agent>` name or a name created by an earlier version
+(`agents-sandbox-vm-*`). Refuses a running VM unless `--force` is
 set, which stops it first. The project's persisted state is left intact, so the
 next run recreates the VM against the same recorded home volume. Prompts for
 confirmation unless the global `--yes` is set; non-interactively, `--yes` is
 required.
 
 ```console
-agents-sandbox sandbox remove agents-sandbox-vm-aBc1234D
+agents-sandbox sandbox remove myproj-aBc1234D-opencode
 agents-sandbox sandbox remove <name> --force   # stop a running VM first
 ```
 
@@ -665,7 +668,7 @@ Show the full detail of a home volume: its name, kind, host path, quota, used
 bytes, capacity, disk format, disk fstype, labels, and creation time.
 
 ```console
-agents-sandbox volume inspect agents-sandbox-home-myproj-aBc1234D-opencode-20260812T123456
+agents-sandbox volume inspect myproj-aBc1234D-opencode-20260812T123456
 agents-sandbox volume inspect <name> --format json   # structured output
 agents-sandbox volume inspect <name> --quiet         # name only
 ```
@@ -717,7 +720,7 @@ non-interactively, `--yes` is required. The next run of an affected project then
 starts a fresh home.
 
 ```console
-agents-sandbox volume remove agents-sandbox-home-myproj-aBc1234D-opencode-20260812T123456
+agents-sandbox volume remove myproj-aBc1234D-opencode-20260812T123456
 ```
 
 - **Args:** one or more `volume-name`

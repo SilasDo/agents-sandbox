@@ -189,6 +189,15 @@ command reports the bare version (e.g. `0.1.0`).
 - docs: apply `STYLEGUIDE.md` across the rest of the site — regroup the navigation into six sections, rewrite the seven
   flagged pages, give the remaining pages a styleguide pass, and de-duplicate the prune and home-volume explanations.
   The retired `docs/install.html` URL redirects to the new Get started page.
+- Runtime artifacts are now named without the vendor prefix. A project VM is `<checkout-slug>-<agent>`, a transient task
+  sandbox `<checkout-slug>-<agent>-<nanos>` (now labelled `org.agents-sandbox.task`), a home volume
+  `<checkout-slug>-<agent>-<timestamp>`, and the microsandbox runner image reference `<checkout-slug>:<agent>-latest`.
+  This keeps the private runtime home readable instead of repeating `agents-sandbox-` on every object. The Docker image
+  tag keeps its `agents-sandbox/runner-` prefix so it stays distinguishable in the system Docker daemon. The change is
+  backward compatible: artifacts created by an earlier version (prefixed names, and the old prefixed microsandbox image
+  reference) are still found and reused, so an upgrade never rebuilds a VM, reimports an image, or recreates a home
+  volume; only newly created artifacts use the prefix-free names, and a reused legacy VM picks up the new name the next
+  time it is recreated.
 - **Breaking** Project identity is split by scope: a checkout-scoped slug (the resolved git common dir) keys the state
   directory, VM name, home volume, locks, and runner image tag, while a repo-scoped slug (the origin URL) keys the
   per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get separate

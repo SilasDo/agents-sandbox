@@ -45,16 +45,23 @@ The image name includes the checkout slug and Docker image hash, so changes to t
 rebuild. When the resulting image digest differs from the image the existing project VM was booted from, the VM is
 recreated on the next run so it uses the new image (the home volume is preserved).
 
-Runner images are tagged **per agent** on both Docker and microsandbox. The `-latest` tag is namespaced by the agent,
-so each agent's image can be identified and updated independently:
+Runner images are tagged **per agent**. The `-latest` tag is namespaced by the agent, so each agent's image can be
+identified and updated independently. The Docker tag keeps the `agents-sandbox/runner-` prefix so it stays
+distinguishable in the system Docker daemon, while the microsandbox image reference is prefix-free:
 
 ```text
-agents-sandbox/runner-<slug>:<agent>-latest
+Docker tag:             agents-sandbox/runner-<slug>:<agent>-latest
+microsandbox reference: <slug>:<agent>-latest
 ```
 
-For example, with a checkout slug of `my-project`, the opencode image is
-`agents-sandbox/runner-my-project:opencode-latest`
-and the pi image is `agents-sandbox/runner-my-project:pi-latest`.
+For example, with a checkout slug of `my-project`, the opencode image is tagged
+`agents-sandbox/runner-my-project:opencode-latest` and referenced in microsandbox as `my-project:opencode-latest`; the
+pi image is tagged `agents-sandbox/runner-my-project:pi-latest` and referenced as `my-project:pi-latest`.
+
+An image loaded by an earlier version sits under the old prefixed microsandbox reference
+(`agents-sandbox/runner-<slug>:<agent>-latest`). agents-sandbox reuses that reference whenever it still holds the
+current content, so an upgrade never reimports an unchanged image; changed content is imported under the new prefix-free
+reference, silently migrating the project.
 
 ### Skip-build when unchanged
 
@@ -81,6 +88,10 @@ Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content â
 the Docker image ID) or the `dockerfile-id` label. If the cached content no longer matches, the image is reloaded so the
 VM always boots from the correct image. At verbose level the load states whether the image was absent from the cache or
 its cached content was stale.
+
+The load resolves the reference it uses: when the legacy prefixed reference already holds the current content, that
+reference is kept (no reimport); otherwise the Docker image is loaded under the prefix-free reference. Every following
+VM creation, label read and log line uses the resolved reference.
 
 ### Pruning images
 
