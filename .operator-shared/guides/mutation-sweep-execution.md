@@ -140,10 +140,13 @@ At **end of turn**, for each package the turn touched, re-sweep with the snapsho
 - **closed** = a snapshot survivor absent from the fresh LIVED set;
 - **residual** = a snapshot survivor still LIVED, left for a later turn.
 
-**Join on mutant identity, not the id.** The `#n` ordinal renumbers when a delete removes a sibling, so a snapshot id
-can silently denote a different mutant. Use the stable tuple `(file, type, original, replacement)` (equivalently, strip
-`#n`). A vanished mutant counts as closed — legitimately, whether we deleted it or an unrelated merge removed it. Do
-**not** count a newly-appearing mutant as a survivor: our dispositions are tests, deletes, and directives.
+**Join on mutant identity as a multiset, not on the id.** The `#n` ordinal renumbers when a delete removes a sibling, so
+a snapshot id can silently denote a different mutant; do not join on ids, and do not "strip `#n`" either — that key is
+even coarser, merging every same-type mutant in a function. Join on `(file, type, original, replacement)`, **by count**:
+three identical `t.Helper()` calls share that key, so a set-based comparison would mistake two still-LIVED copies for the
+progress of closing the third. Compare the snapshot's per-key count against the fresh count; the difference is closed. A
+key whose count reaches zero is fully closed — legitimately, whether we deleted it or an unrelated merge removed it. Do
+**not** count a newly-appearing key as a survivor: our dispositions are tests, deletes, and directives.
 
 **The sweep's `Suppressed` count is a cheap self-check.** It counts the `// gomutants:disable` directives that took effect,
 so it should equal the unit's `record` closes (the spike's 6 records → `Suppressed: 6`). A `delete` disposition lowers the
