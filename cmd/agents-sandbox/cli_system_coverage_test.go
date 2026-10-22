@@ -76,9 +76,9 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	want := naming.DockerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
+	want := naming.RunnerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
 	if !slices.Contains(mock.LoadedImages, want) {
-		t.Errorf("build loaded images %v, want the second clone's checkout tag %q", mock.LoadedImages, want)
+		t.Errorf("build loaded images %v, want the second clone's checkout ref %q", mock.LoadedImages, want)
 	}
 }
 

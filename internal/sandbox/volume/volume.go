@@ -48,7 +48,8 @@ func (vm *Manager) PrefillVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return fmt.Errorf("load runner image: %w", err)
 	}
 	prefillName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
@@ -56,7 +57,7 @@ func (vm *Manager) PrefillVolume(
 
 	spin := ui.Spinner("Preparing home volume")
 	sb, err := client.CreateSandbox(ctx, prefillName,
-		msbSdk.WithImage(info.Tag),
+		msbSdk.WithImage(info.Ref),
 		msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			"/mnt/home": mountConfig,
@@ -194,12 +195,13 @@ func (vm *Manager) CopyVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return fmt.Errorf("load runner image: %w", err)
 	}
 	copySbName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 	copySb, err := client.CreateSandbox(ctx, copySbName,
-		msbSdk.WithImage(info.Tag),
+		msbSdk.WithImage(info.Ref),
 		msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			srcMount: msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{}),

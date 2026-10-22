@@ -46,7 +46,7 @@ func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 		volume.NewManager(&ui),
 		client,
 		k,
-		sandboximage.ImageInfo{Tag: "img:tag", Digest: "sha256:digest"},
+		sandboximage.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
 		true,
 		fingerprints,
 		"",

@@ -143,7 +143,7 @@ func PrepareSandbox(
 		ui.Verbosef("runner image rebuilt with a newer %s version", a.Name())
 	}
 
-	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Tag, imageInfo.Digest)
+	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Ref, imageInfo.Digest)
 
 	// Compute the desired config fingerprints once: they seed a fresh home
 	// volume's state (issue #183) and are what persistConfigHashes records.

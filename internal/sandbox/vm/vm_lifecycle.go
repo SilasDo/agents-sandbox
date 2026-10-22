@@ -486,7 +486,8 @@ func createProjectVM(
 	opts options.RunOptions,
 	ui termio.UI,
 ) (msb.Sandbox, bool, error) {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return nil, false, fmt.Errorf("load runner image: %w", err)
 	}
 	cpus := opts.CPUs
@@ -514,13 +515,13 @@ func createProjectVM(
 		idleTimeout = options.DefaultVMIdleTimeout
 	}
 	optsList := []msbSdk.SandboxOption{
-		msbSdk.WithImage(info.Tag),
+		msbSdk.WithImage(info.Ref),
 		msbSdk.WithLabels(map[string]string{
 			// The VM name carries the checkout slug; the grouping label carries
 			// the repo slug so list --label project=<repo> groups every clone of
 			// one origin. Nothing keys ownership off this label.
 			naming.LabelProject: repoSlug,
-			naming.LabelImage:   info.Tag,
+			naming.LabelImage:   info.Ref,
 		}),
 		msbSdk.WithMounts(mountConfigs),
 		msbSdk.WithSecrets(secrets...),

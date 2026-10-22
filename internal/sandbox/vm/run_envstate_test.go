@@ -189,7 +189,7 @@ func TestDecideReconfig_NetworkChangedWithPersistedState(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		opts,
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		persistedState,
 		cfs,
@@ -233,7 +233,7 @@ func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		opts,
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		persistedState,
 		cfs,
@@ -334,7 +334,7 @@ func TestDecideReconfig_EnvChangedWithPersistedState(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		persistedState,
 		cfs,
@@ -387,7 +387,7 @@ func TestDecideReconfig_EnvUnchangedWithPersistedState(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		persistedState,
 		cfs,
@@ -435,7 +435,7 @@ func TestDecideReconfig_SecretsChangedWithPersistedState(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		persistedState,
 		cfs,
@@ -479,7 +479,7 @@ func TestDecideReconfig_ZeroPersistedStateNoSpuriousChange(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:samedigest"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:samedigest"},
 		"vol",
 		state.HomeState{},
 		cfs,
@@ -675,7 +675,7 @@ func TestDecideReconfig_PersistedSecretsMatchDesired(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img", Digest: "sha256:img"},
+		image.ImageInfo{DockerTag: "img", Ref: "img", Digest: "sha256:img"},
 		"vol",
 		persistedState,
 		cfs,
@@ -738,8 +738,12 @@ func TestDecideReconfig_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
 		vm,
 		key,
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: // imageRef == cfg.Image; the digest still identifies the image
-		"sha256:new"},                          // stored digest differs -> image-triggered rebuild
+		image.ImageInfo{
+			DockerTag: "img:tag",
+			Ref:       "img:tag",
+			Digest:// imageRef == cfg.Image; the digest still identifies the image
+			"sha256:new",
+		}, // stored digest differs -> image-triggered rebuild
 		"vol",
 		persisted,
 		cfs,
@@ -805,8 +809,12 @@ func TestDecideReconfig_HomePromptAskedWhenRebuildConfirmed(t *testing.T) {
 		vm,
 		state.Key{Slug: slug, Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:new", Digest: // imageRef != cfg.Image("img:tag") -> image-triggered rebuild
-		"sha256:new"},                          // stored digest differs -> image change detected
+		image.ImageInfo{
+			DockerTag: "img:new",
+			Ref:       "img:new",
+			Digest:// imageRef != cfg.Image("img:tag") -> image-triggered rebuild
+			"sha256:new",
+		}, // stored digest differs -> image change detected
 		"vol",
 		persisted,
 		cfs,
@@ -879,7 +887,7 @@ func TestDecideReconfig_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag", Digest: "sha256:same"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:same"},
 		"vol",
 		persisted,
 		cfs,

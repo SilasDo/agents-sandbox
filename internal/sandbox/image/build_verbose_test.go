@@ -136,8 +136,8 @@ func TestEnsureLoadedVerboseReportsUpToDate(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "sha256:same"}, nil
 		},
 	}
-	if err := EnsureLoaded(
-		context.Background(), msbClient, ImageInfo{Tag: rTag, Digest: "sha256:same"}, ui,
+	if _, err := EnsureLoaded(
+		context.Background(), msbClient, ImageInfo{DockerTag: rTag, Ref: rTag, Digest: "sha256:same"}, ui,
 	); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
@@ -157,9 +157,9 @@ func TestEnsureLoadedVerboseReportsNotPresent(t *testing.T) {
 	msbClient := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return errors.New("not cached") },
 	}
-	if err := EnsureLoaded(
+	if _, err := EnsureLoaded(
 		context.Background(), msbClient,
-		ImageInfo{Tag: "agents-sandbox/runner-p:opencode"}, ui,
+		ImageInfo{DockerTag: "agents-sandbox/runner-p:opencode", Ref: "agents-sandbox/runner-p:opencode"}, ui,
 	); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
@@ -189,8 +189,8 @@ func TestEnsureLoadedVerboseReportsStaleCache(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "sha256:msb-old"}, nil
 		},
 	}
-	if err := EnsureLoaded(
-		context.Background(), msbClient, ImageInfo{Tag: rTag, Digest: "sha256:docker-new"}, ui,
+	if _, err := EnsureLoaded(
+		context.Background(), msbClient, ImageInfo{DockerTag: rTag, Ref: rTag, Digest: "sha256:docker-new"}, ui,
 	); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}

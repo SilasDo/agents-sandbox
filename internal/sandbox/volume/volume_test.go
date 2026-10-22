@@ -94,7 +94,7 @@ func TestPrefillVolumeRunsCopyCommand(t *testing.T) {
 		client,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		ui,
 	)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestPrefillVolume_DestroyToleratesReplaced(t *testing.T) {
 		client,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		ui,
 	)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestPrefillVolume_DestroyFailureWarns(t *testing.T) {
 		client,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		ui,
 	)
 	if err != nil {
@@ -293,7 +293,7 @@ func TestApplyHomeActionAbortsWhenHomeVolumeChangedConcurrently(t *testing.T) {
 		mock,
 		key,
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -331,7 +331,7 @@ func TestApplyHomeAction_KeepReturnsOldVolume(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproj", Agent: "opencode"},
 		"agents-sandbox-home-myproj-old",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionKeep,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -380,7 +380,7 @@ func TestApplyHomeAction_ExecutesAndKeepsOld(t *testing.T) {
 				mock,
 				state.Key{Slug: slug, Agent: "opencode"},
 				oldVol,
-				image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 				tt.action,
 				options.RunOptions{},
 				&termio.Mock{},
@@ -441,7 +441,7 @@ func TestApplyHomeAction_Reset_DryRun_NoWrites(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{DryRun: true},
 		&termio.Mock{},
@@ -486,7 +486,7 @@ func TestApplyHomeAction_Migrate_DryRunVM_NoStateWrite(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionMigrate,
 		options.RunOptions{DryRunVM: true},
 		&termio.Mock{},
@@ -545,7 +545,7 @@ func TestApplyHomeAction_Migrate_CopyFails_RemovesNewVolume(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionMigrate,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -619,7 +619,7 @@ func TestResolveHomeVolume_FoundInState(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "myproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "", Ref: "", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
 		"",
@@ -650,7 +650,7 @@ func TestResolveHomeVolume_NoStateFile(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "", Digest: "sha256:def"},
+		image.ImageInfo{DockerTag: "", Ref: "", Digest: "sha256:def"},
 		false,
 		state.Fingerprints{},
 		"",
@@ -692,7 +692,7 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "corruptproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "", Digest: "sha256:def"},
+		image.ImageInfo{DockerTag: "", Ref: "", Digest: "sha256:def"},
 		false,
 		state.Fingerprints{},
 		"",
@@ -735,7 +735,7 @@ func TestResolveHomeVolume_VolumeNotFoundInSandbox(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "orphanproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "latest-docker-image", Digest: "sha256:def"},
+		image.ImageInfo{DockerTag: "latest-docker-image", Ref: "latest-docker-image", Digest: "sha256:def"},
 		false,
 		state.Fingerprints{},
 		"",
@@ -1196,7 +1196,7 @@ func TestPrefillVolume_CreateSandboxFails(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1223,7 +1223,7 @@ func TestPrefillVolume_ExecFails(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		ui,
 	)
 	if err == nil {
@@ -1258,7 +1258,7 @@ func TestPrefillVolume_ExecExitFailure(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		ui,
 	)
 	if err == nil {
@@ -1281,7 +1281,7 @@ func TestCopyVolume_CreateSandboxFails(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-vol",
 		"new-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1309,7 +1309,7 @@ func TestCopyVolume_ExecFails(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-vol",
 		"new-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		ui,
 	)
 	if err == nil {
@@ -1345,7 +1345,7 @@ func TestCopyVolume_ExecExitFailure(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-vol",
 		"new-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		ui,
 	)
 	if err == nil {
@@ -1375,7 +1375,7 @@ func TestApplyHomeAction_Reset_Success(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -1434,7 +1434,7 @@ func TestApplyHomeAction_PreservesFingerprints(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -1479,7 +1479,7 @@ func TestApplyHomeAction_PrefillFails_RemovesVolume(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		oldVol,
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -1504,7 +1504,7 @@ func TestEnsureNewHome_PrefillFails(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
 		&termio.Mock{},
@@ -1527,7 +1527,7 @@ func TestEnsureNewHome_DryRunVM_NoSandbox(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		true, // dryRunVM
 		state.Fingerprints{},
 		&termio.Mock{},

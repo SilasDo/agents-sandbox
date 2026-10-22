@@ -374,7 +374,7 @@ func TestCreateProjectVMNetworkError(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{
@@ -400,7 +400,7 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
@@ -452,7 +452,7 @@ func TestCreateProjectVMServeOnlyAndNetwork(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{
@@ -494,7 +494,7 @@ func TestCreateProjectVMServeOnlyPublishesExactPort(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{

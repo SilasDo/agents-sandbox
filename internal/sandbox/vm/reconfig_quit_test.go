@@ -59,7 +59,7 @@ func TestDecideReconfigHomeQuit(t *testing.T) {
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:new", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
 		"vol",
 		persisted,
 		cfs,

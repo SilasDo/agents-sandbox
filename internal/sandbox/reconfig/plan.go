@@ -12,6 +12,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -192,7 +193,20 @@ func imageRecreate(cfg *msbSdk.SandboxConfig, imageRef string, flag bool) bool {
 	if flag {
 		return true
 	}
-	return imageRef != "" && cfg.Image != "" && cfg.Image != imageRef
+	return imageRef != "" && cfg.Image != "" && !sameImageIdentity(cfg.Image, imageRef)
+}
+
+// sameImageIdentity reports whether two references name the same runner image,
+// tolerating the legacy and prefix-free spellings of one slug+agent so a VM
+// created under the legacy reference is not recreated merely because the
+// launcher now computes the prefix-free one.
+func sameImageIdentity(a, b string) bool {
+	if a == b {
+		return true
+	}
+	parsedA := naming.ParseImageTag(a)
+	parsedB := naming.ParseImageTag(b)
+	return parsedA.Slug != "" && parsedA == parsedB
 }
 
 // tmpSizeChange reports the /tmp tmpfs size change, if any.

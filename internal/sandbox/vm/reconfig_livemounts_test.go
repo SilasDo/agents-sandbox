@@ -69,7 +69,7 @@ func (f reconfigFixture) decide(t *testing.T, opts options.RunOptions, hs state.
 		f.vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		opts,
-		image.ImageInfo{Tag: "img:tag", Digest: hs.ImageDigest},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: hs.ImageDigest},
 		f.homeVol,
 		hs,
 		f.cfs,

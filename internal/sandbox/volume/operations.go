@@ -140,15 +140,16 @@ func CmdEdit(
 		},
 		main: func(oldVolume, newVolumeName string) error {
 			client := msb.Get()
-			if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
-				return fmt.Errorf("load runner image: %w", err)
+			loaded, loadErr := image.EnsureLoaded(ctx, client, info, ui)
+			if loadErr != nil {
+				return fmt.Errorf("load runner image: %w", loadErr)
 			}
 			spin := ui.Spinner("Starting interactive session with both volumes")
 			editSandboxName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 			editOldMount := msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{})
 			editNewMount := msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{})
 			editSb, editErr := client.CreateSandbox(ctx, editSandboxName,
-				msbSdk.WithImage(info.Tag),
+				msbSdk.WithImage(loaded.Ref),
 				msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
 				msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 					srcMount: editOldMount,

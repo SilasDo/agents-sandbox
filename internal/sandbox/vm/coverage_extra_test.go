@@ -316,7 +316,7 @@ func TestEnsureProjectVMDryRunVM(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{DryRunVM: true},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -346,7 +346,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),

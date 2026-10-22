@@ -226,8 +226,8 @@ func TestEnsureLoadedReturnsErrorWhenLoadFails(t *testing.T) {
 			return errors.New("load boom")
 		},
 	}
-	info := ImageInfo{Tag: rTag, Digest: "sha256:new"}
-	if err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err == nil {
+	info := ImageInfo{DockerTag: rTag, Ref: rTag, Digest: "sha256:new"}
+	if _, err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err == nil {
 		t.Fatal("expected EnsureLoaded to return an error when ImageLoad fails")
 	}
 }
@@ -238,7 +238,12 @@ func TestCachedImageMatchesMsbInspectError(t *testing.T) {
 			return nil, errors.New("msb inspect boom")
 		},
 	}
-	if cachedImageMatches(context.Background(), msbClient, ImageInfo{Tag: "ref", Digest: "sha256:x"}) {
+	if cachedImageMatches(
+		context.Background(),
+		msbClient,
+		"ref",
+		ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:x"},
+	) {
 		t.Error("expected false when the microsandbox inspect fails")
 	}
 }
@@ -249,7 +254,12 @@ func TestCachedImageMatchesByDigest(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "sha256:same"}, nil
 		},
 	}
-	if !cachedImageMatches(context.Background(), msbClient, ImageInfo{Tag: "ref", Digest: "sha256:same"}) {
+	if !cachedImageMatches(
+		context.Background(),
+		msbClient,
+		"ref",
+		ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:same"},
+	) {
 		t.Error("expected true when digests match")
 	}
 }
@@ -261,8 +271,8 @@ func TestCachedImageMatchesByLabelWhenNoDigest(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "", Labels: labels}, nil
 		},
 	}
-	info := ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc123"}
-	if !cachedImageMatches(context.Background(), msbClient, info) {
+	info := ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc123"}
+	if !cachedImageMatches(context.Background(), msbClient, info.Ref, info) {
 		t.Error("expected true when the dockerfile-id labels match and no digest is present")
 	}
 }
@@ -275,8 +285,8 @@ func TestCachedImageMatchesLabelMismatchWhenNoDigest(t *testing.T) {
 			}, nil
 		},
 	}
-	info := ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc"}
-	if cachedImageMatches(context.Background(), msbClient, info) {
+	info := ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"}
+	if cachedImageMatches(context.Background(), msbClient, info.Ref, info) {
 		t.Error("expected false when the dockerfile-id labels differ")
 	}
 }
@@ -288,8 +298,8 @@ func TestCachedImageMatchesDigestMismatchOverridesMatchingLabel(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "sha256:old", Labels: labels}, nil
 		},
 	}
-	info := ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc"}
-	if cachedImageMatches(context.Background(), msbClient, info) {
+	info := ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"}
+	if cachedImageMatches(context.Background(), msbClient, info.Ref, info) {
 		t.Error("expected false when the digests differ, even though the labels match")
 	}
 }
@@ -300,7 +310,12 @@ func TestCachedImageMatchesLegacyNoDigestNoRequestedLabel(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "", Labels: map[string]string{}}, nil
 		},
 	}
-	if cachedImageMatches(context.Background(), msbClient, ImageInfo{Tag: "ref", Digest: "sha256:new"}) {
+	if cachedImageMatches(
+		context.Background(),
+		msbClient,
+		"ref",
+		ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
+	) {
 		t.Error("expected false when neither a digest nor a dockerfile-id is available")
 	}
 }

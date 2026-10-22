@@ -140,7 +140,7 @@ func TestCreateProjectVMCallsClientCreateSandbox(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
@@ -194,7 +194,7 @@ func TestCreateProjectVMLoadsImageWhenNotCached(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:abc"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:abc", Ref: "agents-sandbox/runner-test:abc"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
@@ -262,7 +262,7 @@ func TestEnsureProjectVM_CreatePath(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -314,7 +314,7 @@ func TestEnsureProjectVMAppliesLabels(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -350,7 +350,7 @@ func TestEnsureProjectVM_ReconnectPath(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -398,7 +398,7 @@ func TestEnsureProjectVM_ConnectOutcomeIsInfo(t *testing.T) {
 	if _, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -427,7 +427,7 @@ func TestEnsureProjectVM_StartOutcomeIsInfo(t *testing.T) {
 	if _, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -460,7 +460,7 @@ func TestEnsureProjectVM_CreateOutcomeIsInfo(t *testing.T) {
 	if _, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -495,7 +495,7 @@ func TestEnsureProjectVM_ReconnectWhenImageUnchanged(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:abc123"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:abc123", Ref: "agents-sandbox/runner-test:abc123"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -601,7 +601,7 @@ func TestCreateProjectVMAppliesRootDiskWhenDiskSizeSet(t *testing.T) {
 		client,
 		"agents-sandbox-vm-test",
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G", DiskSize: "16G"},
@@ -650,7 +650,7 @@ func TestEnsureProjectVM_NoReplacementWhenExistingImageUnknown(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{Memory: "1G", TmpSize: "512M"},
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:newDigest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:newDigest", Ref: "agents-sandbox/runner-test:newDigest"},
 		"test-home-vol",
 		tmpRepo,
 		testVMKey(),
@@ -701,7 +701,7 @@ func TestEnsureProjectVMRecreatesWhenFlagged(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		opts,
-		image.ImageInfo{Tag: "new:tag"},
+		image.ImageInfo{DockerTag: "new:tag", Ref: "new:tag"},
 		"homevol",
 		"/workspace",
 		testVMKey(),
@@ -746,7 +746,7 @@ func TestEnsureProjectVMReusesWhenNotFlagged(t *testing.T) {
 	sb, created, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "old:tag"},
+		image.ImageInfo{DockerTag: "old:tag", Ref: "old:tag"},
 		"homevol",
 		"/workspace",
 		testVMKey(),

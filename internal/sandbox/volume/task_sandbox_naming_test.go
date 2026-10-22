@@ -30,7 +30,7 @@ func TestPrefillSandboxNameIsPrefixFreeAndLabelled(t *testing.T) {
 		client,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"test-home-vol",
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		&ui,
 	)
 	require.NoError(t, err)
@@ -59,7 +59,7 @@ func TestCopySandboxNameIsPrefixFreeAndLabelled(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-home-vol",
 		"new-home-vol",
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		&ui,
 	)
 	require.NoError(t, err)
