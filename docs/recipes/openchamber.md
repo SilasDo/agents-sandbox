@@ -3,7 +3,7 @@ title: Connect OpenChamber
 description: "Use OpenChamber's web UI with an OpenCode 2 server running in an agents-sandbox VM."
 layout: default
 parent: Recipes
-nav_order: 15
+nav_order: 50
 ---
 # Connect OpenChamber
 
@@ -33,7 +33,7 @@ The CLI requires Node.js 24.14 or newer and an installed OpenCode CLI. Then, in 
 use the sandbox's OpenCode server:
 
 ```console
-export OPENCODE_HOST=http://127.0.0.1:41237 # replace with the URL printed above
+export OPENCODE_HOST=http://127.0.0.1:41237 # replace with the URL the command printed
 export OPENCODE_PASSWORD=opencode
 export OPENCODE_SKIP_START=true
 export OPENCHAMBER_UI_PASSWORD='choose-a-strong-password'
@@ -49,7 +49,7 @@ is a separate credential for signing in to OpenChamber.
 
 The OpenCode server runs with the project mounted at `/workspace`. Select `/workspace` as the project directory in
 OpenChamber so its requests refer to the same path. On the host, `/workspace` must resolve to the checkout. If you only
-need one repository, point it at the project root as described below. For several repositories that should share one VM
+need one repository, point it at the project root as shown in [One repository](#one-repository). For several repositories that should share one VM
 and one network/resource policy, use a common parent directory as the project workspace.
 
 ### One repository
@@ -91,7 +91,7 @@ as a separate project using its guest path: `/workspace/service-a`, `/workspace/
 keeps their sessions and project settings separate. They share the same sandbox VM, home volume, resource limits, and
 network policy. This is useful when several repositories belong to one customer or need the same permitted egress.
 
-The host-side `/workspace` mapping described above must point to `~/work/customer-x/`, the common parent, rather than
+The host-side `/workspace` mapping from [One repository](#one-repository) must point to `~/work/customer-x/`, the common parent, rather than
 to one repository inside it. On macOS, use the parent directory as the target in `/etc/synthetic.conf`. OpenChamber's
 host-side filesystem, terminal, and preview features can then address those same subpaths.
 
@@ -149,7 +149,7 @@ MCP servers, plugins, mounts, and network rules change these assumptions and nee
 OpenChamber's web server binds to localhost by default. To connect its mobile or desktop clients, follow
 OpenChamber's [device pairing guide](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/connect-devices.mdx).
 Keep the agents-sandbox OpenCode port loopback-only; remote clients should connect to OpenChamber, not directly to the
-agent server. Apply the access controls described above before allowing connections from other machines.
+agent server. Apply the access controls from [Security boundary](#security-boundary) before allowing connections from other machines.
 
 Both the `agents-sandbox run --serve-only` process and the OpenChamber server must remain running while you use the UI.
 When finished, stop OpenChamber and press `Ctrl-D` in the agents-sandbox terminal.

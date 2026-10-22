@@ -2,7 +2,8 @@
 title: Deprecations
 description: "agents-sandbox's deprecation policy — how a flag, config key, environment variable, or project-Dockerfile spelling is retired — and every current deprecation with its replacement and removal target."
 layout: default
-nav_order: 115
+parent: Reference
+nav_order: 30
 ---
 # Deprecations
 
@@ -21,7 +22,7 @@ working with a one-time warning before it is removed.
 - A deprecated form survives **at least one minor release** after the release that introduces it, and its removal is
   announced in the release notes. A removal only lands in a minor release, never a patch.
 
-The list below is the current register. It is also recorded in the `Deprecated` section of the
+This list is the current register. It is also recorded in the `Deprecated` section of the
 [changelog](https://github.com/inoio/agents-sandbox/blob/main/CHANGELOG.md).
 
 | Deprecated form | Replacement | Eligible removal |

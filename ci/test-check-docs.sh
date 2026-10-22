@@ -162,5 +162,78 @@ EOF
 expect "docs vendor dependency ignored" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# Terminology: "harness" is internal vocabulary and never appears in docs prose.
+d="$(new_fixture)"
+printf '\nThe harness starts the agent.\n' >>"$d/docs/introduction.md"
+expect "terminology harness" 1 'terminology: "harness"' "$d"
+rm -rf "$d"
+
+# Terminology: an inline code span or a URL is not prose and is not flagged.
+d="$(new_fixture)"
+printf '\nThe `harness` name and [x](https://example.com/harness) are fine.\n' >>"$d/docs/introduction.md"
+expect "terminology harness in code/url ignored" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Terminology: fenced code blocks (plain and inside a blockquote) are skipped.
+d="$(new_fixture)"
+printf '\n```text\nharness simply above\n```\n\n> ```console\n> harness\n> ```\n' >>"$d/docs/introduction.md"
+expect "terminology fenced code ignored" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# A longer fence opening may contain a shorter run as content; it must not be
+# mistaken for the close, which would leak the enclosed prose into the checks.
+d="$(new_fixture)"
+cat >>"$d/docs/introduction.md" <<'EOF'
+
+````markdown
+```console
+harness simply above
+```
+````
+EOF
+expect "terminology nested fence ignored" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Terminology: the old OPENCODE_SANDBOX_ prefix is flagged off the migration pages.
+d="$(new_fixture)"
+printf '\nSet OPENCODE_SANDBOX_FOO.\n' >>"$d/docs/introduction.md"
+expect "terminology legacy prefix flagged" 1 'terminology: the OPENCODE_SANDBOX_ prefix' "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >"$d/docs/deprecations.md" <<'EOF'
+# Deprecations
+
+The old prefix OPENCODE_SANDBOX_* still works.
+EOF
+expect "terminology legacy prefix allowed on deprecations" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >"$d/docs/install/upgrading.md" <<'EOF'
+# Upgrading
+
+The old prefix OPENCODE_SANDBOX_* still works.
+EOF
+expect "terminology legacy prefix allowed on upgrading" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Terminology: banned filler words, including "let's".
+d="$(new_fixture)"
+printf '\nThis is simply done.\n' >>"$d/docs/introduction.md"
+expect "terminology banned word" 1 'terminology: avoid the filler words' "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf "\nLet's begin.\n" >>"$d/docs/introduction.md"
+expect "terminology lets" 1 'terminology: avoid the filler words' "$d"
+rm -rf "$d"
+
+# Terminology: no positional "above"/"below" references.
+d="$(new_fixture)"
+printf '\nSee the note above.\n' >>"$d/docs/introduction.md"
+expect "terminology above/below" 1 'terminology: do not use positional' "$d"
+rm -rf "$d"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

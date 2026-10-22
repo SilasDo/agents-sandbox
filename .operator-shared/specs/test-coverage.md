@@ -48,6 +48,12 @@ tests never execute is the failure mode this catches.
   uncovered `internal/upgrade` branches as non-blocking; CI rejected them and a follow-up commit had to add the tests
   and delete two unreachable branches. A reviewer's "mirrors the sibling's coverage profile" is a claim to check against
   the sibling, not to accept.
+- **A `codecov/project` drop need not come from the diff.** On PR #278 (docs-only) `codecov/project` failed by one line
+  because `internal/notify/watch.go`'s "cancel the context while `Watch` waits out a reconnect backoff" branch was
+  covered in the base run but missed in the head run — a test that only *sometimes* executes a branch (the other `Watch`
+  tests use a zero backoff, so that select races an immediate reconnect). When the diff adds no production line, read the
+  Codecov delta per file: a single missed line in untouched code is coverage nondeterminism, not a gap the change
+  introduced, and the fix is a deterministic test pinning the branch rather than a production change.
 
 ## Verification
 

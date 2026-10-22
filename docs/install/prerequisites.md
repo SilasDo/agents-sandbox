@@ -1,8 +1,8 @@
 ---
 title: Prerequisites
-description: "Supported platforms and required software for agents-sandbox: Linux with KVM, macOS on Apple Silicon or Windows (experimental), plus Docker."
+description: "Supported platforms and required software for agents-sandbox: Linux with KVM, macOS on Apple Silicon, plus Docker."
 layout: default
-parent: Install
+parent: Get started
 nav_order: 10
 ---
 
@@ -14,7 +14,6 @@ agents-sandbox supports the following platforms:
 
 * Linux (KVM)
 * macOS (Apple Silicon)
-* Windows (experimental)
 
 ## Software prerequisites
 

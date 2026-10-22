@@ -2,14 +2,26 @@
 title: Commands
 description: "Reference of all agents-sandbox subcommands, aliases and flags."
 layout: default
-nav_order: 60
+parent: Reference
+nav_order: 10
 ---
-# Commands Reference
+# Commands
 
-This document lists all agents-sandbox subcommands, aliases, and flags. Deprecated flags, config keys, and environment
+This page lists every agents-sandbox subcommand, alias, and flag. Deprecated flags, config keys, and environment
 variables are listed in [Deprecations]({% link deprecations.md %}).
 
-## Global Flags
+The commands are grouped by area; jump to a group:
+
+- **Runtime:** [`run`](#run), [`shell`](#shell), [`stop`](#stop), [`kill`](#kill), [`list`](#list), [`tree`](#tree), [`doctor`](#doctor), [`version`](#version), [`upgrade`](#upgrade), [`completion`](#completion)
+- **Build and images:** [`build`](#build), [`image`](#image)
+- **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune)
+- **Storage:** [`df`](#df), [`storage`](#storage)
+- **Configuration:** [`config`](#config), [`config paths`](#config-paths)
+- **Agents:** [`config agent`](#config-agent-name), [`config home`](#config-home)
+- **Volumes:** [`volume`](#volume)
+- **Sandboxes:** [`sandbox`](#sandbox)
+
+## Global flags
 
 These flags are available on every command.
 
@@ -117,7 +129,7 @@ agents-sandbox build dockerfile --agent claude-code
 
 | Flag              | Short | Default    | Purpose                                                     |
 |-------------------|-------|------------|-------------------------------------------------------------|
-| `--agent`         | —     | `opencode` | Coding-agent profile to build: `opencode`, `pi`, or `claude-code`. |
+| `--agent`         | —     | `opencode` | Coding-agent profile to build: `opencode`, `opencode2`, `pi`, or `claude-code`. |
 | `--agent-version` | —     | `""`       | Pin the agent version rendered into the preview (default: no pinned default) |
 | `--docker`        | —     | `false`    | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
 
@@ -171,7 +183,7 @@ agents-sandbox kill -f     # kill and remove VM state
 
 Remove stale VMs, volumes, and images in one pass. Staleness is determined by age — resources older than the threshold
 are pruned. The summary line reads `Pruned N VMs, N home volumes, N docker images, N msb images`. To prune a single
-artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands below.
+artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands.
 
 Unless `--dry-run` is set, prune asks for confirmation before removing anything (defaulting to no). Pass the global
 `--yes` to skip the prompt; non-interactively, `--yes` is required or the command fails fast instead of blocking.
@@ -377,7 +389,7 @@ The agent is resolved from the `--agent` flag, then the positional `[name]`, the
 
 The output names the launcher (host) config dirs actually read, as absolute paths:
 
-```
+```text
 config dir: user="/home/me/.config/agents-sandbox/opencode2"  project="/work/repo/.agents-sandbox/opencode2"  (primary)
 ```
 
@@ -396,7 +408,7 @@ agents-sandbox config paths
 Each file layer is shown with its path, flagged `(missing)` when the file does not exist; the two environment layers show
 their variable-name globs, and `flags` is the CLI-flag layer:
 
-```
+```text
 config layers (lowest to highest precedence):
   generic user config  /home/me/.config/agents-sandbox
   per-project user config  /home/me/.config/agents-sandbox/myproject-<hash>  (missing)
@@ -623,7 +635,7 @@ unchanged.
 
 ---
 
-### `agents-sandbox volume <subcommand>`
+### volume
 
 The volume group provides manual home volume management.
 

@@ -2,6 +2,7 @@
 title: Manage config in the sandbox
 description: "Manage the sandbox's agent configuration declaratively and reproducibly, keeping raw secret values out of the VM."
 layout: default
+parent: Get started
 nav_order: 40
 ---
 
@@ -10,7 +11,7 @@ nav_order: 40
 Own the sandbox's configuration declaratively: self-contained, reproducible, and able to keep raw secret values out of the VM.
 This extends **[Switch from your existing agent]({% link switch.md %})**.
 
-> **New to coding agents?** Set up your agent (opencode, pi, or claude-code) on your host first,
+> **Note:** If you are new to coding agents, set up your agent (opencode, opencode2, pi, or claude-code) on your host first,
 > then come back here.
 
 ## 1. Turn off host-config fallback
@@ -54,7 +55,7 @@ ANTHROPIC_API_KEY:
 
 Then reference it in your config with `{env:ANTHROPIC_API_KEY}` (opencode) instead of the literal key.
 
-## 4. Provision files & hooks
+## 4. Provision files and hooks
 
 Map dotfiles and startup hooks into the VM home — see
 [Home provisioning & startup hooks]({% link configuration/home-provisioning.md %}).

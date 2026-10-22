@@ -304,3 +304,33 @@ func TestWatchBackoffResetsAfterLongLived(t *testing.T) {
 			gapBackoff, gapAfterReset)
 	}
 }
+
+// TestWatchStopsDuringReconnectBackoff exercises cancelling the context while
+// Watch waits out a reconnect backoff. The other Watch tests use a zero
+// backoff, where the "wait" races an immediate reconnect, so whether the
+// ctx.Done case of that select runs is timing-dependent (and coverage flaky).
+// Here jitter fires just before the wait and cancels the context, so the
+// select deterministically takes the ctx.Done branch.
+func TestWatchStopsDuringReconnectBackoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	orig := watchReconnectPolicy
+	watchReconnectPolicy = reconnectPolicy{
+		fastRetries:  0,
+		backoffStart: time.Hour,
+		backoffMax:   time.Hour,
+		longLived:    time.Hour,
+		jitter: func(d time.Duration) time.Duration {
+			cancel()
+			return d
+		},
+	}
+	defer func() { watchReconnectPolicy = orig }()
+
+	sb := msb.NewMockSandbox(msb.SandboxOpts{StreamHandle_: failHandle{}})
+	err := Watch(ctx, sb, opencodeSpec(), &recordBackend{})
+	if err == nil || !strings.Contains(err.Error(), "dropped") {
+		t.Fatalf("Watch() error = %v, want a drop summary", err)
+	}
+}

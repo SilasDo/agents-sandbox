@@ -2,13 +2,15 @@
 title: Installation
 description: "Install agents-sandbox via Homebrew or a release binary, and keep it up to date."
 layout: default
-parent: Install
+parent: Get started
 nav_order: 20
 ---
 
-## Installation
+# Installation
 
-* Via Homebrew (macOS and Linux):
+Install agents-sandbox with Homebrew or a release binary.
+
+## Via Homebrew (macOS and Linux)
 
   ```console
   brew tap inoio/agents-sandbox https://github.com/inoio/agents-sandbox
@@ -25,7 +27,7 @@ nav_order: 20
   [self-upgrade]({% link configuration/self-upgrade.md %}) so Homebrew's version bookkeeping stays accurate, and
   `agents-sandbox upgrade` points you back to `brew upgrade`.
 
-* Or download the latest binary:
+## Binary download
 
   **Linux (x86_64):**
 
@@ -44,13 +46,15 @@ nav_order: 20
   ```console
   curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-linux-arm64
   ```
-* Install:
+
+  To install, set permissions and move it onto your path:
+
   ```console
   chmod u+x agents-sandbox
   mv agents-sandbox ~/.local/bin # or any other directory in your PATH 
   ```
 
-* Or install a canary prerelease:
+## Download canaries
 
   Canary builds are GitHub prereleases, so they are not served by `/latest`. Download the asset from that prerelease's
   tag URL instead, substituting the canary version and your platform's `<os>-<arch>` suffix
@@ -62,3 +66,5 @@ nav_order: 20
 
   Then set `upgrade.channel: canary` (or `AGENTS_SANDBOX_UPGRADE_CHANNEL=canary`) so later upgrades follow the canary
   line — see [self-upgrade]({% link configuration/self-upgrade.md %}). Homebrew cannot install canaries.
+
+Once installed, continue with [Your first sandbox]({% link tutorial.md %}).

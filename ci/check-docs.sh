@@ -158,6 +158,58 @@ handle_target() {
   esac
 }
 
+# Flag documentation vocabulary the styleguide forbids. Scoped to the migrated
+# docs tree; fenced code blocks are skipped so literal command output is exempt,
+# and the pages that document the rename may name the old prefix.
+check_terminology() {
+  local file rel
+  while IFS= read -r file; do
+    rel="${file#"$ROOT"/}"
+    while IFS= read -r msg; do
+      report "$msg"
+    done < <(awk -v rel="$rel" '
+      {
+        # A code block is delimited by a run of >=3 backticks or tildes; the
+        # close must use the same character and be at least as long as the
+        # opening run, so a longer fence can contain a shorter run as content
+        # (e.g. a four-backtick block showing a three-backtick example).
+        body = $0
+        sub(/^[[:space:]]*(>[[:space:]]*)*/, "", body)
+        if (fence == 0) {
+          if (body ~ /^(```|~~~)/) {
+            marker = substr(body, 1, 1)
+            openlen = 0
+            while (substr(body, openlen + 1, 1) == marker) openlen++
+            # A backtick fence info string may not contain a backtick.
+            if (!(marker == "`" && index(substr(body, openlen + 1), "`") > 0)) { fence = 1; next }
+          }
+        } else {
+          trimmed = body
+          sub(/[[:space:]]+$/, "", trimmed)
+          if (trimmed ~ /^(`+|~+)$/ && substr(trimmed, 1, 1) == marker && length(trimmed) >= openlen) fence = 0
+          next
+        }
+        scrub = $0
+        gsub(/`[^`]*`/, "", scrub)
+        gsub(/https?:\/\/[^[:space:]]+/, "", scrub)
+        low = tolower(scrub)
+        if (low ~ /(^|[^[:alnum:]_])harness([^[:alnum:]_]|$)/)
+          printf "%s:%d: terminology: \"harness\" is internal vocabulary; use \"agent\"\n", rel, NR
+        if (rel != "docs/deprecations.md" && rel != "docs/install/upgrading.md" && scrub ~ /OPENCODE_SANDBOX_/)
+          printf "%s:%d: terminology: the OPENCODE_SANDBOX_ prefix is named only on the deprecations and upgrading pages\n", rel, NR
+        if (low ~ /(^|[^[:alnum:]_])(simply|easy|quickly)([^[:alnum:]_]|$)/ || low ~ /let\047s/)
+          printf "%s:%d: terminology: avoid the filler words \"simply\", \"easy\", \"quickly\", and \"let\047s\"\n", rel, NR
+        if (low ~ /(^|[^[:alnum:]_])(above|below)([^[:alnum:]_]|$)/)
+          printf "%s:%d: terminology: do not use positional \"above\"/\"below\"; name the section\n", rel, NR
+      }
+    ' "$file")
+  done < <(find "$DOCS" \
+    -not -path "$DOCS/superpowers/*" \
+    -not -path "$DOCS/_site/*" \
+    -not -path "$DOCS/vendor/*" \
+    -name '*.md' | sort)
+}
+
 # Run the link check over every .md file under a directory.
 check_files() {
   local mode="$1" dir="$2"
@@ -183,6 +235,9 @@ check_files docs "$DOCS" \
   -not -path "$DOCS/superpowers/*" \
   -not -path "$DOCS/_site/*" \
   -not -path "$DOCS/vendor/*"
+
+# Terminology vocabulary checks over the same docs tree.
+check_terminology
 
 if [[ "$violations" -gt 0 ]]; then
   printf 'docs: %d violation(s) found\n' "$violations"

@@ -2,16 +2,20 @@
 title: Architecture & Concepts
 description: "Architecture of agents-sandbox: image build, home volumes, microsandbox VM creation and how agents attach."
 layout: default
-nav_order: 105
+parent: Concepts
+nav_order: 20
 ---
 
-# How it works
+# Architecture & Concepts
 
-## How It Works
+Each run builds an image, creates or reuses a sandbox, provisions your configuration, and attaches the agent. This page
+describes that flow and how a project's identity and state are laid out.
+
+## What a run does
 
 1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image (in a
    bare checkout the project directory is the bare root next to `.git`). The image
-   contains the selected coding agent, Node.js 26, and common CLI tools.
+   contains the selected coding agent, Node.js (when the agent needs it), and common CLI tools.
 2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<checkout-slug>-<timestamp>`) for the
    checkout, preserving editor state, caches, and config across sessions.
 3. **VM creation or reuse** — Creates a new project VM on first boot; subsequent runs connect to the existing VM (or
@@ -45,7 +49,7 @@ If the legacy VM survives but its state file was lost, its mounted home volume i
 the VM is destroyed, and the next run reuses that volume — so a lost state file never costs the saved credentials or
 files, whichever command triggers the migration.
 
-## System Context
+## System context
 
 The following C4 container diagram shows how agents-sandbox relates the host to the microsandbox VM: your project
 directory is bound into the VM as `/workspace`, persistent state lives on a home volume at `/home/dev`, secret-channel values

@@ -1,14 +1,15 @@
 ---
 title: Switch from your existing agent
-description: "Run your existing Claude Code, opencode or pi setup inside an agents-sandbox microVM without writing any config."
+description: "Run your existing Claude Code, opencode, opencode2 or pi setup inside an agents-sandbox microVM without writing any config."
 layout: default
+parent: Get started
 nav_order: 30
 ---
 
 # Switch from your existing agent
 
 Use agents-sandbox with the agent setup you already have without writing any config. If you haven't
-installed agents-sandbox yet, [install it]({% link index.md %}#install) first.
+installed agents-sandbox yet, [install it]({% link install/installation.md %}) first.
 
 ## Run it
 
@@ -23,11 +24,11 @@ and credentials into the VM by default, so your normal agent,
 models, and permissions are available immediately, now running in a hardware-isolated VM with
 your project at `/workspace`.
 
-> **Keep your normal workflow.** Because your config is mirrored, you can keep managing it where
+> **Note:** Keep your normal workflow — because your config is mirrored, you can keep managing it where
 > and how you already do, including managing config via the agents' TUI on the host, and it stays in sync
 > with the sandbox.
 
-## ⚠️ What to know
+## What to know
 
 The fast path shares your host config **and** credentials (for opencode, `auth.json`) into the
 VM. This is fine for trying it out or low-sensitivity work. When you want no secrets exposed to agents, 
