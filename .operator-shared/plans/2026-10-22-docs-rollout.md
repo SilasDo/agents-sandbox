@@ -21,11 +21,11 @@
   | Group (`parent`) | Landing page | Children |
   | --- | --- | --- |
   | — (home) | `index.md` | — |
-  | Get started | `get-started.md` (new) | `introduction.md`, `install/prerequisites.md`, `install/installation.md`, `switch.md`, `manage-config.md`, `tutorial.md` (new) |
+  | Get started | `get-started.md` (new) | `install/prerequisites.md`, `install/installation.md`, `switch.md`, `manage-config.md`, `tutorial.md` (new) |
   | Guides | `guides.md` (new) | `sandboxes.md`, `runner-image.md`, `install/upgrading.md` |
   | Recipes | `recipes.md` (retained) | `branch-sessions.md`, `recipes/connect-desktop.md`, `recipes/bare-worktrees.md`, `recipes/java-ca-trust.md`, `recipes/openchamber.md` |
   | Configuration | `configuration/index.md` (retained) | the eight `configuration/*.md` pages |
-  | Concepts | `concepts.md` (new) | `how-it-works.md` |
+  | Concepts | `concepts.md` (new) | `introduction.md`, `how-it-works.md` |
   | Reference | `reference.md` (new) | `commands.md`, `troubleshooting.md`, `deprecations.md` |
 
   `docs/install.md` is replaced by `docs/get-started.md`; the two README links to `install.html` become `get-started.html`. `docs/install/*.md` keep their path.
@@ -192,14 +192,14 @@ git commit -m "docs: rewrite the landing page per styleguide"
 
 ---
 
-### Task 4: Rewrite `docs/how-it-works.md`
+### Task 4: Rewrite the Concepts pages
 
 **Files:**
-- Modify: `docs/how-it-works.md`
+- Modify: `docs/how-it-works.md`, `docs/introduction.md`
 
 **Interfaces:** Consumes Task 1's `Concepts` group. Produces nothing later tasks depend on.
 
-- [ ] **Step 1: Restructure; this is an explanation page**
+- [ ] **Step 1: Restructure `docs/how-it-works.md`; this is an explanation page**
 
 Required top-level sequence:
 
@@ -215,18 +215,22 @@ Required top-level sequence:
 - `## Project identity and migration`: unchanged in substance; explain the two slugs before naming them (identity rule).
 - `## System context`: the C4 diagram, caption, and the `/workspace`/permission/secrets/multi-client paragraphs.
 
-- [ ] **Step 2: Verify**
+- [ ] **Step 2: Light pass over `docs/introduction.md` ("Why?")**
 
-Run: `grep -n '^#\{1,2\} ' docs/how-it-works.md` and `grep -c '^# ' docs/how-it-works.md`
-Expected: the sequence above; `1` H1.
+Sentence-case headings; confirm the explanation order (the "what this is for" section last); light prose tightening only. Keep the `# Why?` H1 matching the `title`.
+
+- [ ] **Step 3: Verify**
+
+Run: `grep -n '^#\{1,2\} ' docs/how-it-works.md && grep -c '^# ' docs/how-it-works.md`; `grep -c '^# ' docs/introduction.md`; `rg -n -i '\b(above|below|simply|easy|quickly)\b|let''s' docs/how-it-works.md docs/introduction.md`
+Expected: the sequence above; `1` H1 each; no banned words.
 Run: `make docs-linkcheck`
 Expected: valid.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add docs/how-it-works.md
-git commit -m "docs: rewrite Architecture & Concepts per styleguide"
+git add docs/how-it-works.md docs/introduction.md
+git commit -m "docs: rewrite the Concepts pages per styleguide"
 ```
 
 ---
@@ -400,7 +404,7 @@ git commit -m "docs: rewrite Configuration files & env vars per styleguide"
 ### Task 10: Light pass — Get started group
 
 **Files:**
-- Modify: `docs/introduction.md`, `docs/install/installation.md`, `docs/install/prerequisites.md`, `docs/switch.md`, `docs/manage-config.md`
+- Modify: `docs/install/installation.md`, `docs/install/prerequisites.md`, `docs/switch.md`, `docs/manage-config.md`
 
 **Interfaces:** Consumes Task 1's `Get started` group and Task 2's prerequisites fix.
 
@@ -412,11 +416,10 @@ Specific fixes:
 - `docs/install/installation.md`: change the `## Installation` H2 to an `# Installation` H1.
 - `docs/switch.md`: `## ⚠️ What to know` → `## What to know` (drop the emoji).
 - `docs/manage-config.md`: the `## 1.`–`## 4.` numbered headings are a task sequence; keep the numbers but sentence-case the titles and confirm every sentence of the intro names the outcome.
-- `docs/introduction.md`: confirm the `## What this is for` section is the last (explanation order); light prose tightening only.
 
 - [ ] **Step 2: Verify**
 
-Run: `rg -n -i "\b(simply|easy|quickly)\b|let's" docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `rg -n -i '\b(above|below)\b' docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `for f in docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
+Run: `rg -n -i "\b(simply|easy|quickly)\b|let's" docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `rg -n -i '\b(above|below)\b' docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `for f in docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
 Expected: no banned words; no above/below; each page `: 1`.
 Run: `make docs-linkcheck`
 Expected: valid.
@@ -424,7 +427,7 @@ Expected: valid.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md
+git add docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md
 git commit -m "docs: styleguide pass over the Get started pages"
 ```
 
