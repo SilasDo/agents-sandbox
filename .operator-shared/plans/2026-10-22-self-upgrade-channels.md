@@ -979,3 +979,28 @@ Expected: PASS, including `docs-linkcheck`.
 git add docs/configuration/self-upgrade.md docs/install/installation.md CHANGELOG.md
 git commit -m "docs: document the upgrade channel setting"
 ```
+
+---
+
+## Post-implementation notes
+
+Deviations from this plan's text, recorded after the work landed on `feat/upgrade-channels` (PR #271).
+
+- **Task 1's call-site inventory was incomplete.** The plan said `downloadAssetToDir` is called from exactly four places,
+  all in `upgrade_test.go`. `internal/upgrade/upgrade_extra_test.go` (tracked) also calls it and `updateExecutable`, so it
+  had to change for the package to compile. It contains no `Upgrade`/`LatestVersion`/`Check` calls, so Tasks 2–3 did not
+  touch it.
+- **`canaryEligible(tag string) bool` became `canaryVersion(tag string) (*semver.Version, bool)`** (commit `914bec5`).
+  The plan's predicate forced the max loop to re-parse each eligible tag, leaving an unreachable error `continue` that
+  `codecov/patch` counted against the branch. Returning the parsed version removes the second parse. Eligibility
+  semantics are unchanged.
+- **`buildUpgradeCmd` binds `--channel` with `pflag`'s `StringVar`** rather than reading it back with
+  `Flags().GetString`, for the same reason: the `GetString` error branch is unreachable once the flag is registered as a
+  string two lines later. Behaviour is identical.
+- **Task 5's file list omitted two reference pages.** The docs rule in `AGENTS.md` (keep `docs/` in sync) also required
+  `docs/configuration/launcher.md`'s config-key table, validation list, and env-var table, and `docs/commands.md`'s
+  `### upgrade` section.
+- **`codecov/patch` is the practical coverage gate, and it is not documented.** It is not a required status check on
+  `main`, there is no `codecov.yml` in the repo, and no brain document states a coverage goal — yet it caught five
+  branches the feature's whole-branch review had explicitly accepted as non-blocking. See
+  `specs/test-coverage.md`.
