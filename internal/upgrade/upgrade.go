@@ -39,7 +39,7 @@ const (
 
 var (
 	latestURL    = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
-	downloadBase = fmt.Sprintf("https://github.com/%s/releases/latest/download", githubRepo)
+	downloadBase = fmt.Sprintf("https://github.com/%s/releases/download", githubRepo)
 )
 
 // Mode selects how a detected newer release is handled.
@@ -385,15 +385,14 @@ func latestRelease(ctx context.Context) (string, error) {
 // the running executable.
 var Update = updateExecutable
 
-// updateExecutable downloads the latest release binary for the current
-// platform and atomically replaces the running executable with it. The latest
-// version is pinned by the "latest" release asset download endpoint.
-func updateExecutable(ctx context.Context, _ string) error {
+// updateExecutable downloads the release binary for the given version and the
+// current platform and atomically replaces the running executable with it.
+func updateExecutable(ctx context.Context, latest string) error {
 	exe, err := executablePath()
 	if err != nil {
 		return err
 	}
-	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exe))
+	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exe), latest)
 	if err != nil {
 		return err
 	}
@@ -401,11 +400,15 @@ func updateExecutable(ctx context.Context, _ string) error {
 	return replaceExecutable(assetPath, exe)
 }
 
-// downloadAssetToDir downloads the release binary for the current platform
-// into dir and returns the downloaded file path.
-func downloadAssetToDir(ctx context.Context, dir string) (string, error) {
+// downloadAssetToDir downloads the release binary for the given version and the
+// current platform into dir and returns the downloaded file path.
+//
+// The download is addressed by release tag rather than the "latest" endpoint,
+// which GitHub never serves for a prerelease; the tag is "v" + version by this
+// repository's tagging convention (every release tag is v<version>).
+func downloadAssetToDir(ctx context.Context, dir string, version string) (string, error) {
 	asset := fmt.Sprintf("agents-sandbox-%s-%s", runtime.GOOS, runtime.GOARCH)
-	url := fmt.Sprintf("%s/%s", downloadBase, asset)
+	url := fmt.Sprintf("%s/v%s/%s", downloadBase, version, asset)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", fmt.Errorf("build download request: %w", err)

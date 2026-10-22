@@ -3,10 +3,12 @@ package upgrade
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -376,7 +378,7 @@ func TestDownloadAndReplace(t *testing.T) {
 	target := filepath.Join(dir, "agents-sandbox")
 	_ = os.WriteFile(target, []byte("old"), 0o750)
 
-	asset, err := downloadAssetToDir(context.Background(), dir)
+	asset, err := downloadAssetToDir(context.Background(), dir, "2.0.0")
 	if err != nil {
 		t.Fatalf("download: %v", err)
 	}
@@ -394,6 +396,27 @@ func TestDownloadAndReplace(t *testing.T) {
 	info, _ := os.Stat(target)
 	if info.Mode().Perm() != 0o750 {
 		t.Fatalf("replaced binary mode = %o, want 750 (preserve original permissions)", info.Mode().Perm())
+	}
+}
+
+func TestDownloadAssetUsesTaggedURL(t *testing.T) {
+	asset := []byte("binary")
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		_, _ = w.Write(asset)
+	}))
+	t.Cleanup(srv.Close)
+	orig := downloadBase
+	downloadBase = srv.URL
+	t.Cleanup(func() { downloadBase = orig })
+
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "1.9.0-canary.3"); err != nil {
+		t.Fatalf("download: %v", err)
+	}
+	want := fmt.Sprintf("/v1.9.0-canary.3/agents-sandbox-%s-%s", runtime.GOOS, runtime.GOARCH)
+	if gotPath != want {
+		t.Fatalf("download path = %q, want %q", gotPath, want)
 	}
 }
 
@@ -668,7 +691,7 @@ func TestDownloadAssetNon200(t *testing.T) {
 	orig := downloadBase
 	downloadBase = srv.URL
 	t.Cleanup(func() { downloadBase = orig })
-	if _, err := downloadAssetToDir(context.Background(), t.TempDir()); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error on non-200 download")
 	}
 }
@@ -746,7 +769,7 @@ func TestDownloadAssetNetworkError(t *testing.T) {
 	orig := downloadBase
 	downloadBase = "http://127.0.0.1:1"
 	t.Cleanup(func() { downloadBase = orig })
-	if _, err := downloadAssetToDir(context.Background(), t.TempDir()); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error on unreachable download endpoint")
 	}
 }

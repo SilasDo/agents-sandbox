@@ -17,7 +17,7 @@ import (
 func TestUpdateExecutable(t *testing.T) {
 	if os.Getenv("UPGRADE_HELPER_PROCESS") == "1" {
 		downloadBase = os.Getenv("UPGRADE_DOWNLOAD_BASE")
-		if err := updateExecutable(context.Background(), ""); err != nil {
+		if err := updateExecutable(context.Background(), "2.0.0"); err != nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -41,7 +41,7 @@ func TestUpdateExecutable(t *testing.T) {
 func TestUpdateExecutableDownloadFailure(t *testing.T) {
 	if os.Getenv("UPGRADE_HELPER_PROCESS") == "1" {
 		downloadBase = "http://127.0.0.1:1"
-		if err := updateExecutable(context.Background(), ""); err == nil {
+		if err := updateExecutable(context.Background(), "2.0.0"); err == nil {
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -64,7 +64,7 @@ func TestDownloadAssetCreateTempFails(t *testing.T) {
 	t.Cleanup(func() { downloadBase = orig })
 
 	dir := filepath.Join(t.TempDir(), "does-not-exist")
-	if _, err := downloadAssetToDir(context.Background(), dir); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), dir, "2.0.0"); err == nil {
 		t.Fatal("expected error when the destination directory does not exist")
 	}
 }
@@ -79,7 +79,7 @@ func TestDownloadAssetCopyFails(t *testing.T) {
 	downloadBase = srv.URL
 	t.Cleanup(func() { downloadBase = orig })
 
-	if _, err := downloadAssetToDir(context.Background(), t.TempDir()); err == nil {
+	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error when the response body is truncated")
 	}
 }
