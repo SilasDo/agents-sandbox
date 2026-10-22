@@ -88,6 +88,30 @@ func TestPlanReconfigTriggersRecreateOnImageChange(t *testing.T) {
 	}
 }
 
+// TestPlanReconfigToleratesLegacyImageRef covers Review Focus 1's "VM not
+// recreated": a VM booted from the legacy prefixed microsandbox reference must
+// not be recreated just because the launcher now computes the prefix-free one.
+func TestPlanReconfigToleratesLegacyImageRef(t *testing.T) {
+	const legacyRef = "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest"
+	cfg := &msbSdk.SandboxConfig{Image: legacyRef}
+
+	cases := []struct {
+		ref          string
+		wantRecreate bool
+	}{
+		{"proj-1mjusbm3wikhb0:opencode-latest", false}, // prefix-free spelling of the same image
+		{legacyRef, false},                                                 // identical
+		{"proj-1mjusbm3wikhb0:pi-latest", true},                            // different agent
+		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:4e8oeqohbmalok", true}, // pinned digest ref
+	}
+	for _, tc := range cases {
+		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
+		if plan.Recreate != tc.wantRecreate {
+			t.Errorf("PlanReconfig(%q) recreate = %v, want %v", tc.ref, plan.Recreate, tc.wantRecreate)
+		}
+	}
+}
+
 func TestDesiredPublishBindingsDelegatesToOptions(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{PortBindings: []msbSdk.PortBinding{
 		{Bind: "127.0.0.1", HostPort: 4097, GuestPort: 4096, Protocol: msbSdk.PortProtocolTCP},

@@ -152,6 +152,13 @@ func TestImageReferencesScansPerAgentStates(t *testing.T) {
 	if len(keys) != 1 || keys[0] != key {
 		t.Fatalf("references[%q] = %v, want [%v]", ref, keys, key)
 	}
+	// A project also owns the pre-change prefixed reference an earlier version's
+	// image sits under, so a legacy image is not removable while the state exists.
+	legacy := naming.DockerImageRef(key.Slug, key.Agent)
+	legacyKeys := references[legacy]
+	if len(legacyKeys) != 1 || legacyKeys[0] != key {
+		t.Fatalf("references[%q] = %v, want [%v]", legacy, legacyKeys, key)
+	}
 }
 
 func TestImageReferencesIgnoresLegacyAgentlessState(t *testing.T) {

@@ -12,6 +12,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -44,6 +45,18 @@ func TestPrefillSandboxNameIsPrefixFreeAndLabelled(t *testing.T) {
 		opt(&cfg)
 	}
 	require.Equal(t, "1", cfg.Labels[naming.LabelTask])
+}
+
+// TestTaskSandboxNameStaysWithinNameLimit pins the longest realistic task
+// sandbox name (a long folder, the hyphenated `claude-code` agent, and a
+// 19-digit nanos): it must fit the sandbox-name limit and round-trip to the same
+// slug, agent and task flag, so it cannot be truncated into another artifact's
+// namespace.
+func TestTaskSandboxNameStaysWithinNameLimit(t *testing.T) {
+	slug := strings.Repeat("a", 30) + "-1mjusbm3wikhb0"
+	name := naming.TaskSandboxName(slug, "claude-code", 1729000000000000000)
+	require.LessOrEqual(t, len(name), options.MaxSandboxNameLen, "name %q is too long", name)
+	require.Equal(t, naming.ArtifactInfo{Slug: slug, Agent: "claude-code", Task: true}, naming.ParseVMName(name))
 }
 
 // TestCopySandboxNameIsPrefixFreeAndLabelled covers the second creation site.

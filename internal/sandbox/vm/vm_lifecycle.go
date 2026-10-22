@@ -129,6 +129,11 @@ func ensureProjectVM(
 		if err != nil {
 			return nil, vmBootConnected, err
 		}
+		if notFound {
+			// The replaced VM may have carried a legacy name; recreate under
+			// the prefix-free scheme so the rename takes effect.
+			name = projectVMName(k)
+		}
 	}
 	if !notFound {
 		return resolveExistingVM(ctx, handle, opts, name, ui, spin)

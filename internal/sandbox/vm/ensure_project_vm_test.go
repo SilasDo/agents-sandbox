@@ -1096,11 +1096,13 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 		}
 		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
 	}
+	var createdName string
 	client.CreateSandboxFn = func(
 		_ context.Context,
 		name string,
 		_ ...msbSdk.SandboxOption,
 	) (msb.Sandbox, error) {
+		createdName = name
 		return &msb.MockSandbox{Name_: name}, nil
 	}
 	client.EnsureInstalledFn = func(context.Context) error { return nil }
@@ -1124,6 +1126,11 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 	}
 	if sb == nil {
 		t.Error("expected a sandbox after recreate")
+	}
+	// The replaced VM carried a legacy name; the recreate must use the
+	// prefix-free one so the rename takes effect.
+	if want := projectVMName(testVMKey()); createdName != want {
+		t.Errorf("recreated sandbox name = %q, want %q", createdName, want)
 	}
 }
 

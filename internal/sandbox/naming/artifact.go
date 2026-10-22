@@ -55,9 +55,8 @@ func RunnerImageRef(slug, agent string) string {
 
 // DockerImageRef returns the Docker tag for a project slug and agent. It is also
 // the pre-change microsandbox runner reference (the two were one string). It
-// keeps
-// the namespace prefix so runner images stay distinguishable in the system
-// Docker daemon.
+// keeps the namespace prefix so runner images stay distinguishable in the
+// system Docker daemon.
 func DockerImageRef(slug, agent string) string {
 	return DockerImagePrefix + slug + ":" + agent + "-latest"
 }
