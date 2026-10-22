@@ -2,6 +2,7 @@
 title: Why?
 description: "Why run coding agents like Claude Code, opencode or pi in a microVM: a separate guest kernel instead of a shared-kernel container or process sandbox."
 layout: default
+parent: Concepts
 nav_order: 10
 ---
 

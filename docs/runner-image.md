@@ -2,7 +2,8 @@
 title: Runner Image
 description: "The Docker image agents-sandbox builds for each sandbox, and how to extend it with your project's tooling."
 layout: default
-nav_order: 80
+parent: Guides
+nav_order: 20
 ---
 
 # Runner Image

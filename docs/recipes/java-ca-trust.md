@@ -3,7 +3,7 @@ title: Trust the Sandbox CA in Java
 description: "Make a JDK in the sandbox VM trust the microsandbox interception CA, by hand or automatically on every boot."
 layout: default
 parent: Recipes
-nav_order: 30
+nav_order: 40
 ---
 
 # Trust the Sandbox CA in Java

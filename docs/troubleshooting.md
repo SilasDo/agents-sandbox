@@ -2,7 +2,8 @@
 title: Troubleshooting
 description: "Fixes for common agents-sandbox problems, such as failing doctor checks, Docker and microsandbox runtime issues."
 layout: default
-nav_order: 110
+parent: Reference
+nav_order: 20
 ---
 # Troubleshooting
 

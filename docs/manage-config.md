@@ -2,6 +2,7 @@
 title: Manage config in the sandbox
 description: "Manage the sandbox's agent configuration declaratively and reproducibly, keeping raw secret values out of the VM."
 layout: default
+parent: Get started
 nav_order: 40
 ---
 

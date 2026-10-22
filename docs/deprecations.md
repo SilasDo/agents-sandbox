@@ -2,7 +2,8 @@
 title: Deprecations
 description: "agents-sandbox's deprecation policy — how a flag, config key, environment variable, or project-Dockerfile spelling is retired — and every current deprecation with its replacement and removal target."
 layout: default
-nav_order: 115
+parent: Reference
+nav_order: 30
 ---
 # Deprecations
 

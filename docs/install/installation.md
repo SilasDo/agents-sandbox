@@ -2,7 +2,7 @@
 title: Installation
 description: "Install agents-sandbox via Homebrew or a release binary, and keep it up to date."
 layout: default
-parent: Install
+parent: Get started
 nav_order: 20
 ---
 

@@ -3,7 +3,7 @@ title: Connect OpenChamber
 description: "Use OpenChamber's web UI with an OpenCode 2 server running in an agents-sandbox VM."
 layout: default
 parent: Recipes
-nav_order: 15
+nav_order: 50
 ---
 # Connect OpenChamber
 

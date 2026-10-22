@@ -3,7 +3,7 @@ title: Bare Checkout with Worktrees Inside
 description: "Keep git worktrees host-and-VM-consistent by nesting them inside a bare checkout bound at /workspace, so the host and the agent share one contained set of worktrees."
 layout: default
 parent: Recipes
-nav_order: 20
+nav_order: 30
 ---
 # Bare Checkout with Worktrees Inside
 

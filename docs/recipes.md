@@ -2,7 +2,7 @@
 title: Recipes
 description: "Hands-on how-tos for common agents-sandbox workflows, such as an AGENTS.md for the sandbox VM."
 layout: default
-nav_order: 100
+nav_order: 30
 has_children: true
 has_toc: false
 ---

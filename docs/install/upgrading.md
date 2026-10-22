@@ -2,7 +2,7 @@
 title: Upgrading to 0.6
 description: "What changes when you upgrade agents-sandbox from 0.5.x or earlier, how to migrate your old home volumes, and how to retire a system-wide microsandbox."
 layout: default
-parent: Install
+parent: Guides
 nav_order: 30
 ---
 

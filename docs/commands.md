@@ -2,7 +2,8 @@
 title: Commands
 description: "Reference of all agents-sandbox subcommands, aliases and flags."
 layout: default
-nav_order: 60
+parent: Reference
+nav_order: 10
 ---
 # Commands Reference
 
