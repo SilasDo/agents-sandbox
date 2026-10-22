@@ -137,3 +137,32 @@ func TestWithMockConfigPathsHomeError(t *testing.T) {
 		t.Error("UserConfigDir() = empty, want a mocked path")
 	}
 }
+
+// TestWithMockConfigPathsHomeErrorRedirectsHome pins the error variant's
+// $HOME redirect: a resolver that bypasses the seam must still be confined to
+// the mock tree rather than reading the developer's real home.
+func TestWithMockConfigPathsHomeErrorRedirectsHome(t *testing.T) {
+	WithMockConfigPathsHomeError(t, errors.New("home unavailable"))
+	base := Get().(*mockConfigPaths).baseDir
+	if got, want := os.Getenv("HOME"), filepath.Join(base, "home"); got != want {
+		t.Errorf("$HOME = %q, want %q (WithMockConfigPathsHomeError must redirect HOME)", got, want)
+	}
+}
+
+// TestWithMockConfigPathsHomeErrorRestoresGet pins the helper's cleanup: once
+// the installing test returns, Get must be back to the factory the helper
+// replaced, so the mock does not leak into whichever test runs next.
+func TestWithMockConfigPathsHomeErrorRestoresGet(t *testing.T) {
+	t.Run("installed", func(t *testing.T) {
+		WithMockConfigPathsHomeError(t, errors.New("home unavailable"))
+		if _, ok := Get().(*mockConfigPaths); !ok {
+			t.Fatal("Get did not install a mockConfigPaths")
+		}
+	})
+	if _, ok := Get().(*mockConfigPaths); ok {
+		t.Error(
+			"Get still returns a mockConfigPaths after WithMockConfigPathsHomeError's cleanup ran; " +
+				"the replaced factory was not restored",
+		)
+	}
+}

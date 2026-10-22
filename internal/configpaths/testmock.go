@@ -25,7 +25,7 @@ var InstallFailFastConfigPaths = func() { Get = FailFastConfigPaths }
 func FailFastConfigPaths() ConfigPaths { return &failFastConfigPaths{} }
 
 func WithMockConfigPaths(t *testing.T) {
-	t.Helper()
+	t.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only affects the stack trace a failing test reports, so removing it cannot change observable test behaviour"
 	orig := Get
 	tempDir := t.TempDir()
 	// Point $HOME at the mock tree as well, so any stray os.UserHomeDir or
@@ -42,7 +42,7 @@ func WithMockConfigPaths(t *testing.T) {
 // can exercise host-home resolution failures without unsetting $HOME or falling
 // back to the real resolver.
 func WithMockConfigPathsHomeError(t *testing.T, err error) {
-	t.Helper()
+	t.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only affects the stack trace a failing test reports, so removing it cannot change observable test behaviour"
 	orig := Get
 	tempDir := t.TempDir()
 	// Redirect $HOME like WithMockConfigPaths so a resolver that bypasses the
@@ -64,7 +64,7 @@ func WithMockConfigPathsHomeError(t *testing.T, err error) {
 // tests expect. A test that needs a specific layout chdirs into its own fixture
 // after this call, as the bare-checkout tests do.
 func WithRealConfigPaths(t *testing.T) {
-	t.Helper()
+	t.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only affects the stack trace a failing test reports, so removing it cannot change observable test behaviour"
 	orig := Get
 	Get = func() ConfigPaths { return &realConfigPaths{} }
 	t.Cleanup(func() { Get = orig })

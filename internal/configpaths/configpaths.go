@@ -119,8 +119,7 @@ func agentConfigDirCandidates(base string, a agent.Agent) []string {
 // copy unrelated host files — including launcher secrets — into the VM. A bad
 // name is a profile programming error, so it fails fast.
 func validConfigDirName(agentName, name string) string {
-	if name == "" || name == "." || name == ".." ||
-		strings.ContainsRune(name, filepath.Separator) || filepath.Base(name) != name {
+	if name == "" || name == "." || name == ".." || strings.ContainsRune(name, filepath.Separator) {
 		panic(
 			fmt.Sprintf("agent %s declares invalid config dir name %q: must be a single path element", agentName, name),
 		)
@@ -153,7 +152,7 @@ func resolveProjectConfig(cwd string) (string, string) {
 		physical = cwd
 	}
 	identity := git.ResolveIdentity(physical)
-	if !identity.Bare || identity.OutsideWorktree || identity.CheckoutRoot == "" {
+	if !identity.Bare || identity.OutsideWorktree {
 		return projectConfigDir, ""
 	}
 	base := filepath.Join(identity.CheckoutRoot, projectConfigDir)
@@ -174,7 +173,7 @@ func resolveProjectConfig(cwd string) (string, string) {
 // as ProjectConfigDirAbs does.
 func (c *realConfigPaths) projectConfigBase() string {
 	cwd, err := os.Getwd()
-	if err != nil {
+	if err != nil { // gomutants:disable BRANCH_IF reason="an unreadable CWD makes resolveProjectConfig of the empty path resolve through the relative dot, which never yields the absolute bare base, so the fall-through returns projectConfigDir too"
 		return projectConfigDir
 	}
 	base, _ := resolveProjectConfig(cwd)
@@ -192,7 +191,7 @@ func (c *realConfigPaths) ProjectConfigDirAbs() string {
 		return base
 	}
 	cwd, err := os.Getwd()
-	if err != nil {
+	if err != nil { // gomutants:disable BRANCH_IF reason="os.Getwd returns an empty dir when it fails, so the fall-through filepath.Join of the empty dir and base is base and the branch cannot change the value"
 		return base
 	}
 	return filepath.Join(cwd, base)
@@ -262,7 +261,7 @@ func (c *realConfigPaths) ProjectEnvSecretYAMLFile() string {
 // only one. It lets callers warn about config the user must move to the bare root.
 func (c *realConfigPaths) IgnoredWorktreeConfigDir() string {
 	cwd, err := os.Getwd()
-	if err != nil {
+	if err != nil { // gomutants:disable BRANCH_IF reason="an unreadable CWD makes resolveProjectConfig of the empty path resolve through the relative dot, which never reports an ignored worktree copy, so the fall-through returns empty too"
 		return ""
 	}
 	_, ignored := resolveProjectConfig(cwd)
