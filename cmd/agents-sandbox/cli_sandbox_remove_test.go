@@ -15,7 +15,10 @@ import (
 
 func TestSandboxRemove(t *testing.T) {
 	t.Run("removes a stopped VM", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusStopped}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusStopped,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", "--yes", handle.Name_)
@@ -29,7 +32,10 @@ func TestSandboxRemove(t *testing.T) {
 	})
 
 	t.Run("rm alias removes", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusStopped}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusStopped,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "rm", "--yes", handle.Name_)
@@ -43,7 +49,10 @@ func TestSandboxRemove(t *testing.T) {
 	})
 
 	t.Run("refuses a running VM without --force", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusRunning}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusRunning,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", "--yes", handle.Name_)
@@ -58,7 +67,10 @@ func TestSandboxRemove(t *testing.T) {
 	})
 
 	t.Run("force on a running VM stops then removes", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusRunning}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusRunning,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", "-f", "--yes", handle.Name_)
@@ -75,7 +87,10 @@ func TestSandboxRemove(t *testing.T) {
 	})
 
 	t.Run("force with a declined confirmation does not stop", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusRunning}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusRunning,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, ui := setupCommandFixtures(t, "sandbox", "remove", "--force", handle.Name_)
@@ -96,7 +111,7 @@ func TestSandboxRemove(t *testing.T) {
 
 	t.Run("force keeps persisted state", func(t *testing.T) {
 		key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
-		name := naming.VMPrefix + key.Slug + "-" + key.Agent
+		name := naming.LegacyVMPrefix + key.Slug + "-" + key.Agent
 		handle := &msb.MockSandboxHandle{Name_: name, Status_: msbSdk.SandboxStatusStopped}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
@@ -113,23 +128,29 @@ func TestSandboxRemove(t *testing.T) {
 		}
 	})
 
-	t.Run("refuses a non-project name", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: "user-sandbox", Status_: msbSdk.SandboxStatusStopped}
+	t.Run("refuses a task-sandbox name", func(t *testing.T) {
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyTaskPrefix + "x-1729",
+			Status_: msbSdk.SandboxStatusStopped,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", "--yes", handle.Name_)
 		msb.WithMsbMock(t, m)
 		err := cmd.Execute()
 		if err == nil || !strings.Contains(err.Error(), "not an agents-sandbox project VM") {
-			t.Fatalf("expected a prefix refusal, got %v", err)
+			t.Fatalf("expected a refusal, got %v", err)
 		}
 		if handle.DidRmv {
-			t.Error("a non-project name must not be removed")
+			t.Error("a task sandbox must not be removed")
 		}
 	})
 
 	t.Run("fails fast without --yes in non-interactive mode", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusStopped}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusStopped,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", handle.Name_)
@@ -144,7 +165,10 @@ func TestSandboxRemove(t *testing.T) {
 	})
 
 	t.Run("running refusal precedes the prompt", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: naming.VMPrefix + "proj-aBc1234D", Status_: msbSdk.SandboxStatusRunning}
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
+			Status_: msbSdk.SandboxStatusRunning,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, ui := setupCommandFixtures(t, "sandbox", "remove", handle.Name_)

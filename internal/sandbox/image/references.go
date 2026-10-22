@@ -34,7 +34,7 @@ func InUseImageReferences(keptSandboxes []msb.SandboxHandle) (map[string][]state
 		if ref == "" {
 			continue
 		}
-		key := sandboxKey(handle.Name())
+		key := sandboxKey(handle.Name(), config.Labels)
 		if key.Slug == "" || slices.Contains(references[ref], key) {
 			continue
 		}
@@ -43,8 +43,9 @@ func InUseImageReferences(keptSandboxes []msb.SandboxHandle) (map[string][]state
 	return references, nil
 }
 
-// sandboxKey derives the project key a sandbox belongs to from its name.
-func sandboxKey(name string) state.Key {
-	info := naming.ArtifactFor(name)
+// sandboxKey derives the project key a sandbox belongs to, preferring the
+// identity labels and falling back to the name heuristic (SandboxIdentity).
+func sandboxKey(name string, labels map[string]string) state.Key {
+	info := naming.SandboxIdentity(name, labels)
 	return state.Key{Slug: info.Slug, Agent: info.Agent}
 }

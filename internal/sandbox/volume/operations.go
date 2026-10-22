@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -26,10 +24,15 @@ func checkForActiveVMs(ctx context.Context, k state.Key) error {
 		return fmt.Errorf("list sandboxes: %w", err)
 	}
 	for _, handle := range sandboxes {
-		if !strings.HasPrefix(handle.Name(), naming.VMPrefix) {
+		cfg, _ := handle.Config()
+		var labels map[string]string
+		if cfg != nil {
+			labels = cfg.Labels
+		}
+		artifact := naming.SandboxIdentity(handle.Name(), labels)
+		if artifact.Task {
 			continue
 		}
-		artifact := naming.ArtifactFor(handle.Name())
 		if artifact.Slug == k.Slug && (artifact.Agent == k.Agent || artifact.Agent == "") {
 			status := handle.Status()
 			if !msb.IsSandboxInactive(status) {
@@ -137,18 +140,17 @@ func CmdEdit(
 		},
 		main: func(oldVolume, newVolumeName string) error {
 			client := msb.Get()
-			if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
-				return fmt.Errorf("load runner image: %w", err)
+			loaded, loadErr := image.EnsureLoaded(ctx, client, info, ui)
+			if loadErr != nil {
+				return fmt.Errorf("load runner image: %w", loadErr)
 			}
 			spin := ui.Spinner("Starting interactive session with both volumes")
-			editSandboxName := naming.TaskPrefix + k.Slug + "-" + k.Agent + "-" + strconv.FormatInt(
-				time.Now().UnixNano(),
-				10,
-			)
+			editSandboxName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 			editOldMount := msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{})
 			editNewMount := msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{})
 			editSb, editErr := client.CreateSandbox(ctx, editSandboxName,
-				msbSdk.WithImage(info.Tag),
+				msbSdk.WithImage(loaded.Ref),
+				msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 				msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 					srcMount: editOldMount,
 					dstMount: editNewMount,

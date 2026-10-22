@@ -38,6 +38,9 @@
 
 ### `specs/` - System contracts for this partition
 
+- `artifact-naming.md`
+  - Description: Contract for the prefix-free artifact naming strategy: project VMs, task sandboxes, home volumes and microsandbox image refs drop the `agents-sandbox-` prefix while Docker images keep it (the `ImageInfo` Docker-tag/msb-ref split), new artifacts follow the new scheme while legacy ones stay discoverable without reimport or rebuild, ownership is positional in the private runtime home, and project-vs-task classification is label-based.
+  - Read If: Changing `internal/sandbox/naming`, the VM/home-volume/runner-image name or reference constructors or parsers, artifact discovery (list/remove/prune/reference scans), the sandbox or volume labels, or the Docker-vs-msb image reference split.
 - `self-upgrade-channels.md`
   - Description: Design for the launcher's self-upgrade release channels: `upgrade.channel` (`stable` default, `canary`), canary = newest channel-eligible release, a tag-addressed download, no downgrade path, the undocumented `AGENTS_SANDBOX_UPGRADE_ANY` dev lever, and the release CI's prerelease classification / Homebrew skip.
   - Read If: Changing `upgrade.channel`, canary resolution/eligibility, the tag-pinned release download, `AGENTS_SANDBOX_UPGRADE_ANY`, or the `publish` job's prerelease/Homebrew handling.
@@ -155,6 +158,9 @@
 
 ### `plans/` - TDD implementation plans
 
+- `2026-10-22-artifact-naming.md`
+  - Description: 7-task TDD plan for `specs/artifact-naming.md`: the prefix-free and legacy name/reference constructors, the dual-scheme parsers, project VMs, task sandboxes, home volumes, the `ImageInfo` Docker-tag/msb-ref split, image discovery/reference scans, and the legacy foreign scan.
+  - Read If: Implementing the prefix-free artifact naming change.
 - `2026-10-22-docs-styleguide-and-pilot.md`
   - Description: Phased plan (3 tasks) for documentation quality: write the contributor-facing `STYLEGUIDE.md` (voice, one-kind-per-page, the three ordering rules — explain-before-you-name, lead-with-applicability, order-by-universality — plus terminology, formatting, page template, review checklist) and rewrite `docs/sandboxes.md` as the reference implementation. Records the "agent" (not "harness") terminology decision, the no-prior-knowledge audience, and the deferred rollout (nav regroup, remaining page rewrites, tutorial, correctness fixes, dedup, terminology lint).
   - Read If: Writing or reviewing agents-sandbox user documentation, applying or changing the documentation styleguide, or resuming the docs-quality rollout.

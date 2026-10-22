@@ -3,35 +3,58 @@ package naming
 import "strings"
 
 // Prefix is the canonical base name for all agents-sandbox naming
-// conventions. Changing this value renames the tool across all namespaces,
-// annotations, VM names, image references, sandbox names, and volume names.
+// conventions.
 const Prefix = "agents-sandbox"
 
-// Sandbox and image name prefixes derived from Prefix.
+// DockerImagePrefix namespaces the runner images in the system Docker daemon,
+// keeping them distinguishable from user images. The Docker tag is unchanged by
+// the prefix-free runtime naming.
+const DockerImagePrefix = Prefix + "/runner-"
+
+// Legacy prefixes of the microsandbox artifacts created before the naming
+// change. Lookups accept both shapes; the prefixes are an ownership marker only
+// for the foreign ~/.microsandbox scan, which a user's own microsandbox shared.
 const (
-	VMPrefix    = Prefix + "-vm-"
-	HomePrefix  = Prefix + "-home-"
-	TaskPrefix  = Prefix + "-task-"
-	ImagePrefix = Prefix + "/runner-"
+	LegacyVMPrefix   = Prefix + "-vm-"
+	LegacyHomePrefix = Prefix + "-home-"
+	LegacyTaskPrefix = Prefix + "-task-"
 )
 
-// IsProjectSandbox reports whether name is an agents-sandbox project VM name.
-func IsProjectSandbox(name string) bool {
-	return strings.HasPrefix(name, VMPrefix)
+// IsLegacyProjectSandbox reports whether name is a prefixed project VM name.
+func IsLegacyProjectSandbox(name string) bool {
+	return strings.HasPrefix(name, LegacyVMPrefix)
 }
 
-// IsTaskSandbox reports whether name is an agents-sandbox task worker name.
-func IsTaskSandbox(name string) bool {
-	return strings.HasPrefix(name, TaskPrefix)
+// IsLegacyTaskSandbox reports whether name is a prefixed task worker name.
+func IsLegacyTaskSandbox(name string) bool {
+	return strings.HasPrefix(name, LegacyTaskPrefix)
 }
 
-// IsLauncherSandbox reports whether name belongs to a sandbox agents-sandbox
-// manages: a project VM or a task worker.
-func IsLauncherSandbox(name string) bool {
-	return IsProjectSandbox(name) || IsTaskSandbox(name)
+// IsLegacyLauncherSandbox reports whether name is a prefixed sandbox
+// agents-sandbox manages: a project VM or a task worker.
+func IsLegacyLauncherSandbox(name string) bool {
+	return IsLegacyProjectSandbox(name) || IsLegacyTaskSandbox(name)
 }
 
-// IsHomeVolume reports whether name is an agents-sandbox home volume name.
-func IsHomeVolume(name string) bool {
-	return strings.HasPrefix(name, HomePrefix)
+// IsLegacyHomeVolume reports whether name is a prefixed home volume name.
+func IsLegacyHomeVolume(name string) bool {
+	return strings.HasPrefix(name, LegacyHomePrefix)
+}
+
+// SandboxIdentity resolves a sandbox's project key and kind. Labels the launcher
+// writes are authoritative; a sandbox created before they existed falls back to
+// the name heuristic (ParseVMName plus the legacy task marker). A nil labels map
+// is the pure name fallback.
+func SandboxIdentity(name string, labels map[string]string) ArtifactInfo {
+	info := ParseVMName(name)
+	if labels[LabelSlug] != "" {
+		info.Slug = labels[LabelSlug]
+		info.Agent = labels[LabelAgent]
+		info.Task = labels[LabelType] == SandboxTypeTask
+		return info
+	}
+	if labels[LabelType] == SandboxTypeTask || labels[LabelTask] != "" {
+		info.Task = true
+	}
+	return info
 }

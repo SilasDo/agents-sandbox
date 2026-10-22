@@ -96,7 +96,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		k,

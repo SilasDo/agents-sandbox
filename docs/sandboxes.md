@@ -120,7 +120,7 @@ Each run follows this lifecycle:
 - Auto-prune: Remove stale sandboxes, volumes, and images
 - Pre-flight checks (doctor): Docker, KVM, Git, private microsandbox runtime
 - Image verify/build: `.agents-sandbox/Dockerfile` (or default image) → Docker image -> microsandbox image (read from the bare root next to `.git` in a bare checkout)
-- Home volume verify/build: Persistent microsandbox home volume (`agents-sandbox-home-<slug>-<timestamp>`) per checkout
+- Home volume verify/build: Persistent microsandbox home volume (`<checkout-slug>-<agent>-<timestamp>`) per checkout
 - Sandbox creation or reuse: New or existing project-specific sandbox
 - Provisioning: Copy agent config etc. (updated configs are re-provisioned).
 - Daemon verify/start: Ensure/start microsandbox internal services
@@ -134,8 +134,13 @@ Each run follows this lifecycle:
 Each checkout gets its own sandbox, and each agent inside it gets its own. The sandbox name is built from the checkout and the agent:
 
 ```text
-agents-sandbox-vm-<checkout-slug>-<agent>
+<checkout-slug>-<agent>
 ```
+
+Artifact names carry no vendor prefix. An artifact created by an earlier version keeps its `agents-sandbox-…` prefix
+(project sandbox `agents-sandbox-vm-…`, task sandbox `agents-sandbox-task-…`, home volume `agents-sandbox-home-…`);
+both shapes are found and reused, so an upgrade never rebuilds a sandbox or reimports an image. A reused legacy sandbox
+keeps its legacy name until it is next recreated, then comes back prefix-free.
 
 Project identity splits into two slugs, each governing the artifacts whose unit it matches:
 
@@ -152,7 +157,7 @@ Project identity splits into two slugs, each governing the artifacts whose unit 
 Both slugs have the `<folder>-<hash>` shape; `<folder>` is the origin's repository name, or the checkout's own name when
 there is no origin. The repo slug hashes the origin URL; the checkout slug hashes the resolved git common dir. For
 example, a repo cloned from `git@github.com:inoio/myproject.git` gets a sandbox named
-`agents-sandbox-vm-myproject-<hash>-opencode`, where `<hash>` comes from that checkout's common dir — so two clones read
+`myproject-<hash>-opencode`, where `<hash>` comes from that checkout's common dir — so two clones read
 the same folder name but different hashes. Runner images are built per checkout, so two clones with identical
 Dockerfiles each build their own tag; the second build is a cache hit against the shared BuildKit cache.
 
@@ -177,7 +182,7 @@ It survives the sandbox being destroyed and the Dockerfile changing.
 
 ### Volume lifecycle
 
-Home volumes are named `agents-sandbox-home-<checkout-slug>-<timestamp>`. Which home volume is current is stored in the
+Home volumes are named `<checkout-slug>-<agent>-<timestamp>`. Which home volume is current is stored in the
 project's state file (`~/.local/state/agents-sandbox/<checkout-slug>/<agent>/state.yaml`).
 
 When the Dockerfile changes (new image digest), most of the time the current home volume can continue to be used.

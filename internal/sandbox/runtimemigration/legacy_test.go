@@ -50,7 +50,7 @@ func TestLegacyVolumeNamesUnreadableVolumesDir(t *testing.T) {
 		t.Skip("running as root: chmod 0 does not block directory reads")
 	}
 	home := newHome(t)
-	addVolumeDir(t, home, naming.HomePrefix+"hidden")
+	addVolumeDir(t, home, naming.LegacyHomePrefix+"hidden")
 
 	volumesDir := filepath.Join(home, "volumes")
 	if err := os.Chmod(volumesDir, 0o000); err != nil {
@@ -77,7 +77,7 @@ func TestLegacyVolumeNamesUnreadableVolumesDir(t *testing.T) {
 
 func TestLegacyVolumeNamesFiltersByPrefix(t *testing.T) {
 	home := newHome(t)
-	want := []string{naming.HomePrefix + "alpha", naming.HomePrefix + "beta"}
+	want := []string{naming.LegacyHomePrefix + "alpha", naming.LegacyHomePrefix + "beta"}
 	addVolumeDir(t, home, want[0])
 	addVolumeDir(t, home, want[1])
 	addVolumeDir(t, home, "some-other-volume")
@@ -106,7 +106,7 @@ func TestNecessaryVolumesEmptyLegacy(t *testing.T) {
 func TestNecessaryVolumesLegacyOnlyIsNecessary(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	name := naming.HomePrefix + "orphan"
+	name := naming.LegacyHomePrefix + "orphan"
 	addVolumeDir(t, legacy, name)
 
 	got, err := necessaryVolumes(legacy, private, state.Migration{})
@@ -119,7 +119,7 @@ func TestNecessaryVolumesLegacyOnlyIsNecessary(t *testing.T) {
 func TestNecessaryVolumesPresentInBothIsNotNecessary(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	name := naming.HomePrefix + "shared"
+	name := naming.LegacyHomePrefix + "shared"
 	addVolumeDir(t, legacy, name)
 	addVolumeDir(t, private, name)
 
@@ -148,12 +148,12 @@ func TestNecessaryVolumesMissingLegacyVolumesDirIsNotNecessary(t *testing.T) {
 func TestNecessaryVolumesReportsOnlyMissingLegacyNames(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	present := naming.HomePrefix + "present"
-	missing := naming.HomePrefix + "missing"
+	present := naming.LegacyHomePrefix + "present"
+	missing := naming.LegacyHomePrefix + "missing"
 	addVolumeDir(t, legacy, present)
 	addVolumeDir(t, legacy, missing)
 	addVolumeDir(t, private, present)
-	addVolumeDir(t, private, naming.HomePrefix+"private-only")
+	addVolumeDir(t, private, naming.LegacyHomePrefix+"private-only")
 
 	got, err := necessaryVolumes(legacy, private, state.Migration{})
 	if err != nil {
@@ -165,7 +165,7 @@ func TestNecessaryVolumesReportsOnlyMissingLegacyNames(t *testing.T) {
 func TestNecessaryVolumesTerminalStatusIsNeverNecessary(t *testing.T) {
 	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged} {
 		legacy := newHome(t)
-		addVolumeDir(t, legacy, naming.HomePrefix+"orphan")
+		addVolumeDir(t, legacy, naming.LegacyHomePrefix+"orphan")
 		got, err := necessaryVolumes(legacy, newHome(t), state.Migration{Status: status})
 		if err != nil || len(got) != 0 {
 			t.Fatalf("status %q: got %v, %v; want empty", status, got, err)
@@ -176,9 +176,9 @@ func TestNecessaryVolumesTerminalStatusIsNeverNecessary(t *testing.T) {
 func TestNecessaryVolumesCopyingSubtractsCopiedAndExcluded(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	copied := naming.HomePrefix + "copied"
-	excluded := naming.HomePrefix + "excluded"
-	pending := naming.HomePrefix + "pending"
+	copied := naming.LegacyHomePrefix + "copied"
+	excluded := naming.LegacyHomePrefix + "excluded"
+	pending := naming.LegacyHomePrefix + "pending"
 	addVolumeDir(t, legacy, copied)
 	addVolumeDir(t, legacy, excluded)
 	addVolumeDir(t, legacy, pending)
@@ -193,7 +193,7 @@ func TestNecessaryVolumesCopyingSubtractsCopiedAndExcluded(t *testing.T) {
 func TestNecessaryVolumesCopyingIgnoresPrivatePresence(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	name := naming.HomePrefix + "partial"
+	name := naming.LegacyHomePrefix + "partial"
 	addVolumeDir(t, legacy, name)
 	addVolumeDir(t, private, name) // present but NOT in Copied => partial, still necessary
 	got, err := necessaryVolumes(legacy, private, state.Migration{Status: state.MigrationCopying})
@@ -213,7 +213,7 @@ func TestNecessaryVolumesCopyingFailsClosedOnUnlistableLegacyHome(t *testing.T) 
 		t.Skip("running as root: chmod 0 does not block directory reads")
 	}
 	legacy := newHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"hidden")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"hidden")
 
 	volumesDir := filepath.Join(legacy, "volumes")
 	if err := os.Chmod(volumesDir, 0o000); err != nil {
@@ -309,11 +309,11 @@ func makeVolumeDirUnreadable(t *testing.T, home string) {
 func TestPresentLegacyTargets(t *testing.T) {
 	legacy := newHome(t)
 	private := newHome(t)
-	present := naming.HomePrefix + "present"
+	present := naming.LegacyHomePrefix + "present"
 	addVolumeDir(t, legacy, present)
-	addVolumeDir(t, legacy, naming.HomePrefix+"missing")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"missing")
 	addVolumeDir(t, private, present)
-	addVolumeDir(t, private, naming.HomePrefix+"unrelated")
+	addVolumeDir(t, private, naming.LegacyHomePrefix+"unrelated")
 
 	got, err := presentLegacyTargets(legacy, private)
 	if err != nil {
@@ -365,7 +365,7 @@ func addSandboxDir(t *testing.T, home, name string) {
 
 func TestDetectLegacyArtifactsFindsHomeVolumes(t *testing.T) {
 	legacy := newHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	got, err := detectLegacyArtifacts(legacy)
 	if err != nil {
 		t.Fatalf("detectLegacyArtifacts: %v", err)
@@ -377,8 +377,8 @@ func TestDetectLegacyArtifactsFindsHomeVolumes(t *testing.T) {
 
 func TestDetectLegacyArtifactsFindsLauncherSandboxes(t *testing.T) {
 	legacy := newHome(t)
-	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
-	addSandboxDir(t, legacy, naming.TaskPrefix+"proj")
+	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj")
+	addSandboxDir(t, legacy, naming.LegacyTaskPrefix+"proj")
 	addSandboxDir(t, legacy, "user-own")
 	got, err := detectLegacyArtifacts(legacy)
 	if err != nil {
@@ -386,6 +386,33 @@ func TestDetectLegacyArtifactsFindsLauncherSandboxes(t *testing.T) {
 	}
 	if len(got.Sandboxes) != 2 || len(got.HomeVolumes) != 0 || !got.present() {
 		t.Fatalf("artifacts = %+v, want the two launcher sandboxes only", got)
+	}
+}
+
+// TestLegacyScanMatchesOnlyPrefixedArtifacts pins the foreign-scan boundary: in a
+// shared legacy ~/.microsandbox the prefix is the only ownership signal, so a
+// prefix-free launcher artifact (or a foreign name) must not be copied.
+func TestLegacyScanMatchesOnlyPrefixedArtifacts(t *testing.T) {
+	legacy := newHome(t)
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"proj-1abc1234defg5-opencode-20260812T123456")
+	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj-1abc1234defg5-opencode")
+	addVolumeDir(t, legacy, naming.HomeVolumeName("proj-1abc1234defg5", "opencode", "20260812T123456"))
+	addSandboxDir(t, legacy, "proj-1abc1234defg5-opencode")
+	addVolumeDir(t, legacy, "theirs")
+	addSandboxDir(t, legacy, "theirs")
+
+	got, err := detectLegacyArtifacts(legacy)
+	if err != nil {
+		t.Fatalf("detectLegacyArtifacts: %v", err)
+	}
+	if len(got.HomeVolumes) != 1 || len(got.Sandboxes) != 1 {
+		t.Fatalf("artifacts = %+v, want only the prefixed home volume and sandbox", got)
+	}
+	if got.HomeVolumes[0] != naming.LegacyHomePrefix+"proj-1abc1234defg5-opencode-20260812T123456" {
+		t.Errorf("HomeVolumes = %v, want the prefixed volume", got.HomeVolumes)
+	}
+	if got.Sandboxes[0] != naming.LegacyVMPrefix+"proj-1abc1234defg5-opencode" {
+		t.Errorf("Sandboxes = %v, want the prefixed sandbox", got.Sandboxes)
 	}
 }
 
@@ -438,7 +465,7 @@ func TestDetectLegacyArtifactsMarksUnreadableVolumes(t *testing.T) {
 func TestDetectLegacyArtifactsForResolvesLegacyHome(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	got, err := detectLegacyArtifactsFor()
 	if err != nil {
 		t.Fatalf("detectLegacyArtifactsFor: %v", err)

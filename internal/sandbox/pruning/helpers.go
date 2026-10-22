@@ -2,13 +2,10 @@ package pruning
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
-
-func hasPrefix(s, prefix string) bool { return strings.HasPrefix(s, prefix) }
 
 func pruneReportPrefix(dryRun bool) string {
 	prefix := "Pruned"

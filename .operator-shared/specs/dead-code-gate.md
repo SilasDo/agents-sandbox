@@ -76,6 +76,11 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
 - **Stale markers fail too.** A marker whose declaration or file is *not* reported as dead is an error. This is the
   mechanism's self-defence: markers cannot accumulate as decoration after the code they justified is deleted or becomes
   live. Enforced by `ci/check-deadcode.sh`, in the spirit of the deprecation-register regression tests.
+- **Test-only helpers move to test code; they are not marked.** A production declaration reached only from `_test.go`
+  files that is a convenience helper — a fixture constructor, a string builder — is **moved into a `_test.go` file** (or
+  deleted), not excused with a marker. Markers are for declarations that must stay in production code: a substitution
+  seam (`image/fetch.go`, `vm/daemon.go`) or a build-tag/test-support file (`*/testmock.go`, `test/harness/*`). Deciding
+  which one a finding is belongs to the reviewer at gate time, not to the marker.
 - **Configuration matrix.** deadcode analyses one configuration per run. The gate runs one run per configuration in a
   matrix over the build tags (`''`, `integration`, `msb`, `integration msb`) and fails if **any** configuration reports an
   unmarked finding. `GOOS` is the host's own (see Decisions); `GOARCH` is left at the host default because the module has
@@ -89,6 +94,12 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   filter, no source parsing) but puts the reason away from the code and rots as entries outlive their functions. The
   marker keeps the reason next to the thing it excuses and survives refactors. The cost, accepted: we own a small source
   parser in `ci/`. Recorded decision of the maintainer.
+- **Move, do not mark, a test-only helper, decided.** The first branch to trip the gate on test-only convenience
+  constructors (`naming.ProjectVMName` and its `Legacy…` siblings, added for parser/fuzz fixtures) marked them
+  declaration-scope instead of relocating them; on review the maintainer ruled they belong in `_test.go` next to the tests
+  that use them. A marker on a test-only helper keeps production surface with no production caller; moving it keeps the
+  production package and the dead-code baseline honest. The test files define the fixtures (`naming/fixtures_test.go`)
+  and the production shape is asserted against the real constructors in `vm`/`volume`.
 - **`verify`, not `check`.** `check` is the fast local loop (`fmt lint test compile-all docs-linkcheck docs-linkcheck-test`);
   `verify` is the read-only CI-parity target and already carries `vulncheck`, the closest analogue. This works because the
   gate analyses the host's own GOOS, so it is runnable on every supported development host (see Decisions).

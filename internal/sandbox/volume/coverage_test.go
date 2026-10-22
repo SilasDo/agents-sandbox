@@ -15,6 +15,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -38,6 +39,58 @@ func TestCheckForActiveVMs_IgnoresNonVMSandboxes(t *testing.T) {
 
 	if err := checkForActiveVMs(context.Background(), state.Key{Slug: "someproj", Agent: "opencode"}); err != nil {
 		t.Fatalf("expected no error for non-VM sandbox, got: %v", err)
+	}
+}
+
+func TestCheckForActiveVMs_MatchesPrefixFreeProjectVM(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{Name_: "someproj-1mjusbm3wikhb0-opencode", Status_: msbSdk.SandboxStatusRunning},
+	}
+
+	err := checkForActiveVMs(context.Background(), state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"})
+	if err == nil {
+		t.Fatal("expected a running prefix-free project VM to block volume operations")
+	}
+}
+
+func TestCheckForActiveVMs_IgnoresPrefixFreeTaskSandbox(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{
+			Name_:   "someproj-1mjusbm3wikhb0-opencode-1729000000000000000",
+			Status_: msbSdk.SandboxStatusRunning,
+		},
+	}
+
+	if err := checkForActiveVMs(
+		context.Background(),
+		state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"},
+	); err != nil {
+		t.Fatalf("a prefix-free task sandbox must not block volume operations, got: %v", err)
+	}
+}
+
+// TestCheckForActiveVMs_UsesLabelsForTaskSandbox pins that a sandbox whose name
+// looks like a project VM but whose labels mark it a task does not block volume
+// operations: the label is authoritative over the name shape.
+func TestCheckForActiveVMs_UsesLabelsForTaskSandbox(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{
+			Name_:   "someproj-1mjusbm3wikhb0-opencode",
+			Status_: msbSdk.SandboxStatusRunning,
+			Cfg: &msbSdk.SandboxConfig{
+				Labels: map[string]string{naming.LabelType: naming.SandboxTypeTask},
+			},
+		},
+	}
+
+	if err := checkForActiveVMs(
+		context.Background(),
+		state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"},
+	); err != nil {
+		t.Fatalf("a label-identified task sandbox must not block volume operations, got: %v", err)
 	}
 }
 
@@ -97,7 +150,7 @@ func TestVolumeOp_ReadStateCorruptError(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		false,
 		false,
 		ui,
@@ -116,7 +169,7 @@ func TestVolumeOp_NoVolumeToOperate(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		false,
 		false,
 		ui,
@@ -139,7 +192,7 @@ func TestVolumeOp_PrefillFails(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		false,
 		false,
 		ui,
@@ -176,7 +229,7 @@ func TestVolumeOp_MainFails_CleanupVolumeFailsWarns(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		false,
 		false,
 		ui,
@@ -225,7 +278,7 @@ func TestVolumeOp_WriteStateFails_ReturnsError(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		false,
 		false,
 		ui,
@@ -271,7 +324,7 @@ func TestVolumeOp_RemoveOldFails_Warns(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		true,
 		false,
 		ui,
@@ -304,7 +357,7 @@ func TestCmdEdit_LoadImageFails(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		false,
 		ui,
@@ -325,7 +378,7 @@ func TestPrefillVolume_LoadImageFails(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		&termio.Mock{},
 	)
 	if err == nil || !strings.Contains(err.Error(), "load runner image") {
@@ -350,7 +403,7 @@ func TestCopyVolume_DestroyFailureWarns(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-vol",
 		"new-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		ui,
 	)
 	if err != nil {
@@ -388,7 +441,7 @@ func TestCmdEdit_DestroyFailureWarns(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		false,
 		ui,
@@ -419,7 +472,7 @@ func TestCopyVolume_LoadImageFails(t *testing.T) {
 		state.Key{Slug: "myproject", Agent: "opencode"},
 		"old-vol",
 		"new-vol",
-		image.ImageInfo{Tag: "img-tag"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag"},
 		&termio.Mock{},
 	)
 	if err == nil || !strings.Contains(err.Error(), "load runner image") {
@@ -439,7 +492,7 @@ func TestEnsureNewHome_CreateVolumeFails(t *testing.T) {
 		context.Background(),
 		mock,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
 		&termio.Mock{},
@@ -517,7 +570,7 @@ func TestApplyHomeAction_KeepDryRun_ReturnsOldVolume(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproj", Agent: "opencode"},
 		"old-vol",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionKeep,
 		options.RunOptions{DryRun: true},
 		&termio.Mock{},
@@ -551,7 +604,7 @@ func TestApplyHomeAction_KeepRecordImageFails_Warns(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		"old-vol",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionKeep,
 		options.RunOptions{},
 		ui,
@@ -587,7 +640,7 @@ func TestApplyHomeAction_CreateVolumeFails(t *testing.T) {
 		mock,
 		state.Key{Slug: "myproj", Agent: "opencode"},
 		"old-vol",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		&termio.Mock{},
@@ -634,7 +687,7 @@ func TestApplyHomeAction_WriteStateFails_ReturnsError(t *testing.T) {
 		mock,
 		state.Key{Slug: slug, Agent: "opencode"},
 		"old-vol",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:new"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
 		options.RunOptions{},
 		ui,
@@ -678,7 +731,7 @@ func TestCmdEdit_LoadImageFailsInMain(t *testing.T) {
 		context.Background(),
 		state.Key{Slug: slug, Agent: "opencode"},
 		"",
-		image.ImageInfo{Tag: "img-tag", Digest: "sha256:abc"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		false,
 		ui,

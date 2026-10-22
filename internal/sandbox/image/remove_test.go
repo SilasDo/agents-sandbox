@@ -43,7 +43,7 @@ func TestRemoveImagesRefusesImageHeldByLiveSandbox(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
 	handle := &msb.MockSandboxHandle{
-		Name_: naming.VMPrefix + key.Slug + "-" + key.Agent,
+		Name_: naming.LegacyVMPrefix + key.Slug + "-" + key.Agent,
 		Cfg:   &msbSdk.SandboxConfig{Image: naming.RunnerImageRef(key.Slug, key.Agent)},
 	}
 	client := &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{handle}}
@@ -192,19 +192,23 @@ func TestRemoveImagesGuardSurfacesScanError(t *testing.T) {
 	}
 }
 
-func TestInUseImageReferencesSkipsForeignSandbox(t *testing.T) {
+func TestInUseImageReferencesKeepsPositionalSandbox(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
-	foreign := &msb.MockSandboxHandle{Name_: "user-sandbox", Cfg: &msbSdk.SandboxConfig{Image: ref}}
-	client := &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{foreign}}
+	handle := &msb.MockSandboxHandle{Name_: "proj-aBc1234D-opencode", Cfg: &msbSdk.SandboxConfig{Image: ref}}
+	client := &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{handle}}
 	msb.WithMsbMock(t, client)
 
 	references, err := inUseImageReferences(context.Background())
 	if err != nil {
 		t.Fatalf("inUseImageReferences() = %v", err)
 	}
-	if len(references[ref]) != 0 {
-		t.Fatalf("references[%q] = %v, want none (a non-launcher sandbox must be skipped)", ref, references[ref])
+	if len(references[ref]) != 1 {
+		t.Fatalf(
+			"references[%q] = %v, want one (every sandbox in the private runtime home is ours)",
+			ref,
+			references[ref],
+		)
 	}
 }
 

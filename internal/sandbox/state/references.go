@@ -13,15 +13,15 @@ import (
 
 // projectStateReferences walks every project state file under the state root and
 // maps an object name to the project keys that reference it. extract returns the
-// object name a state references, and false when the state references no such
-// object. Both the per-agent layout <root>/<slug>/<agent>/state.yaml and the
-// legacy agent-less <root>/<slug>/state.yaml are scanned; the launcher-global
-// root state file is skipped.
+// object names a state references (empty when it references none). Both the
+// per-agent layout <root>/<slug>/<agent>/state.yaml and the legacy agent-less
+// <root>/<slug>/state.yaml are scanned; the launcher-global root state file is
+// skipped.
 //
 // A state file that cannot be read or parsed is an error: the caller cannot
 // prove the object is unreferenced, so a destructive removal must fail closed
 // (with an explicit override) rather than risk orphaning a project.
-func projectStateReferences(extract func(Key, *HomeState) (string, bool)) (map[string][]Key, error) {
+func projectStateReferences(extract func(Key, *HomeState) []string) (map[string][]Key, error) {
 	root := stateRoot()
 	references := map[string][]Key{}
 	walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -46,11 +46,9 @@ func projectStateReferences(extract func(Key, *HomeState) (string, bool)) (map[s
 		if readErr != nil {
 			return readErr
 		}
-		name, ok := extract(key, st)
-		if !ok || name == "" {
-			return nil
+		for _, name := range extract(key, st) {
+			references[name] = append(references[name], key)
 		}
-		references[name] = append(references[name], key)
 		return nil
 	})
 	if walkErr != nil {
@@ -65,28 +63,32 @@ func projectStateReferences(extract func(Key, *HomeState) (string, bool)) (map[s
 // pending RecoveredHomeVolume (a VM-only identity adoption, #144) counts: the
 // volume is still the project's saved home until home resolution recovers it.
 func HomeVolumeReferences() (map[string][]Key, error) {
-	return projectStateReferences(func(_ Key, st *HomeState) (string, bool) {
+	return projectStateReferences(func(_ Key, st *HomeState) []string {
 		if st.HomeVolume != "" {
-			return st.HomeVolume, true
+			return []string{st.HomeVolume}
 		}
-		return st.RecoveredHomeVolume, st.RecoveredHomeVolume != ""
+		if st.RecoveredHomeVolume != "" {
+			return []string{st.RecoveredHomeVolume}
+		}
+		return nil
 	})
 }
 
 // ImageReferences maps each per-agent runner image reference to the project keys
-// that own it. A project owns the runner image its slug and agent name derive
-// (naming.RunnerImageRef), whether or not its ImageDigest is set: ownership is
-// state presence, not digest content. A legacy agent-less key owns none, because
-// runner images are per-agent; a legacy VM pinned to a non-"-latest" ref is
-// caught by the kept-sandbox scan in image.InUseImageReferences instead. Removal
-// of an image a project state still owns must fail closed (see
-// projectStateReferences).
+// that own it. A project owns both the prefix-free runner image reference its
+// slug and agent name derive (naming.RunnerImageRef) and the pre-change prefixed
+// one (naming.DockerImageRef) that an image loaded by an earlier version sits
+// under, whether or not its ImageDigest is set: ownership is state presence, not
+// digest content. A legacy agent-less key owns none, because runner images are
+// per-agent; a legacy VM pinned to a non-"-latest" ref is caught by the
+// kept-sandbox scan in image.InUseImageReferences instead. Removal of an image a
+// project state still owns must fail closed (see projectStateReferences).
 func ImageReferences() (map[string][]Key, error) {
-	return projectStateReferences(func(k Key, _ *HomeState) (string, bool) {
+	return projectStateReferences(func(k Key, _ *HomeState) []string {
 		if k.Agent == "" {
-			return "", false
+			return nil
 		}
-		return naming.RunnerImageRef(k.Slug, k.Agent), true
+		return []string{naming.RunnerImageRef(k.Slug, k.Agent), naming.DockerImageRef(k.Slug, k.Agent)}
 	})
 }
 

@@ -112,12 +112,15 @@ func ensureProjectVM(
 
 	spin := ui.Spinner("Checking project VM")
 
-	handle, err := client.GetSandbox(ctx, name)
-	notFound := msb.IsNotFound(err)
-	if err != nil && !notFound {
+	handle, found, err := findProjectVM(ctx, client, k)
+	if err != nil {
 		spin.StopError(err)
 		return nil, vmBootConnected, fmt.Errorf("check sandbox %q: %w", name, err)
 	}
+	if found {
+		name = handle.Name()
+	}
+	notFound := !found
 
 	// Fast path: attach to or start an existing VM without the flock, replacing
 	// it first when the config changed.
@@ -125,6 +128,11 @@ func ensureProjectVM(
 		notFound, err = replaceSandboxForReconfig(handle, name, ui, spin)
 		if err != nil {
 			return nil, vmBootConnected, err
+		}
+		if notFound {
+			// The replaced VM may have carried a legacy name; recreate under
+			// the prefix-free scheme so the rename takes effect.
+			name = projectVMName(k)
 		}
 	}
 	if !notFound {
@@ -146,7 +154,7 @@ func ensureProjectVM(
 	}
 	defer release()
 
-	return createOrAttachAfterLock(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
+	return createOrAttachAfterLock(ctx, client, name, k, repoSlug, info, homeVol, repoPath, opts, ui)
 }
 
 // replaceSandboxForReconfig destroys an existing VM whose config changed,
@@ -339,6 +347,7 @@ func createOrAttachAfterLock(
 	ctx context.Context,
 	client msb.Client,
 	name string,
+	key state.Key,
 	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
@@ -352,7 +361,7 @@ func createOrAttachAfterLock(
 		return nil, vmBootConnected, fmt.Errorf("re-check sandbox %q: %w", name, err)
 	}
 
-	sb, created, err := createProjectVM(ctx, client, name, repoSlug, info, homeVol, repoPath, opts, ui)
+	sb, created, err := createProjectVM(ctx, client, name, key, repoSlug, info, homeVol, repoPath, opts, ui)
 	if err != nil {
 		return nil, vmBootConnected, err
 	}
@@ -478,12 +487,14 @@ func createProjectVM(
 	ctx context.Context,
 	client msb.Client,
 	name string,
+	key state.Key,
 	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
 	ui termio.UI,
 ) (msb.Sandbox, bool, error) {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return nil, false, fmt.Errorf("load runner image: %w", err)
 	}
 	cpus := opts.CPUs
@@ -511,14 +522,13 @@ func createProjectVM(
 		idleTimeout = options.DefaultVMIdleTimeout
 	}
 	optsList := []msbSdk.SandboxOption{
-		msbSdk.WithImage(info.Tag),
-		msbSdk.WithLabels(map[string]string{
-			// The VM name carries the checkout slug; the grouping label carries
-			// the repo slug so list --label project=<repo> groups every clone of
-			// one origin. Nothing keys ownership off this label.
-			naming.LabelProject: repoSlug,
-			naming.LabelImage:   info.Tag,
-		}),
+		msbSdk.WithImage(info.Ref),
+		// The labels carry the artifact's identity and kind authoritatively; the
+		// name cannot distinguish a folder that itself begins with a legacy
+		// prefix, and it may have been truncated. The grouping label carries the
+		// repo slug so list --label project=<repo> groups every clone of one
+		// origin.
+		msbSdk.WithLabels(naming.ProjectSandboxLabels(key.Slug, key.Agent, repoSlug, info.Ref)),
 		msbSdk.WithMounts(mountConfigs),
 		msbSdk.WithSecrets(secrets...),
 		msbSdk.WithEnv(envMap),

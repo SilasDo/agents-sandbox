@@ -5,17 +5,79 @@ import (
 	"errors"
 	"testing"
 
+	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
+
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/homeconfig"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/reprovision"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
+
+// TestCreateProjectVMUsesResolvedRef pins that the VM is created with the ref
+// EnsureLoaded resolved (a reused legacy ref), not the freshly computed one, and
+// that the image label records the same ref.
+func TestCreateProjectVMUsesResolvedRef(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+	key := testVMKey()
+	legacyRef := naming.DockerImageRef(key.Slug, key.Agent)
+	client := &msb.MockMsbClient{
+		ImageGetFn: func(_ context.Context, ref string) error {
+			if ref == legacyRef {
+				return nil
+			}
+			return errors.New("not cached")
+		},
+		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
+			return &msbSdk.ImageConfig{Digest: "sha256:same"}, nil
+		},
+	}
+	testUI := termio.NewTestMock(t)
+	ui := &testUI
+
+	_, _, err := createProjectVM(
+		context.Background(),
+		client,
+		projectVMName(key),
+		key,
+		key.Slug,
+		image.ImageInfo{
+			DockerTag: legacyRef,
+			Ref:       naming.RunnerImageRef(key.Slug, key.Agent),
+			Digest:    "sha256:same",
+		},
+		"test-home-vol",
+		t.TempDir(),
+		options.RunOptions{Memory: "1G"},
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("createProjectVM: %v", err)
+	}
+
+	var cfg msbSdk.SandboxConfig
+	for _, call := range client.CreatedSandboxCalls {
+		if call.Name != projectVMName(key) {
+			continue
+		}
+		for _, opt := range call.Opts {
+			opt(&cfg)
+		}
+	}
+	if cfg.Image != legacyRef {
+		t.Errorf("created VM image = %q, want the reused legacy ref %q", cfg.Image, legacyRef)
+	}
+	if got := cfg.Labels[naming.LabelImage]; got != legacyRef {
+		t.Errorf("LabelImage = %q, want %q", got, legacyRef)
+	}
+}
 
 // TestCreateProjectVMCreateSandboxError covers the CreateSandbox failure branch
 // in createProjectVM.
@@ -31,8 +93,9 @@ func TestCreateProjectVMCreateSandboxError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
+		testVMKey(),
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
@@ -56,8 +119,9 @@ func TestCreateProjectVMNetworkConfigError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
+		testVMKey(),
 		testVMKey().Slug,
-		image.ImageInfo{Tag: "agents-sandbox/runner-test:latest"},
+		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{

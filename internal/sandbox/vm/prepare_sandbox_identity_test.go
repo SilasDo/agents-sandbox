@@ -150,7 +150,8 @@ func createdProjectVMConfig(t *testing.T, mock *msb.MockMsbClient, name string) 
 func createdProjectVMNames(mock *msb.MockMsbClient) []string {
 	var names []string
 	for _, name := range mock.CreatedSandboxes {
-		if naming.IsProjectSandbox(name) {
+		info := naming.ParseVMName(name)
+		if info.Slug != "" && !info.Task {
 			names = append(names, name)
 		}
 	}
@@ -214,10 +215,10 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 	if got := createdProjectVMNames(secondMock); len(got) != 1 || got[0] != secondName {
 		t.Errorf("second clone created project VMs %v, want exactly [%s]", got, secondName)
 	}
-	if firstTag != naming.RunnerImageRef(firstIdentity.CheckoutSlug, "opencode") {
+	if firstTag != naming.DockerImageRef(firstIdentity.CheckoutSlug, "opencode") {
 		t.Errorf("first clone image tag = %q, want the checkout-slug tag", firstTag)
 	}
-	if secondTag != naming.RunnerImageRef(secondIdentity.CheckoutSlug, "opencode") {
+	if secondTag != naming.DockerImageRef(secondIdentity.CheckoutSlug, "opencode") {
 		t.Errorf("second clone image tag = %q, want the checkout-slug tag", secondTag)
 	}
 	for clone, labels := range map[string]map[string]string{"first": firstLabels, "second": secondLabels} {
@@ -282,7 +283,7 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 		t.Errorf("created sandboxes = %v, want the worktree-root-derived %q",
 			got, projectVMName(key))
 	}
-	if *inspectedTag != naming.RunnerImageRef(identity.CheckoutSlug, "opencode") {
+	if *inspectedTag != naming.DockerImageRef(identity.CheckoutSlug, "opencode") {
 		t.Errorf("image tag = %q, want the worktree-root-derived tag", *inspectedTag)
 	}
 	// The slug is only half the identity: /workspace must bind the worktree
@@ -334,9 +335,9 @@ func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) 
 			t.Errorf("dry-run notice missing %q:\n%s", want, notice)
 		}
 	}
-	if *inspectedTag != naming.RunnerImageRef(identity.RepoSlug, "opencode") {
+	if *inspectedTag != naming.DockerImageRef(identity.RepoSlug, "opencode") {
 		t.Errorf("image tag = %q, want the legacy repo-slug tag %q",
-			*inspectedTag, naming.RunnerImageRef(identity.RepoSlug, "opencode"))
+			*inspectedTag, naming.DockerImageRef(identity.RepoSlug, "opencode"))
 	}
 	if session.Key().Slug != identity.RepoSlug {
 		t.Errorf("session slug = %q, want the legacy repo slug %q", session.Key().Slug, identity.RepoSlug)
@@ -392,7 +393,7 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 		t.Errorf("created sandboxes = %v, want the checkout-slug name %q",
 			got, projectVMName(checkoutKey))
 	}
-	if *inspectedTag != naming.RunnerImageRef(identity.CheckoutSlug, "opencode") {
+	if *inspectedTag != naming.DockerImageRef(identity.CheckoutSlug, "opencode") {
 		t.Errorf("image tag = %q, want the checkout-slug tag", *inspectedTag)
 	}
 	if session.Key() != checkoutKey {

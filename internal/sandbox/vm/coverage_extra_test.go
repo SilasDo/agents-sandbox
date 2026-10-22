@@ -32,12 +32,12 @@ func joinStrings(parts []string) string {
 
 func TestProjectVMNameIncludesAgent(t *testing.T) {
 	got := projectVMName(state.Key{Slug: "myproject-aBc1234DeF", Agent: "pi"})
-	want := "agents-sandbox-vm-myproject-aBc1234DeF-pi"
+	want := "myproject-aBc1234DeF-pi"
 	if got != want {
 		t.Errorf("projectVMName = %q, want %q", got, want)
 	}
 	got = projectVMName(state.Key{Slug: "myproject-aBc1234DeF", Agent: "opencode"})
-	want = "agents-sandbox-vm-myproject-aBc1234DeF-opencode"
+	want = "myproject-aBc1234DeF-opencode"
 	if got != want {
 		t.Errorf("projectVMName = %q, want %q", got, want)
 	}
@@ -316,7 +316,7 @@ func TestEnsureProjectVMDryRunVM(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{DryRunVM: true},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -346,7 +346,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),

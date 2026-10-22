@@ -6,7 +6,6 @@ package vm
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -56,17 +55,17 @@ func ListSandboxes(ctx context.Context, opts ...ListOption) ([]Info, error) {
 	var result []Info
 	for _, h := range handles {
 		name := h.Name()
-		if !strings.HasPrefix(name, naming.VMPrefix) {
+		cfg, _ := h.Config()
+		var labels map[string]string
+		if cfg != nil {
+			labels = cfg.Labels
+		}
+		if naming.SandboxIdentity(name, labels).Task {
 			continue
 		}
 		status := h.Status()
 		if !statusMatchesFilter(status, opt) {
 			continue
-		}
-		cfg, _ := h.Config()
-		var labels map[string]string
-		if cfg != nil {
-			labels = cfg.Labels
 		}
 		result = append(result, Info{
 			Name:         name,

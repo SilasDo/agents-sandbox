@@ -141,7 +141,7 @@ func decideReconfig(
 	cfs *reprovision.ConfigFiles,
 	ui termio.UI,
 ) (bool, bool, string, int, error) {
-	handle, _ := client.GetSandbox(ctx, projectVMName(k))
+	handle, _, _ := findProjectVM(ctx, client, k)
 
 	var curCfg *msbSdk.SandboxConfig
 	var liveSb msb.Sandbox
@@ -184,7 +184,7 @@ func decideReconfig(
 
 	plan := reconfig.PlanReconfig(
 		curCfg,
-		imageInfo.Tag,
+		imageInfo.Ref,
 		opts,
 		reconfig.ChangeFlags{
 			Image:       imageChanged,

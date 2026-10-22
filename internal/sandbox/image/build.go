@@ -18,6 +18,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -42,11 +43,15 @@ type BuildOptions struct {
 // without treating the identity as an installer release.
 const userProvidedImageIdentity = "user-provided"
 
-// ImageInfo describes the built or existing runner image. Digest is the content
-// identity (Docker's image ID); DockerfileID is the source signature carried as
-// the dockerfile-id label.
+// ImageInfo describes the built or existing runner image. DockerTag is the
+// namespaced tag in the system Docker daemon; Ref is the reference the image
+// carries in the microsandbox cache, resolved by EnsureLoaded (the prefix-free
+// reference, or the legacy Docker-tag reference when that already holds the same
+// content). Digest is the content identity (Docker's image ID); DockerfileID is
+// the source signature carried as the dockerfile-id label.
 type ImageInfo struct {
-	Tag          string
+	DockerTag    string
+	Ref          string
 	Digest       string
 	DockerfileID string
 	Env          map[string]string
@@ -421,7 +426,13 @@ func EnsureImageWithClient(
 	if err != nil {
 		return ImageInfo{}, fmt.Errorf("inspect built image: %w", err)
 	}
-	return ImageInfo{Tag: rTag, Digest: imageDigest, DockerfileID: plan.dockerfileID, Env: env}, nil
+	return ImageInfo{
+		DockerTag:    rTag,
+		Ref:          naming.RunnerImageRef(projectSlug, a.Name()),
+		Digest:       imageDigest,
+		DockerfileID: plan.dockerfileID,
+		Env:          env,
+	}, nil
 }
 
 // initialBuildVersions returns the requested agent version, the version baked
@@ -531,46 +542,61 @@ func logBuildDecision(
 
 // EnsureLoaded loads the runner image described by info into the microsandbox
 // cache if it is not already the cached content, so the image can be used to
-// create VMs. It is idempotent: when microsandbox already holds the same image
-// content it returns immediately, otherwise the Docker image is loaded again
-// under the same reference. The comparison uses the content digest microsandbox
-// records for the image, the same value as Docker's image ID; only a legacy
-// image that exposes no digest falls back to the dockerfile-id label. Loading
-// directly avoids removing a manifest that an existing VM may still reference.
-func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui termio.UI) error {
+// create VMs, and returns info with Ref set to the reference that now holds that
+// content. It is idempotent: when microsandbox already holds the same image
+// content it returns immediately, otherwise the Docker image is loaded under the
+// prefix-free reference. A pre-change install cached the image under the legacy
+// reference (the Docker tag); when that reference exists with the same content it
+// is reused, so nothing is reimported. The comparison uses the content digest
+// microsandbox records for the image, the same value as Docker's image ID; only a
+// legacy image that exposes no digest falls back to the dockerfile-id label.
+// Loading directly avoids removing a manifest that an existing VM may still
+// reference.
+func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui termio.UI) (ImageInfo, error) {
+	// The Docker tag and the legacy microsandbox reference are the same string.
+	legacyRef := info.DockerTag
+	if legacyRef != "" && legacyRef != info.Ref &&
+		mclient.ImageGet(ctx, legacyRef) == nil && cachedImageMatches(ctx, mclient, legacyRef, info) {
+		info.Ref = legacyRef
+		ui.Verbosef("microsandbox image %s is up to date", legacyRef)
+		return info, nil
+	}
+	if info.Ref == "" {
+		info.Ref = info.DockerTag
+	}
 	loadReason := "not present in microsandbox cache"
-	if err := mclient.ImageGet(ctx, info.Tag); err == nil {
-		if cachedImageMatches(ctx, mclient, info) {
-			ui.Verbosef("microsandbox image %s is up to date", info.Tag)
-			return nil
+	if err := mclient.ImageGet(ctx, info.Ref); err == nil {
+		if cachedImageMatches(ctx, mclient, info.Ref, info) {
+			ui.Verbosef("microsandbox image %s is up to date", info.Ref)
+			return info, nil
 		}
 		loadReason = "cached content differs from the Docker image"
 	}
-	ui.Verbosef("loading image %s into microsandbox: %s", info.Tag, loadReason)
+	ui.Verbosef("loading image %s into microsandbox: %s", info.Ref, loadReason)
 
 	spin := ui.Spinner("Loading image into microsandbox")
-	saveResult, err := docker.Get().ImageSave(ctx, []string{info.Tag})
+	saveResult, err := docker.Get().ImageSave(ctx, []string{info.DockerTag})
 	if err != nil {
 		spin.StopError(err)
-		return fmt.Errorf("cannot export Docker image: %w", err)
+		return ImageInfo{}, fmt.Errorf("cannot export Docker image: %w", err)
 	}
 	defer saveResult.Close()
-	if err = mclient.ImageLoad(ctx, info.Tag, saveResult); err != nil {
+	if err = mclient.ImageLoad(ctx, info.Ref, saveResult); err != nil {
 		spin.StopError(err)
-		return err
+		return ImageInfo{}, err
 	}
 	spin.Stop()
-	return nil
+	return info, nil
 }
 
-// cachedImageMatches reports whether the microsandbox image under info.Tag holds
+// cachedImageMatches reports whether the microsandbox image under ref holds
 // the same content as the Docker image described by info. Docker's image ID and
 // the microsandbox config digest are the same content identity, so they are
 // compared directly; the dockerfile-id label (a source signature, not a content
 // identity) is only consulted when microsandbox records no digest at all. A
 // digest mismatch is never overridden by a label match.
-func cachedImageMatches(ctx context.Context, mclient msb.Client, info ImageInfo) bool {
-	mInspect, err := mclient.ImageInspect(ctx, info.Tag)
+func cachedImageMatches(ctx context.Context, mclient msb.Client, ref string, info ImageInfo) bool {
+	mInspect, err := mclient.ImageInspect(ctx, ref)
 	if err != nil {
 		return false
 	}
@@ -610,7 +636,8 @@ func Build(
 	if err != nil {
 		return err
 	}
-	return EnsureLoaded(ctx, msb.Get(), info, ui)
+	_, err = EnsureLoaded(ctx, msb.Get(), info, ui)
+	return err
 }
 
 // baseImageRef returns the normalized image reference that backs the rendered

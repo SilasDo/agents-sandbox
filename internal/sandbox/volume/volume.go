@@ -3,7 +3,6 @@ package volume
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
@@ -22,11 +21,11 @@ const (
 	dstMount = "/dst"
 )
 
-// HomeVolumeName generates a volume name for the given project/agent key using
-// the standard home volume prefix and a UTC timestamp.
+// HomeVolumeName generates a prefix-free volume name for the given
+// project/agent key with a UTC timestamp.
 func HomeVolumeName(k state.Key) string {
 	ts := time.Now().UTC().Format("20060102T150405")
-	return naming.HomePrefix + k.Slug + "-" + k.Agent + "-" + ts
+	return naming.HomeVolumeName(k.Slug, k.Agent, ts)
 }
 
 // Manager manages home-volume lifecycle for projects.
@@ -49,15 +48,17 @@ func (vm *Manager) PrefillVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return fmt.Errorf("load runner image: %w", err)
 	}
-	prefillName := naming.TaskPrefix + k.Slug + "-" + k.Agent + "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	prefillName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 	mountConfig := msbSdk.Mount.Named(volumeName, msbSdk.MountOptions{})
 
 	spin := ui.Spinner("Preparing home volume")
 	sb, err := client.CreateSandbox(ctx, prefillName,
-		msbSdk.WithImage(info.Tag),
+		msbSdk.WithImage(info.Ref),
+		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			"/mnt/home": mountConfig,
 		}),
@@ -194,12 +195,14 @@ func (vm *Manager) CopyVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	if err := image.EnsureLoaded(ctx, client, info, ui); err != nil {
+	info, err := image.EnsureLoaded(ctx, client, info, ui)
+	if err != nil {
 		return fmt.Errorf("load runner image: %w", err)
 	}
-	copySbName := naming.TaskPrefix + k.Slug + "-" + k.Agent + "-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	copySbName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 	copySb, err := client.CreateSandbox(ctx, copySbName,
-		msbSdk.WithImage(info.Tag),
+		msbSdk.WithImage(info.Ref),
+		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			srcMount: msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{}),
 			dstMount: msbSdk.Mount.Named(newVolume, msbSdk.MountOptions{}),

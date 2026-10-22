@@ -240,6 +240,46 @@ func TestKeepImageNotReferencedWhenKeyAlsoPruned(t *testing.T) {
 	}
 }
 
+// TestPruneImagesKeepsLiveProjectImageWithLeftoverTask is the end-to-end form
+// of the Greptile P1: a leftover stopped task sandbox for a live project must
+// not cause the project's current runner image to be reclaimed.
+func TestPruneImagesKeepsLiveProjectImageWithLeftoverTask(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const slug = "proj-1mjusbm3wikhb0"
+	live := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode",
+		Status_:    msbSdk.SandboxStatusRunning,
+		UpdatedAt_: time.Now(),
+	}
+	task := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode-1729000000000000000",
+		Status_:    msbSdk.SandboxStatusStopped,
+		UpdatedAt_: time.Now(),
+	}
+	client := &msb.MockMsbClient{
+		Sandboxes: []msb.SandboxHandle{live, task},
+		Images:    []msb.ImageHandle{&msb.MockImageHandle{Reference_: slug + ":opencode-latest"}},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+
+	pruneState, err := buildPruneState(context.Background(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("buildPruneState: %v", err)
+	}
+	r, err := PruneImages(context.Background(), pruneState, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneImages: %v", err)
+	}
+	if r.MSBImagesPruned != 0 || len(client.RemovedImages) != 0 {
+		t.Errorf(
+			"a leftover task reclaimed the live project's image: pruned=%d removed=%v",
+			r.MSBImagesPruned,
+			client.RemovedImages,
+		)
+	}
+}
+
 func TestRenderImageReport(t *testing.T) {
 	ui := &termio.Mock{}
 	RenderImageReport(ui, ImageReport{
@@ -361,6 +401,11 @@ func TestKeepImagePerAgent(t *testing.T) {
 	pi := &msb.MockImageHandle{Reference_: "agents-sandbox/runner-proj-1mjusbm3wikhb0:pi-latest"}
 	if keepImage(pi, pruneState, nil) {
 		t.Error("expected pi-latest to be pruned (no kept pi VM)")
+	}
+	// A prefix-free ref of the live (slug, agent) is kept the same way.
+	prefixFree := &msb.MockImageHandle{Reference_: "proj-1mjusbm3wikhb0:opencode-latest"}
+	if !keepImage(prefixFree, pruneState, nil) {
+		t.Error("expected a prefix-free opencode-latest ref to be kept")
 	}
 }
 

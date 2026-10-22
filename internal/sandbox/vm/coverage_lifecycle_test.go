@@ -65,7 +65,7 @@ func TestEnsureProjectVMConnectRetryReconnectSucceeds(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -107,7 +107,7 @@ func TestEnsureProjectVMConnectRetryThenStart(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -138,7 +138,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -149,7 +149,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -176,7 +176,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -187,7 +187,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -222,7 +222,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -233,7 +233,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -261,7 +261,7 @@ func TestEnsureProjectVMPostLockConnectReconcileWarn(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -272,7 +272,7 @@ func TestEnsureProjectVMPostLockConnectReconcileWarn(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{CPUs: 4},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -309,7 +309,7 @@ func TestEnsureProjectVMPostLockStartReconcileWarn(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -320,7 +320,7 @@ func TestEnsureProjectVMPostLockStartReconcileWarn(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{CPUs: 4},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -360,7 +360,7 @@ func TestEnsureProjectVMConnectRetryRefreshError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -398,7 +398,7 @@ func TestEnsureProjectVMConnectRetryReconcileWarn(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{CPUs: 4},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -443,7 +443,7 @@ func TestEnsureProjectVMConnectRetryStartError(t *testing.T) {
 	_, _, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
@@ -481,7 +481,7 @@ func TestEnsureProjectVMConnectRetryStartReconcileWarn(t *testing.T) {
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
 		options.RunOptions{CPUs: 4},
-		image.ImageInfo{Tag: "img:tag"},
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),

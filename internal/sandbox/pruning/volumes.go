@@ -47,10 +47,7 @@ func PruneVolumes(
 func countVolumesByKey(handles []msb.VolumeHandle) map[state.Key]int {
 	exists := map[state.Key]int{}
 	for _, handle := range handles {
-		if !hasPrefix(handle.Name(), naming.HomePrefix) {
-			continue
-		}
-		artifact := naming.ArtifactFor(handle.Name())
+		artifact := naming.ParseHomeVolumeName(handle.Name())
 		if artifact.Slug != "" {
 			exists[state.Key{Slug: artifact.Slug, Agent: artifact.Agent}]++
 		}
@@ -75,10 +72,7 @@ func pruneHomeVolumes(
 	removed := map[state.Key]int{}
 	for _, handle := range handles {
 		name := handle.Name()
-		if !hasPrefix(name, naming.HomePrefix) {
-			continue
-		}
-		volumeArtifact := naming.ArtifactFor(name)
+		volumeArtifact := naming.ParseHomeVolumeName(name)
 		if volumeArtifact.Slug == "" {
 			continue
 		}

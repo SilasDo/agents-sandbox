@@ -143,7 +143,7 @@ func PrepareSandbox(
 		ui.Verbosef("runner image rebuilt with a newer %s version", a.Name())
 	}
 
-	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Tag, imageInfo.Digest)
+	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Ref, imageInfo.Digest)
 
 	// Compute the desired config fingerprints once: they seed a fresh home
 	// volume's state (issue #183) and are what persistConfigHashes records.
@@ -393,12 +393,12 @@ func persistOfferedVersion(k state.Key, version string, ui termio.UI) {
 // VM on the strength of this result can fail closed instead of dropping its
 // volume; the best-effort home-recovery caller swallows it.
 func projectVMHomeVolume(ctx context.Context, client msb.Client, k state.Key) (string, bool, error) {
-	handle, err := client.GetSandbox(ctx, projectVMName(k))
+	handle, found, err := findProjectVM(ctx, client, k)
 	if err != nil {
-		if msb.IsNotFound(err) {
-			return "", false, nil
-		}
 		return "", false, err
+	}
+	if !found {
+		return "", false, nil
 	}
 	if handle == nil {
 		return "", false, nil

@@ -559,8 +559,8 @@ func TestEnsureImageReturnsDigestImageRefAsTag(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := "agents-sandbox/runner-test-project:opencode-latest"
-	if info.Tag != want {
-		t.Errorf("info.Tag = %q, want agent-based image ref %q", info.Tag, want)
+	if info.DockerTag != want {
+		t.Errorf("info.DockerTag = %q, want agent-based image ref %q", info.DockerTag, want)
 	}
 }
 
@@ -618,35 +618,35 @@ func TestEnsureLoadedDecision(t *testing.T) {
 		{
 			name:          "not cached loads",
 			cached:        false,
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
 			wantLoadCount: 1,
 		},
 		{
 			name:          "equal digest skips",
 			cached:        true,
 			msbDigest:     "sha256:new",
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
 			wantLoadCount: 0,
 		},
 		{
 			name:          "different digest loads",
 			cached:        true,
 			msbDigest:     "sha256:old",
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
 			wantLoadCount: 1,
 		},
 		{
 			name:          "no digest, equal label skips",
 			cached:        true,
 			msbLabels:     map[string]string{dockerfileIDLabelKey: "abc"},
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"},
 			wantLoadCount: 0,
 		},
 		{
 			name:          "no digest, different label loads",
 			cached:        true,
 			msbLabels:     map[string]string{dockerfileIDLabelKey: "old"},
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"},
 			wantLoadCount: 1,
 		},
 		{
@@ -654,7 +654,7 @@ func TestEnsureLoadedDecision(t *testing.T) {
 			cached:        true,
 			msbDigest:     "sha256:old",
 			msbLabels:     map[string]string{dockerfileIDLabelKey: "abc"},
-			info:          ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc"},
+			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"},
 			wantLoadCount: 1,
 		},
 	}
@@ -685,7 +685,7 @@ func TestEnsureLoadedDecision(t *testing.T) {
 					return &msbSdk.ImageConfig{Digest: tc.msbDigest, Labels: tc.msbLabels}, nil
 				},
 			}
-			if err := EnsureLoaded(context.Background(), msbClient, tc.info, &termio.Mock{}); err != nil {
+			if _, err := EnsureLoaded(context.Background(), msbClient, tc.info, &termio.Mock{}); err != nil {
 				t.Fatalf("EnsureLoaded: %v", err)
 			}
 			if len(msbClient.LoadedImages) != tc.wantLoadCount {
@@ -722,8 +722,8 @@ func TestEnsureLoadedReloadsStaleContentUnderSameRef(t *testing.T) {
 		},
 	}
 	ui := &termio.Mock{}
-	info := ImageInfo{Tag: rTag, Digest: "sha256:docker-new", DockerfileID: "abc"}
-	if err := EnsureLoaded(context.Background(), msbClient, info, ui); err != nil {
+	info := ImageInfo{DockerTag: rTag, Ref: rTag, Digest: "sha256:docker-new", DockerfileID: "abc"}
+	if _, err := EnsureLoaded(context.Background(), msbClient, info, ui); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
 	if removeCalled {
@@ -744,8 +744,8 @@ func TestEnsureLoadedSkipsWhenCachedContentMatches(t *testing.T) {
 		},
 		ImageRemoveFn: func(_ context.Context, _ string, _ bool) error { removed = true; return nil },
 	}
-	info := ImageInfo{Tag: "ref", Digest: "sha256:same"}
-	if err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err != nil {
+	info := ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:same"}
+	if _, err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
 	if removed {
@@ -765,8 +765,8 @@ func TestEnsureLoadedSkipsLegacyImageByDockerfileIDLabel(t *testing.T) {
 			return &msbSdk.ImageConfig{Digest: "", Labels: labels}, nil
 		},
 	}
-	info := ImageInfo{Tag: "ref", Digest: "sha256:new", DockerfileID: "abc123"}
-	if err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err != nil {
+	info := ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc123"}
+	if _, err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
 	if len(msbClient.LoadedImages) != 0 {
@@ -788,10 +788,14 @@ func TestEnsureLoadedLoadsWhenNotCached(t *testing.T) {
 	msbClient := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return errors.New("not cached") },
 	}
-	if err := EnsureLoaded(
+	if _, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{Tag: "agents-sandbox/runner-test-project:abc", Digest: "sha256:new"},
+		ImageInfo{
+			DockerTag: "agents-sandbox/runner-test-project:abc",
+			Ref:       "agents-sandbox/runner-test-project:abc",
+			Digest:    "sha256:new",
+		},
 		&termio.Mock{},
 	); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -819,10 +823,14 @@ func TestEnsureLoadedReturnsErrorWhenSaveFails(t *testing.T) {
 	msbClient := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return errors.New("not cached") },
 	}
-	err := EnsureLoaded(
+	_, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{Tag: "agents-sandbox/runner-test-project:abc", Digest: "sha256:new"},
+		ImageInfo{
+			DockerTag: "agents-sandbox/runner-test-project:abc",
+			Ref:       "agents-sandbox/runner-test-project:abc",
+			Digest:    "sha256:new",
+		},
 		&termio.Mock{},
 	)
 	if err == nil {

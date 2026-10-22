@@ -1,6 +1,49 @@
 package naming
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+// fuzzAgents are the real agent names, so the fuzzer explores the artifact-name
+// space the launcher emits rather than adversarial agent shapes (an agent whose
+// own last segment were 14 alphanumerics would make the hash anchor inherently
+// ambiguous, and naming cannot know agent names).
+var fuzzAgents = []string{"opencode", "opencode2", "pi", "claude-code"}
+
+// FuzzArtifactNameRoundTrip checks that ParseVMName and ParseHomeVolumeName
+// recover the slug and agent from the names the launcher writes, including a
+// folder whose own last segment is hash-shaped (which a leftmost anchor would
+// mistake for the slug hash). The image-reference equivalent is
+// FuzzRunnerImageRefRoundTrip.
+func FuzzArtifactNameRoundTrip(f *testing.F) {
+	f.Add("myproj", "1mjusbm3wikhb0", "opencode")
+	f.Add("go-1234567890abcd", "1mjusbm3wikhb0", "claude-code")
+	f.Add("a-b-c-d-e-f", "0123456789abcd", "opencode2")
+	f.Fuzz(func(t *testing.T, folder, hash, agent string) {
+		if !validArtifactPart(folder) || !isBase36Hash(hash) || !slices.Contains(fuzzAgents, agent) {
+			t.Skip()
+		}
+		slug := folder + "-" + hash
+
+		vm := ParseVMName(projectVMName(slug, agent))
+		if vm.Slug != slug || vm.Agent != agent || vm.Task {
+			t.Fatalf("ParseVMName(projectVMName(%q, %q)) = %+v", slug, agent, vm)
+		}
+		task := ParseVMName(TaskSandboxName(slug, agent, 1729000000000000000))
+		if task.Slug != slug || task.Agent != agent || !task.Task {
+			t.Fatalf("ParseVMName(TaskSandboxName(%q, %q)) = %+v", slug, agent, task)
+		}
+		volume := ParseHomeVolumeName(HomeVolumeName(slug, agent, "20260812T123456"))
+		if volume.Slug != slug || volume.Agent != agent {
+			t.Fatalf("ParseHomeVolumeName(HomeVolumeName(%q, %q)) = %+v", slug, agent, volume)
+		}
+		legacyVolume := ParseHomeVolumeName(legacyHomeVolumeName(slug, agent, "20260812T123456"))
+		if legacyVolume.Slug != slug || legacyVolume.Agent != agent {
+			t.Fatalf("ParseHomeVolumeName(legacyHomeVolumeName(%q, %q)) = %+v", slug, agent, legacyVolume)
+		}
+	})
+}
 
 // FuzzRunnerImageRefRoundTrip checks that the launcher can read back the image
 // references it writes: ParseImageTag must recover the slug and agent from a
