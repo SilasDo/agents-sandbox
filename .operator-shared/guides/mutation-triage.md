@@ -42,6 +42,16 @@ This is the field guide for doing it. It was distilled from the first full sweep
   syntax error aborts before any field is set; only a type error on a later duplicate key leaves the field populated.
 - **`--detect-equivalent` compares assembly, not behaviour.** A mutation that is logically equivalent but compiles to
   different code still reports LIVED, and must be closed by hand (delete or record).
+- **A "restore the factory" mutant (`Get = orig` removed from a `t.Cleanup`) needs a type or behavioural check, not a
+  func-pointer comparison.** `reflect.ValueOf(fn).Pointer()` returns the *code* pointer, so two closures minted from the
+  same function literal compare equal — a mock installed by the helper reads as "restored" against a leak of that same
+  literal from an earlier test (and the test then passes under the mutant). Assert the concrete type
+  (`Get().(*mockConfigPaths)` must be false after the installing subtest returns) or the restored factory's behaviour
+  (the fail-fast default panics).
+- **`BRANCH_IF`/`STATEMENT_REMOVE` on a `fmt.Fprintln(os.Stdout, err)` failure report is only visible as text.** Swap
+  `os.Stdout` for an `os.Pipe` write end around the call, restore `os.Stdout` and close the write end *before* any
+  `t.Errorf` (the test framework's own output goes to stdout too), then assert the read end contains the error's path —
+  the mutated branch prints nothing, or `<nil>` when the condition is negated.
 
 ## Operational
 
