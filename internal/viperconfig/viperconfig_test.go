@@ -856,6 +856,43 @@ func TestResolverRejectsInvalidUpgradeMode(t *testing.T) {
 	}
 }
 
+func TestResolverUpgradeChannel(t *testing.T) {
+	if got := NewResolverWithConfig(Config{}).UpgradeChannel(); got != upgrade.ChannelStable {
+		t.Fatalf("UpgradeChannel default = %q, want stable", got)
+	}
+	r := NewResolverWithConfig(Config{Upgrade: UpgradeConfig{Channel: "canary"}})
+	if got := r.UpgradeChannel(); got != upgrade.ChannelCanary {
+		t.Fatalf("UpgradeChannel = %q, want canary", got)
+	}
+	// Unparsable values are possible via NewResolverWithConfig, which skips
+	// validation, and fall back to stable.
+	if got := NewResolverWithConfig(
+		Config{Upgrade: UpgradeConfig{Channel: "bogus"}},
+	).UpgradeChannel(); got != upgrade.ChannelStable {
+		t.Fatalf("UpgradeChannel(bogus) = %q, want stable", got)
+	}
+}
+
+func TestResolverUpgradeChannelEnvVar(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_UPGRADE_CHANNEL", "canary")
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	if got := r.UpgradeChannel(); got != upgrade.ChannelCanary {
+		t.Fatalf("UpgradeChannel = %q, want canary from AGENTS_SANDBOX_UPGRADE_CHANNEL", got)
+	}
+}
+
+func TestResolverRejectsInvalidUpgradeChannel(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_UPGRADE_CHANNEL", "bogus")
+	if _, err := NewResolver(nil, ""); err == nil {
+		t.Fatal("expected error for invalid upgrade channel")
+	}
+}
+
 func TestResolverRejectsTooSmallInterval(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	t.Setenv("AGENTS_SANDBOX_UPGRADE_INTERVAL", "1m")

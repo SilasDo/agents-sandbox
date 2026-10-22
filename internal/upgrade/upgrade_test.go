@@ -261,6 +261,33 @@ func TestCheckNotify(t *testing.T) {
 	}
 }
 
+func TestCheckCanaryOffersPrerelease(t *testing.T) {
+	serveReleases(t, `[{"tag_name":"v1.9.0-canary.1","draft":false}]`)
+	opts := mockOptions(t, "1.8.0", ModeNotify)
+	opts.Channel = ChannelCanary
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "1.9.0-canary.1" {
+		t.Fatalf("expected a canary offer, got %+v", res)
+	}
+}
+
+func TestCheckStableNeverOffersPrerelease(t *testing.T) {
+	serveLatest(t, "1.8.0", nil)
+	serveReleases(t, `[{"tag_name":"v1.9.0-canary.1","draft":false}]`)
+	opts := mockOptions(t, "1.7.0", ModeNotify)
+	opts.Channel = ChannelStable
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "1.8.0" {
+		t.Fatalf("stable must resolve only the latest release, got %+v", res)
+	}
+}
+
 func TestCheckAutoUpgrade(t *testing.T) {
 	serveLatest(t, "2.0.0", nil)
 	ui := termio.Mock{}
@@ -562,17 +589,17 @@ func TestCheckPromptInstallFailure(t *testing.T) {
 
 func TestUpgrade(t *testing.T) {
 	t.Run("dev build rejected", func(t *testing.T) {
-		if err := Upgrade(context.Background(), &termio.Mock{}, "dev"); err == nil {
+		if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "dev"}); err == nil {
 			t.Fatal("expected error for dev build")
 		}
 	})
 
 	t.Run("up to date", func(t *testing.T) {
 		orig := LatestVersion
-		LatestVersion = func(context.Context) (string, error) { return "1.0.0", nil }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "1.0.0", nil }
 		t.Cleanup(func() { LatestVersion = orig })
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(ui.InfoCalls) == 0 || !strings.Contains(ui.InfoCalls[0], "up to date") {
@@ -582,12 +609,12 @@ func TestUpgrade(t *testing.T) {
 
 	t.Run("upgrades", func(t *testing.T) {
 		origLatest, origUpdate := LatestVersion, Update
-		LatestVersion = func(context.Context) (string, error) { return "2.0.0", nil }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
 		var installed string
 		Update = func(_ context.Context, latest string) error { installed = latest; return nil }
 		t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if installed != "2.0.0" {
@@ -600,7 +627,7 @@ func TestUpgrade(t *testing.T) {
 		InstalledViaHomebrew = func() bool { return true }
 		t.Cleanup(func() { InstalledViaHomebrew = origHomebrew })
 		origLatest, origUpdate := LatestVersion, Update
-		LatestVersion = func(context.Context) (string, error) {
+		LatestVersion = func(context.Context, Channel) (string, error) {
 			t.Fatal("LatestVersion must not be consulted for a Homebrew install")
 			return "", nil
 		}
@@ -611,7 +638,7 @@ func TestUpgrade(t *testing.T) {
 		t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
 
 		ui := termio.Mock{}
-		if err := Upgrade(context.Background(), &ui, "1.0.0"); err != nil {
+		if err := Upgrade(context.Background(), &ui, UpgradeOptions{CurrentVersion: "1.0.0"}); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if len(ui.InfoCalls) == 0 || !strings.Contains(ui.InfoCalls[0], "brew") {
@@ -621,9 +648,9 @@ func TestUpgrade(t *testing.T) {
 
 	t.Run("latest lookup failure", func(t *testing.T) {
 		orig := LatestVersion
-		LatestVersion = func(context.Context) (string, error) { return "", errors.New("boom") }
+		LatestVersion = func(context.Context, Channel) (string, error) { return "", errors.New("boom") }
 		t.Cleanup(func() { LatestVersion = orig })
-		if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+		if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 			t.Fatal("expected error on lookup failure")
 		}
 	})
@@ -748,19 +775,19 @@ func TestPromptSelectErrorContinues(t *testing.T) {
 
 func TestUpgradeIsNewerError(t *testing.T) {
 	orig := LatestVersion
-	LatestVersion = func(context.Context) (string, error) { return "not-a-version", nil }
+	LatestVersion = func(context.Context, Channel) (string, error) { return "not-a-version", nil }
 	t.Cleanup(func() { LatestVersion = orig })
-	if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+	if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 		t.Fatal("expected error when the latest version is unparsable")
 	}
 }
 
 func TestUpgradeUpdateError(t *testing.T) {
 	origLatest, origUpdate := LatestVersion, Update
-	LatestVersion = func(context.Context) (string, error) { return "2.0.0", nil }
+	LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
 	Update = func(context.Context, string) error { return errors.New("boom") }
 	t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
-	if err := Upgrade(context.Background(), &termio.Mock{}, "1.0.0"); err == nil {
+	if err := Upgrade(context.Background(), &termio.Mock{}, UpgradeOptions{CurrentVersion: "1.0.0"}); err == nil {
 		t.Fatal("expected error when the install fails")
 	}
 }

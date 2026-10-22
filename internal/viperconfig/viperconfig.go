@@ -70,7 +70,7 @@ type Config struct {
 	hasHome bool
 
 	// Upgrade controls checking for and installing newer agents-sandbox
-	// releases. Only Mode and Interval are settable via env.
+	// releases. Only Mode, Interval and Channel are settable via env.
 	Upgrade UpgradeConfig `mapstructure:"upgrade"`
 	// Notify holds the resolved notify config. It is decoded separately (not
 	// via viper.Unmarshal) from dotted keys so the AGENTS_SANDBOX_NOTIFY env
@@ -141,6 +141,7 @@ const defaultAgentName = "opencode"
 type UpgradeConfig struct {
 	Mode     string        `mapstructure:"mode"`
 	Interval time.Duration `mapstructure:"interval"`
+	Channel  string        `mapstructure:"channel"`
 }
 
 // Resolver resolves launcher config with precedence flag > env > config > default.
@@ -390,6 +391,7 @@ const (
 	keyYes                 = "yes"
 	keyUpgradeMode         = "upgrade.mode"
 	keyUpgradeInterval     = "upgrade.interval"
+	keyUpgradeChannel      = "upgrade.channel"
 	keyProvisionHostConfig = "provision-host-config"
 	keyNotifyDesktop       = "notify.desktop"
 	keyNotifyAudio         = "notify.audio"
@@ -416,7 +418,7 @@ var configEnvKeys = []string{
 	keyNetworkProfile, keyNetworkDNSServers,
 	keyAgent,
 	keyDocker, keyDind,
-	keyUpgradeMode, keyUpgradeInterval,
+	keyUpgradeMode, keyUpgradeInterval, keyUpgradeChannel,
 	keyProvisionHostConfig,
 }
 
@@ -661,10 +663,16 @@ func dnsServerEntries(raw any) ([]string, error) {
 	}
 }
 
-// validateUpgrade validates the upgrade.mode and upgrade.interval config keys.
+// validateUpgrade validates the upgrade.mode, upgrade.interval and
+// upgrade.channel config keys.
 func validateUpgrade(v *viper.Viper) error {
 	if v.IsSet(keyUpgradeMode) {
 		if _, err := upgrade.ParseMode(v.GetString(keyUpgradeMode)); err != nil {
+			return err
+		}
+	}
+	if v.IsSet(keyUpgradeChannel) {
+		if _, err := upgrade.ParseChannel(v.GetString(keyUpgradeChannel)); err != nil {
 			return err
 		}
 	}
@@ -771,6 +779,17 @@ func (r *Resolver) UpgradeMode() upgrade.Mode {
 		return upgrade.ModePrompt
 	}
 	return m
+}
+
+// UpgradeChannel returns the configured release channel, defaulting to stable.
+// An unparsable value (possible via NewResolverWithConfig, which skips
+// validation) also falls back to stable.
+func (r *Resolver) UpgradeChannel() upgrade.Channel {
+	ch, err := upgrade.ParseChannel(r.cfg.Upgrade.Channel)
+	if err != nil {
+		return upgrade.ChannelStable
+	}
+	return ch
 }
 
 // UpgradeInterval returns the configured upgrade-check interval, defaulting to

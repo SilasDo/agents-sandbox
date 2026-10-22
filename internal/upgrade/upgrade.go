@@ -39,6 +39,7 @@ const (
 
 var (
 	latestURL    = fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", githubRepo)
+	releasesURL  = fmt.Sprintf("https://api.github.com/repos/%s/releases", githubRepo)
 	downloadBase = fmt.Sprintf("https://github.com/%s/releases/download", githubRepo)
 )
 
@@ -87,6 +88,9 @@ type Options struct {
 	Mode           Mode
 	Interval       time.Duration
 	UI             termio.UI
+
+	// Channel selects which releases to offer. The zero value means stable.
+	Channel Channel
 
 	// Store persists the launcher's update-check state. When nil, the check
 	// runs against an in-memory store: it still works, but nothing outlives
@@ -164,7 +168,7 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, nil
 	}
 
-	latest, err := latestRelease(ctx)
+	latest, err := latestForChannel(ctx, opts.Channel)
 	if err != nil {
 		opts.UI.Verbosef("upgrade check failed: %v", err)
 		return Result{}, nil
@@ -320,31 +324,40 @@ func prompt(ui termio.UI, current, latest string) promptAction {
 	}
 }
 
-// Upgrade checks for a newer release than current and installs it over the
-// running binary, reporting progress via ui. It is the on-demand counterpart
-// to Check's automatic modes. Homebrew-managed installs are directed to
-// `brew upgrade` instead of replacing the keg binary out from under Homebrew.
-func Upgrade(ctx context.Context, ui termio.UI, current string) error {
-	if current == "" || current == devVersion {
+// UpgradeOptions configures Upgrade.
+//
+//exhaustruct:ignore
+type UpgradeOptions struct {
+	CurrentVersion string
+	Channel        Channel
+}
+
+// Upgrade checks for a newer release than opts.CurrentVersion and installs it
+// over the running binary, reporting progress via ui. It is the on-demand
+// counterpart to Check's automatic modes. Homebrew-managed installs are directed
+// to `brew upgrade` instead of replacing the keg binary out from under
+// Homebrew.
+func Upgrade(ctx context.Context, ui termio.UI, opts UpgradeOptions) error {
+	if opts.CurrentVersion == "" || opts.CurrentVersion == devVersion {
 		return errors.New("cannot upgrade a development build; use the released binary")
 	}
 	if InstalledViaHomebrew() {
 		ui.Infof("agents-sandbox is managed by Homebrew; run `brew update && brew upgrade agents-sandbox` to update it")
 		return nil
 	}
-	latest, err := LatestVersion(ctx)
+	latest, err := LatestVersion(ctx, opts.Channel)
 	if err != nil {
 		return err
 	}
-	newer, err := isNewer(current, latest)
+	newer, err := isNewer(opts.CurrentVersion, latest)
 	if err != nil {
 		return err
 	}
 	if !newer {
-		ui.Infof("agents-sandbox is up to date (%s)", current)
+		ui.Infof("agents-sandbox is up to date (%s)", opts.CurrentVersion)
 		return nil
 	}
-	ui.Infof("upgrading agents-sandbox %s -> %s", current, latest)
+	ui.Infof("upgrading agents-sandbox %s -> %s", opts.CurrentVersion, latest)
 	if err := Update(ctx, latest); err != nil {
 		return err
 	}
@@ -352,9 +365,9 @@ func Upgrade(ctx context.Context, ui termio.UI, current string) error {
 	return nil
 }
 
-// LatestVersion returns the newest stable agents-sandbox release string
-// (leading "v" stripped) by querying the GitHub releases/latest endpoint.
-var LatestVersion = latestRelease
+// LatestVersion returns the newest release version for the channel (leading "v"
+// stripped) by querying the GitHub releases API.
+var LatestVersion = latestForChannel
 
 func latestRelease(ctx context.Context) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latestURL, nil)

@@ -159,6 +159,7 @@ func checkForUpgrade(ctx context.Context, r *launcherconfig.Resolver, ui termio.
 		CurrentVersion: version,
 		Mode:           r.UpgradeMode(),
 		Interval:       r.UpgradeInterval(),
+		Channel:        r.UpgradeChannel(),
 		UI:             ui,
 		Store:          launcherStore{},
 	})
