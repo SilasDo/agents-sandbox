@@ -113,18 +113,21 @@ func TestSandboxRemove(t *testing.T) {
 		}
 	})
 
-	t.Run("refuses a non-project name", func(t *testing.T) {
-		handle := &msb.MockSandboxHandle{Name_: "user-sandbox", Status_: msbSdk.SandboxStatusStopped}
+	t.Run("refuses a task-sandbox name", func(t *testing.T) {
+		handle := &msb.MockSandboxHandle{
+			Name_:   naming.LegacyTaskPrefix + "x-1729",
+			Status_: msbSdk.SandboxStatusStopped,
+		}
 		m := &msb.MockMsbClient{}
 		m.SetGotSandbox(handle)
 		cmd, _ := setupCommandFixtures(t, "sandbox", "remove", "--yes", handle.Name_)
 		msb.WithMsbMock(t, m)
 		err := cmd.Execute()
 		if err == nil || !strings.Contains(err.Error(), "not an agents-sandbox project VM") {
-			t.Fatalf("expected a prefix refusal, got %v", err)
+			t.Fatalf("expected a refusal, got %v", err)
 		}
 		if handle.DidRmv {
-			t.Error("a non-project name must not be removed")
+			t.Error("a task sandbox must not be removed")
 		}
 	})
 

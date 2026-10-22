@@ -22,19 +22,22 @@ func assumeYesUI() *termio.Mock {
 	return ui
 }
 
-func TestRemoveSandboxRefusesNonProjectName(t *testing.T) {
+func TestRemoveSandboxRefusesTaskSandboxName(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	handle := &msb.MockSandboxHandle{Name_: "user-sandbox", Status_: msbSdk.SandboxStatusStopped}
+	handle := &msb.MockSandboxHandle{
+		Name_:   naming.LegacyTaskPrefix + "x-1729",
+		Status_: msbSdk.SandboxStatusStopped,
+	}
 	client := &msb.MockMsbClient{}
 	client.SetGotSandbox(handle)
 	msb.WithMsbMock(t, client)
 
 	err := RemoveSandbox(context.Background(), handle.Name_, false, assumeYesUI())
 	if err == nil || !strings.Contains(err.Error(), "not an agents-sandbox project VM") {
-		t.Fatalf("RemoveSandbox(non-project) = %v, want a prefix refusal", err)
+		t.Fatalf("RemoveSandbox(task sandbox) = %v, want a refusal", err)
 	}
 	if handle.DidRmv {
-		t.Error("a non-project name must not be removed")
+		t.Error("a task sandbox must not be removed by RemoveSandbox")
 	}
 }
 

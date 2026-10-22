@@ -41,6 +41,35 @@ func TestCheckForActiveVMs_IgnoresNonVMSandboxes(t *testing.T) {
 	}
 }
 
+func TestCheckForActiveVMs_MatchesPrefixFreeProjectVM(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{Name_: "someproj-1mjusbm3wikhb0-opencode", Status_: msbSdk.SandboxStatusRunning},
+	}
+
+	err := checkForActiveVMs(context.Background(), state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"})
+	if err == nil {
+		t.Fatal("expected a running prefix-free project VM to block volume operations")
+	}
+}
+
+func TestCheckForActiveVMs_IgnoresPrefixFreeTaskSandbox(t *testing.T) {
+	mock, _ := setupVolumeOpsFixtures(t)
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{
+			Name_:   "someproj-1mjusbm3wikhb0-opencode-1729000000000000000",
+			Status_: msbSdk.SandboxStatusRunning,
+		},
+	}
+
+	if err := checkForActiveVMs(
+		context.Background(),
+		state.Key{Slug: "someproj-1mjusbm3wikhb0", Agent: "opencode"},
+	); err != nil {
+		t.Fatalf("a prefix-free task sandbox must not block volume operations, got: %v", err)
+	}
+}
+
 func TestCheckForActiveVMs_OtherSlugVMIsIgnored(t *testing.T) {
 	mock, _ := setupVolumeOpsFixtures(t)
 	mock.Sandboxes = []msb.SandboxHandle{

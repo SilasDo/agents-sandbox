@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -26,10 +25,15 @@ func checkForActiveVMs(ctx context.Context, k state.Key) error {
 		return fmt.Errorf("list sandboxes: %w", err)
 	}
 	for _, handle := range sandboxes {
-		if !strings.HasPrefix(handle.Name(), naming.VMPrefix) {
+		cfg, _ := handle.Config()
+		var labels map[string]string
+		if cfg != nil {
+			labels = cfg.Labels
+		}
+		if naming.IsTaskSandbox(handle.Name(), labels) {
 			continue
 		}
-		artifact := naming.ArtifactFor(handle.Name())
+		artifact := naming.ParseVMName(handle.Name())
 		if artifact.Slug == k.Slug && (artifact.Agent == k.Agent || artifact.Agent == "") {
 			status := handle.Status()
 			if !msb.IsSandboxInactive(status) {

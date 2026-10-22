@@ -112,12 +112,15 @@ func ensureProjectVM(
 
 	spin := ui.Spinner("Checking project VM")
 
-	handle, err := client.GetSandbox(ctx, name)
-	notFound := msb.IsNotFound(err)
-	if err != nil && !notFound {
+	handle, found, err := findProjectVM(ctx, client, k)
+	if err != nil {
 		spin.StopError(err)
 		return nil, vmBootConnected, fmt.Errorf("check sandbox %q: %w", name, err)
 	}
+	if found {
+		name = handle.Name()
+	}
+	notFound := !found
 
 	// Fast path: attach to or start an existing VM without the flock, replacing
 	// it first when the config changed.

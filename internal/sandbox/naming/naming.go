@@ -52,8 +52,16 @@ func IsLegacyHomeVolume(name string) bool {
 // IsProjectSandbox is a deprecated alias for IsLegacyProjectSandbox.
 func IsProjectSandbox(name string) bool { return IsLegacyProjectSandbox(name) }
 
-// IsTaskSandbox is a deprecated alias for IsLegacyTaskSandbox.
-func IsTaskSandbox(name string) bool { return IsLegacyTaskSandbox(name) }
+// IsTaskSandbox reports whether a sandbox with the given name and labels is a
+// transient task sandbox. The task label is authoritative; the trailing
+// all-digit nanos segment is the name-level fallback for a sandbox created
+// before the label existed.
+func IsTaskSandbox(name string, labels map[string]string) bool {
+	if labels[LabelTask] != "" {
+		return true
+	}
+	return ParseVMName(name).Task
+}
 
 // IsLauncherSandbox is a deprecated alias for IsLegacyLauncherSandbox.
 func IsLauncherSandbox(name string) bool { return IsLegacyLauncherSandbox(name) }

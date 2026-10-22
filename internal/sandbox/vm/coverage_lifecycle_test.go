@@ -138,7 +138,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -176,7 +176,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -222,7 +222,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -261,7 +261,7 @@ func TestEnsureProjectVMPostLockConnectReconcileWarn(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -309,7 +309,7 @@ func TestEnsureProjectVMPostLockStartReconcileWarn(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil

@@ -27,14 +27,15 @@ func stopOrKillProjectVM(
 ) error {
 	name := projectVMName(k)
 
-	handle, err := client.GetSandbox(ctx, name)
+	handle, found, err := findProjectVM(ctx, client, k)
 	if err != nil {
-		if msb.IsNotFound(err) {
-			ui.Infof("no project VM found: %s", name)
-			return nil
-		}
-		return fmt.Errorf("get sandbox %q: %w", name, err)
+		return err
 	}
+	if !found {
+		ui.Infof("no project VM found: %s", name)
+		return nil
+	}
+	name = handle.Name()
 
 	pastTense := action + "ed"
 	if action == "stop" {

@@ -457,14 +457,15 @@ func destroyLegacyVMs(ctx context.Context, client msb.Client, slug, agentName st
 func destroyLegacyVM(ctx context.Context, client msb.Client, repoKey state.Key, ui termio.UI) error {
 	name := projectVMName(repoKey)
 
-	handle, err := client.GetSandbox(ctx, name)
+	handle, found, err := findProjectVM(ctx, client, repoKey)
 	if err != nil {
-		if msb.IsNotFound(err) {
-			ui.Verbosef("legacy project VM %s is already gone", name)
-			return nil
-		}
 		return fmt.Errorf("check legacy project VM %q: %w", name, err)
 	}
+	if !found {
+		ui.Verbosef("legacy project VM %s is already gone", name)
+		return nil
+	}
+	name = handle.Name()
 
 	alreadyGone, destroyErr := destroyProjectVMHandle(
 		ctx,

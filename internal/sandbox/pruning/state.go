@@ -58,5 +58,5 @@ func prunable(name string, h msb.SandboxHandle, age time.Duration) bool {
 	if !msb.IsSandboxInactive(h.Status()) {
 		return false
 	}
-	return time.Since(h.UpdatedAt()) >= age || naming.IsTaskSandbox(name)
+	return time.Since(h.UpdatedAt()) >= age || naming.IsLegacyTaskSandbox(name)
 }

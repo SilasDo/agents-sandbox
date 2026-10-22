@@ -329,7 +329,7 @@ func TestIsLauncherSandbox(t *testing.T) {
 		if got := IsProjectSandbox(c.name); got != c.wantVM {
 			t.Errorf("IsProjectSandbox(%q) = %v, want %v", c.name, got, c.wantVM)
 		}
-		if got := IsTaskSandbox(c.name); got != c.wantTask {
+		if got := IsLegacyTaskSandbox(c.name); got != c.wantTask {
 			t.Errorf("IsTaskSandbox(%q) = %v, want %v", c.name, got, c.wantTask)
 		}
 		if got := IsLauncherSandbox(c.name); got != c.wantLaunch {

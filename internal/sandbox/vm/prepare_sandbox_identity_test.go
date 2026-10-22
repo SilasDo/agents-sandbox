@@ -150,7 +150,8 @@ func createdProjectVMConfig(t *testing.T, mock *msb.MockMsbClient, name string) 
 func createdProjectVMNames(mock *msb.MockMsbClient) []string {
 	var names []string
 	for _, name := range mock.CreatedSandboxes {
-		if naming.IsProjectSandbox(name) {
+		info := naming.ParseVMName(name)
+		if info.Slug != "" && !info.Task {
 			names = append(names, name)
 		}
 	}

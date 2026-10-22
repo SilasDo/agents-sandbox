@@ -46,7 +46,7 @@ func TestListSandboxesPopulatesInfo(t *testing.T) {
 			UpdatedAt_: now,
 			Cfg:        &msbSdk.SandboxConfig{Image: "agents-sandbox/runner:latest"},
 		},
-		&msb.MockSandboxHandle{Name_: "myvm-other", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-task-myvm-1729", Status_: msbSdk.SandboxStatusRunning},
 	}
 	msb.WithMsbMock(t, mock)
 
@@ -55,7 +55,7 @@ func TestListSandboxesPopulatesInfo(t *testing.T) {
 		t.Fatalf("ListSandboxes() error = %v", err)
 	}
 	if len(got) != 1 {
-		t.Fatalf("ListSandboxes() got %d infos, want 1 (non-project VM filtered)", len(got))
+		t.Fatalf("ListSandboxes() got %d infos, want 1 (task sandbox filtered)", len(got))
 	}
 	info := got[0]
 	if info.Name != "agents-sandbox-vm-abc" || info.Status != "running" {
@@ -76,7 +76,7 @@ func TestListSandboxesRunningOnly(t *testing.T) {
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-b", Status_: msbSdk.SandboxStatusStopped},
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-c", Status_: msbSdk.SandboxStatusStarting},
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-d", Status_: msbSdk.SandboxStatusDraining},
-		&msb.MockSandboxHandle{Name_: "other-vm-c", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{Name_: naming.LegacyTaskPrefix + "c-1729", Status_: msbSdk.SandboxStatusRunning},
 	}
 	msb.WithMsbMock(t, mock)
 
@@ -96,7 +96,7 @@ func TestListSandboxesStoppedOnly(t *testing.T) {
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-b", Status_: msbSdk.SandboxStatusStopped},
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-c", Status_: msbSdk.SandboxStatusCreated},
 		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-d", Status_: msbSdk.SandboxStatusCrashed},
-		&msb.MockSandboxHandle{Name_: "other-vm-c", Status_: msbSdk.SandboxStatusStopped},
+		&msb.MockSandboxHandle{Name_: naming.LegacyTaskPrefix + "c-1729", Status_: msbSdk.SandboxStatusStopped},
 	}
 	msb.WithMsbMock(t, mock)
 
@@ -194,5 +194,31 @@ func TestListSandboxesPopulatesInfoFields(t *testing.T) {
 	}
 	if !info.UpdatedAtRaw.Equal(now.Add(time.Hour)) {
 		t.Errorf("UpdatedAtRaw = %v, want %v", info.UpdatedAtRaw, now.Add(time.Hour))
+	}
+}
+
+func TestListSandboxesHidesTaskSandboxesBothSchemes(t *testing.T) {
+	mock := &msb.MockMsbClient{}
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{Name_: "myproj-1mjusbm3wikhb0-opencode", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{
+			Name_:   "myproj-1mjusbm3wikhb0-opencode-1729000000000000000",
+			Status_: msbSdk.SandboxStatusRunning,
+		},
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-task-x-1729", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{
+			Name_:   "labelled-prefill",
+			Status_: msbSdk.SandboxStatusRunning,
+			Cfg:     &msbSdk.SandboxConfig{Labels: map[string]string{naming.LabelTask: "1"}},
+		},
+	}
+	msb.WithMsbMock(t, mock)
+
+	infos, err := ListSandboxes(context.Background())
+	if err != nil {
+		t.Fatalf("ListSandboxes: %v", err)
+	}
+	if len(infos) != 1 || infos[0].Name != "myproj-1mjusbm3wikhb0-opencode" {
+		t.Errorf("expected only the project VM, got %+v", infos)
 	}
 }

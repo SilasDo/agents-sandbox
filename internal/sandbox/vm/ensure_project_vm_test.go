@@ -376,7 +376,7 @@ func TestEnsureProjectVMPostLockWaitsForStartingVM(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return starting, nil
@@ -416,7 +416,7 @@ func TestEnsureProjectVMPostLockWaitError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return starting, nil
@@ -460,7 +460,7 @@ func TestEnsureProjectVMPostLockWaitReconcileWarning(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return starting, nil
@@ -747,7 +747,7 @@ func TestEnsureProjectVMPostLockRecheckConnect(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -791,7 +791,7 @@ func TestEnsureProjectVMPostLockRecheckStart(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return handle, nil
@@ -990,7 +990,7 @@ func TestEnsureProjectVMRecheckNonNotFoundError(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	client.GetSandboxFn = func(_ context.Context, _ string) (msb.SandboxHandle, error) {
 		callCount++
-		if callCount == 1 {
+		if callCount <= 2 {
 			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "not found"}
 		}
 		return nil, errors.New("transient error")
