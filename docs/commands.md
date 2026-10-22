@@ -5,12 +5,22 @@ layout: default
 parent: Reference
 nav_order: 10
 ---
-# Commands Reference
+# Commands
 
-This document lists all agents-sandbox subcommands, aliases, and flags. Deprecated flags, config keys, and environment
+This page lists every agents-sandbox subcommand, alias, and flag. Deprecated flags, config keys, and environment
 variables are listed in [Deprecations]({% link deprecations.md %}).
 
-## Global Flags
+The commands are grouped by area; jump to a group:
+
+- **Runtime:** [`run`](#run), [`shell`](#shell), [`stop`](#stop), [`kill`](#kill), [`list`](#list), [`tree`](#tree), [`doctor`](#doctor), [`version`](#version), [`upgrade`](#upgrade), [`completion`](#completion)
+- **Build and images:** [`build`](#build), [`image`](#image)
+- **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune)
+- **Storage:** [`df`](#df), [`storage`](#storage)
+- **Configuration:** [`config`](#config)
+- **Volumes:** [`volume`](#volume)
+- **Sandboxes:** [`sandbox`](#sandbox)
+
+## Global flags
 
 These flags are available on every command.
 
@@ -172,7 +182,7 @@ agents-sandbox kill -f     # kill and remove VM state
 
 Remove stale VMs, volumes, and images in one pass. Staleness is determined by age — resources older than the threshold
 are pruned. The summary line reads `Pruned N VMs, N home volumes, N docker images, N msb images`. To prune a single
-artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands below.
+artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands.
 
 Unless `--dry-run` is set, prune asks for confirmation before removing anything (defaulting to no). Pass the global
 `--yes` to skip the prompt; non-interactively, `--yes` is required or the command fails fast instead of blocking.
@@ -624,7 +634,7 @@ unchanged.
 
 ---
 
-### `agents-sandbox volume <subcommand>`
+### volume
 
 The volume group provides manual home volume management.
 
