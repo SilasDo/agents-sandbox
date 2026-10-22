@@ -15,3 +15,4 @@ Install agents-sandbox, check your system, and run your first agent — then ado
 - [Installation]({% link install/installation.md %})
 - [Switch from your existing agent]({% link switch.md %})
 - [Manage config in the sandbox]({% link manage-config.md %})
+- [Your first sandbox]({% link tutorial.md %})

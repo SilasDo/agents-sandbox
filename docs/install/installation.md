@@ -64,3 +64,5 @@ Install agents-sandbox with Homebrew or a release binary.
 
   Then set `upgrade.channel: canary` (or `AGENTS_SANDBOX_UPGRADE_CHANNEL=canary`) so later upgrades follow the canary
   line — see [self-upgrade]({% link configuration/self-upgrade.md %}). Homebrew cannot install canaries.
+
+Once installed, continue with [Your first sandbox]({% link tutorial.md %}).
