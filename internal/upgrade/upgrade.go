@@ -120,12 +120,13 @@ func (o Options) store() Store {
 }
 
 // Check looks for a newer agents-sandbox release than CurrentVersion and
-// acts on it according to Mode. It is a no-op for development builds, for
-// Homebrew-managed installs (which update via `brew upgrade`), and when a check
-// happened within Interval. Transient network or parsing failures are
-// silently ignored so an offline run never blocks startup. An explicitly
-// configured interval below MinInterval is a misconfiguration and fails
-// loudly rather than being silently clamped.
+// acts on it according to Mode. It is a no-op for development builds unless
+// the undocumented dev lever is set, for Homebrew-managed installs (which
+// update via `brew upgrade`), and when a check happened within Interval.
+// Transient network or parsing failures are silently ignored so an offline
+// run never blocks startup. An explicitly configured interval below
+// MinInterval is a misconfiguration and fails loudly rather than being
+// silently clamped.
 func Check(ctx context.Context, opts Options) (Result, error) {
 	if !opts.AllowAnyVersion && (opts.CurrentVersion == "" || opts.CurrentVersion == devVersion) {
 		return Result{}, nil
@@ -145,8 +146,8 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, fmt.Errorf("upgrade interval %s is below the minimum %s", interval, MinInterval)
 	}
 	// The dev lever reduces the check window to the floor rather than removing
-	// the throttle: the canary channel costs two GitHub calls per check, and an
-	// unthrottled check would hit the unauthenticated rate limit.
+	// the throttle: a check spends one unauthenticated GitHub request, so an
+	// unthrottled check on every run would hit the rate limit.
 	if opts.AllowAnyVersion && interval > MinInterval {
 		interval = MinInterval
 	}
@@ -254,8 +255,8 @@ func isParseable(s string) bool {
 // install instead of being skipped.
 func newerThan(current, latest string, allowAnyVersion bool) (bool, error) {
 	if allowAnyVersion && !isParseable(current) {
-		if !isParseable(latest) {
-			return false, fmt.Errorf("parse latest version %q", latest)
+		if _, err := semver.NewVersion(strings.TrimPrefix(latest, "v")); err != nil {
+			return false, fmt.Errorf("parse latest version %q: %w", latest, err)
 		}
 		return true, nil
 	}

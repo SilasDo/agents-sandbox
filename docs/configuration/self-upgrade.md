@@ -1,6 +1,6 @@
 ---
 title: Self-upgrade
-description: "How agents-sandbox checks for new releases and upgrades itself, and how to configure the upgrade mode and interval."
+description: "How agents-sandbox checks for new releases and upgrades itself, and how to configure the upgrade mode, interval, and release channel."
 layout: default
 parent: Configuration
 nav_order: 80

@@ -721,6 +721,21 @@ func TestCheckDevLeverShortensInterval(t *testing.T) {
 	if !res.HasUpdate {
 		t.Fatalf("the dev lever must cap the interval at MinInterval, got %+v", res)
 	}
+
+	// Negative baseline: the same stored timestamp with the lever off sits
+	// inside DefaultInterval, so no update is offered. A parseable current
+	// version keeps this off the dev-build no-op path, so it is the throttle
+	// (not the absence of a newer release) that suppresses the update.
+	opts.AllowAnyVersion = false
+	opts.CurrentVersion = "1.0.0"
+	opts.Store = &fakeStore{state: LauncherState{LastChecked: time.Now().Add(-2 * time.Hour)}}
+	baseline, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if baseline.HasUpdate {
+		t.Fatalf("without the dev lever the default interval must throttle the check, got %+v", baseline)
+	}
 }
 
 func TestUpgradeDevLeverAllowed(t *testing.T) {
