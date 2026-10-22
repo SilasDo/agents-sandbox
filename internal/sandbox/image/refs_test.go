@@ -25,7 +25,7 @@ import (
 func TestEnsureLoadedReusesLegacyRefWhenContentMatches(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	newRef := naming.RunnerImageRef("test-project", "opencode")
-	legacyRef := naming.LegacyRunnerImageRef("test-project", "opencode")
+	legacyRef := naming.DockerImageRef("test-project", "opencode")
 	docker.WithNoopDockerMock(t)
 	msbClient := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, ref string) error {
@@ -61,7 +61,7 @@ func TestEnsureLoadedReusesLegacyRefWhenContentMatches(t *testing.T) {
 func TestEnsureLoadedLoadsUnderNewRefWhenLegacyAbsent(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	newRef := naming.RunnerImageRef("test-project", "opencode")
-	legacyRef := naming.LegacyRunnerImageRef("test-project", "opencode")
+	legacyRef := naming.DockerImageRef("test-project", "opencode")
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageSaveFn: func(
 			_ context.Context, _ []string, _ ...client.ImageSaveOption,
@@ -96,7 +96,7 @@ func TestEnsureLoadedLoadsUnderNewRefWhenLegacyAbsent(t *testing.T) {
 func TestEnsureLoadedLoadsUnderNewRefWhenLegacyContentDiffers(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	newRef := naming.RunnerImageRef("test-project", "opencode")
-	legacyRef := naming.LegacyRunnerImageRef("test-project", "opencode")
+	legacyRef := naming.DockerImageRef("test-project", "opencode")
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageSaveFn: func(
 			_ context.Context, _ []string, _ ...client.ImageSaveOption,

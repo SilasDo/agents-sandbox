@@ -212,7 +212,7 @@ func matchingDirNames(dir string, match func(string) bool, tolerateUnreadable bo
 // also empty; when false only the missing case is empty and any other read
 // failure is returned, so an open campaign fails closed.
 func homeVolumeNames(home string, tolerateUnreadable bool) ([]string, error) {
-	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsHomeVolume, tolerateUnreadable)
+	return matchingDirNames(filepath.Join(home, "volumes"), naming.IsLegacyHomeVolume, tolerateUnreadable)
 }
 
 // uncopiedLegacyVolumes returns the legacy home volume names that still hold the
@@ -250,7 +250,7 @@ func uncopiedLegacyVolumes(m state.Migration, legacyVolumes []string) ([]string,
 // legacySandboxNames lists launcher-owned sandbox records under
 // <legacyHome>/sandboxes. Tolerance matches the pending-state volume listing.
 func legacySandboxNames(legacyHome string) ([]string, error) {
-	return matchingDirNames(filepath.Join(legacyHome, "sandboxes"), naming.IsLauncherSandbox, true)
+	return matchingDirNames(filepath.Join(legacyHome, "sandboxes"), naming.IsLegacyLauncherSandbox, true)
 }
 
 // legacyArtifacts are the launcher-owned leftovers in the legacy home.

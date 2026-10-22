@@ -362,6 +362,11 @@ func TestKeepImagePerAgent(t *testing.T) {
 	if keepImage(pi, pruneState, nil) {
 		t.Error("expected pi-latest to be pruned (no kept pi VM)")
 	}
+	// A prefix-free ref of the live (slug, agent) is kept the same way.
+	prefixFree := &msb.MockImageHandle{Reference_: "proj-1mjusbm3wikhb0:opencode-latest"}
+	if !keepImage(prefixFree, pruneState, nil) {
+		t.Error("expected a prefix-free opencode-latest ref to be kept")
+	}
 }
 
 // TestPruneImagesKeepsPerAgentTagsOfLiveSlug verifies that a live slug keeps

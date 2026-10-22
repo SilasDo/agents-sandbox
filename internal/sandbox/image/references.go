@@ -45,6 +45,6 @@ func InUseImageReferences(keptSandboxes []msb.SandboxHandle) (map[string][]state
 
 // sandboxKey derives the project key a sandbox belongs to from its name.
 func sandboxKey(name string) state.Key {
-	info := naming.ArtifactFor(name)
+	info := naming.ParseVMName(name)
 	return state.Key{Slug: info.Slug, Agent: info.Agent}
 }

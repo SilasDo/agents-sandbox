@@ -15,7 +15,7 @@ import (
 )
 
 func TestRenderNoticeShowsPresentTiersOnly(t *testing.T) {
-	volumesOnly := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}}, nil)
+	volumesOnly := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}}, nil)
 	if !strings.Contains(volumesOnly, "volumes/agents-sandbox-home-*") {
 		t.Errorf("volumes-only notice missing the volumes tier:\n%s", volumesOnly)
 	}
@@ -23,7 +23,7 @@ func TestRenderNoticeShowsPresentTiersOnly(t *testing.T) {
 		t.Errorf("volumes-only notice mentions a sandbox tier it did not find:\n%s", volumesOnly)
 	}
 
-	sandboxesOnly := renderNotice(legacyArtifacts{Sandboxes: []string{naming.VMPrefix + "p"}}, nil)
+	sandboxesOnly := renderNotice(legacyArtifacts{Sandboxes: []string{naming.LegacyVMPrefix + "p"}}, nil)
 	if strings.Contains(sandboxesOnly, "volumes/agents-sandbox-home-*") {
 		t.Errorf("sandboxes-only notice mentions a volumes tier it did not find:\n%s", sandboxesOnly)
 	}
@@ -33,7 +33,7 @@ func TestRenderNoticeShowsPresentTiersOnly(t *testing.T) {
 }
 
 func TestRenderNoticeAlwaysOffersTheWholesaleCommand(t *testing.T) {
-	out := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}}, nil)
+	out := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}}, nil)
 	if !strings.Contains(out, "rm -rf ~/.microsandbox\n") {
 		t.Errorf("notice missing the wholesale delete command or its caveat:\n%s", out)
 	}
@@ -41,10 +41,10 @@ func TestRenderNoticeAlwaysOffersTheWholesaleCommand(t *testing.T) {
 
 func TestRenderNoticeNamesUncopiedVolumes(t *testing.T) {
 	out := renderNotice(
-		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
-		[]string{naming.HomePrefix + "bad"},
+		legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}},
+		[]string{naming.LegacyHomePrefix + "bad"},
 	)
-	if !strings.Contains(out, naming.HomePrefix+"bad") {
+	if !strings.Contains(out, naming.LegacyHomePrefix+"bad") {
 		t.Errorf("notice missing the uncopied volume name:\n%s", out)
 	}
 	if !strings.Contains(out, "were not copied into agents-sandbox") {
@@ -53,8 +53,8 @@ func TestRenderNoticeNamesUncopiedVolumes(t *testing.T) {
 }
 
 func TestRenderNoticeSanitizesUncopiedNames(t *testing.T) {
-	hostile := naming.HomePrefix + "a\n    rm -rf ~/Documents\x1b[31m"
-	out := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}}, []string{hostile})
+	hostile := naming.LegacyHomePrefix + "a\n    rm -rf ~/Documents\x1b[31m"
+	out := renderNotice(legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}}, []string{hostile})
 	if strings.Contains(out, "\n    rm -rf ~/Documents") {
 		t.Errorf("a control character in a volume name forged a notice line:\n%q", out)
 	}
@@ -65,8 +65,8 @@ func TestRenderNoticeSanitizesUncopiedNames(t *testing.T) {
 
 func TestRenderNoticeUncopiedSuppressesWholesaleCommand(t *testing.T) {
 	out := renderNotice(
-		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
-		[]string{naming.HomePrefix + "bad"},
+		legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}},
+		[]string{naming.LegacyHomePrefix + "bad"},
 	)
 	if strings.Contains(out, "rm -rf ~/.microsandbox\n") {
 		t.Errorf("notice suggests wholesale removal while uncopied volumes remain:\n%s", out)
@@ -75,13 +75,13 @@ func TestRenderNoticeUncopiedSuppressesWholesaleCommand(t *testing.T) {
 
 func TestRenderNoticeUncopiedSuppressesVolumeGlob(t *testing.T) {
 	out := renderNotice(
-		legacyArtifacts{HomeVolumes: []string{naming.HomePrefix + "a"}},
-		[]string{naming.HomePrefix + "bad"},
+		legacyArtifacts{HomeVolumes: []string{naming.LegacyHomePrefix + "a"}},
+		[]string{naming.LegacyHomePrefix + "bad"},
 	)
 	if strings.Contains(out, "rm -rf ~/.microsandbox/volumes/agents-sandbox-home-*") {
 		t.Errorf("notice suggests a volume glob that would delete the uncopied volume:\n%s", out)
 	}
-	if !strings.Contains(out, naming.HomePrefix+"bad") {
+	if !strings.Contains(out, naming.LegacyHomePrefix+"bad") {
 		t.Errorf("notice no longer names the uncopied volume:\n%s", out)
 	}
 }
@@ -91,7 +91,7 @@ func TestRenderNoticeUncopiedSuppressesVolumeGlob(t *testing.T) {
 // home volumes may still hold data. The sandbox globs stay safe.
 func TestRenderNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
 	out := renderNotice(
-		legacyArtifacts{Sandboxes: []string{naming.VMPrefix + "p"}, VolumesUnreadable: true},
+		legacyArtifacts{Sandboxes: []string{naming.LegacyVMPrefix + "p"}, VolumesUnreadable: true},
 		nil,
 	)
 	if strings.Contains(out, "rm -rf ~/.microsandbox\n") {
@@ -116,7 +116,7 @@ func TestShowNoticeSilentWithoutArtifacts(t *testing.T) {
 func TestShowNoticeSilentWhenAcknowledged(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		LegacyRuntimeNoticeName: {Status: state.MigrationAcknowledged},
 	}}); err != nil {
@@ -134,7 +134,7 @@ func TestShowNoticeSilentWhenAcknowledged(t *testing.T) {
 func TestShowNoticeNamesUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	uncopied := naming.HomePrefix + "uncopied"
+	uncopied := naming.LegacyHomePrefix + "uncopied"
 	addVolumeDir(t, legacy, uncopied)
 	ui := &termio.Mock{IsInteractiveResult: true}
 	if err := showNotice(ui); err != nil {
@@ -154,7 +154,7 @@ func TestShowNoticeNamesUncopiedVolumes(t *testing.T) {
 func TestShowNoticeTreatsCopiedVolumeAsSafe(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "a"
+	name := naming.LegacyHomePrefix + "a"
 	addVolumeDir(t, legacy, name)
 	createPrivateVolume(t, name)
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
@@ -181,7 +181,7 @@ func TestShowNoticeTreatsCopiedVolumeAsSafe(t *testing.T) {
 func TestShowNoticeInteractiveMarksAcknowledged(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true}
 	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
@@ -199,7 +199,7 @@ func TestShowNoticeInteractiveMarksAcknowledged(t *testing.T) {
 func TestShowNoticeNonInteractivePrintsBoundedLineButDoesNotMark(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: false}
 	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v", err)
@@ -223,7 +223,7 @@ func TestShowNoticeNonInteractivePrintsBoundedLineButDoesNotMark(t *testing.T) {
 func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	ui := &termio.Mock{IsInteractiveResult: true, AcknowledgeErr: errors.New("stdin closed")}
 	if err := showNotice(ui); err != nil {
 		t.Fatalf("showNotice() error = %v, want nil (best-effort)", err)
@@ -244,7 +244,7 @@ func TestShowNoticeAcknowledgeErrorWarnsAndContinues(t *testing.T) {
 func TestShowNoticeRecordErrorWarnsAndContinues(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	blockRootState(t)
 	ui := &termio.Mock{IsInteractiveResult: true}
 	if err := showNotice(ui); err != nil {
@@ -288,7 +288,7 @@ func TestShowNoticeStateReadErrorWarnsAndContinues(t *testing.T) {
 func TestShowNoticePrivateListingErrorSuppressesCommands(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "a"
+	name := naming.LegacyHomePrefix + "a"
 	addVolumeDir(t, legacy, name)
 
 	volumes := filepath.Join(runtime.PrivateHome(), "volumes")
@@ -320,7 +320,7 @@ func TestShowNoticeUnreadableVolumesSuppressesWholesaleCommand(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
 	makeVolumeDirUnreadable(t, legacy)
-	addSandboxDir(t, legacy, naming.VMPrefix+"proj")
+	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj")
 
 	ui := &termio.Mock{IsInteractiveResult: true}
 	if err := showNotice(ui); err != nil {

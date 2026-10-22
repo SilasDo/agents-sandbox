@@ -9,24 +9,25 @@ import (
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
-	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 )
 
-func TestListImagesFiltersByImagePrefix(t *testing.T) {
+func TestListImagesIncludesBothSchemes(t *testing.T) {
 	mockClient := &msb.MockMsbClient{
 		Images: []msb.ImageHandle{
 			msb.MockImageHandle{
-				Reference_:      "agents-sandbox/runner-proj-aBc1234D:3k5q07ywpibwp5",
+				Reference_:      "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest",
 				ManifestDigest_: "sha256:abc123",
 				SizeBytes_:      int64Ptr(1024 * 1024 * 1024),
 				CreatedAt_:      time.Date(2026, 8, 17, 10, 42, 36, 0, time.UTC),
 			},
 			msb.MockImageHandle{
-				Reference_:      "agents-sandbox/runner-other-de456:def789",
+				Reference_:      "otherproj-1mjusbm3wikhb0:opencode-latest",
 				ManifestDigest_: "sha256:def789",
 			},
-			msb.MockImageHandle{Reference_: "python:3.12", ManifestDigest_: "sha256:python123"},
-			msb.MockImageHandle{Reference_: "ubuntu:24.04", ManifestDigest_: "sha256:ubuntu24"},
+			msb.MockImageHandle{
+				Reference_:      "docker.io/library/foo:1",
+				ManifestDigest_: "sha256:foreign",
+			},
 		},
 	}
 	msb.WithMsbMock(t, mockClient)
@@ -38,31 +39,31 @@ func TestListImagesFiltersByImagePrefix(t *testing.T) {
 
 	expected := []Info{
 		{
-			Reference: "agents-sandbox/runner-proj-aBc1234D:3k5q07ywpibwp5",
+			Reference: "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest",
 			Digest:    "sha256:abc123",
 			Size:      "1 GiB",
 			CreatedAt: "2026-08-17 10:42:36",
 		},
 		{
-			Reference: "agents-sandbox/runner-other-de456:def789",
+			Reference: "otherproj-1mjusbm3wikhb0:opencode-latest",
 			Digest:    "sha256:def789",
 			Size:      unknownSize,
 			CreatedAt: "",
 		},
 	}
 	if len(result) != len(expected) {
-		t.Fatalf("expected %d images, got %d", len(expected), len(result))
+		t.Fatalf("expected %d images, got %d (%+v)", len(expected), len(result), result)
 	}
 	if !reflect.DeepEqual(result, expected) {
 		t.Errorf("ListImages() mismatch\n  got:  %+v\n  want: %+v", result, expected)
 	}
 }
 
-func TestListImagesReturnsPrefixOnly_NoPrefixedImages(t *testing.T) {
+func TestListImagesExcludesRepositoryRefs(t *testing.T) {
 	mockClient := &msb.MockMsbClient{
 		Images: []msb.ImageHandle{
-			msb.MockImageHandle{Reference_: "python:3.12", ManifestDigest_: "sha256:python123"},
-			msb.MockImageHandle{Reference_: "nginx:latest", ManifestDigest_: "sha256:nginx001"},
+			msb.MockImageHandle{Reference_: "docker.io/library/foo:1", ManifestDigest_: "sha256:foo"},
+			msb.MockImageHandle{Reference_: "ghcr.io/acme/app:v2", ManifestDigest_: "sha256:app"},
 		},
 	}
 	msb.WithMsbMock(t, mockClient)
@@ -72,7 +73,7 @@ func TestListImagesReturnsPrefixOnly_NoPrefixedImages(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(result) != 0 {
-		t.Errorf("expected 0 images, got %d", len(result))
+		t.Errorf("expected 0 images, got %+v", result)
 	}
 }
 
@@ -105,32 +106,6 @@ func TestListImagesEmptyReturnsNil(t *testing.T) {
 	}
 	if result != nil {
 		t.Errorf("expected nil for empty list, got %+v", result)
-	}
-}
-
-func TestListImagesPrefixMatchesNamingImagePrefix(t *testing.T) {
-	prefix := naming.ImagePrefix
-	if prefix == "" {
-		t.Fatal("naming.ImagePrefix is empty, cannot test")
-	}
-
-	mockClient := &msb.MockMsbClient{
-		Images: []msb.ImageHandle{
-			msb.MockImageHandle{Reference_: prefix + "runner-foo:latest", ManifestDigest_: "sha256:foo"},
-			msb.MockImageHandle{Reference_: "notopencodemsb-bar:1.0", ManifestDigest_: "sha256:bar"},
-		},
-	}
-	msb.WithMsbMock(t, mockClient)
-
-	result, err := ListImages(context.Background())
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(result) != 1 {
-		t.Fatalf("expected 1 image, got %d", len(result))
-	}
-	if result[0].Reference != prefix+"runner-foo:latest" {
-		t.Errorf("unexpected reference: %s", result[0].Reference)
 	}
 }
 

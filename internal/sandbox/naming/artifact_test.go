@@ -34,7 +34,6 @@ func TestRunnerImageRefIsPrefixFree(t *testing.T) {
 	require.Equal(t, "myproj-1mjusbm3wikhb0:opencode-latest", RunnerImageRef(fixtureSlug, "opencode"))
 	require.Equal(t, "agents-sandbox/runner-myproj-1mjusbm3wikhb0:opencode-latest",
 		DockerImageRef(fixtureSlug, "opencode"))
-	require.Equal(t, DockerImageRef(fixtureSlug, "opencode"), LegacyRunnerImageRef(fixtureSlug, "opencode"))
 }
 
 func TestParseVMNameBothSchemes(t *testing.T) {

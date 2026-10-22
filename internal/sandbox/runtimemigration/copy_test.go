@@ -169,7 +169,7 @@ func TestCopyTreeSkipsSpecialFiles(t *testing.T) {
 func TestCopyVolumesCopiesIntoCreatedVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	writeFileWithMode(t, filepath.Join(legacy, "volumes", name, "config", "settings.json"), "{}", 0o600)
 
@@ -201,7 +201,7 @@ func TestCopyVolumesCopiesIntoCreatedVolume(t *testing.T) {
 func TestCopyVolumesAbortsWhenFailedCopyLeavesDestination(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 
 	removeErr := errors.New("remove boom")
@@ -249,8 +249,8 @@ func TestCopyVolumesStartListingErrorAborts(t *testing.T) {
 func TestCopyVolumesPreservesAlreadyPresentTarget(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	present := naming.HomePrefix + "present"
-	missing := naming.HomePrefix + "missing"
+	present := naming.LegacyHomePrefix + "present"
+	missing := naming.LegacyHomePrefix + "missing"
 	addVolumeDir(t, legacy, present)
 	addVolumeDir(t, legacy, missing)
 
@@ -289,7 +289,7 @@ func TestCopyVolumesPreservesAlreadyPresentTarget(t *testing.T) {
 func TestCopyVolumesRecordsProgressAndCompletes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	writeFileWithMode(t, filepath.Join(legacy, "volumes", name, "f.txt"), "x", 0o600)
 	target := t.TempDir()
@@ -323,8 +323,8 @@ func TestCopyVolumesRecordsProgressAndCompletes(t *testing.T) {
 func TestCopyVolumesExcludesVolumeScopedFailureAndCompletes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	bad := naming.HomePrefix + "bad"
-	good := naming.HomePrefix + "good"
+	bad := naming.LegacyHomePrefix + "bad"
+	good := naming.LegacyHomePrefix + "good"
 	addVolumeDir(t, legacy, bad)
 	addVolumeDir(t, legacy, good)
 	writeFileWithMode(t, filepath.Join(legacy, "volumes", good, "f.txt"), "x", 0o600)
@@ -366,8 +366,8 @@ func TestCopyVolumesExcludesVolumeScopedFailureAndCompletes(t *testing.T) {
 func TestCopyVolumesResumesFromCopying(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	done := naming.HomePrefix + "done"
-	partial := naming.HomePrefix + "partial"
+	done := naming.LegacyHomePrefix + "done"
+	partial := naming.LegacyHomePrefix + "partial"
 	addVolumeDir(t, legacy, done)
 	addVolumeDir(t, legacy, partial)
 	// A prior campaign copied "done" then crashed; "partial" is present but unrecorded.
@@ -414,7 +414,7 @@ func TestCopyVolumesResumesFromCopying(t *testing.T) {
 func TestCopyVolumesDoesNotFollowCopiedSymlink(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	hostFile := filepath.Join(t.TempDir(), "host-secret")
 	writeFileWithMode(t, hostFile, "keep", 0o600)
@@ -447,7 +447,7 @@ func TestCopyVolumesDoesNotFollowCopiedSymlink(t *testing.T) {
 func TestCopyVolumesExcludesCopyTreeFailureAndCompletes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	writeFileWithMode(t, filepath.Join(legacy, "volumes", name, "f.txt"), "x", 0o600)
 
@@ -502,7 +502,7 @@ func TestCopyVolumesStateReadErrorAborts(t *testing.T) {
 func TestCopyVolumesTerminalIsNoOp(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	for _, status := range []state.MigrationStatus{state.MigrationCompleted, state.MigrationDismissed, state.MigrationAcknowledged} {
 		if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 			MigrationName: {Status: status},
@@ -551,7 +551,7 @@ func TestCopyVolumesResumeListingErrorAborts(t *testing.T) {
 func TestCopyVolumesCopiedSaveErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
@@ -577,7 +577,7 @@ func TestCopyVolumesCopiedSaveErrorAborts(t *testing.T) {
 func TestCopyVolumesExclusionSaveErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying},
 	}}); err != nil {
@@ -603,7 +603,7 @@ func TestCopyVolumesExclusionSaveErrorAborts(t *testing.T) {
 func TestCopyVolumesStateWriteFailureAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	blockRootState(t)
 
 	ui := termio.NewTestMock(t)

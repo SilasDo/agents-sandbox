@@ -27,7 +27,7 @@ func TestCreateProjectVMUsesResolvedRef(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
 	key := testVMKey()
-	legacyRef := naming.LegacyRunnerImageRef(key.Slug, key.Agent)
+	legacyRef := naming.DockerImageRef(key.Slug, key.Agent)
 	client := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, ref string) error {
 			if ref == legacyRef {

@@ -61,20 +61,16 @@ func refuseNonRunnerRefs(refs []string) error {
 }
 
 // inUseImageReferences unions the project-state ownership scan with the image
-// references held by the live launcher sandboxes (project VMs and task
-// workers), reusing the fail-closed Slice 1 seam.
+// references held by the live launcher sandboxes, reusing the fail-closed
+// Slice 1 seam. Ownership is positional: every sandbox in the private runtime
+// home is ours, so a live VM or task worker holding an image protects it from
+// removal.
 func inUseImageReferences(ctx context.Context) (map[string][]state.Key, error) {
 	handles, err := msb.Get().ListSandboxes(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	kept := make([]msb.SandboxHandle, 0, len(handles))
-	for _, handle := range handles {
-		if naming.IsLauncherSandbox(handle.Name()) {
-			kept = append(kept, handle)
-		}
-	}
-	return InUseImageReferences(kept)
+	return InUseImageReferences(handles)
 }
 
 // refuseReferencedImages returns an error naming every requested reference that

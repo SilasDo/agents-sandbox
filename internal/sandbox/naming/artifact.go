@@ -53,13 +53,9 @@ func RunnerImageRef(slug, agent string) string {
 	return slug + ":" + agent + "-latest"
 }
 
-// LegacyRunnerImageRef returns the pre-change microsandbox runner image
-// reference.
-func LegacyRunnerImageRef(slug, agent string) string {
-	return DockerImageRef(slug, agent)
-}
-
-// DockerImageRef returns the Docker tag for a project slug and agent. It keeps
+// DockerImageRef returns the Docker tag for a project slug and agent. It is also
+// the pre-change microsandbox runner reference (the two were one string). It
+// keeps
 // the namespace prefix so runner images stay distinguishable in the system
 // Docker daemon.
 func DockerImageRef(slug, agent string) string {
@@ -288,25 +284,4 @@ func isHomeTimestamp(s string) bool {
 		}
 	}
 	return true
-}
-
-// ArtifactFor dispatches to the appropriate legacy parser based on the name
-// prefix.
-func ArtifactFor(name string) ArtifactInfo {
-	switch {
-	case strings.HasPrefix(name, DockerImagePrefix):
-		return ParseImageTag(name)
-	case strings.HasPrefix(name, LegacyTaskPrefix):
-		remainder := name[len(LegacyTaskPrefix):]
-		parts := strings.Split(remainder, "-")
-		if len(parts) < 2 {
-			return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", Task: false}
-		}
-		return ArtifactInfo{Slug: strings.Join(parts[:len(parts)-1], "-"), Digest: "", Agent: "", Task: false}
-	case strings.HasPrefix(name, LegacyVMPrefix):
-		return ParseVMName(name)
-	case strings.HasPrefix(name, LegacyHomePrefix):
-		return ParseHomeVolumeName(name)
-	}
-	return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 }

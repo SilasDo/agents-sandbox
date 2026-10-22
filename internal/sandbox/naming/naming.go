@@ -7,25 +7,17 @@ import "strings"
 const Prefix = "agents-sandbox"
 
 // DockerImagePrefix namespaces the runner images in the system Docker daemon,
-// keeping them distinguishable from user images.
+// keeping them distinguishable from user images. The Docker tag is unchanged by
+// the prefix-free runtime naming.
 const DockerImagePrefix = Prefix + "/runner-"
 
-// Legacy microsandbox/runtime prefixes. Artifacts created before the naming
-// change still carry them, so lookups must accept both shapes; only the foreign
-// ~/.microsandbox scan relies on them as an ownership marker.
+// Legacy prefixes of the microsandbox artifacts created before the naming
+// change. Lookups accept both shapes; the prefixes are an ownership marker only
+// for the foreign ~/.microsandbox scan, which a user's own microsandbox shared.
 const (
 	LegacyVMPrefix   = Prefix + "-vm-"
 	LegacyHomePrefix = Prefix + "-home-"
 	LegacyTaskPrefix = Prefix + "-task-"
-)
-
-// Deprecated aliases for the legacy prefixes, kept while callers migrate to the
-// scheme-aware constructors and parsers.
-const (
-	VMPrefix    = LegacyVMPrefix
-	HomePrefix  = LegacyHomePrefix
-	TaskPrefix  = LegacyTaskPrefix
-	ImagePrefix = DockerImagePrefix
 )
 
 // IsLegacyProjectSandbox reports whether name is a prefixed project VM name.
@@ -49,9 +41,6 @@ func IsLegacyHomeVolume(name string) bool {
 	return strings.HasPrefix(name, LegacyHomePrefix)
 }
 
-// IsProjectSandbox is a deprecated alias for IsLegacyProjectSandbox.
-func IsProjectSandbox(name string) bool { return IsLegacyProjectSandbox(name) }
-
 // IsTaskSandbox reports whether a sandbox with the given name and labels is a
 // transient task sandbox. The task label is authoritative; the trailing
 // all-digit nanos segment is the name-level fallback for a sandbox created
@@ -62,9 +51,3 @@ func IsTaskSandbox(name string, labels map[string]string) bool {
 	}
 	return ParseVMName(name).Task
 }
-
-// IsLauncherSandbox is a deprecated alias for IsLegacyLauncherSandbox.
-func IsLauncherSandbox(name string) bool { return IsLegacyLauncherSandbox(name) }
-
-// IsHomeVolume is a deprecated alias for IsLegacyHomeVolume.
-func IsHomeVolume(name string) bool { return IsLegacyHomeVolume(name) }

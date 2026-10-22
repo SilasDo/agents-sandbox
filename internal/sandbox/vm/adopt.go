@@ -560,8 +560,8 @@ No action needed: files, credentials and the home volume are kept; only the proj
 		homeVolume,
 		projectVMName(state.Key{Slug: identity.RepoSlug, Agent: agentName}),
 		projectVMName(state.Key{Slug: identity.CheckoutSlug, Agent: agentName}),
-		naming.RunnerImageRef(identity.RepoSlug, agentName),
-		naming.RunnerImageRef(identity.CheckoutSlug, agentName),
+		naming.DockerImageRef(identity.RepoSlug, agentName),
+		naming.DockerImageRef(identity.CheckoutSlug, agentName),
 		configRow.String(),
 	)
 }

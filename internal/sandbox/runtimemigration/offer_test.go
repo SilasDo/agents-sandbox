@@ -105,7 +105,7 @@ func TestOfferNecessaryVolumesErrorWarnsAndSkips(t *testing.T) {
 func TestOfferDismissedDoesNotPrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	if err := seedRootState(state.RootState{
 		Migrations: map[string]state.Migration{MigrationName: {Status: state.MigrationDismissed}},
 	}); err != nil {
@@ -133,7 +133,7 @@ func TestOfferDismissedDoesNotPrompt(t *testing.T) {
 func TestOfferTerminalMigrationDoesNotPrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCompleted},
 	}}); err != nil {
@@ -155,7 +155,7 @@ func TestOfferTerminalMigrationDoesNotPrompt(t *testing.T) {
 func TestOfferFinalizesOpenCampaignWithNothingLeft(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "done"
+	name := naming.LegacyHomePrefix + "done"
 	addVolumeDir(t, legacy, name)
 	// Campaign copied everything, then crashed before writing completed.
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
@@ -183,7 +183,7 @@ func TestOfferFinalizesOpenCampaignWithNothingLeft(t *testing.T) {
 func TestOfferStartFreshIsNotLostToACompletedCampaign(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	// A concurrent session wins the race by completing the campaign after the
 	// prompt is shown but before the dismissal write.
@@ -228,7 +228,7 @@ func TestOfferStartFreshIsNotLostToACompletedCampaign(t *testing.T) {
 func TestOfferStartFreshLockFailureSurfaces(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	blockRootLock(t)
 
 	var prompted bool
@@ -265,7 +265,7 @@ func TestOfferNothingNecessaryDoesNotPrompt(t *testing.T) {
 func TestOfferNonInteractiveBlocksBeforeFreshHome(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	ui := &termio.Mock{IsInteractiveResult: false}
 	client := &msb.MockMsbClient{}
@@ -288,7 +288,7 @@ func TestOfferNonInteractiveBlocksBeforeFreshHome(t *testing.T) {
 func TestOfferAssumeYesBehavesLikeNonInteractive(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	var selectCalls int
 	ui := &termio.Mock{
@@ -313,7 +313,7 @@ func TestOfferAssumeYesBehavesLikeNonInteractive(t *testing.T) {
 func TestOfferChooseCopyCopiesVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "legacy"
+	name := naming.LegacyHomePrefix + "legacy"
 	addVolumeDir(t, legacy, name)
 	writeFileWithMode(t, legacy+"/volumes/"+name+"/settings.json", "{}", 0o600)
 
@@ -348,7 +348,7 @@ func TestOfferChooseCopyCopiesVolumes(t *testing.T) {
 func TestOfferCopyErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 	blockRootState(t)
 
 	var prompted bool
@@ -362,7 +362,7 @@ func TestOfferCopyErrorAborts(t *testing.T) {
 func TestOfferChooseStartFreshPersistsDismissal(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	var prompted bool
 	ui := interactiveUI("s", &prompted)
@@ -386,7 +386,7 @@ func TestOfferChooseStartFreshPersistsDismissal(t *testing.T) {
 func TestOfferChooseQuitAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	var prompted bool
 	ui := interactiveUI(choiceQuit, &prompted)
@@ -410,7 +410,7 @@ func TestOfferChooseQuitAborts(t *testing.T) {
 func TestOfferSelectErrorAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"legacy")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"legacy")
 
 	ui := &termio.Mock{
 		IsInteractiveResult: true,
@@ -481,7 +481,7 @@ func createPrivateVolume(t *testing.T, name string) {
 func TestOfferStartFreshRemovesUnfinishedDestination(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "partial"
+	name := naming.LegacyHomePrefix + "partial"
 	seedPartialDestination(t, legacy, name)
 
 	client := &msb.MockMsbClient{
@@ -513,7 +513,7 @@ func TestOfferStartFreshRemovesUnfinishedDestination(t *testing.T) {
 func TestOfferStartFreshRemovalFailureAborts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "partial"
+	name := naming.LegacyHomePrefix + "partial"
 	seedPartialDestination(t, legacy, name)
 
 	client := &msb.MockMsbClient{
@@ -575,15 +575,15 @@ func TestDismissMigrationStateReadError(t *testing.T) {
 func TestRemoveUnclearDestinationsRemovesOnlyUnclear(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	partial := naming.HomePrefix + "partial"
-	copied := naming.HomePrefix + "copied"
-	kept := naming.HomePrefix + "kept"
+	partial := naming.LegacyHomePrefix + "partial"
+	copied := naming.LegacyHomePrefix + "copied"
+	kept := naming.LegacyHomePrefix + "kept"
 	addVolumeDir(t, legacy, partial)
 	addVolumeDir(t, legacy, copied)
 	addVolumeDir(t, legacy, kept)
 
 	privateHome := runtime.PrivateHome()
-	for _, name := range []string{partial, copied, kept, naming.HomePrefix + "unrelated"} {
+	for _, name := range []string{partial, copied, kept, naming.LegacyHomePrefix + "unrelated"} {
 		if err := os.MkdirAll(filepath.Join(privateHome, "volumes", name), 0o750); err != nil {
 			t.Fatalf("seed %q: %v", name, err)
 		}
@@ -623,7 +623,7 @@ func TestRemoveUnclearDestinationsLegacyListingError(t *testing.T) {
 func TestRemoveUnclearDestinationsPrivateListingError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"target")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"target")
 
 	volumes := filepath.Join(runtime.PrivateHome(), "volumes")
 	if err := os.MkdirAll(filepath.Dir(volumes), 0o750); err != nil {
@@ -798,8 +798,8 @@ func TestOfferPromptCopyingResumeNotice(t *testing.T) {
 func TestOfferAmbiguousStateCopyKeepsExisting(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	present := naming.HomePrefix + "present"
-	missing := naming.HomePrefix + "missing"
+	present := naming.LegacyHomePrefix + "present"
+	missing := naming.LegacyHomePrefix + "missing"
 	addVolumeDir(t, legacy, present)
 	addVolumeDir(t, legacy, missing)
 	if err := os.MkdirAll(filepath.Join(runtime.PrivateHome(), "volumes", present), 0o750); err != nil {
@@ -840,7 +840,7 @@ func TestOfferAmbiguousStateCopyKeepsExisting(t *testing.T) {
 func TestOfferCopyingResumeRecopiesPartial(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "partial"
+	name := naming.LegacyHomePrefix + "partial"
 	seedPartialDestination(t, legacy, name)
 
 	target := t.TempDir()
@@ -881,7 +881,7 @@ func TestOfferCopyingResumeRecopiesPartial(t *testing.T) {
 func TestOfferAmbiguousStateDismissRemovesUnclear(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	name := naming.HomePrefix + "unclear"
+	name := naming.LegacyHomePrefix + "unclear"
 	addVolumeDir(t, legacy, name)
 	if err := os.MkdirAll(filepath.Join(runtime.PrivateHome(), "volumes", name), 0o750); err != nil {
 		t.Fatalf("seed unclear private volume: %v", err)
@@ -908,7 +908,7 @@ func TestOfferAmbiguousStateDismissRemovesUnclear(t *testing.T) {
 func TestOfferShowsNoticeAfterCopy(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	target := t.TempDir()
 	client := &msb.MockMsbClient{
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
@@ -931,7 +931,7 @@ func TestOfferShowsNoticeAfterCopy(t *testing.T) {
 func TestOfferShowsNoticeAfterDismiss(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	ui := noticeUI(choiceFresh)
 	client := &msb.MockMsbClient{}
 	if err := Offer(context.Background(), client, ui); err != nil {
@@ -945,7 +945,7 @@ func TestOfferShowsNoticeAfterDismiss(t *testing.T) {
 func TestOfferShowsNoticeOnLaterTerminalSession(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	if err := seedRootState(state.RootState{}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -968,7 +968,7 @@ func TestOfferShowsNoticeOnLaterTerminalSession(t *testing.T) {
 func TestOfferShowsNoticePendingNothingToCopy(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addSandboxDir(t, legacy, naming.VMPrefix+"proj") // artifacts present, no volumes to copy
+	addSandboxDir(t, legacy, naming.LegacyVMPrefix+"proj") // artifacts present, no volumes to copy
 	ui := &termio.Mock{IsInteractiveResult: true}
 	if err := Offer(context.Background(), &msb.MockMsbClient{}, ui); err != nil {
 		t.Fatalf("Offer() error = %v", err)
@@ -981,7 +981,7 @@ func TestOfferShowsNoticePendingNothingToCopy(t *testing.T) {
 func TestOfferNoticeOnceEver(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		tx.State().SetMigration(LegacyRuntimeNoticeName, state.Migration{Status: state.MigrationAcknowledged})
 		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
@@ -1001,7 +1001,7 @@ func TestOfferNoticeOnceEver(t *testing.T) {
 func TestOfferNonInteractiveNoticeDoesNotMark(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	addVolumeDir(t, legacy, naming.HomePrefix+"a")
+	addVolumeDir(t, legacy, naming.LegacyHomePrefix+"a")
 	if _, err := state.WithRootState(true, func(tx *state.RootTxn) error {
 		tx.State().SetMigration("runtime_home", state.Migration{Status: state.MigrationCompleted})
 		return tx.Commit()
@@ -1026,9 +1026,9 @@ func TestOfferNonInteractiveNoticeDoesNotMark(t *testing.T) {
 func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	bad := naming.HomePrefix + "bad"
-	present := naming.HomePrefix + "present"
-	good := naming.HomePrefix + "good"
+	bad := naming.LegacyHomePrefix + "bad"
+	present := naming.LegacyHomePrefix + "present"
+	good := naming.LegacyHomePrefix + "good"
 	addVolumeDir(t, legacy, bad)
 	addVolumeDir(t, legacy, present)
 	addVolumeDir(t, legacy, good)
@@ -1072,8 +1072,8 @@ func TestOfferNoticeNamesUncopiedVolumes(t *testing.T) {
 func TestOfferAmbiguousCopyNoticeKeepsUnverifiedVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	present := naming.HomePrefix + "present"
-	missing := naming.HomePrefix + "missing"
+	present := naming.LegacyHomePrefix + "present"
+	missing := naming.LegacyHomePrefix + "missing"
 	addVolumeDir(t, legacy, present)
 	addVolumeDir(t, legacy, missing)
 	createPrivateVolume(t, present)
@@ -1109,8 +1109,8 @@ func TestOfferAmbiguousCopyNoticeKeepsUnverifiedVolume(t *testing.T) {
 func TestOfferDismissSuppressesCommandsForUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	uncopied := naming.HomePrefix + "uncopied"
-	remaining := naming.HomePrefix + "remaining"
+	uncopied := naming.LegacyHomePrefix + "uncopied"
+	remaining := naming.LegacyHomePrefix + "remaining"
 	addVolumeDir(t, legacy, uncopied)
 	addVolumeDir(t, legacy, remaining)
 	// A campaign that failed to copy "uncopied" and still had "remaining" to do.
@@ -1140,7 +1140,7 @@ func TestOfferDismissSuppressesCommandsForUncopiedVolumes(t *testing.T) {
 func TestOfferTerminalSessionSuppressesCommandsForUncopiedVolumes(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	left := naming.HomePrefix + "left-behind"
+	left := naming.LegacyHomePrefix + "left-behind"
 	addVolumeDir(t, legacy, left)
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCompleted},
@@ -1166,7 +1166,7 @@ func TestOfferTerminalSessionSuppressesCommandsForUncopiedVolumes(t *testing.T) 
 func TestOfferFinalizeErrorPropagates(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	legacy := installLegacyHome(t)
-	done := naming.HomePrefix + "done"
+	done := naming.LegacyHomePrefix + "done"
 	addVolumeDir(t, legacy, done)
 	if err := seedRootState(state.RootState{Migrations: map[string]state.Migration{
 		MigrationName: {Status: state.MigrationCopying, Copied: []string{done}},

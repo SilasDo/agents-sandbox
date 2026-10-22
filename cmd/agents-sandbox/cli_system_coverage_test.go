@@ -139,7 +139,7 @@ func TestBuildChecksDockerBeforeAdoption(t *testing.T) {
 
 	// A running legacy VM that adoption would destroy if it ran first.
 	legacyVM := &msb.MockSandboxHandle{
-		Name_:   naming.VMPrefix + identity.RepoSlug + "-" + defaultAgentName,
+		Name_:   naming.LegacyVMPrefix + identity.RepoSlug + "-" + defaultAgentName,
 		Status_: msbSdk.SandboxStatusRunning,
 	}
 	mock := &msb.MockMsbClient{
