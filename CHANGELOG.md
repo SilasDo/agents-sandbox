@@ -11,8 +11,8 @@ command reports the bare version (e.g. `0.1.0`).
 ### Added
 
 - Runtime: on the first interactive `run`/`shell`, agents-sandbox offers once to copy legacy
-  `~/.microsandbox/volumes/agents-sandbox-home-*` volumes into its private runtime home. The choice is mandatory — copy,
-  start fresh/dismiss, or quit — and is tracked in a `migrations.runtime_home` entry in the launcher's root `state.yaml`
+  `~/.microsandbox/volumes/agents-sandbox-home-*` volumes into its private runtime home. The choice is mandatory. You can copy,
+  start fresh/dismiss, or quit. Choice is tracked in a `migrations.runtime_home` entry in the launcher's root `state.yaml`
   (`~/.local/state/agents-sandbox/state.yaml`): a `copying` status with transient `copied`/`kept`/`excluded` lists,
   `completed`, or `dismissed`. While legacy volumes
   remain, non-interactive runs (including `--yes`) never copy and stop with a message to run one interactive session, so
@@ -23,7 +23,7 @@ command reports the bare version (e.g. `0.1.0`).
   microsandbox runtime and a system-wide microsandbox is no longer required. It names which parts of `~/.microsandbox`
   are ours and safe to remove (with the commands) versus your own data, warns about any legacy volume that was not
   verifiably copied, is acknowledged with a keypress, and never deletes anything. A non-interactive session prints only
-  a one-line pointer, so the full notice still appears the next time you are interactive (#207).
+  a one-line pointer, the full notice still appears the next time you are interactive (#207).
 - CLI: `volume inspect <name>`, `image inspect <ref>`, and `sandbox inspect <name>` show the full detail of a home
   volume, a cached runner image, or a project sandbox — identity, storage and image configuration, mounts, and
   resources. Each supports `--format json` and the global `-q`/`--quiet` (the identifier only). #165.
