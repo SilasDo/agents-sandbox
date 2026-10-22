@@ -91,8 +91,7 @@ agents-sandbox image prune --dry-run   # see what's stale
 agents-sandbox image prune             # actually remove them (prompts; or pass --yes)
 ```
 
-Prune prompts for confirmation before removing anything (defaulting to no). Pass `--yes` to skip the prompt;
-non-interactively, `--yes` is required. `--dry-run` only previews and never prompts.
+See [Pruning]({% link sandboxes.md %}#pruning) for the confirmation prompt, `--yes`, and `--dry-run` behavior.
 
 Pruning retains the `-latest` images **per agent** per live project and any image a kept VM still references, reclaiming
 every other ref — pre-redesign digest refs no sandbox uses, orphaned surplus images, and every ref of projects (slugs)
@@ -110,13 +109,11 @@ and [Configuration]({% link configuration/index.md %}) for how to configure auto
 ## Home directory
 
 When rebuilding an image, all state in the VM's home directory (`/home/dev/`) would get lost. Therefore, the home
-directory is copied to a volume and mounted to the running VM.
+directory is copied to a volume and mounted to the running VM, so it survives a rebuild.
 
-If the image changes between runs and the VM is rebuilt onto the new image, you will be presented with a prompt to keep,
-migrate, or reset your home volume (the prompt is skipped when the rebuild is deferred and the VM keeps running on the
-current image). In non-interactive mode the existing home volume is kept and you are told the image changed. The chosen
-action is applied automatically and the old volume is always kept. The state file is only updated once the action has
-actually executed. `volume migrate`, `volume reset` and `volume edit` remain available for manual management.
+When an image change actually leads to a rebuild, agents-sandbox prompts you to keep, migrate, or reset that volume;
+see [Home volumes]({% link sandboxes.md %}#home-volumes) for the choices and the non-interactive default. `volume
+migrate`, `volume reset`, and `volume edit` remain available for manual management.
 
 When a rebuilt image uses the same runner-image tag, agents-sandbox refreshes the microsandbox cache by loading the new
 Docker image directly under that tag. It does not remove the old cached manifest first, because a stopped project VM can

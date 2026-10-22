@@ -192,6 +192,10 @@ volume:
 | reset | Build a completely new home volume from the new sandbox's home directory, discarding the current home (for example, losing the agent's session history). |
 | migrate | Build a new home volume like reset, then copy all files from the current home on top. |
 
+A rebuild that is deferred — the VM keeps running on the current image — skips the prompt. In non-interactive mode the
+existing home volume is kept and you are told the image changed. The old volume is always kept, and the state file is
+only updated once the chosen action has actually executed.
+
 ### Managing volumes
 
 List all volumes:
