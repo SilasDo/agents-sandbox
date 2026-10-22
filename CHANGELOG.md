@@ -216,6 +216,11 @@ command reports the bare version (e.g. `0.1.0`).
   volume would be created or reused — without building the runner image, creating a home volume, writing project state,
   starting a VM, attaching, or making any network request (no version resolution and no base-image pull). The
   `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image and inspect/build nothing.
+- Self-upgrade: a new `upgrade.channel` setting (`stable` default, `canary`) lets an install opt into canary
+  prereleases. The canary channel follows the newest release eligible for it — the newest canary prerelease, and then
+  the real release once it ships, so testers roll forward automatically. `agents-sandbox upgrade` accepts a one-shot
+  `--channel` override. Homebrew installs are unaffected. Set it back to `stable` to leave the canary line at the next
+  release.
 
 ### Fixed
 
@@ -348,6 +353,9 @@ command reports the bare version (e.g. `0.1.0`).
   live VM's mounts are now read from its persisted config. The same empty `cfg.Volumes` also silently disabled two other
   readers: home-volume recovery after a lost `state.yaml` never found the surviving volume (always minting the duplicate
   #219 was filed for), and `sandbox inspect` reported `mounts (0)` for a fully mounted VM (#223).
+- Release CI: a `v*-canary.N` tag is now published as a GitHub prerelease and no longer bumps the Homebrew formula, so a
+  canary is never served by `/releases/latest` to stable installs. The self-upgrade download is addressed by the
+  resolved release tag instead of `/latest`, so a prerelease can be installed.
 
 ### Changed
 
