@@ -21,8 +21,8 @@
   | Group (`parent`) | Landing page | Children |
   | --- | --- | --- |
   | — (home) | `index.md` | — |
-  | Get started | `get-started.md` (new) | `introduction.md`, `install/installation.md`, `install/prerequisites.md`, `install/upgrading.md`, `switch.md`, `manage-config.md`, `tutorial.md` (new) |
-  | Guides | `guides.md` (new) | `sandboxes.md`, `runner-image.md` |
+  | Get started | `get-started.md` (new) | `introduction.md`, `install/prerequisites.md`, `install/installation.md`, `switch.md`, `manage-config.md`, `tutorial.md` (new) |
+  | Guides | `guides.md` (new) | `sandboxes.md`, `runner-image.md`, `install/upgrading.md` |
   | Recipes | `recipes.md` (retained) | `branch-sessions.md`, `recipes/connect-desktop.md`, `recipes/bare-worktrees.md`, `recipes/java-ca-trust.md`, `recipes/openchamber.md` |
   | Configuration | `configuration/index.md` (retained) | the eight `configuration/*.md` pages |
   | Concepts | `concepts.md` (new) | `how-it-works.md` |
@@ -400,7 +400,7 @@ git commit -m "docs: rewrite Configuration files & env vars per styleguide"
 ### Task 10: Light pass — Get started group
 
 **Files:**
-- Modify: `docs/introduction.md`, `docs/install/installation.md`, `docs/install/prerequisites.md`, `docs/install/upgrading.md`, `docs/switch.md`, `docs/manage-config.md`
+- Modify: `docs/introduction.md`, `docs/install/installation.md`, `docs/install/prerequisites.md`, `docs/switch.md`, `docs/manage-config.md`
 
 **Interfaces:** Consumes Task 1's `Get started` group and Task 2's prerequisites fix.
 
@@ -411,13 +411,12 @@ For each page: exactly one H1 matching the `title`; sentence-case headings; expl
 Specific fixes:
 - `docs/install/installation.md`: change the `## Installation` H2 to an `# Installation` H1.
 - `docs/switch.md`: `## ⚠️ What to know` → `## What to know` (drop the emoji).
-- `docs/install/upgrading.md`: remove the banned words ("simply") and the "below" references.
 - `docs/manage-config.md`: the `## 1.`–`## 4.` numbered headings are a task sequence; keep the numbers but sentence-case the titles and confirm every sentence of the intro names the outcome.
 - `docs/introduction.md`: confirm the `## What this is for` section is the last (explanation order); light prose tightening only.
 
 - [ ] **Step 2: Verify**
 
-Run: `rg -n -i "\b(simply|easy|quickly)\b|let's" docs/introduction.md docs/install/ docs/switch.md docs/manage-config.md`; `rg -n -i '\b(above|below)\b' docs/introduction.md docs/install/ docs/switch.md docs/manage-config.md`; `for f in docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/install/upgrading.md docs/switch.md docs/manage-config.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
+Run: `rg -n -i "\b(simply|easy|quickly)\b|let's" docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `rg -n -i '\b(above|below)\b' docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md`; `for f in docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
 Expected: no banned words; no above/below; each page `: 1`.
 Run: `make docs-linkcheck`
 Expected: valid.
@@ -425,21 +424,22 @@ Expected: valid.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/introduction.md docs/install docs/switch.md docs/manage-config.md
+git add docs/introduction.md docs/install/installation.md docs/install/prerequisites.md docs/switch.md docs/manage-config.md
 git commit -m "docs: styleguide pass over the Get started pages"
 ```
 
 ---
 
-### Task 11: Light pass — Recipes group
+### Task 11: Light pass — Guides and Recipes pages
 
 **Files:**
-- Modify: `docs/recipes.md`, `docs/branch-sessions.md`, `docs/recipes/connect-desktop.md`, `docs/recipes/bare-worktrees.md`, `docs/recipes/java-ca-trust.md`, `docs/recipes/openchamber.md`
+- Modify: `docs/install/upgrading.md`, `docs/recipes.md`, `docs/branch-sessions.md`, `docs/recipes/connect-desktop.md`, `docs/recipes/bare-worktrees.md`, `docs/recipes/java-ca-trust.md`, `docs/recipes/openchamber.md`
 
-**Interfaces:** Consumes Task 1's `Recipes` group. (Guides has only `sandboxes.md`, already conformant, and `runner-image.md`, Task 5.)
+**Interfaces:** Consumes Task 1's `Guides` and `Recipes` groups. (Guides' other pages: `sandboxes.md` already conformant, `runner-image.md` Task 5.)
 
 - [ ] **Step 1: Apply the light pass**
 
+- `docs/install/upgrading.md`: remove the banned word "simply" (line 21) and the "below" references (lines 17, 113) by naming the section; sentence-case headings; keep every migration fact.
 - `docs/branch-sessions.md`: add a one-sentence lead after the H1 before the `--worktree` explanation; sentence-case the headings (`## Basic Usage` → `## Basic usage`); keep the daemon-agent `> **Requires a daemon-based agent.**` callout first in its section (applicability-first).
 - `docs/recipes.md`: it is a landing — keep the AGENTS.md example, sentence-case `## Agent Context (AGENTS.md)` and change the example's fence from `dotenv` to `markdown` (the snippet is an `AGENTS.md`, not a `.env`), and ensure the `{% link %}` child list is present.
 - `docs/recipes/openchamber.md`: remove the three "above" references (lines 36, 94, 152) by naming the section or repeating the short fact; remove "below" (line 52).
@@ -447,14 +447,14 @@ git commit -m "docs: styleguide pass over the Get started pages"
 
 - [ ] **Step 2: Verify and commit**
 
-Run: `grep -n '^#\{1,2\} ' docs/branch-sessions.md`; `rg -n -i '\b(above|below)\b' docs/recipes.md docs/recipes docs/branch-sessions.md`; `for f in docs/branch-sessions.md docs/recipes.md docs/recipes/*.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
-Expected: sentence-case sequence; no above/below matches; each page `: 1`.
+Run: `grep -n '^#\{1,2\} ' docs/branch-sessions.md`; `rg -n -i '\b(above|below|simply|easy|quickly)\b|let''s' docs/install/upgrading.md docs/recipes.md docs/recipes docs/branch-sessions.md`; `for f in docs/install/upgrading.md docs/branch-sessions.md docs/recipes.md docs/recipes/*.md; do echo "$f: $(grep -c '^# ' "$f")"; done`
+Expected: sentence-case sequence; no banned words or above/below matches; each page `: 1` (confirm any extra is a fenced-code comment).
 Run: `make docs-linkcheck`
 Expected: valid.
 
 ```bash
-git add docs/recipes.md docs/recipes docs/branch-sessions.md
-git commit -m "docs: styleguide pass over the Recipes pages"
+git add docs/install/upgrading.md docs/recipes.md docs/recipes docs/branch-sessions.md
+git commit -m "docs: styleguide pass over the Guides and Recipes pages"
 ```
 
 ---
