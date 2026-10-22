@@ -73,7 +73,7 @@ read_if: Navigating the codebase.
 ### `docs/` — Jekyll documentation site (just-the-docs)
 
 - `_config.yml`, `Gemfile`, `_includes/*.html` — Site config and templates.
-- `*.md` — Pages (introduction, install, commands, configuration, how-it-works, sandboxes, switch, troubleshooting, recipes, runner-image, manage-config, branch-sessions, deprecations).
+- `*.md` — Section landings (`get-started.md`, `guides.md`, `recipes.md`, `configuration/index.md`, `concepts.md`, `reference.md`) and top-level pages (`index.md`, `introduction.md`, `switch.md`, `manage-config.md`, `tutorial.md`, `sandboxes.md`, `runner-image.md`, `branch-sessions.md`, `commands.md`, `troubleshooting.md`, `deprecations.md`, `how-it-works.md`). Navigation groups pages by user need (Get started / Guides / Recipes / Configuration / Concepts / Reference) via front-matter `parent`.
 - `configuration/` — Per-feature docs (agent, launcher, mounts, networking, secrets, notifications, home-provisioning, self-upgrade).
 - `diagrams/*.puml` — PlantUML C4 and lifecycle diagrams.
 - `vendor/` — Gitignored gem bundle; omit.

@@ -9,7 +9,7 @@ nav_order: 30
 # Switch from your existing agent
 
 Use agents-sandbox with the agent setup you already have without writing any config. If you haven't
-installed agents-sandbox yet, [install it]({% link index.md %}#install) first.
+installed agents-sandbox yet, [install it]({% link install/installation.md %}) first.
 
 ## Run it
 

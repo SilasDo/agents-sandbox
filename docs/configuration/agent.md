@@ -45,7 +45,7 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 > stops — so copy **all** the files in one go, because a partial `opencode2/` dir disables the fallback for the other
 > scope too and silently ignores the leftovers. The guest `~/.config/opencode/` path is never affected.
 
-VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
+VMs, home volumes, and state are also scoped per agent: the sandbox name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently
 (see [Sandboxes]({% link sandboxes.md %}#identity-one-sandbox-per-checkout-and-agent)).
 

@@ -662,4 +662,9 @@ git commit -m "docs: changelog and brain updates for the rollout"
 
 ## Post-implementation notes
 
-(to be filled in during execution; includes any deviation from the fixed heading sequences above and the reason, in the shape of the pilot plan's notes.)
+Executed on branch `docs/rollout` (worktree `/workspace/docs--rollout` off the merge of #275). One commit per task. Deviations from the fixed text above:
+
+- **Task 5:** `## One image per checkout` precedes `## The base image contract` (the base contract references stage names the first section defines; the plan's order reversed them).
+- **Task 9:** the merged env-var column derives every field's `AGENTS_SANDBOX_*` name mechanically (viper `AutomaticEnv` with `-`/`.`→`_`, plus the derived `network.egress-*`, `mounts`, and `notify.*` names), rather than the older table's curated subset.
+- **Task 14:** only `runner-image.md` carried the duplicate home-volume prompt explanation; `launcher.md`'s row is a one-line application note and `upgrading.md`'s section is the unrelated legacy-volume migration, so neither was reduced. The runner-image-only facts (non-interactive default, old volume always kept, state-file timing) moved into `sandboxes.md` before it was reduced to a pointer.
+- **Task 16:** the terminology lint's prefix allowlist is `docs/deprecations.md` **and** `docs/install/upgrading.md` (the migration page names the old prefix), and it skips fenced code blocks so `commands.md`'s literal `config paths` output is exempt. `launcher.md`'s two prose mentions were retargeted to link to Deprecations. It also caught a "quickly" in `runner-image.md`.
