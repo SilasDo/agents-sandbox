@@ -10,7 +10,7 @@
 
 ## Rules
 
-- When dispatching subagents, always use the `litellm/deepseek-v4-1-flash-greenpt` model.
+- When dispatching subagents, always use the `litellm/deepseek-v4-1-flash-0910-greenpt` model.
 - Fill: Project Rules
   - Never / always project constraints
   - Tool / command bans, stack rules, quality bar if any
