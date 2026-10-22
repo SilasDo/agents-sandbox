@@ -10,6 +10,19 @@
 
 **Spec:** `.operator-shared/specs/artifact-naming.md`
 
+**Status:** Implemented on `artifact-naming` (PR #277), all 7 tasks. A whole-branch review (`reviewer-large`)
+found two Important defects, fixed before the PR: (1) `ensureProjectVM` reused the found legacy handle's
+name on the recreate path, so a replaced legacy VM came back under its legacy name — now reset to
+`projectVMName(k)` when the replace reports it gone; (2) `state.ImageReferences` reported only the
+prefix-free ref after `RunnerImageRef` changed, contrary to the spec's "consider both refs" — the
+extractor now returns the prefix-free and the prefixed (`DockerImageRef`) ref, and
+`projectStateReferences` takes a multi-name extractor. Minors: pinned the longest task-sandbox name
+(Review Focus 5), the cross-scheme `sameImageIdentity` tolerance, and the recreated-VM name.
+Deliberately unchanged: `refuseNonRunnerRefs`'s `ParseImageTag` shape check (a hash-shape tightening
+would break the fictional test slugs and the fuzz round-trip property; a foreign ref in the private
+home always fails not-found) and `pruning/state.go`'s name-only task heuristic (every task sandbox we
+create carries both the label and the digit suffix).
+
 ## Global Constraints
 
 - Target name shapes (exact): project VM `<slug>-<agent>`; task sandbox `<slug>-<agent>-<nanos>`; home volume `<slug>-<agent>-<ts>`; msb runner image ref `<slug>:<agent>-latest`; Docker runner image `agents-sandbox/runner-<slug>:<agent>-latest` (unchanged).
