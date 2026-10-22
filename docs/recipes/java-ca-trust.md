@@ -25,7 +25,7 @@ FROM agents-sandbox/runner-base:latest
 RUN apt-get update && apt-get install -y --no-install-recommends openjdk-21-jdk-headless && rm -rf /var/lib/apt/lists/*
 ```
 
-Alternatively point `FROM` at a JDK image and treat it as a [custom base]({% link runner-image.md %}#base-starting-point).
+Alternatively point `FROM` at a JDK image and treat it as a [custom base]({% link runner-image.md %}#the-base-image-contract).
 
 ## Import the CA
 

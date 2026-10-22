@@ -18,6 +18,95 @@ Dockerfile body does not re-run the tool installs, and the same tool layers are 
 is present only for the agent that needs it, and the image build's downloads need no `curl` or `tar` from your base — they
 run on the tool base.
 
+## Building and managing images
+
+Build the image:
+
+```console
+agents-sandbox build        # builds if image is missing or base changed
+agents-sandbox build -r     # force rebuild
+```
+
+Preview the exact Dockerfile that would be built (without invoking docker):
+
+```console
+agents-sandbox build dockerfile                        # default agent, no docker
+agents-sandbox build dockerfile --docker               # with the Docker engine block
+agents-sandbox build dockerfile --agent-version 1.2.3  # pin the agent version in the preview
+```
+
+List cached images:
+
+```console
+agents-sandbox image list
+```
+
+The image name includes the checkout slug and Docker image hash, so changes to the Dockerfile automatically trigger a
+rebuild. When the resulting image digest differs from the image the existing project VM was booted from, the VM is
+recreated on the next run so it uses the new image (the home volume is preserved).
+
+Runner images are tagged **per agent** on both Docker and microsandbox. The `-latest` tag is namespaced by the agent,
+so each agent's image can be identified and updated independently:
+
+```
+agents-sandbox/runner-<slug>:<agent>-latest
+```
+
+For example, with a checkout slug of `my-project`, the opencode image is
+`agents-sandbox/runner-my-project:opencode-latest`
+and the pi image is `agents-sandbox/runner-my-project:pi-latest`.
+
+### Skip-build when unchanged
+
+The Docker build is skipped when the baked `org.agents-sandbox.dockerfile-id` label matches the current content. This
+label is a hash of the rendered Dockerfile, the build-context files it installs (the `/etc/profile.d` `PATH` merge
+script and the CA-trust helper), and the agent version, so an image already built from the exact same inputs is reused
+instead of being rebuilt.
+
+Each tool stage pins its version as an `ARG` default in the rendered Dockerfile (`NODE_VERSION`, the agent's
+`<AGENT>_VERSION`, `DOCKER_VERSION`). The version is therefore part of the build content, so bumping it changes the
+build identity and invalidates that stage's install layer — the agent layer re-runs on an agent upgrade while the node
+and Docker layers stay cached — regardless of how the builder tracks version build arguments.
+
+With `--log-level verbose`, the launcher reports why a build happens on every rebuild path. Before building, each image
+also records its individual inputs as `org.agents-sandbox.identity.*` labels (project Dockerfile hash, agent version, and
+Docker-in-Docker), so the verbose line names the changed input — for example `rebuilding runner image
+…: project Dockerfile changed; agent version changed` — or `forced by --rebuild` / `runner image not present locally`.
+A reuse logs `reusing runner image …: content identity unchanged`; an image without these identity labels (built by an
+older version) is reported as a generic content change.
+
+### Content-verified load
+
+Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content — the config digest (compared against
+the Docker image ID) or the `dockerfile-id` label. If the cached content no longer matches, the image is reloaded so the
+VM always boots from the correct image. At verbose level the load states whether the image was absent from the cache or
+its cached content was stale.
+
+### Pruning images
+
+Images can be pruned via the `prune` command or, more targeted, the `image prune` subcommand:
+
+```console
+agents-sandbox image prune --dry-run   # see what's stale
+agents-sandbox image prune             # actually remove them (prompts; or pass --yes)
+```
+
+Prune prompts for confirmation before removing anything (defaulting to no). Pass `--yes` to skip the prompt;
+non-interactively, `--yes` is required. `--dry-run` only previews and never prompts.
+
+Pruning retains the `-latest` images **per agent** per live project and any image a kept VM still references, reclaiming
+every other ref — pre-redesign digest refs no sandbox uses, orphaned surplus images, and every ref of projects (slugs)
+that no longer have a live VM. It also runs microsandbox's native image-data prune so manifests and layers orphaned by a
+runner-image refresh are reclaimed after no VM references them. See [Commands]({% link commands.md %}) for details on
+the
+prune command.
+
+agents-sandbox also auto-prunes all resources that are ephemeral, unused or haven't been in use for more than 30 days by
+default. Cached runner images and home volumes are only pruned once they are older than the threshold, so a recently
+used project keeps its image and home state across restarts. See [Sandboxes]({% link sandboxes.md %}) for more
+information
+and [Configuration]({% link configuration/index.md %}) for how to configure auto-pruning.
+
 ## Home directory
 
 When rebuilding an image, all state in the VM's home directory (`/home/dev/`) would get lost. Therefore, the home
@@ -41,7 +130,7 @@ stages with fixed parents, merged into the final stage with `COPY` **after** the
 - **`agents-sandbox-base`** — the embedded `debian:trixie-slim` tools block for a managed base, or your whole custom base
   (`FROM` image) for a custom base. For a managed base (`FROM .../runner-base...`), the final stage's `FROM` is replaced
   **in place** with the embedded tools block; for a custom base, any earlier build stages in your project Dockerfile are
-  preserved above it — so multi-stage project Dockerfiles are supported.
+  preserved before it — so multi-stage project Dockerfiles are supported.
 - **`agents-sandbox-toolbase`** — the internal stage the node, agent, and docker stages build on: a pinned
   `debian:trixie-slim` plus `curl`, `ca-certificates`, and `tar`. It is **not** part of the runner's lineage, so your base
   needs none of those binaries and the tool layers cache across bases.
@@ -77,7 +166,7 @@ installed at `/usr/share/licenses/msb-trust/LICENSE`. See
 [Secrets]({% link configuration/secrets.md %}#trusting-the-ca-in-applications) for which applications already work, and
 the [Java recipe]({% link recipes/java-ca-trust.md %}) for a worked example.
 
-## Base starting point
+## The base image contract
 
 By default the base tools block starts from `debian:trixie-slim` and installs the recommended CLI tools: `git`,
 `ripgrep`, `jq`, `yq`, `curl`, `wget`, `xz-utils`, `file`, `gawk`, `less`, `lz4`, `moreutils`, `net-tools`, `parallel`,
@@ -85,7 +174,7 @@ By default the base tools block starts from `debian:trixie-slim` and installs th
 
 A project Dockerfile whose `FROM` is any other image is treated as a **custom base**: your final `FROM` becomes the base
 stage the runner builds on, while the node, agent, and optional docker stages build on the tool base, independent of your
-image. For a custom base, the earlier build stages in your project Dockerfile are kept above the base stage. The custom
+image. For a custom base, the earlier build stages in your project Dockerfile are kept before the base stage. The custom
 base must meet these requirements:
 
 - **shadow-utils** providing `groupadd`, `useradd`, and `usermod` (used to create the `dev` user and docker group).
@@ -101,12 +190,12 @@ base must meet these requirements:
   `curl` reaches the daemon (the health probe, session and worktree calls, and notifications), `nohup`/`pkill` start and
   stop it. These are checked after your Dockerfile body runs, so they may be installed in the body or an earlier stage;
   if one is missing, the build fails and names the tool. `pi` and `claude-code` run no daemon and need none.
-- The recommended CLI tools above are documented for your convenience, not as requirements — as a custom base you install
+- The recommended CLI tools listed here are documented for your convenience, not as requirements — as a custom base you install
   your own.
 - A base that already provides docker, node, or the agent is left alone (idempotency), and a pre-created `dev` user is
   tolerated.
 
-Bases that do not provide the above **out of the box** are not supported without a project Dockerfile that installs
+Bases that do not provide these **out of the box** are not supported without a project Dockerfile that installs
 them — for example **Alpine** (busybox `adduser`/`addgroup`, no shadow-utils or bash) and **distroless**/ **scratch**
 (no shell or package manager).
 
@@ -118,7 +207,7 @@ contains the agent, the image builder resolves a real release version before ins
 provenance
 metadata, not an agent release version. A matching user-provided image is reused without resolving a release first.
 
-### Important: User context
+### User context
 
 The `dev` user (host UID/GID) is created as the first instruction of the final stage, and the image always ends with
 `USER dev` active. If the host GID is already taken by another group in the base image (e.g. macOS `staff`/20 vs
@@ -197,7 +286,7 @@ version for an unpinned build — opencode via its GitHub releases endpoint, ope
 inside the image. JS-based LSP servers are expected to run on the agent's embedded JS runtime (Bun) or on node that a
 project installs in its own Dockerfile.
 
-## Labels & provenance
+## Labels and provenance
 
 Each runner image carries these labels:
 
@@ -238,92 +327,3 @@ provenance value to the installer.
 
 `--agent-version` is available on `build`, `run`, and `shell`. On `run`/`shell` it pins the version baked into the image and
 skips the upgrade check. The deprecated `--opencode-version` alias remains `build`-only.
-
-## Building and Managing Images
-
-Build the image:
-
-```console
-agents-sandbox build        # builds if image is missing or base changed
-agents-sandbox build -r     # force rebuild
-```
-
-Preview the exact Dockerfile that would be built (without invoking docker):
-
-```console
-agents-sandbox build dockerfile                        # default agent, no docker
-agents-sandbox build dockerfile --docker               # with the Docker engine block
-agents-sandbox build dockerfile --agent-version 1.2.3  # pin the agent version in the preview
-```
-
-List cached images:
-
-```console
-agents-sandbox image list
-```
-
-The image name includes the checkout slug and Docker image hash, so changes to the Dockerfile automatically trigger a
-rebuild. When the resulting image digest differs from the image the existing project VM was booted from, the VM is
-recreated on the next run so it uses the new image (the home volume is preserved).
-
-Runner images are tagged **per agent** on both Docker and microsandbox. The `-latest` tag is namespaced by the agent,
-so each agent's image can be identified and updated independently:
-
-```
-agents-sandbox/runner-<slug>:<agent>-latest
-```
-
-For example, with a checkout slug of `my-project`, the opencode image is
-`agents-sandbox/runner-my-project:opencode-latest`
-and the pi image is `agents-sandbox/runner-my-project:pi-latest`.
-
-### Skip-build when unchanged
-
-The Docker build is skipped when the baked `org.agents-sandbox.dockerfile-id` label matches the current content. This
-label is a hash of the rendered Dockerfile, the build-context files it installs (the `/etc/profile.d` `PATH` merge
-script and the CA-trust helper), and the agent version, so an image already built from the exact same inputs is reused
-instead of being rebuilt.
-
-Each tool stage pins its version as an `ARG` default in the rendered Dockerfile (`NODE_VERSION`, the agent's
-`<AGENT>_VERSION`, `DOCKER_VERSION`). The version is therefore part of the build content, so bumping it changes the
-build identity and invalidates that stage's install layer — the agent layer re-runs on an agent upgrade while the node
-and Docker layers stay cached — regardless of how the builder tracks version build arguments.
-
-With `--log-level verbose`, the launcher reports why a build happens on every rebuild path. Before building, each image
-also records its individual inputs as `org.agents-sandbox.identity.*` labels (project Dockerfile hash, agent version, and
-Docker-in-Docker), so the verbose line names the changed input — for example `rebuilding runner image
-…: project Dockerfile changed; agent version changed` — or `forced by --rebuild` / `runner image not present locally`.
-A reuse logs `reusing runner image …: content identity unchanged`; an image without these identity labels (built by an
-older version) is reported as a generic content change.
-
-### Content-verified load
-
-Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content — the config digest (compared against
-the Docker image ID) or the `dockerfile-id` label. If the cached content no longer matches, the image is reloaded so the
-VM always boots from the correct image. At verbose level the load states whether the image was absent from the cache or
-its cached content was stale.
-
-## Image Lifecycle
-
-Images can be pruned via the `prune` command or, more targeted, the `image prune` subcommand:
-
-```console
-agents-sandbox image prune --dry-run   # see what's stale
-agents-sandbox image prune             # actually remove them (prompts; or pass --yes)
-```
-
-Prune prompts for confirmation before removing anything (defaulting to no). Pass `--yes` to skip the prompt;
-non-interactively, `--yes` is required. `--dry-run` only previews and never prompts.
-
-Pruning retains the `-latest` images **per agent** per live project and any image a kept VM still references, reclaiming
-every other ref — pre-redesign digest refs no sandbox uses, orphaned surplus images, and every ref of projects (slugs)
-that no longer have a live VM. It also runs microsandbox's native image-data prune so manifests and layers orphaned by a
-runner-image refresh are reclaimed after no VM references them. See [Commands]({% link commands.md %}) for details on
-the
-prune command.
-
-agents-sandbox also auto-prunes all resources that are ephemeral, unused or haven't been in use for more than 30 days by
-default. Cached runner images and home volumes are only pruned once they are older than the threshold, so a recently
-used project keeps its image and home state across restarts. See [Sandboxes]({% link sandboxes.md %}) for more
-information
-and [Configuration]({% link configuration/index.md %}) for how to configure auto-pruning.
