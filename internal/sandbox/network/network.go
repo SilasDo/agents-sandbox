@@ -20,7 +20,7 @@ const (
 	ProfilePrivate Profile = "private"
 	ProfileHost    Profile = "host"
 	ProfileNone    Profile = "none"
-	DefaultProfile Profile = ProfileNone
+	DefaultProfile Profile = ProfilePublic
 )
 
 func (p Profile) String() string { return string(p) }
@@ -50,7 +50,7 @@ func (p Policy) Empty() bool {
 	return p.Profile == "" && len(p.EgressAllow) == 0 && len(p.EgressDeny) == 0 && len(p.DNSServers) == 0
 }
 
-// Effective applies the secure default profile when no profile was selected.
+// Effective applies the default profile when no profile was selected.
 func (p Policy) Effective() Policy {
 	if p.Profile == "" {
 		p.Profile = DefaultProfile
@@ -116,7 +116,7 @@ func NormalizeDNSServers(in []string) ([]string, error) {
 // The `none` profile is an allowlist-only policy: egress is deny-by-default,
 // ingress is allowed, and only the gateway-DNS rule plus the explicit
 // egress-allow/egress-deny lists apply. It is not an airgap. A policy with no
-// profile, including one with only DNSServers set, defaults to none.
+// profile, including one with only DNSServers set, defaults to public.
 func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 	profile := p.Effective().Profile
 	var cfg *msbSdk.NetworkConfig

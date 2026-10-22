@@ -85,8 +85,8 @@ func TestBuildRunOptionsDefaults(t *testing.T) {
 	if opts.IdleTimeout != 10*time.Second {
 		t.Errorf("IdleTimeout = %v; want 10s", opts.IdleTimeout)
 	}
-	if opts.Network.Profile != network.ProfileNone {
-		t.Errorf("Network.Profile = %q; want %q by default", opts.Network.Profile, network.ProfileNone)
+	if opts.Network.Profile != network.ProfilePublic {
+		t.Errorf("Network.Profile = %q; want %q by default", opts.Network.Profile, network.ProfilePublic)
 	}
 }
 

@@ -50,10 +50,10 @@ jobs:
       - uses: actions/checkout@v7
       - id: list
         # One matrix entry per package, because `go test -fuzz` refuses more
-        # than one package per run and Go requires `-fuzz='^Fuzz'` to match
-        # exactly one fuzz test within a package. `name` is the package path
-        # with slashes flattened, which is unique across packages and safe to
-        # reuse in the cache key and the concurrency group.
+        # than one package per run; `make fuzz` runs each target in the package
+        # on its own, so a second target needs no entry here. `name` is the
+        # package path with slashes flattened, which is unique across packages
+        # and safe to reuse in the cache key and the concurrency group.
         run: |
           pkgs=$(grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u)
           if [ -z "$pkgs" ]; then

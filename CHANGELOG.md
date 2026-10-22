@@ -90,6 +90,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- Network: the default egress profile is now `public`, so a fresh sandbox reaches the internet (agent APIs, package
+  registries) with no configuration — a first run no longer has an unreachable agent (#279). The allowlist-only `none`
+  profile is unchanged and available explicitly, and any sandbox with no configured profile is recreated with the new
+  default on its next run, as any network-policy change already triggers a recreate.
 - **Breaking** Project identity is split by scope: a checkout-scoped slug (the resolved git common dir) keys the state
   directory, sandbox name, home volume, locks, and runner image tag, while a repo-scoped slug (the origin URL) keys the
   per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get

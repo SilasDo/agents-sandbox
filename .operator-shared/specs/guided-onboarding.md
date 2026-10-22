@@ -27,9 +27,10 @@ core intent: **secure by design and easy at the same time**. See "Relationship t
 3. **Host-first onboarding is the documented story.** A new user sets the agent up on the host; agents-sandbox detects
    that config and migrates it. The wizard makes this explicit; it does not silently do nothing when config is missing or
    unmigratable.
-4. **Least privilege by default, public only as an informed choice.** Network egress defaults to `none`
-   (deny-by-default + explicit allow). A user may consciously choose public access; agents-sandbox never silently broadens
-   or silently narrows.
+4. **Public egress by default, least privilege as an informed choice.** The launcher's default network profile is
+   `public` (outbound internet allowed, so a first run just works). The wizard treats least privilege — `none` plus the
+   derived required hosts — as the recommended posture, and agents-sandbox never silently broadens or silently narrows a
+   user's chosen policy.
 5. **Always explicit outcomes.** Every interactive first run ends in a named outcome (migrated, login hand-off,
    host-first hand-off, review hand-off, manual, dismissed). No path returns silently leaving the user with an
    unconfigured sandbox.

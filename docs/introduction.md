@@ -37,8 +37,9 @@ Host agent configuration is copied by default for convenience. For opencode, thi
 use secret-backed configuration when that is not acceptable. Project `.env` files are also visible because `/workspace` is
 shared; they are not hidden by the VM boundary.
 
-Network egress is denied by default. The `network:` configuration can grant access through an explicit profile or allow list, and
-`profile: none` provides deny-by-default egress with explicit allow rules. It is not a complete air gap, and network policy does
+Network egress uses the `public` profile by default, so the agent can reach its APIs and package registries. The `network:`
+configuration can narrow this: the `private` and `host` profiles, the allowlist-only `none` profile, or explicit allow/deny
+rules. `profile: none` is deny-by-default egress with explicit allow rules, not a complete air gap, and network policy does
 not change which files are shared with the guest.
 
 ## What this is for
