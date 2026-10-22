@@ -59,9 +59,9 @@ build eagerly via `EnsureImage` but load lazily, only when a VM is actually crea
 2. **`--agent-version <v>` pin** → `v`, no upgrade check.
 3. **No upgrade checker** → recorded version, no check.
 4. **No recorded baseline** → recover the version from the existing image's `agent-version` label
-   (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`) and reuse it with no prompt and no latest resolution;
+   (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`), then continue to the upgrade check below;
    only when that also yields nothing, empty (resolved to latest at build time).
-5. Otherwise → upgrade check; may prompt to rebuild with a newer release.
+5. **Recorded or recovered baseline** → upgrade check; may prompt to rebuild with a newer release.
 
 `--agent-version` is available on `build`, `run`, and `shell`. `--rebuild` is orthogonal: it only forces a clean rebuild of
 whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check because it always resolves a
