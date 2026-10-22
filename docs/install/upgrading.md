@@ -14,11 +14,11 @@ Up to 0.5.x, agents-sandbox used your system-wide microsandbox (`~/.microsandbox
 as its runtime. Starting with 0.6, it provisions its own isolated runtime under its
 data directory — `~/.local/share/agents-sandbox/msb`, or
 `$XDG_DATA_HOME/agents-sandbox/msb`. The runtime never uses `~/.microsandbox` and
-never writes to it; the one-time migration below reads it only to copy your old
+never writes to it; the one-time migration reads it only to copy your old
 volumes. It also no longer requires an `msb` command or any particular microsandbox
 version on your machine.
 
-Nothing broke in the upgrade: agents-sandbox simply stopped depending on software
+Nothing broke in the upgrade: agents-sandbox stopped depending on software
 it does not own. `agents-sandbox doctor` reports the private runtime home and its
 location.
 
@@ -110,7 +110,7 @@ you can also uninstall a system-wide microsandbox the way you installed it.
 
 ## A footnote: renamed flags and commands
 
-The renames below are a footnote to 0.6, not one of its headline stories. The
+These renames are a footnote to 0.6, not one of its headline stories. The
 old forms still work with a one-time warning;
 [Deprecations]({% link deprecations.md %}) has the full table and removal
 targets.

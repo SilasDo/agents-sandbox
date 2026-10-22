@@ -11,11 +11,16 @@ has_toc: false
 Hands-on how-tos for common workflows with agents-sandbox. Each recipe is
 self-contained, so you can jump straight to the one you need.
 
-## Agent Context (AGENTS.md)
+- [Connect Opencode Desktop]({% link recipes/connect-desktop.md %})
+- [Bare Checkout with Worktrees Inside]({% link recipes/bare-worktrees.md %})
+- [Trust the Sandbox CA in Java]({% link recipes/java-ca-trust.md %})
+- [Connect OpenChamber]({% link recipes/openchamber.md %})
+
+## Agent context (AGENTS.md)
 
 An `AGENTS.md` in the working directory can orient the agent on being in a sandbox VM, available tooling etc. Here is a minimal, self-explanatory example you can copy and adapt:
 
-```dotenv
+```markdown
 ## Environment
 
 You are running inside a sandbox VM, not on the host. Filesystem layout:
