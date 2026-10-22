@@ -15,13 +15,10 @@ request is sent to an allowed host over a connection whose destination can be ve
 This is different from an ordinary entry in `env`: values from `env` are copied into the VM as normal environment
 variables. Put credentials in `env.secret` or `env.secret.yaml`, never in `env`.
 
-## Quick start
-
-If you use OpenCode's `/connect` command, follow [OpenCode authentication](#opencode-authentication) below. That is the
-recommended workflow for credentials, which opencode stores in `auth.json`; it uses a literal microsandbox placeholder and an explicit
-`home:` mapping.
-
-The `provision-host-config: false` setting belongs in the top-level launcher configuration in `~/.config/agents-sandbox/config.yaml`.
+> **Note:** If you use OpenCode's `/connect` command, see [OpenCode authentication](#opencode-authentication). That is the
+> recommended workflow for credentials, which opencode stores in `auth.json`; it uses a literal microsandbox placeholder
+> and an explicit `home:` mapping. The `provision-host-config: false` setting shown there belongs in the top-level
+> launcher configuration in `~/.config/agents-sandbox/config.yaml`.
 
 ## Format
 
@@ -193,8 +190,8 @@ network:
 Use `agents-sandbox config home` to verify the `home:` mapping. `agents-sandbox config agent` shows the agent mirror and
 drop-in candidates, but does not show `home:` mappings or files already present in the persistent home volume.
 
-> **_NOTE:_**  After running `/connect` with opencode _inside_ the agents-sandbox, you can use `!` to switch to shell mode and then run
+> **Note:** After running `/connect` with opencode _inside_ the agents-sandbox, you can use `!` to switch to shell mode and then run
 > ```
 > cat ~/.local/share/opencode/auth.json
 > ```
-> to see the credentials stored in the sandbox (to store them outside in `env.secret.yaml`). 
+> to see the credentials stored in the sandbox (to store them outside in `env.secret.yaml`).
