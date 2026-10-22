@@ -90,8 +90,10 @@ test-race:
 # The seed corpus (and any committed crasher) already runs as part of `make
 # test`, so this only explores new inputs; it needs no network and no VM.
 # Targets are discovered from the test sources because `go test -fuzz` refuses
-# to run against more than one package at once. FUZZPKG=<package path> narrows
-# the run to one target, which is how CI splits the work per target.
+# to run against more than one package at once and accepts exactly one target
+# per run, so a package's targets are enumerated and each runs on its own.
+# FUZZPKG=<package path> narrows the run to one package's targets, which is how
+# CI splits the work.
 FUZZTIME ?= 30s
 FUZZPKG ?=
 fuzz:
@@ -99,8 +101,11 @@ fuzz:
 	if [ -n "$(FUZZPKG)" ]; then pkgs=$$(printf '%s\n' "$$pkgs" | grep -x -F "$(FUZZPKG)" || true); fi; \
 	if [ -z "$$pkgs" ]; then echo "no fuzz targets found for FUZZPKG='$(FUZZPKG)'"; exit 1; fi; \
 	for pkg in $$pkgs; do \
-		echo "== fuzz $$pkg"; \
-		CGO_ENABLED=1 go test -run='^$$' -fuzz='^Fuzz' -fuzztime=$(FUZZTIME) "./$$pkg" || exit 1; \
+		targets=$$(grep -rhoE '^func Fuzz[A-Za-z0-9_]+' --include='*_test.go' "$$pkg" | awk '{print $$2}' | sort -u); \
+		for target in $$targets; do \
+			echo "== fuzz $$pkg $$target"; \
+			CGO_ENABLED=1 go test -run='^$$' -fuzz="^$$target$$" -fuzztime=$(FUZZTIME) "./$$pkg" || exit 1; \
+		done; \
 	done
 
 # Integration tests across the module: the RenderDockerfile docker-build tests
