@@ -27,20 +27,35 @@ func TestConfigNoneAllowlistBase(t *testing.T) {
 	}
 }
 
-func TestConfigUnsetDefaultsToNone(t *testing.T) {
+func TestConfigUnsetDefaultsToPublic(t *testing.T) {
 	cfg, err := (Policy{}).Config()
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
+	// The public profile keeps the deny default action and adds an allow rule
+	// for the public destination group.
 	if cfg.DefaultEgress != msbSdk.PolicyActionDeny {
-		t.Fatalf("unset policy must deny egress by default, got %v", cfg.DefaultEgress)
+		t.Fatalf("unset policy must keep a deny default action, got %v", cfg.DefaultEgress)
 	}
 	if cfg.DefaultIngress != msbSdk.PolicyActionAllow {
 		t.Fatalf("unset policy must allow ingress, got %v", cfg.DefaultIngress)
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0].Destination != "host" {
-		t.Fatalf("unset policy should only allow gateway DNS, got %+v", cfg.Rules)
+	if !allowsPublic(cfg) {
+		t.Fatalf("unset policy should allow the public group, got %+v", cfg.Rules)
 	}
+}
+
+// allowsPublic reports whether the config carries an allow rule for the public
+// destination group.
+func allowsPublic(cfg *msbSdk.NetworkConfig) bool {
+	for _, r := range cfg.Rules {
+		if r.Direction == msbSdk.PolicyDirectionEgress &&
+			r.Action == msbSdk.PolicyActionAllow &&
+			r.Destination == "public" {
+			return true
+		}
+	}
+	return false
 }
 
 func TestConfigNoneSingleHostAllowlist(t *testing.T) {
@@ -349,20 +364,20 @@ func TestConfigDNSWithNoneProfile(t *testing.T) {
 	}
 }
 
-func TestConfigDNSOnlyDefaultsToNone(t *testing.T) {
+func TestConfigDNSOnlyDefaultsToPublic(t *testing.T) {
 	cfg, err := (Policy{DNSServers: []string{"1.1.1.1"}}).Config()
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
-	// A dns-only policy without a profile must remain deny-by-default.
+	// A dns-only policy without a profile uses the default public profile.
 	if cfg.DefaultEgress != msbSdk.PolicyActionDeny {
-		t.Fatalf("none default egress = %v, want deny", cfg.DefaultEgress)
+		t.Fatalf("dns-only default egress = %v, want deny", cfg.DefaultEgress)
 	}
 	if cfg.DNS == nil {
 		t.Fatal("dns-only policy must set DNS")
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0].Destination != "host" {
-		t.Fatalf("dns-only policy should only allow gateway DNS, got %+v", cfg.Rules)
+	if !allowsPublic(cfg) {
+		t.Fatalf("dns-only policy should use the default public profile, got %+v", cfg.Rules)
 	}
 }
 
@@ -387,9 +402,9 @@ func TestPolicyEmpty(t *testing.T) {
 	}
 }
 
-func TestFingerprintEmptyUsesNoneDefault(t *testing.T) {
-	if (Policy{}).Fingerprint() != (Policy{Profile: ProfileNone}).Fingerprint() {
-		t.Fatal("unset policy and explicit none policy must have the same fingerprint")
+func TestFingerprintEmptyUsesPublicDefault(t *testing.T) {
+	if (Policy{}).Fingerprint() != (Policy{Profile: ProfilePublic}).Fingerprint() {
+		t.Fatal("unset policy and explicit public policy must have the same fingerprint")
 	}
 }
 

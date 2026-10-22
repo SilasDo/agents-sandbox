@@ -47,7 +47,7 @@ type RunOptions struct {
 	// Notify is the resolved notify config for the session (channels + triggers).
 	Notify notify.Config
 	// Network is the resolved egress policy for the project VM. An unset profile
-	// is resolved to the deny-by-default none profile.
+	// is resolved to the public profile.
 	Network network.Policy
 	// Mounts are additional host directories bind-mounted at absolute guest paths.
 	Mounts mounts.Mounts

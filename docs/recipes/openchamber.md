@@ -130,7 +130,7 @@ projects; its tools, MCP servers, and plugins are those available inside the VM.
 are separate from `OPENCODE_PASSWORD` and are not passed to the agent. See OpenChamber's
 [Agent Control Tool documentation](https://github.com/openchamber/openchamber/blob/main/packages/docs/content/docs/agent-control-tool.mdx).
 
-The default `network: none` policy denies VM egress but is not an air gap: VM ingress is allowed. The published
+The VM is not an air gap: ingress is always allowed, and egress defaults to the `public` profile. The published
 OpenCode endpoint uses the fixed `opencode:opencode` credential. Keep that endpoint on `127.0.0.1`; do not use
 `--network host`, allow VM egress to host services, or pass an OpenChamber URL or credentials into the VM without
 reviewing the new access path. Any process that can reach the OpenCode endpoint can control that server.

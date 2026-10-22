@@ -1,6 +1,6 @@
 ---
 title: Networking
-description: "Control the sandbox VM's network egress: deny-by-default, public, private or host profiles and explicit allow lists."
+description: "Control the sandbox VM's network egress: a public default plus private, host, or the allowlist-only none profile and explicit allow lists."
 layout: default
 parent: Configuration
 nav_order: 30
@@ -10,18 +10,21 @@ nav_order: 30
 
 The `network:` block controls the VM's network policy. It is baked in at VM creation, so changing it recreates the VM
 (see [Resource Config Application]({% link configuration/launcher.md %}#resource-config-application)). When the whole `network:` block is absent,
-the VM uses the `none` profile and denies egress by default.
+the VM uses the `public` profile: outbound internet is allowed so the agent can reach its APIs and package registries. Use
+`profile: none` for a deny-by-default, allowlist-only policy.
 
 | Field               | Type     | Description                                                                                                          |
 |---------------------|----------|----------------------------------------------------------------------------------------------------------------------|
-| `profile`           | string   | `public`, `private`, `host`, or `none`. Defaults to `none` (deny-by-default) when unset.                             |
+| `profile`           | string   | `public`, `private`, `host`, or `none`. Defaults to `public` when unset.                                             |
 | `egress-allow`      | []string | Egress destinations to allow: `host`, a CIDR (e.g. `123.123.0.0/16`), or a `.suffix` (e.g. `.internal`).              |
 | `egress-deny`       | []string | Egress carve-outs, same destination forms as `egress-allow`. Emitted **before** allow rules (deny-before-allow).     |
 | `dns-servers`       | []string | DNS upstream resolvers: a bare IP (auto-appends `:53`) or `host:port`. Overrides microsandbox's default resolver.     |
 
+- `profile: public` (the default) allows egress to the public internet; `private` and `host` allow their whole destination
+  class.
 - `profile: none` is an **allowlist-only** profile: egress is deny-by-default, ingress is allowed, and only the
   gateway-DNS rule plus your explicit `egress-allow`/`egress-deny` lists apply. This is how you restrict the VM to a
-  specific set of hosts. The `public`/`private`/`host` profiles additionally allow their whole destination class.
+  specific set of hosts.
 - Rule order in the generated firewall: profile rules (including gateway DNS), then `egress-deny`, then `egress-allow`.
   So `egress-allow: [123.123.0.0/16]` together with `egress-deny: [123.123.123.0/24]` denies `123.123.123.5` while
   allowing `123.123.200.5` (a carve-out).
@@ -45,7 +48,7 @@ flag on `run`/`shell` (e.g. `agents-sandbox run --network public`). Precedence: 
 `host:port` / `ip:port` form is used as-is. An empty entry, a host without a port, or garbage is rejected at config-load
 time. It is also configurable via the `AGENTS_SANDBOX_NETWORK_DNS_SERVERS` environment variable (comma-separated, e.g.
 `1.1.1.1,8.8.8.8`) and the `--dns` flag on `run`/`shell` (comma-separated or repeated). Precedence:
-**flag > env > config**. A policy that sets only `dns-servers` (no `profile`) still gets the default `none` profile.
+**flag > env > config**. A policy that sets only `dns-servers` (no `profile`) still gets the default `public` profile.
 
 ```yaml
 network:
