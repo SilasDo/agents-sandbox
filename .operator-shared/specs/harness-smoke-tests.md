@@ -93,7 +93,7 @@ configuration or state. Each run creates one temp root, shared by all subtests (
   "sandbox runtime socket path is too long"; a fast unit test pins the budget (`msb` appends a fixed 50-byte
   suffix and rejects a home above 55 bytes on Linux, microsandbox v0.7.8);
 - the child environment is built from an **allowlist**, dropping inherited `HOME`, `XDG_*`,
-  `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; the only inherited variables kept are `PATH`, `TERM`, `LANG`,
+  `AGENTS_SANDBOX_*`, `OPENCODE_SANDBOX_*`, and `MSB_*`; the inherited variables kept include `PATH`, `TERM`, `LANG`,
   `LC_ALL`, `LC_CTYPE`, and the `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY` family. It sets `HOME=<root>/home`,
   `XDG_CONFIG_HOME=<root>/config`, `XDG_DATA_HOME=<root>/data`, `XDG_STATE_HOME=<root>/state`,
   `XDG_CACHE_HOME=<root>/cache`, and `TMPDIR=<root>/tmp`; `TERM` defaults to `xterm-256color` when the
