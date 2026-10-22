@@ -25,6 +25,7 @@ func TestUpgrade(t *testing.T) {
 	})
 
 	t.Run("dev build is rejected", func(t *testing.T) {
+		t.Setenv(upgradeAnyVersionEnv, "")
 		version = devVersion
 		updateCmd, _ := setupUpgradeTestFixtures(t)
 		err := updateCmd.RunE(updateCmd, nil)
@@ -111,6 +112,38 @@ func setupUpgradeTestFixtures(t *testing.T) (*cobra.Command, *termio.Mock) {
 	return upgradeCmd, &testUI
 }
 
+func TestUpgradeAnyVersionLever(t *testing.T) {
+	origVersion, origLatest := version, upgrade.LatestVersion
+	t.Cleanup(func() { version, upgrade.LatestVersion = origVersion, origLatest })
+
+	t.Run("dev build with the lever set is upgradable", func(t *testing.T) {
+		t.Setenv(upgradeAnyVersionEnv, "1")
+		version = devVersion
+		upgrade.LatestVersion = func(context.Context, upgrade.Channel) (string, error) { return "2.0.0", nil }
+		origUpdate := upgrade.Update
+		upgrade.Update = func(context.Context, string) error { return nil }
+		t.Cleanup(func() { upgrade.Update = origUpdate })
+
+		updateCmd, _ := setupUpgradeTestFixtures(t)
+		if err := updateCmd.RunE(updateCmd, nil); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("dev build without the lever is rejected", func(t *testing.T) {
+		t.Setenv(upgradeAnyVersionEnv, "")
+		version = devVersion
+		upgrade.LatestVersion = func(context.Context, upgrade.Channel) (string, error) {
+			t.Fatal("LatestVersion must not be consulted without the lever")
+			return "", nil
+		}
+		updateCmd, _ := setupUpgradeTestFixtures(t)
+		if err := updateCmd.RunE(updateCmd, nil); err == nil {
+			t.Fatal("expected a dev build to be rejected")
+		}
+	})
+}
+
 func TestUpgradeChannelSelection(t *testing.T) {
 	origVersion, origLatest, origUpdate := version, upgrade.LatestVersion, upgrade.Update
 	t.Cleanup(func() { version, upgrade.LatestVersion, upgrade.Update = origVersion, origLatest, origUpdate })
@@ -190,6 +223,7 @@ func TestCheckForUpgrade(t *testing.T) {
 	})
 
 	t.Run("dev version no-ops", func(t *testing.T) {
+		t.Setenv(upgradeAnyVersionEnv, "")
 		version = devVersion
 		r := launcherconfig.NewResolverWithConfig(launcherconfig.Config{})
 		exit, err := checkForUpgrade(context.Background(), r, &termio.Mock{})

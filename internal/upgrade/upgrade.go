@@ -92,6 +92,12 @@ type Options struct {
 	// Channel selects which releases to offer. The zero value means stable.
 	Channel Channel
 
+	// AllowAnyVersion is the undocumented dev-build lever: with it set, an
+	// unparseable current version (empty, "dev", or garbage) counts as older
+	// than any release, so a locally built binary exercises the real check and
+	// install. It is never set from config or a flag.
+	AllowAnyVersion bool
+
 	// Store persists the launcher's update-check state. When nil, the check
 	// runs against an in-memory store: it still works, but nothing outlives
 	// the process.
@@ -121,7 +127,7 @@ func (o Options) store() Store {
 // configured interval below MinInterval is a misconfiguration and fails
 // loudly rather than being silently clamped.
 func Check(ctx context.Context, opts Options) (Result, error) {
-	if opts.CurrentVersion == "" || opts.CurrentVersion == devVersion {
+	if !opts.AllowAnyVersion && (opts.CurrentVersion == "" || opts.CurrentVersion == devVersion) {
 		return Result{}, nil
 	}
 	if InstalledViaHomebrew() {
@@ -137,6 +143,12 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		interval = DefaultInterval
 	case interval < MinInterval:
 		return Result{}, fmt.Errorf("upgrade interval %s is below the minimum %s", interval, MinInterval)
+	}
+	// The dev lever reduces the check window to the floor rather than removing
+	// the throttle: the canary channel costs two GitHub calls per check, and an
+	// unthrottled check would hit the unauthenticated rate limit.
+	if opts.AllowAnyVersion && interval > MinInterval {
+		interval = MinInterval
 	}
 	updateFunc := opts.UpdateFunc
 	if updateFunc == nil {
@@ -174,7 +186,7 @@ func Check(ctx context.Context, opts Options) (Result, error) {
 		return Result{}, nil
 	}
 
-	newer, err := isNewer(opts.CurrentVersion, latest)
+	newer, err := newerThan(opts.CurrentVersion, latest, opts.AllowAnyVersion)
 	if err != nil {
 		opts.UI.Verbosef("upgrade check failed: %v", err)
 		return Result{}, nil
@@ -226,6 +238,28 @@ func isNewer(current, latest string) (bool, error) {
 		return false, fmt.Errorf("parse latest version %q: %w", latest, err)
 	}
 	return cv.LessThan(lv), nil
+}
+
+// isParseable reports whether s is a semantic version, with or without a
+// leading "v".
+func isParseable(s string) bool {
+	_, err := semver.NewVersion(strings.TrimPrefix(s, "v"))
+	return err == nil
+}
+
+// newerThan reports whether latest should be offered over current. With
+// allowAnyVersion an unparseable current version (empty, "dev", or garbage)
+// counts as older than any parseable release. That is the undocumented dev
+// lever: it is what lets a locally built binary exercise the real check and
+// install instead of being skipped.
+func newerThan(current, latest string, allowAnyVersion bool) (bool, error) {
+	if allowAnyVersion && !isParseable(current) {
+		if !isParseable(latest) {
+			return false, fmt.Errorf("parse latest version %q", latest)
+		}
+		return true, nil
+	}
+	return isNewer(current, latest)
 }
 
 // applyMode handles a detected newer release according to the configured mode
@@ -330,6 +364,10 @@ func prompt(ui termio.UI, current, latest string) promptAction {
 type UpgradeOptions struct {
 	CurrentVersion string
 	Channel        Channel
+
+	// AllowAnyVersion is the undocumented dev-build lever, mirroring
+	// Options.AllowAnyVersion: it lets a locally built binary install a release.
+	AllowAnyVersion bool
 }
 
 // Upgrade checks for a newer release than opts.CurrentVersion and installs it
@@ -338,7 +376,7 @@ type UpgradeOptions struct {
 // to `brew upgrade` instead of replacing the keg binary out from under
 // Homebrew.
 func Upgrade(ctx context.Context, ui termio.UI, opts UpgradeOptions) error {
-	if opts.CurrentVersion == "" || opts.CurrentVersion == devVersion {
+	if !opts.AllowAnyVersion && (opts.CurrentVersion == "" || opts.CurrentVersion == devVersion) {
 		return errors.New("cannot upgrade a development build; use the released binary")
 	}
 	if InstalledViaHomebrew() {
@@ -349,7 +387,7 @@ func Upgrade(ctx context.Context, ui termio.UI, opts UpgradeOptions) error {
 	if err != nil {
 		return err
 	}
-	newer, err := isNewer(opts.CurrentVersion, latest)
+	newer, err := newerThan(opts.CurrentVersion, latest, opts.AllowAnyVersion)
 	if err != nil {
 		return err
 	}

@@ -656,6 +656,92 @@ func TestUpgrade(t *testing.T) {
 	})
 }
 
+func TestNewerThan(t *testing.T) {
+	tests := []struct {
+		name     string
+		current  string
+		latest   string
+		allowAny bool
+		want     bool
+		wantErr  bool
+	}{
+		{name: "normal newer", current: "1.0.0", latest: "1.1.0", want: true},
+		{name: "normal not newer", current: "1.1.0", latest: "1.1.0"},
+		{name: "dev ignored without the lever", current: "dev", latest: "1.1.0", wantErr: true},
+		{name: "empty ignored without the lever", current: "", latest: "1.1.0", wantErr: true},
+		{name: "dev offered with the lever", current: "dev", latest: "1.1.0", allowAny: true, want: true},
+		{name: "empty offered with the lever", current: "", latest: "1.1.0", allowAny: true, want: true},
+		{name: "garbage offered with the lever", current: "not-a-version", latest: "1.1.0", allowAny: true, want: true},
+		{name: "unparsable latest still errors", current: "dev", latest: "nope", allowAny: true, wantErr: true},
+		{name: "parseable current is unaffected by the lever", current: "1.1.0", latest: "1.1.0", allowAny: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := newerThan(tc.current, tc.latest, tc.allowAny)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got %v", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("newerThan(%q,%q,%v) = %v, want %v", tc.current, tc.latest, tc.allowAny, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCheckDevLeverOffersRelease(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	opts := mockOptions(t, "dev", ModeNotify)
+	opts.AllowAnyVersion = true
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate || res.Latest != "2.0.0" {
+		t.Fatalf("expected the dev lever to offer 2.0.0, got %+v", res)
+	}
+}
+
+func TestCheckDevLeverShortensInterval(t *testing.T) {
+	serveLatest(t, "2.0.0", nil)
+	opts := mockOptions(t, "dev", ModeNotify)
+	opts.AllowAnyVersion = true
+	opts.Interval = DefaultInterval
+	// Checked two hours ago: within the default window, outside the capped one.
+	opts.Store = &fakeStore{state: LauncherState{LastChecked: time.Now().Add(-2 * time.Hour)}}
+	res, err := Check(context.Background(), opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !res.HasUpdate {
+		t.Fatalf("the dev lever must cap the interval at MinInterval, got %+v", res)
+	}
+}
+
+func TestUpgradeDevLeverAllowed(t *testing.T) {
+	origLatest, origUpdate := LatestVersion, Update
+	LatestVersion = func(context.Context, Channel) (string, error) { return "2.0.0", nil }
+	var installed string
+	Update = func(_ context.Context, latest string) error { installed = latest; return nil }
+	t.Cleanup(func() { LatestVersion, Update = origLatest, origUpdate })
+
+	if err := Upgrade(
+		context.Background(),
+		&termio.Mock{},
+		UpgradeOptions{CurrentVersion: "dev", AllowAnyVersion: true},
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if installed != "2.0.0" {
+		t.Fatalf("installed = %q, want 2.0.0", installed)
+	}
+}
+
 func TestIsNewer(t *testing.T) {
 	tests := []struct {
 		current, latest string

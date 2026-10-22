@@ -250,8 +250,9 @@ func buildUpgradeCmd(ui termio.UI) *cobra.Command {
 				channel = parsed
 			}
 			return upgrade.Upgrade(cmd.Context(), ui, upgrade.UpgradeOptions{
-				CurrentVersion: version,
-				Channel:        channel,
+				CurrentVersion:  version,
+				Channel:         channel,
+				AllowAnyVersion: upgradeAnyVersionEnabled(),
 			})
 		},
 	}
