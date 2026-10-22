@@ -30,22 +30,18 @@ func buildPruneState(ctx context.Context, age time.Duration) (PruneState, error)
 		return result, err
 	}
 	for _, h := range handles {
-		name := h.Name()
-		if !naming.IsLauncherSandbox(name) {
-			continue
-		}
-		info := naming.ArtifactFor(name)
+		info := naming.ParseVMName(h.Name())
 		key := state.Key{Slug: info.Slug, Agent: info.Agent}
 		if key.Slug == "" {
 			continue
 		}
-		if prunable(name, h, age) {
+		if prunable(info.Task, h, age) {
 			result.ToPrune[key] = h
 			continue
 		}
 		// A project VM that is not being pruned counts as a kept VM. Task
 		// sandboxes are transient workers and never represent a kept project.
-		if naming.IsProjectSandbox(name) {
+		if !info.Task {
 			result.ToKeep[key] = h
 		}
 	}
@@ -54,9 +50,9 @@ func buildPruneState(ctx context.Context, age time.Duration) (PruneState, error)
 
 // prunable reports whether a sandbox should be reclaimed: an inactive project VM
 // older than the age threshold, or any stopped task sandbox (transient workers).
-func prunable(name string, h msb.SandboxHandle, age time.Duration) bool {
+func prunable(isTask bool, h msb.SandboxHandle, age time.Duration) bool {
 	if !msb.IsSandboxInactive(h.Status()) {
 		return false
 	}
-	return time.Since(h.UpdatedAt()) >= age || naming.IsLegacyTaskSandbox(name)
+	return time.Since(h.UpdatedAt()) >= age || isTask
 }

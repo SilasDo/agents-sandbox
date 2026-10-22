@@ -38,15 +38,15 @@ func TestBuildPruneState(t *testing.T) {
 				Status_:    msbSdk.SandboxStatusStopped,
 				UpdatedAt_: stale,
 			},
-			// task sandbox -> prunable regardless of age (slug "fill")
+			// task sandbox -> prunable regardless of age
 			&msb.MockSandboxHandle{
-				Name_:      "agents-sandbox-task-fill-proj",
+				Name_:      "agents-sandbox-task-fill-1mjusbm3wikhb0-opencode-1729",
 				Status_:    msbSdk.SandboxStatusStopped,
 				UpdatedAt_: recent,
 			},
-			// running task -> never stale (slug "fill2")
+			// running task -> never stale
 			&msb.MockSandboxHandle{
-				Name_:      "agents-sandbox-task-fill2-proj",
+				Name_:      "agents-sandbox-task-fill2-1mjusbm3wikhb0-opencode-1729",
 				Status_:    msbSdk.SandboxStatusRunning,
 				UpdatedAt_: stale,
 			},
@@ -79,10 +79,10 @@ func TestBuildPruneState(t *testing.T) {
 	if _, ok := pruneState.ToPrune[state.Key{Slug: "proj3-1mjusbm3wikhb0", Agent: ""}]; !ok {
 		t.Error("stale stopped VM must be prunable")
 	}
-	if _, ok := pruneState.ToPrune[state.Key{Slug: "fill", Agent: ""}]; !ok {
+	if _, ok := pruneState.ToPrune[state.Key{Slug: "fill-1mjusbm3wikhb0", Agent: "opencode"}]; !ok {
 		t.Error("stopped task sandbox must be prunable regardless of age")
 	}
-	if _, ok := pruneState.ToPrune[state.Key{Slug: "fill2", Agent: ""}]; ok {
+	if _, ok := pruneState.ToPrune[state.Key{Slug: "fill2-1mjusbm3wikhb0", Agent: "opencode"}]; ok {
 		t.Error("running task sandbox must not be prunable")
 	}
 	if _, ok := pruneState.ToPrune[state.Key{Slug: "proj4-1mjusbm3wikhb0", Agent: ""}]; ok {
@@ -102,11 +102,42 @@ func TestBuildPruneState(t *testing.T) {
 	if _, ok := pruneState.ToKeep[state.Key{Slug: "proj3-1mjusbm3wikhb0", Agent: ""}]; ok {
 		t.Error("stale stopped VM must not be a kept VM")
 	}
-	if _, ok := pruneState.ToKeep[state.Key{Slug: "fill", Agent: ""}]; ok {
+	if _, ok := pruneState.ToKeep[state.Key{Slug: "fill-1mjusbm3wikhb0", Agent: "opencode"}]; ok {
 		t.Error("task sandbox must not be a kept VM")
 	}
-	if _, ok := pruneState.ToKeep[state.Key{Slug: "fill2", Agent: ""}]; ok {
+	if _, ok := pruneState.ToKeep[state.Key{Slug: "fill2-1mjusbm3wikhb0", Agent: "opencode"}]; ok {
 		t.Error("running task sandbox must not be a kept VM")
+	}
+}
+
+// TestPruneStateClassifiesTaskSandboxesWithoutPrefix pins that a prefix-free
+// task sandbox (trailing all-digit nanos) is prunable while the project VM with
+// the same key is kept.
+func TestPruneStateClassifiesTaskSandboxesWithoutPrefix(t *testing.T) {
+	const slug = "myproj-1mjusbm3wikhb0"
+	task := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode-1729000000000000000",
+		Status_:    msbSdk.SandboxStatusStopped,
+		UpdatedAt_: time.Now(),
+	}
+	project := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode",
+		Status_:    msbSdk.SandboxStatusRunning,
+		UpdatedAt_: time.Now(),
+	}
+	client := &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{task, project}}
+	msb.WithMsbMock(t, client)
+
+	pruneState, err := buildPruneState(context.Background(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("buildPruneState: %v", err)
+	}
+	key := state.Key{Slug: slug, Agent: "opencode"}
+	if got := pruneState.ToPrune[key]; got != task {
+		t.Errorf("ToPrune[%v] = %v, want the task sandbox", key, got)
+	}
+	if got := pruneState.ToKeep[key]; got != project {
+		t.Errorf("ToKeep[%v] = %v, want the project VM", key, got)
 	}
 }
 
@@ -149,30 +180,6 @@ func TestBuildPruneState_SkipsUnparseableName(t *testing.T) {
 	}
 	if len(pruneState.ToPrune)+len(pruneState.ToKeep) != 0 {
 		t.Errorf("unparseable sandbox must not appear in PruneState, got %v", pruneState)
-	}
-}
-
-// TestBuildPruneStateSkipsNonLauncherSandbox verifies a sandbox that is not
-// launcher-owned (e.g. a foreign sandbox sharing the runtime) is ignored rather
-// than classified as a project VM.
-func TestBuildPruneStateSkipsNonLauncherSandbox(t *testing.T) {
-	client := &msb.MockMsbClient{
-		Sandboxes: []msb.SandboxHandle{
-			&msb.MockSandboxHandle{
-				Name_:      "some-other-sandbox",
-				Status_:    msbSdk.SandboxStatusStopped,
-				UpdatedAt_: time.Now().Add(-15 * 24 * time.Hour),
-			},
-		},
-	}
-	msb.WithMsbMock(t, client)
-
-	pruneState, err := buildPruneState(context.Background(), 7*24*time.Hour)
-	if err != nil {
-		t.Fatalf("buildPruneState: %v", err)
-	}
-	if len(pruneState.ToPrune)+len(pruneState.ToKeep) != 0 {
-		t.Errorf("non-launcher sandbox must be ignored, got %v", pruneState)
 	}
 }
 

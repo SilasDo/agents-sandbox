@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -145,14 +144,12 @@ func CmdEdit(
 				return fmt.Errorf("load runner image: %w", err)
 			}
 			spin := ui.Spinner("Starting interactive session with both volumes")
-			editSandboxName := naming.TaskPrefix + k.Slug + "-" + k.Agent + "-" + strconv.FormatInt(
-				time.Now().UnixNano(),
-				10,
-			)
+			editSandboxName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 			editOldMount := msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{})
 			editNewMount := msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{})
 			editSb, editErr := client.CreateSandbox(ctx, editSandboxName,
 				msbSdk.WithImage(info.Tag),
+				msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
 				msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 					srcMount: editOldMount,
 					dstMount: editNewMount,
