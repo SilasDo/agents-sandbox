@@ -52,5 +52,5 @@ Readiness is health-probe based (`docker info` / the agent health endpoint) with
 and a `Job.Logs` tail on failure; no live `FollowLogs`. Idempotency is health-probe based, with stale jobs
 rediscovered by command match (`ListJobs(WithAllJobs)` → `GetJob` → `Kill`); no persisted job IDs. dockerd keeps
 a minimal `containerd`/pid/socket residue cleanup. `agent.DaemonProvider` exposes a structured
-`DaemonCommand{Binary,Args}`. Full detail is in git history (PR #191 / commit `a482e8f`) and
-`.operator-shared/plans/2026-10-16-detached-jobs.md` on the reverted branch.
+`DaemonCommand{Binary,Args}`. Full detail is in git history (PR #191 / commit `a482e8f` and the
+reverted branch, where the plan document lived).

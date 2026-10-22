@@ -7,23 +7,15 @@ read_if: Implementing or reviewing runtime-home decoupling, the private `MSB_HOM
 
 Date: 2026-10-15
 
-Status: **implemented** on `opencode/runtime-home-decoupling` (PR #142); pending
-merge. The post-migration legacy-runtime notice is implemented on
-`issue-207-legacy-runtime-notice` (PR #239). The copy state model is the
-host-owned `migrations` registry in
-"Persisted state". An earlier design tracked completion with an in-volume
-sentinel and no cross-process locking; review found it unsafe (guest-controlled
-completion, symlink-followable marker write, concurrent sessions deleting each
-other's copy), and it was superseded by the registry (plan
-[2026-10-15-runtime-home-migration-state](../plans/2026-10-15-runtime-home-migration-state.md)).
-A second review round found the copy could overwrite or silently adopt a present
-private volume of unclear status, or complete while a usable partial remained;
-the "no unusable partial" invariant, the `copied`/`kept`/`excluded` split, and the
-ambiguous-state offer below resolve it (plan
-[2026-10-15-runtime-home-migration-state-review-fixes](../plans/2026-10-15-runtime-home-migration-state-review-fixes.md)).
-The ownership-mapping verification under "Open verification" still remains. The
-original implementation plan is
-[2026-10-13-runtime-home-decoupling](../plans/2026-10-13-runtime-home-decoupling.md).
+Status: **implemented**; the copy state model is the host-owned `migrations`
+registry described in "Persisted state". An earlier design tracked completion
+with an in-volume sentinel and no cross-process locking; it was unsafe
+(guest-controlled completion, a symlink-followable marker write, concurrent
+sessions deleting each other's copy) and the registry replaced it. The registry
+also never adopts a present private volume of unclear status: the "no unusable
+partial" invariant, the `copied`/`kept`/`excluded` split, and the ambiguous-state
+offer below are the resolution. The one successful manual ownership-mapping
+verification is recorded under "Verification".
 
 ## Intent
 
@@ -106,7 +98,9 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
 ### Private runtime home
 
 - Location: the tool's data dir, `$XDG_DATA_HOME/agents-sandbox/msb`
-  (`~/.local/share/agents-sandbox/msb`). Volumes are persistent user data, not
+  (`~/.local/share/agents-sandbox/msb`). `configpaths.UserDataDir()` resolves
+  `$XDG_DATA_HOME/agents-sandbox`; the private home is its `msb` subdirectory.
+  Volumes are persistent user data, not
   cache, so the data dir is the right scope (not the cache dir; the state dir is
   semantically for state).
 - agents-sandbox sets `MSB_HOME` to this directory at CLI startup, before any
@@ -232,7 +226,8 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   VM — a foreign home's volume cannot be mounted by our runtime anyway.
 - Source selection is by name, not by our per-project state: any directory under
   `~/.microsandbox/volumes/` matching `agents-sandbox-home-*` that is absent from
-  the private home. No layout guessing beyond this convention.
+  the private home (`runtime.LegacyHome()` resolves the legacy home, `~/.microsandbox`).
+  No layout guessing beyond this convention.
 - Failure scope governs exclusion (see also the "no unusable partial" invariant
   under "Host-side copy mechanics"):
   - A **volume-scoped** failure (source unreadable, a file's permission denied,
@@ -252,7 +247,8 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   would keep returning.
 - `--yes` and non-interactive runs never accept the copy and cannot make the
   decision, so while the migration has volumes to copy or unclear volumes present
-  and is undismissed they **block before starting a fresh home**, printing
+  and is undismissed they **block before starting a fresh home** (returning
+  `runtimemigration.ErrMigrationPending`), printing
   guidance to run an interactive `run`/`shell` once or clean up with
   `agents-sandbox volume remove`. `--yes` is treated as non-interactive for this
   offer, matching the precedent that `--yes` does not auto-select the (now
@@ -281,9 +277,10 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   no chown. The home volume is mounted without an `Owner` override
   (`internal/sandbox/vm`), so the guest owner presented for host files comes from
   the runtime's mount default (stat-virtualization overlay / fallback owner).
-- **Unverified:** that this presentation makes a copied volume readable/writable
-  as `dev` end-to-end has not been exercised under KVM (see "Open verification").
-  The `chown -R dev:dev` in the throwaway-VM copy path
+- **Verified manually (2026-10-16):** this presentation does make a copied
+  volume readable and writable as `dev` end-to-end, so no ownership-mapping step
+  is needed (see "Verification"; a single successful KVM run, not an automated
+  proof). The `chown -R dev:dev` in the throwaway-VM copy path
   (`internal/sandbox/volume/volume.go`) is a **guest-side** normalization to
   `dev` after a guest-side copy — consistent with `dev` being the owner, not
   evidence of a host→guest translation.
@@ -310,10 +307,13 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   this campaign while the others proceed. Previously completed volumes are
   recorded in `copied` and simply stop being necessary; user-kept volumes are
   recorded in `kept`.
-- Cross-process safety: the campaign holds a host-only advisory lock
-  (`state.FlockExclusive`) for its duration and (re-)derives necessity under the
+- Cross-process safety: the campaign holds the shared host-only root-state lock
+  (`state.WithRootState`, the same lock every launcher-global writer takes) for
+  its duration and (re-)derives necessity under the
   lock, so a second session sees the in-flight status and never discards or
-  re-copies a volume another session is copying.
+  re-copies a volume another session is copying. The root lock is deliberately
+  held across the msb copy I/O, so a non-blocking acquirer (the upgrade check,
+  the legacy updater fold) defers to a later run rather than racing a live copy.
 - Crash safety: a copy stopped by a crash or kill runs no cleanup, but the
   persisted status is `copying`, so the next session treats every present
   private volume not in `copied`/`kept`/`excluded` as an unambiguous partial: it
@@ -377,12 +377,15 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   Terminal words are permanent with no re-arm (unlike onboarding's source-hash
   re-arm); after `completed` or `dismissed`, agents-sandbox never re-offers and
   never re-probes.
-- Concurrent sessions are serialized by a host-only advisory lock
-  (`state.FlockExclusive`) held for the campaign, at a path under the private
-  home (`$MSB_HOME/.agents-sandbox/migration.lock`). The flock auto-releases on
+- Concurrent sessions are serialized by the shared host-only root-state lock
+  (`state.WithRootState`; the private `migration.lock` was retired in its favor).
+  The flock auto-releases on
   process exit, so a crashed holder never pins the campaign. Necessity is
   (re-)derived under the lock; a second session therefore sees `copying` and
-  never clobbers a live copy.
+  never clobbers a live copy. The two terminal writes — the finalize to
+  `completed` and the `dismissed` write — take the same lock and re-read the entry
+  before writing, so a dismissal never overwrites a campaign that just finished
+  (and vice versa).
 - Completion is **host-owned**, never a file inside the guest-writable volume.
   The original design's in-volume `.agents-sandbox-copy-complete` sentinel is
   removed: it lived in a directory the guest can write, could be deleted to make
@@ -391,8 +394,8 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   `migrations` entry replaces it as the sole completion record.
 - Only the terminal words are long-lived (one line per migration the tool ships,
   not per run). There is no new state file: the registry lives in the already-
-  existing root `state.yaml`; the lock file is the only new path and is
-  transient. Because the PR has not shipped, the previous
+  existing root `state.yaml`, and the campaign reuses the shared root-state lock
+  rather than adding a path. Because the PR had not shipped, the previous
   `runtime_home_migration.dismissed` key is replaced outright — no compat
   shim.
 
@@ -457,14 +460,22 @@ any `msb` version they like without affecting agents-sandbox, and vice versa.
   uncopied) rather than risk printing one that would delete data. An unreadable legacy
   `volumes` directory is handled conservatively for the same reason: it still counts as
   absent for *firing* detection, but while it cannot be listed the notice withholds the
-  wholesale command too, because unlisted home volumes may still hold data.
+  wholesale command too, because unlisted home volumes may still hold data. The notice
+  reads the persisted registry itself at render time rather than a snapshot taken by
+  `Offer`, so a campaign that finalized moments earlier in the same session is reflected
+  (no over-warning) and the derivation still works on the dismiss path and on later
+  sessions. Names printed by the notice are sanitized (control characters, including
+  newlines and ESC, are stripped), so a hostile legacy-home directory name cannot forge
+  notice lines or emit terminal escapes.
 - **Persisted once-ever flag.** A second `migrations` registry entry,
   `legacy_runtime_notice`, records acknowledgment as a new terminal `acknowledged`
   status; absence is the pending state. This keeps the "absent = pending, terminal =
   permanent" semantics of the registry rather than adding a bool to `runtime_home`. The
   value's presence is the signal — `Offer` reads the entry only for its existence, never its
   status — so `acknowledged` documents intent; it is never written to the `runtime_home`
-  entry.
+  entry. The acknowledgment is written in its own root-state transaction *after* the
+  keypress (re-reading first, and a no-op when the entry already exists), so the root lock
+  is never held across the user interaction.
 - **Non-interactive sessions.** They cannot acknowledge, so they print a bounded one-line
   informational form (no removal commands) through the same ungated primitive and must not
   mark the notice acknowledged; an interactive session still surfaces the full notice. This

@@ -1,6 +1,6 @@
 ---
-description: Contract for reading a live project VM's mounts. The microsandbox Go SDK's `SandboxConfig.UnmarshalJSON` drops the persisted `mounts`, so `cfg.Volumes` is always empty on a read-back; the launcher instead decodes the persisted config JSON through `msb.SandboxHandle.ConfigMounts()`. Every consumer (the reconfig tmp-size/workspace-quota/home-volume detectors, home-volume recovery, and `sandbox inspect`) reads mounts from that source and degrades rather than failing when it is unavailable.
-read_if: Reading or changing how the launcher learns a live VM's mounts, or diagnosing an empty `cfg.Volumes` / `mounts (0)` / silently ignored `tmp_size` or `workspace-quota` change (`internal/sandbox/reconfig/plan.go`, `internal/sandbox/vm/inspect.go`, `liveHomeVolume`).
+description: Contract for reading a live project VM's mounts. The microsandbox Go SDK's `SandboxConfig.UnmarshalJSON` drops the persisted `mounts`, so `cfg.Volumes` is always empty on a read-back; the launcher instead decodes the persisted config JSON through `msb.SandboxHandle.ConfigMounts()`. Consumers — the reconfig tmp-size/workspace-quota/home-volume detectors, home-volume recovery via `vm.projectVMHomeVolume` (fail-closed), and `sandbox inspect` — all read mounts from that source; `reconfig` and `vm.liveHomeVolume` degrade rather than fail when it is unavailable.
+read_if: Reading or changing how the launcher learns a live VM's mounts, or diagnosing an empty `cfg.Volumes` / `mounts (0)` / silently ignored `tmp_size` or `workspace-quota` change (`internal/sandbox/reconfig/plan.go`, `internal/sandbox/vm/inspect.go`, `projectVMHomeVolume`/`liveHomeVolume`).
 ---
 
 # Live VM mounts come from the persisted config JSON
@@ -35,20 +35,27 @@ lossless for everything the launcher sets.
   consumer that needs mounts applies `ConfigMounts()` first (this is the one place the SDK gap is worked around).
 - `ParseConfigMounts` keys by guest path and maps the five upstream variants onto the SDK's `MountConfig` through its
   `Mount` factories: `Bind` → `quota_mib` + `options.readonly`, `Tmpfs` → `size_mib`, `Named` → `name`, `Owned` and
-  `DiskImage` for completeness (`DiskImage`'s `format` is lowercased, because upstream serializes `DiskImageFormat` as
-  the bare variant name — `"Raw"` — while `DiskOptions.Format` is the lowercase hint). An entry whose `type` is
-  unrecognized (a newer runtime) is skipped rather than failing the whole read; a `guest`-less entry, invalid JSON, or
-  an empty `config_json` is an error.
+  `DiskImage` for completeness. `Owned`'s `storage.kind` maps upstream's `"directory"`/`"disk"` onto
+  `VolumeKindDir`/`VolumeKindDisk` — never passed through, because the SDK spells the directory kind `"dir"`, not
+  `"directory"`; `DiskImage`'s `format` is lowercased, because upstream serializes `DiskImageFormat` as the bare
+  variant name — `"Raw"` — while `DiskOptions.Format` is the lowercase hint. An entry whose `type` is unrecognized (a
+  newer runtime) is skipped rather than failing the whole read; a `guest`-less entry, invalid JSON, or an empty
+  `config_json` is an error. A duplicated `guest` path resolves deterministically — the last entry wins — so a
+  repeated mount cannot make the decision output order-dependent (see `reconfig-decision.md`).
 - Consumers and what they read:
   - `reconfig.PlanReconfig` via `decideReconfig` — `tmpSizeChange` (`size_mib` at `/tmp`), `workspaceQuotaChange`
-    (`quota_mib` at `/workspace`), `homeVolumeChange` (the `name` of the `Named` mount at `/home/dev`).
-  - `vm.liveHomeVolume` — the same `Named` mount, for home-volume recovery (`specs/home-volume-recovery.md`, #219).
+    (`quota_mib` at `/workspace`), `homeVolumeChange` (the `name` of the `Named` mount at `/home/dev`). It degrades,
+    never fails: a parse/lookup failure is logged and the run proceeds with no mounts.
+  - `vm.projectVMHomeVolume` — the same `Named` mount for home-volume recovery (#219,
+    `specs/home-volume-recovery.md`); the shared reader behind both `vm.liveHomeVolume` and the #144 adoption path.
+    It returns `(volume, exists, err)` and is **fail-closed**: a mounts-read failure returns `exists=true` with the
+    error, so a caller that might destroy the VM on the strength of the result can fail closed instead of dropping its
+    volume. `vm.liveHomeVolume` is a verbose-logging wrapper that discards the error (so home-volume recovery and the
+    dry-run preview keep the previous degrade behaviour), while `vm.legacyAdoptionPending` propagates it and aborts
+    adoption.
   - `vm.InspectSandbox` — the mount list rendered by `sandbox inspect`
-    (`specs/runtime-management-commands.md`, Slice 3).
-- `reconfig.PlanReconfig` via `decideReconfig` and `vm.liveHomeVolume` **degrade, never fail**: a lookup or parse
-  failure is logged at verbose level and the run proceeds with no mounts, reproducing the previous behaviour instead
-  of breaking a run. `vm.InspectSandbox` reports the failure like its `Config()` read does, so `sandbox inspect`
-  never silently shows zero mounts for a VM that has them.
+    (`specs/runtime-management-commands.md`, Slice 3). It reports the read failure like its `Config()` read does, so
+    `sandbox inspect` never silently shows zero mounts for a VM that has them.
 - A missing `mounts` key is not an error — a config persisted by a runtime that does not record mounts is valid, and
   must not read as "everything changed". It yields an empty (non-nil) map.
 

@@ -5,15 +5,7 @@ read_if: Implementing or reviewing issue #144 (two checkouts sharing one VM), th
 
 # Per-checkout project identity (issue #144)
 
-Status: implemented on `issue-144-checkout-identity` (8 tasks, PR #244, pending merge); rebased onto main and
-reconciled with #247's bare project-config resolver, and the migration hardened for the multi-agent and
-concurrent-adopter cases and for adopting a surviving legacy VM whose state file was lost (#219). A post-review
-fix made that lost-state adoption record the recovered volume in the checkout state before destroying the legacy
-VM, so the reference survives any caller that discards the adoption result (issue #244 review). A second review
-round made a corrupt checkout state skip rather than abort migration, made the volume ops read and clear the
-recovered-volume marker, and made a bare root's first run read its pre-split per-slug config. A shared
-legacy identity's lost-state home volume is claimed under the legacy identity in the launcher-global root
-state, so two clones cannot both recover it.
+Status: implemented (PR #244; the multi-agent/concurrency hardening, the lost-state recovery, the corrupt-state skip, and the shared-legacy volume claim are described below).
 Date: 2026-10-19.
 
 ## Problem
@@ -48,7 +40,7 @@ slugs keep the `<folder>-<hash>` shape they already parse.
 
 - **repo slug** = `sanitize(origin repo last path segment) + "-" + HashID(origin URL)`; falls back to
   the checkout folder/basename when there is no origin, and to the CWD path when not in a repo. This is
-  the current `projectSlugAt` behavior, unchanged. **Exception:** a bare root (a bare repository, which
+  the current `projectSlug`/`identitySlugs` behavior, unchanged. **Exception:** a bare root (a bare repository, which
   has no worktree) records the old path-derived slug as an additional legacy identity
   (`Identity.LegacyRepoSlugs`) instead of dropping it, because that is where its pre-split state and
   per-slug config live; see Migration.
@@ -63,6 +55,12 @@ slugs keep the `<folder>-<hash>` shape they already parse.
 - **subdirectory of a checkout**: the checkout slug is the checkout root's, matching the `/workspace`
   bind root from #145.
 - **outside worktree**: its own identity (below) — it cannot share its checkout's VM, so it gets one of its own.
+- **linked worktree vs plain `.git` file**: a linked worktree is recognized only by a `.git` file whose
+  recorded gitdir names a registration directory `<shared>/worktrees/<name>` (one final path segment,
+  validated on the raw text before it is made absolute) that carries a `commondir` marker. A
+  `--separate-git-dir` checkout and a submodule are `.git` files too — and `<ancestor>/worktrees/<name>.git`
+  even matches a registration's shape — but lack the marker, so they are ordinary checkouts that bind their
+  own worktree, never outside worktrees.
 
 `ResolveIdentity` folds the former `ResolveWorkspaceLayout` and `projectSlugAt` into one pass and exposes
 `WorktreeRoot` and `Bare` (read from the common git dir's `core.bare`) so the bare project-config resolver
@@ -98,7 +96,7 @@ content-addressed; verify msb keys by digest). This trades the guaranteed single
 for correctness, and it means an identical pair costs one extra cached build rather than zero.
 
 Consequence for upgrades: the msb seam exposes no image tag/retag operation (`ImageLoad`,
-`ImageRemove`, `ImageInspect`, `ImageList`, `ImagePrune`, `ImageGet` only), so a migrated project
+`ImageRemove`, `ImageInspect`, `ImageInspectDetail`, `ImageList`, `ImagePrune`, `ImageGet` only), so a migrated project
 cannot re-point its existing image at the new tag — it rebuilds. Cache-assisted, but it needs the
 builder working and, on a cold cache or offline, network for the base/agent layers.
 
@@ -190,8 +188,8 @@ legacy VM keeps running, and a first `volume reset` or `build` would create the 
 permanently un-match the trigger, and orphan the legacy auth and home volume.
 
 **Serialization.** Adoption runs under the host-only root flock (`state.WithRootState`,
-`internal/sandbox/state/root.go:106`), the existing precedent for a launcher-global operation that does msb
-I/O (`internal/sandbox/runtimemigration/copy.go:52-56`), so two concurrent first-post-upgrade runs cannot
+`internal/sandbox/state/root_txn.go`), the existing precedent for a launcher-global operation that does msb
+I/O (`internal/sandbox/runtimemigration/copy.go`), so two concurrent first-post-upgrade runs cannot
 both destroy and move. The trigger is re-checked while the lock is held: a run that loses the race to
 another checkout sees the state already moved and continues under the checkout identity instead of tripping
 the incomplete-migration failure on a source that is already gone.
@@ -219,7 +217,12 @@ the incomplete-migration failure on a source that is already gone.
    re-fires on every run, and the pipeline proceeds under the checkout identity with no state at all, which
    means a fresh home volume and silently lost agent auth. The merge is what makes the state-file predicate
    a real idempotence record: the state file always arrives, because the predicate guarantees none exists
-   at the destination.
+   at the destination. An existing destination entry of any kind is never displaced — a dangling symlink
+   counts as occupied, and a merged-into destination directory keeps its own permissions and contents.
+   Adoption does not trust the merge silently: it re-reads the checkout-keyed state afterwards and fails
+   loudly, naming the skipped paths and the legacy state file, when the state file did not arrive — the
+   legacy VM is already destroyed by then, so continuing with no state (a fresh home volume, silently lost
+   auth) and falling back to the legacy slug are both worse.
 3. Home volume: unchanged. Its name is stored in the state's `home_volume`, so the preserved volume is
    re-resolved by name with no rename. In the VM-only arm there is no legacy state to carry the name, so
    adoption writes it into `recovered_home_volume` on the checkout state *before* the destroy, and home
@@ -264,9 +267,10 @@ name-parsed key is in `ToPrune`, and the just-upgraded legacy VM can land in `To
 Fix: `pruneHomeVolumes` must **fail closed on any volume name referenced by an existing state file**
 (via `state.HomeVolumeReferences()`, as `volume remove` already does), so prune never deletes a volume a
 state file points at. Failing closed means **skip that volume and report it**, not abort the prune — the
-treatment prune already gives a replaced sandbox (`internal/sandbox/pruning/sandboxes.go:33-40`) — and a
+treatment prune already gives a replaced sandbox (`internal/sandbox/pruning/sandboxes.go:33-40`); the
+skip happens before the dry-run branch, so a dry run reports the same kept set — and a
 skipped volume's key must not reach `removeStateForGoneKeys`
-(`internal/sandbox/pruning/volumes.go:100-111`), which would otherwise delete the very state adoption needs.
+(`internal/sandbox/pruning/volumes.go`), which would otherwise delete the very state adoption needs.
 An unreadable state file surfaces as a `HomeVolumeReferences()` error, which aborts the volume pass as it
 does in `volume remove`. `HomeVolumeReferences()` also reports a pending `recovered_home_volume` (the
 VM-only adoption arm), so prune protects the volume during the window between adoption and the first
@@ -307,7 +311,7 @@ its absence does not block adoption, which recreates it over the preserved volum
 
 ## Settled open decisions
 
-The six questions this section used to leave open, settled 2026-10-20; the plan implements them. The
+The six questions this section used to leave open, settled 2026-10-20. The
 adoption, dry-run, prune and outside-worktree refinements from the same design review live in their topical
 sections above.
 
@@ -316,23 +320,24 @@ sections above.
   `LegacyRepoSlugs`, plus the accessors `RepoSlug()` and `CheckoutSlug()`. Explicit names, because after the
   split every call site is a judgement call. `internal/git` stays a leaf — hashing and layout inspection
   only, no knowledge of state paths or config dirs — which is what keeps `cmd`/`session`/`vm` cycle-free.
-- **One git-inspection pass.** `ResolveIdentity` folds `ResolveWorkspaceLayout` (`internal/git/workspace.go:25`)
-  and `projectSlugAt` (`internal/git/git.go:63`) together and resolves symlinks internally, so `run` and
+- **One git-inspection pass.** `ResolveIdentity` folds the former `ResolveWorkspaceLayout` and `projectSlugAt`
+  into one pass (`internal/git/identity.go`) and resolves symlinks internally, so `run` and
   `stop` cannot compute different checkout slugs on macOS (`/tmp` vs `/private/tmp`). `ResolveWorkspaceLayout`
   and `WorkspaceLayout` are deleted; `configpaths.resolveProjectConfig` (#247) consumes `Identity.Bare`/
   `WorktreeRoot` instead.
 - **Adoption lives in `internal/sandbox/vm`**, reachable from every entry point (`vm` imports
   `git`/`state`/`msb`/`naming` and is imported by `cmd` and `session`). The destroy half reuses
   `GetSandbox` → `SandboxHandle.Destroy` with the `IsReplaced` fail-closed handling of
-  `internal/sandbox/vm/vm_lifecycle.go:157-182`. The state-directory move is new code: nothing today
+  `destroyProjectVMHandle` (`internal/sandbox/vm/vm_lifecycle.go`). The state-directory move is new code: nothing today
   renames a state directory (`RemoveHomeState` deletes, `RecoverHomeState` rewrites in place).
 - **No `migrations` registry entry.** The directory move is the idempotence record — the legacy state file is
   gone afterwards, so adoption cannot re-fire. `state.Migration`'s `Copied`/`Kept`/`Excluded` fields are
   copy-shaped and would sit unused. The root state *is* used for the lost-state home-volume ownership claim
   (`adopted_home_volumes`), which needs a launcher-global record a second clone can read.
-- **The grouping label comes from the identity, not from `state.Key`.** `vm_lifecycle.go:482` sets
-  `org.agents-sandbox.project` from the same `k.Slug` that names the VM. `state.Key` keeps a single slug
-  (the checkout slug); the label is passed in from the identity struct.
+- **The grouping label comes from the identity, not from `state.Key`.** `createProjectVM` sets
+  `org.agents-sandbox.project` from the repo slug it is passed, never from `k.Slug`: `state.Key` keeps a
+  single slug (the checkout slug, which names the VM), while the label is the repo slug, threaded in from the
+  identity struct.
 - **Migration notice**: one `Warnf` call carrying the whole block — yellow headline, indented detail rows,
   exactly as below — emitted *before* the work starts, so the notice explains the pause rather than confirming
   after the fact. The rows are therefore prospective ("destroyed", "recreated"), not a receipt. `--dry-run`
@@ -350,9 +355,12 @@ sections above.
     runner image  <legacy image tag>  ->  <new image tag>   (rebuilt)
   ```
 
-- **`config paths`** prints the config layers in precedence order (lowest → highest, matching the resolver
-  comment at `internal/viperconfig/viperconfig.go:160-161`) to stdout via `Outf`, and the "where to put what"
+- **`config paths`** prints the config layers in precedence order (lowest → highest, matching the resolver's
+  precedence comment in `internal/viperconfig`) to stdout via `Outf`, and the "where to put what"
   hint to stderr via `Infof`, naming the committed project config (`.agents-sandbox/config.yaml`) and the
-  generic user config as the homes for repo-wide knobs. `--format json` is deferred until asked for. It needs
-  a new `configpaths` accessor for the per-slug user dir, which today is built inline at
-  `viperconfig.go:169`.
+  generic user config as the homes for repo-wide knobs. `--format json` is deferred until asked for. It uses
+  the `configpaths` accessor for the per-slug user dir (`UserSlugConfigDir`). One `viperconfig.ConfigLayers(slug)` list drives both the display and `NewResolver`'s
+  file-layer merge, so the reported order and the merged order cannot drift; a file layer shows its dir with a
+  `(missing)` marker when no config file is there, the block ends with a `repo slug:` line, and the per-slug
+  layer reads the *effective* config slug while the label stays the repo slug. `--quiet` suppresses the `Outf`
+  layer block but not the `Infof` hint.

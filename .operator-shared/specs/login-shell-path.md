@@ -86,17 +86,20 @@ env by the existing image-ENV plumbing, so no new launcher plumbing is required.
 **Merge script.** A single POSIX-sh script, sourced by `/etc/profile.d`:
 - If `AGENTS_SANDBOX_IMAGE_PATH` is unset/empty, it is a no-op.
 - It appends each entry of `$AGENTS_SANDBOX_IMAGE_PATH` that is **not already present** in `$PATH`, in the image's
-  order, and exports `PATH`. Existing entries keep their position; only missing image entries are appended.
+  order, and exports `PATH`. Existing entries keep their position; only missing image entries are appended. Presence is
+  matched colon-delimited, so `/opt` is not treated as present merely because `/opt/agents-sandbox/bin` is; a no-op adds
+  no entries and no trailing colon.
 - It is idempotent (running it again adds nothing) and never rebuilds `PATH`, so login-shell additions such as
   `/.msb/scripts` and profile-derived directories survive.
 - It runs for all users (root and `dev`); unlike the devcontainers reference it does not skip `sbin` entries, because the
   acceptance target is that the same entries resolve in every context, including the agent context (which carries sbin).
 
 **Delivery.** The script is embedded in the binary (`go:embed`) and shipped as a build-context file: the synthetic build
-context produced for `docker build` gains the script, and the rendered final stage emits a `COPY` to
-`/etc/profile.d/agents-sandbox-path.sh`. The classic builder (used by `buildImage`) cannot express a multi-line heredoc
-in `RUN`, so a context `COPY` is used rather than writing the file with `printf`. The `COPY` layer is body-independent and
-caches. Docker creates missing parent directories, so this also works on custom bases.
+context produced for `docker build` gains the script as `agents-sandbox-path.sh` (package-private `pathMergeScript()`),
+and the rendered final stage emits a `COPY` to `/etc/profile.d/agents-sandbox-path.sh`. The classic builder (used by
+`buildImage`) cannot express a multi-line heredoc in `RUN`, so a context `COPY` is used rather than writing the file with
+`printf`. The `COPY` layer is body-independent and caches. Docker creates missing parent directories, so this also works
+on custom bases.
 
 **Contexts.** `run` attach (`bash -l -c "<agent> attach …"`), interactive `shell` (`bash -l`), and `!` commands (which
 inherit the attach client) all become login shells that source `/etc/profile.d`; they are fixed by the image alone. The
@@ -121,10 +124,10 @@ deliberately keeps profile sourcing. Byte-for-byte identical `PATH` strings acro
 
 Test external behaviour, not the exact script text.
 
-- **Primary seam — merge script under a real POSIX shell.** The merge is a pure function of
-  (`PATH`, `AGENTS_SANDBOX_IMAGE_PATH`). Test it by executing the embedded script with `sh` and asserting the resulting
-  `PATH`: missing image entries are appended in image order; present entries are not duplicated; `/.msb/scripts` and
-  other pre-existing entries are preserved in place; empty/unset `AGENTS_SANDBOX_IMAGE_PATH` is a no-op; sourcing twice
+- **Primary seam — merge script under a real POSIX shell** (`internal/sandbox/image/path_merge_test.go`). The merge is a
+  pure function of (`PATH`, `AGENTS_SANDBOX_IMAGE_PATH`). Test it by executing the embedded script with `sh` and asserting
+  the resulting `PATH`: missing image entries are appended in image order; present entries are not duplicated; `/.msb/scripts`
+  and other pre-existing entries are preserved in place; empty/unset `AGENTS_SANDBOX_IMAGE_PATH` is a no-op; sourcing twice
   is idempotent. Prior art: tests that shell out to the system `sh`; this is one new, small seam and the highest one that
   captures the actual logic.
 - **Render seam — wiring.** Extend `render_test.go` to assert the rendered final stage contains the

@@ -101,7 +101,10 @@ work in the VM. This is not a regression: today's launcher already binds the CWD
 
 The `git rev-parse` phrasing above describes the *facts*, not the implementation. The derivation reuses the existing
 host-side, go-git-based repository inspection (`projectSlugAt` / `resolveGitDir` in `internal/git`); a host `git`
-binary is not a runtime prerequisite and must not be introduced.
+binary is not a runtime prerequisite and must not be introduced. A linked worktree's `.git` file may record the
+shared git dir **relatively** (git ≥ 2.48 with `worktree.useRelativePaths true`, which this layout requires); the
+derivation resolves a relative gitdir against the worktree root, so the checkout root still resolves. (The
+linked-worktree recognition that pairs with this lives in `checkout-identity.md`.)
 
 Project config (`.agents-sandbox`) resolution is **not** part of this rule: the launcher read it from the CWD, so
 in a bare layout it came from the launched worktree rather than the bare root. That gap and its `core.bare`-based
@@ -120,16 +123,17 @@ The agent must start **in the subdirectory it was launched from**, expressed rel
 guestCWD = "/workspace" + <cwd relative to bindRoot>
 ```
 
-At the root, `guestCWD == "/workspace"` (identical to today). In a subdirectory, the full repository remains visible
-above the agent while it works in the subdirectory. For an outside worktree (binding unchanged), `bindRoot == cwd`, so
-`guestCWD == "/workspace"` as today.
+At the root, `guestCWD == "/workspace"` (identical to today); a `filepath.Rel` failure between `bindRoot` and `cwd`
+degrades to `/workspace` too. In a subdirectory, the full repository remains visible above the agent while it works in
+the subdirectory. For an outside worktree (binding unchanged), `bindRoot == cwd`, so `guestCWD == "/workspace"` as today.
 
 How `guestCWD` reaches the agent (see Background):
 
 - **opencode / opencode2** (`run`): pass `guestCWD` as the attach target → `opencode attach … --dir <guestCWD>` /
   `opencode2 --server … <guestCWD>` (v2 takes the directory positionally; it has no `--dir`). No server change.
 - **`shell`, `pi`, `claude-code`**: attach with the SDK's `WithAttachCwd(guestCWD)` (through the msb seam's
-  `AttachWith`), which sets the PTY working directory for clients that ignore the attach target.
+  `AttachWith`) **unconditionally** — every attach, not only in a subdirectory — which sets the PTY working
+  directory for clients that ignore the attach target.
 - **`--worktree`** keeps overriding the target with the daemon-created directory (unchanged).
 
 ## VM / State Identity and the Naming Scheme (unchanged)
@@ -221,14 +225,17 @@ is out of scope beyond not regressing it.
 - Naming: VM/volume/state/image names are **unchanged** for every case (no migration); the name parsers are untouched.
 - The recipe page and the skill are present and identical in content; docs link check passes.
 
-## Open Decisions (for the plan)
+## Settled decisions
 
-- Exact plumbing of `guestCWD` through `options`/`Session`/`runAttach` and whether the non-opencode agents take
-  `WithAttachCwd` unconditionally or only when a subdirectory is in play.
-- Whether the bare layout should additionally be recognized when the bare git dir is *not* named `.git` (pure bare
-  root), or only for the documented `<root>/.git` layout.
-- Whether `.agents/skills/` (untracked, local) or the tracked tree should hold the skill copy for distribution.
-- The exact wording of the outside-worktree `termio` warning.
+The questions this section used to list as open were resolved during implementation:
 
-Decided (see the mount rule): outside worktrees keep current behavior and are warned rather than given their own VM or
-extra mounts; the change applies to fresh VMs (no reconfig bind-source detection); identity/naming is unchanged.
+- **Guest-CWD plumbing**: `Session` carries the guest CWD (set in `PrepareSandbox`, exposed via a `GuestCWD()`
+  accessor) and `runAttach` applies it to **every** attach through the SDK's `WithAttachCwd` — not only in a
+  subdirectory — so `shell`/`pi`/`claude-code` start in the right directory; opencode/opencode2 get it through
+  the attach target, and `--worktree` still overrides the target.
+- **Bare git dir not named `.git`**: recognized by the same rule (the `checkoutRoot` is the common git dir
+  itself), not only the documented `<root>/.git` layout.
+- **Fresh-VM scope**: the bind source stays a creation-time property, reconfig does not detect a bind-source
+  change, and identity/naming is unchanged (no scoping, no migration).
+- The outside-worktree warning wording is moot: [checkout-identity.md](checkout-identity.md) (#144) supersedes
+  the warn-and-bind-CWD behavior with a per-worktree identity.

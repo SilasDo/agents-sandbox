@@ -11,7 +11,9 @@ How the rendered Dockerfile is arranged into stages (so layer caching works as a
 
 `EnsureImageWithClient` makes two independent decisions from one input, `BuildOptions.Force`:
 
-- **Build at all:** `needsBuild = Force || !imageHasDockerfileID(...)`. The `dockerfile-id` label is the source
+- **Build at all:** `buildDecision` (`internal/sandbox/image/inspect.go`) short-circuits on `Force`, then `buildReasons`
+  requests a build when the msb image is absent or its recorded `dockerfile-id` differs from the rendered one. The
+  `dockerfile-id` label is the source
   signature (rendered Dockerfile + resolved agent version + every build-context file with its name, mode, and content;
   the files travel via the build context rather than the Dockerfile text, so each is folded into the signature for an
   edit to invalidate a warm image — see `specs/image-composition.md`); a mismatch means the rendered recipe changed and
@@ -56,7 +58,9 @@ build eagerly via `EnsureImage` but load lazily, only when a VM is actually crea
    does not own the agent, so a pin cannot change what is baked).
 2. **`--agent-version <v>` pin** → `v`, no upgrade check.
 3. **No upgrade checker** → recorded version, no check.
-4. **No recorded baseline** → empty (resolved to latest at build time).
+4. **No recorded baseline** → recover the version from the existing image's `agent-version` label
+   (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`) and reuse it with no prompt and no latest resolution;
+   only when that also yields nothing, empty (resolved to latest at build time).
 5. Otherwise → upgrade check; may prompt to rebuild with a newer release.
 
 `--agent-version` is available on `build`, `run`, and `shell`. `--rebuild` is orthogonal: it only forces a clean rebuild of
@@ -81,12 +85,14 @@ actually resolves, so the pinned version is always one the installer can fetch:
 - `build` / `image build` → `image.Build` → `Force = -r/--rebuild`.
 - `run` / `shell` → `PrepareSandbox` → `Force = opts.Rebuild` (`-r/--rebuild`). An accepted upgrade (`shallUpgrade`) is
   **not** a force; it triggers the build via the changed version identity.
-- `volume migrate` / `volume reset` / `volume edit` → `image.EnsureImage` → `Force = false`. These subcommands do **not**
-  expose `--rebuild`; they ensure a current image but never force a clean rebuild.
+- `volume migrate` / `volume reset` / `volume edit` → `image.EnsureImage` → `Force = false`. Each still exposes
+  `--rebuild` as a hidden, deprecated no-op (restored for one cycle, removal targeted 0.8.0 — see
+  `specs/deprecation-policy.md`); it never forces a clean rebuild.
 
 ## Invariants
 
 - `BuildOptions.Force` is the only input that bypasses the layer cache; a stale-image rebuild never does.
-- No volume subcommand exposes `--rebuild`.
+- `--rebuild` on the volume subcommands is a deprecated no-op; the only real cache bypass is `BuildOptions.Force` on
+  `build`/`run`/`shell`.
 - The internal build helper parameter that maps to `NoCache` is named `noCache`, not `force`, so the cache meaning stays
   explicit at the build call.

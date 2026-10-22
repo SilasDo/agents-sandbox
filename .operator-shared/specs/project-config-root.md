@@ -5,7 +5,7 @@ read_if: Implementing or reviewing the bare-layout project-config root fix, the 
 
 # Bare checkout project config root
 
-Status: merged on main (PR #247, `bare-project-config-root`).
+Status: merged (PR #247).
 Related: [bare-worktree-layout.md](bare-worktree-layout.md) (the `/workspace` bind rule this builds on; supersedes its "project config unchanged" implication). The `checkout-identity.md` extension of the same `configpaths` seam is not on main (#144's `config paths` shipped separately), so it is named rather than linked.
 
 ## Problem
@@ -64,7 +64,7 @@ One project-config **base dir** replaces the implicit `$PWD`:
   some not — is worse than no fix.
 - It is pure: it resolves paths and inspects files, and never creates a directory.
 
-Implementation facts that shape the plan:
+Implementation facts that shape the resolver:
 
 - The discriminator is `core.bare` from the common git dir's `config`, read with go-git
   (`config.ReadConfig` → `cfg.Core.IsBare`), the same route `internal/git/git.go`'s `originURL` uses. No host
@@ -83,7 +83,8 @@ Implementation facts that shape the plan:
   `configpaths` imports `internal/git` for the layout and `core.bare` fact (`internal/git` imports no internal
   package, so there is no cycle); the mock seam keeps its current fixed-dir shape and does not consult git.
 - Non-bare and non-repo keep today's behavior exactly: the relative `projectConfigDir` constant, resolved against
-  the **logical** CWD at call time, no `EvalSymlinks`. Every string those accessors return today is unchanged, so
+  the **logical** CWD at call time, no `EvalSymlinks` (an unreadable CWD degrades to the relative constant, as
+  `ProjectConfigDirAbs` already did). Every string those accessors return today is unchanged, so
   existing unit tests hold.
 - Bare: the layout is derived from the **symlink-resolved** CWD (as the bind root is) and the base is the
   absolute `<checkoutRoot>/.agents-sandbox`, so it equals the bind root. Only this branch pays `EvalSymlinks`.
@@ -95,12 +96,14 @@ Implementation facts that shape the plan:
 
 ### The ignored-worktree warning
 
-The resolver stays pure: it exposes the ignored directory as a fact (a method). The fact is the **worktree root**'s
+The resolver stays pure: it exposes the ignored directory as a fact through
+`configpaths.ConfigPaths.IgnoredWorktreeConfigDir`, empty when there is no ignored copy. The fact is the **worktree root**'s
 `.agents-sandbox` (`git.WorkspaceLayout.WorktreeRoot`, exposed for this; the layout already computed it), not one derived
 from the CWD — so a launch from any subdirectory of the worktree still detects the copy the bare root replaces, which a
 CWD-derived check missed (PR #247 review). A `.agents-sandbox` at a deeper subdirectory is not inspected; that is the
-deferred layering extension's job. When the CWD is the bare root itself, the worktree root is empty and the ignored
-path collapses onto the base, so it is the directory being read, not an ignored copy — no warning (guard: `ignored == base`). One `termio`-facing helper, `image.WarnIgnoredProjectConfig`, warns from the image path
+deferred layering extension's job. When the CWD is the bare root itself the worktree root *is* the bare root, so the
+ignored path equals the base: that is the directory being read, not an ignored copy — no warning (guard:
+`ignored == base`). One `termio`-facing helper, `image.WarnIgnoredProjectConfig`, warns from the image path
 every VM-bound command passes through — `image.EnsureImage` (called by `PrepareSandbox`, `run`/`shell` and the `volume …`
 ops), `image.Build` (`image build`), and `build dockerfile` — not from `PersistentPreRunE`. `config`, `doctor`, `list`,
 `version`, `prune` and `df` stay quiet, and each such command reaches exactly one call site, so the warning cannot repeat
