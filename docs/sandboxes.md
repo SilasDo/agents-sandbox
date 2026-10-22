@@ -128,12 +128,12 @@ unless `--force` is set, which stops it first.
 > **Note:** Stopping or removing a sandbox never deletes its home volume. The volume holds the agent's state and
 > configuration, and `prune` reclaims it; see Pruning.
 
-## Identity: one VM per checkout and agent
+## Identity: one sandbox per checkout and agent
 
 Each checkout gets its own sandbox, and each agent inside it gets its own. The two names that follow identify that
 pair.
 
-The VM name is built from the checkout and the agent:
+The sandbox name is built from the checkout and the agent:
 
 ```text
 agents-sandbox-vm-<checkout-slug>-<agent>
@@ -141,8 +141,8 @@ agents-sandbox-vm-<checkout-slug>-<agent>
 
 Project identity splits into two slugs, each governing the artifacts whose unit it matches:
 
-- **checkout slug** — derived from the checkout's resolved git common directory. It keys the state directory, the VM
-  name, the home volume, the locks, and the runner image tag. Two clones of one remote therefore get separate
+- **checkout slug** — derived from the checkout's resolved git common directory. It keys the state directory, the
+  sandbox name, the home volume, the locks, and the runner image tag. Two clones of one remote therefore get separate
   sandboxes and home volumes, while a checkout and the worktrees **inside** it share one. A worktree **outside** its
   checkout hashes its own root, so it gets its own identity — state, sandbox, home volume, and image tag — rather than
   being refused.

@@ -47,7 +47,7 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 
 VMs, home volumes, and state are also scoped per agent: the VM name, home volume, and state file all carry the agent, so
 switching agents no longer tears down the project sandbox and multiple agents can serve the same project concurrently
-(see [Sandboxes]({% link sandboxes.md %}#identity-one-vm-per-checkout-and-agent)).
+(see [Sandboxes]({% link sandboxes.md %}#identity-one-sandbox-per-checkout-and-agent)).
 
 ## Config snippet merge
 
