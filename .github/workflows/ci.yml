@@ -213,15 +213,30 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      - name: Classify release tag
+        run: |
+          set -euo pipefail
+          # Release tags are v<semver> (the workflow triggers on v*), so a
+          # hyphen marks a semver prerelease part, e.g. v1.9.0-canary.1. A
+          # prerelease must not be served by /releases/latest (that is the
+          # stable channel's only source of truth) and must not bump the
+          # Homebrew formula (the tap serves full releases only).
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
+          else
+            echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
           name: "agents-sandbox ${{ github.ref_name }}"
           generate_release_notes: true
+          prerelease: ${{ env.IS_PRERELEASE }}
           files: artifacts/*/*
 
       - name: Bump Homebrew formula
+        if: env.IS_PRERELEASE != 'true'
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
@@ -238,6 +253,7 @@ jobs:
           git --no-pager diff Formula/agents-sandbox.rb
 
       - name: Open Homebrew formula bump PR
+        if: env.IS_PRERELEASE != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.ref_name }}
