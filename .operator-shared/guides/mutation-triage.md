@@ -52,6 +52,24 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `os.Stdout` for an `os.Pipe` write end around the call, restore `os.Stdout` and close the write end *before* any
   `t.Errorf` (the test framework's own output goes to stdout too), then assert the read end contains the error's path —
   the mutated branch prints nothing, or `<nil>` when the condition is negated.
+- **`// gomutants:disable` is same-line-scoped, so a standalone comment above a statement records nothing.** gomutants
+  parses a bare `disable` as `directiveSameLine` and matches it against mutants on *the comment's own line*
+  (`internal/discover/directives.go` in v0.7.1); the only other forms are `disable-next-line`, `disable-func`, and
+  `disable-regexp`. Place the directive **same-line** on the guarded statement — `if err != nil { // gomutants:disable
+  BRANCH_IF reason="…"` — or use `disable-next-line` on the line directly above it (blank lines and other comments are
+  skipped, so it binds to the next code line). A `BRANCH_IF` reports its line at the body's `{`, i.e. the `if` line, not
+  the body line. A mis-placed directive is a **silent no-op**: after adding one, re-run the tool and confirm the
+  package's `mutants_lived` drops and its suppressed count rises.
+- **A `disable` reason must argue the mutation cannot change behaviour, not that the condition is hard to reach.** A
+  suppressed branch whose body is removed can still be observable through a caller-supplied input or predicate:
+  `filewalk.Walk`'s `rel == "."` root skip looked unreachable until a filter that rejects `"."` was considered — the
+  mutation then calls `filter(".", true)`, which returns `SkipDir` and prunes the whole tree. Trace the fall-through
+  under a hostile caller before recording a branch.
+- **Removing `tb.Fatalf` from a test-support helper can be tested in a child process.** Have the child call the helper
+  with a failing input and have the parent assert that the child failed (see `internal/upgrade/upgrade_extra_test.go`).
+  Record the mutant when that test costs more than it is worth, not because the behavior is impossible to observe.
+- **`t.Helper()` changes stack-trace metadata, not the helper's result.** Record its removal when checking the reported
+  location would add little value; do not invent a production seam just to make it killable.
 
 ## Operational
 
