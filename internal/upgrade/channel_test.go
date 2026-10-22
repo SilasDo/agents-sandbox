@@ -50,22 +50,81 @@ func TestParseChannel(t *testing.T) {
 	}
 }
 
-func TestCanaryEligible(t *testing.T) {
-	tests := map[string]bool{
-		"v1.9.0":           true,
-		"1.9.0":            true,
-		"v1.9.0-canary.1":  true,
-		"v1.9.0-canary.10": true,
-		"v2.0.0-alpha.1":   false,
-		"v1.9.0-rc.1":      false,
-		"v1.9.0-beta":      false,
-		"nightly":          false,
-		"v":                false,
+func TestCanaryVersion(t *testing.T) {
+	tests := map[string]struct {
+		eligible bool
+		version  string
+	}{
+		"v1.9.0":           {eligible: true, version: "1.9.0"},
+		"1.9.0":            {eligible: true, version: "1.9.0"},
+		"v1.9.0-canary.1":  {eligible: true, version: "1.9.0-canary.1"},
+		"v1.9.0-canary.10": {eligible: true, version: "1.9.0-canary.10"},
+		"v2.0.0-alpha.1":   {},
+		"v1.9.0-rc.1":      {},
+		"v1.9.0-beta":      {},
+		"nightly":          {},
+		"v":                {},
 	}
 	for tag, want := range tests {
-		if got := canaryEligible(tag); got != want {
-			t.Errorf("canaryEligible(%q) = %v, want %v", tag, got, want)
+		v, eligible := canaryVersion(tag)
+		if eligible != want.eligible {
+			t.Errorf("canaryVersion(%q) eligible = %v, want %v", tag, eligible, want.eligible)
+			continue
 		}
+		if !want.eligible {
+			continue
+		}
+		if v == nil {
+			t.Errorf("canaryVersion(%q) reported eligible with a nil version", tag)
+			continue
+		}
+		if got := v.String(); got != want.version {
+			t.Errorf("canaryVersion(%q) version = %q, want %q", tag, got, want.version)
+		}
+	}
+}
+
+func TestLatestCanaryReleaseNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+	orig := releasesURL
+	releasesURL = srv.URL + "/releases"
+	t.Cleanup(func() { releasesURL = orig })
+	if _, err := latestCanaryRelease(context.Background()); err == nil {
+		t.Fatal("expected error on non-200 response")
+	}
+}
+
+func TestLatestCanaryReleaseDecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
+	}))
+	t.Cleanup(srv.Close)
+	orig := releasesURL
+	releasesURL = srv.URL + "/releases"
+	t.Cleanup(func() { releasesURL = orig })
+	if _, err := latestCanaryRelease(context.Background()); err == nil {
+		t.Fatal("expected error on undecodable response")
+	}
+}
+
+func TestLatestCanaryReleaseNetworkError(t *testing.T) {
+	orig := releasesURL
+	releasesURL = "http://127.0.0.1:1"
+	t.Cleanup(func() { releasesURL = orig })
+	if _, err := latestCanaryRelease(context.Background()); err == nil {
+		t.Fatal("expected error on unreachable releases endpoint")
+	}
+}
+
+func TestLatestCanaryReleaseBadURL(t *testing.T) {
+	orig := releasesURL
+	releasesURL = "://bad"
+	t.Cleanup(func() { releasesURL = orig })
+	if _, err := latestCanaryRelease(context.Background()); err == nil {
+		t.Fatal("expected error on unparsable releases URL")
 	}
 }
 

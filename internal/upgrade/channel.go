@@ -47,21 +47,21 @@ func latestForChannel(ctx context.Context, ch Channel) (string, error) {
 	return latestRelease(ctx)
 }
 
-// canaryEligible reports whether a release tag may be offered on the canary
-// channel: a final release, or a prerelease whose first semver prerelease
-// identifier is "canary". Anything else (a plain -alpha/-rc prerelease, an
-// unparsable tag) is offered to no channel.
-func canaryEligible(tag string) bool {
+// canaryVersion parses a release tag and reports whether that release is
+// eligible for the canary channel: a final release, or a prerelease whose first
+// identifier is "canary" (e.g. 1.9.0-canary.3). An unparsable tag is not
+// eligible.
+func canaryVersion(tag string) (*semver.Version, bool) {
 	v, err := semver.NewVersion(strings.TrimPrefix(tag, "v"))
 	if err != nil {
-		return false
+		return nil, false
 	}
 	prerelease := v.Prerelease()
 	if prerelease == "" {
-		return true
+		return v, true
 	}
 	identifier, _, _ := strings.Cut(prerelease, ".")
-	return identifier == canaryIdentifier
+	return v, identifier == canaryIdentifier
 }
 
 // githubRelease is the slice of a GitHub release object that channel
@@ -101,11 +101,11 @@ func latestCanaryRelease(ctx context.Context) (string, error) {
 	var newest *semver.Version
 	newestTag := ""
 	for _, release := range releases {
-		if release.Draft || !canaryEligible(release.TagName) {
+		if release.Draft {
 			continue
 		}
-		v, err := semver.NewVersion(strings.TrimPrefix(release.TagName, "v"))
-		if err != nil {
+		v, ok := canaryVersion(release.TagName)
+		if !ok {
 			continue
 		}
 		if newest == nil || v.GreaterThan(newest) {

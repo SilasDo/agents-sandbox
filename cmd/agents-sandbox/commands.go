@@ -229,6 +229,7 @@ func buildVersionCmd(rootCmd *cobra.Command, ui termio.UI) *cobra.Command {
 }
 
 func buildUpgradeCmd(ui termio.UI) *cobra.Command {
+	var channelFlag string
 	cmd := &cobra.Command{
 		Use:   cmdUpgrade,
 		Args:  cobra.NoArgs,
@@ -239,11 +240,7 @@ func buildUpgradeCmd(ui termio.UI) *cobra.Command {
 				channel = r.UpgradeChannel()
 			}
 			if cmd.Flags().Changed(flagChannel) {
-				name, err := cmd.Flags().GetString(flagChannel)
-				if err != nil {
-					return err
-				}
-				parsed, err := upgrade.ParseChannel(name)
+				parsed, err := upgrade.ParseChannel(channelFlag)
 				if err != nil {
 					return err
 				}
@@ -256,6 +253,6 @@ func buildUpgradeCmd(ui termio.UI) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().String(flagChannel, "", "release channel to upgrade from (stable or canary)")
+	cmd.Flags().StringVar(&channelFlag, flagChannel, "", "release channel to upgrade from (stable or canary)")
 	return cmd
 }
