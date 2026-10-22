@@ -123,9 +123,10 @@ An undocumented, test-only lever that lifts the `dev`-build short-circuit in `Ch
 - The Homebrew skip is unchanged: a keg install stays out of the self-upgrade path.
 - It does not appear in `--help`, the docs, or any config key.
 - It **reduces** the check interval rather than removing it: with the lever on, the effective interval is
-  `MinInterval` (1h) regardless of `upgrade.interval`. An unthrottled check would hammer the GitHub API —
-  `releases/latest` plus a `/releases` listing per agent run — and hit its unauthenticated rate limit. A one-hour floor
-  is short enough to exercise the automatic path within a testing session.
+  `MinInterval` (1h) regardless of `upgrade.interval`. Resolution spends one unauthenticated GitHub request per check —
+  `/releases/latest` on the stable channel, the `/releases` listing on the canary channel, never both — against a limit
+  shared by every install behind the same address. An unthrottled check on every `run`/`shell` would exhaust it. A
+  one-hour floor is short enough to exercise the automatic path within a testing session.
 
 ### Choosing the right lever for the job
 
