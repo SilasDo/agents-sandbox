@@ -12,7 +12,8 @@ read_if: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `F
 (`options.FuzzParseOptions`), configured mount-target validation (`mounts.FuzzResolveMountTarget`), the retired
 `updater.yaml` (`vm.FuzzParseLegacyUpdaterState`), the project Dockerfile (`image.FuzzRenderDockerfile`), the `home:`
 manifest (`homeconfig.FuzzParseHomeSection`), `--older-than` durations (`viperconfig.FuzzParseHumanDuration`), and
-image-reference round-tripping (`naming.FuzzRunnerImageRefRoundTrip`) — on `ubuntu-latest`. These targets are pure Go:
+the naming package's artifact-name and image-reference round-trips (`naming.FuzzArtifactNameRoundTrip`,
+`naming.FuzzRunnerImageRefRoundTrip`) — on `ubuntu-latest`. These targets are pure Go:
 no KVM, no docker daemon, no network. That is why they can run on a GitHub-hosted runner at all, unlike the `msb` smoke
 tests and the `integration` job.
 
@@ -24,17 +25,19 @@ tests and the `integration` job.
 
 ### Target discovery
 
-The list is derived, not hardcoded. A `discover` job runs the same command `make fuzz` uses
+The list is derived, not hardcoded. A `discover` job lists the packages that contain a target
 (`grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u`), turns each package
 into `{name, path}` JSON, and the `fuzz` job builds its matrix from `fromJSON(needs.discover.outputs.pkgs)`. Adding a
-`func Fuzz...` in a package under those trees joins the matrix with no workflow edit; the merge `paths` filter names the
-same three trees, because a new target can only land under one of them. CI and the Makefile therefore agree on what a
-target is by construction. `name` is the package path with `/` flattened to `-` (e.g. `internal-sandbox-state`), unique
-across packages, so it keys both the per-target corpus cache and the concurrency group.
+`func Fuzz...` in a package under those trees joins the matrix with no workflow edit — including a *second* target in an
+existing package, which `make fuzz` discovers and runs on its own. The merge `paths` filter names the same three trees,
+because a new target can only land under one of them. CI and the Makefile therefore agree on what a target is by
+construction. `name` is the package path with `/` flattened to `-` (e.g. `internal-sandbox-state`), unique across
+packages, so it keys both the per-target corpus cache and the concurrency group.
 
-One matrix job per package, because `go test -fuzz` refuses more than one package per run and Go requires
-`-fuzz='^Fuzz'` to match exactly one fuzz test within a package; `fail-fast: false` keeps one target's crasher from
-hiding the others, and `timeout-minutes: 45` bounds a job.
+One matrix job per package, because `go test -fuzz` refuses more than one package per run. Within a package `make fuzz`
+enumerates each `func Fuzz...` and runs it alone with `-fuzz='^Name$'` (Go accepts exactly one target per run), continuing
+past a failure so a crasher in one target does not hide the others — the same intent as the workflow's `fail-fast: false`,
+which keeps one package's failure from hiding another's. `timeout-minutes: 45` bounds a job.
 
 ## Invariants
 
@@ -60,7 +63,7 @@ hiding the others, and `timeout-minutes: 45` bounds a job.
   not under that glob and would need the upload path widened). CI does not commit the seed (that needs a push token,
   which the workflow deliberately does not have) — a maintainer or agent commits it, and from then on it runs under
   `make test`.
-- **`FUZZPKG` fails loudly.** `make fuzz FUZZPKG=<package path>` selects exactly that path and exits non-zero when nothing
-  matches, so a typo cannot read as a green run over zero targets.
+- **`FUZZPKG` fails loudly.** `make fuzz FUZZPKG=<package path>` runs that package's targets and exits non-zero when
+  nothing matches, so a typo cannot read as a green run over zero targets.
 - A schedule runs only from the default branch's copy of the workflow, and always against the default branch: this
   workflow is inert until it merges, and it never fuzzes a PR branch.
