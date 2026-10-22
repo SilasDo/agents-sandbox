@@ -80,6 +80,30 @@ func TestParseNamesWithHashShapedFolderSegment(t *testing.T) {
 		ParseHomeVolumeName(LegacyHomeVolumeName(slug, "opencode", "20260812T123456")))
 }
 
+// TestParseNamesWithLegacyPrefixFolder pins the prefix-collision fix: a
+// prefix-free artifact whose folder begins with a legacy prefix (a folder
+// literally named "agents-sandbox-vm"/"-task"/"-home") must parse prefix-free,
+// not have the legacy prefix stripped.
+func TestParseNamesWithLegacyPrefixFolder(t *testing.T) {
+	taskFolder := "agents-sandbox-task-1mjusbm3wikhb0"
+	require.Equal(t, ArtifactInfo{Slug: taskFolder, Agent: "opencode"},
+		ParseVMName(ProjectVMName(taskFolder, "opencode")))
+
+	vmFolder := "agents-sandbox-vm-1mjusbm3wikhb0"
+	require.Equal(t, ArtifactInfo{Slug: vmFolder, Agent: "opencode"},
+		ParseVMName(ProjectVMName(vmFolder, "opencode")))
+
+	homeFolder := "agents-sandbox-home-1mjusbm3wikhb0"
+	require.Equal(t, ArtifactInfo{Slug: homeFolder, Agent: "opencode"},
+		ParseVMName(ProjectVMName(homeFolder, "opencode")))
+	require.Equal(t, ArtifactInfo{Slug: homeFolder, Agent: "opencode"},
+		ParseHomeVolumeName(HomeVolumeName(homeFolder, "opencode", "20260812T123456")))
+
+	// A genuine legacy name still parses.
+	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "opencode"},
+		ParseVMName(LegacyProjectVMName(fixtureSlug, "opencode")))
+}
+
 func TestParseHomeVolumeNameHyphenatedAgent(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: fixtureSlug, Agent: "claude-code"},
 		ParseHomeVolumeName("myproj-1mjusbm3wikhb0-claude-code-20260812T123456"))

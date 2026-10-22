@@ -183,35 +183,69 @@ func allDigits(s string) bool {
 //
 //	"myproject-1mjusbm3wikhb0-opencode-1729000000000000000"
 //	→ slug="myproject-1mjusbm3wikhb0", agent="opencode", task=true
+//
+// A name that starts with a legacy prefix may also be a prefix-free sandbox
+// whose folder begins with that prefix (a folder literally named
+// "agents-sandbox-vm"); the legacy interpretation is used only when it parses,
+// otherwise the whole name is parsed prefix-free. Prefer the label-first
+// SandboxIdentity for anything the launcher created.
 func ParseVMName(name string) ArtifactInfo {
-	task := false
-	remainder := name
 	switch {
 	case strings.HasPrefix(name, LegacyTaskPrefix):
-		task = true
-		remainder = name[len(LegacyTaskPrefix):]
+		return parseLegacyOrFullSandbox(name, len(LegacyTaskPrefix), true)
 	case strings.HasPrefix(name, LegacyVMPrefix):
-		remainder = name[len(LegacyVMPrefix):]
+		return parseLegacyOrFullSandbox(name, len(LegacyVMPrefix), false)
 	case strings.HasPrefix(name, LegacyHomePrefix), strings.HasPrefix(name, DockerImagePrefix):
-		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+		// A home-volume or runner-image name is not a sandbox — unless it is a
+		// hash-anchored prefix-free sandbox whose folder starts with that prefix.
+		if info, anchored := parseSandboxBody(name, false); anchored {
+			return info
+		}
+		return ArtifactInfo{}
 	}
+	info, _ := parseSandboxBody(name, false)
+	return info
+}
+
+// parseLegacyOrFullSandbox parses a name that starts with a legacy prefix,
+// preferring the legacy interpretation (prefix stripped) and using the
+// prefix-free one (the whole name) only when the stripped remainder is not a
+// hash-anchored sandbox body but the whole name is. A genuine legacy name still
+// parses; a prefix-free project VM whose folder begins with the legacy prefix
+// (e.g. "agents-sandbox-task-<hash>-opencode") is not misread as a legacy task.
+func parseLegacyOrFullSandbox(name string, prefixLen int, task bool) ArtifactInfo {
+	remainder := name[prefixLen:]
+	if info, anchored := parseSandboxBody(remainder, task); anchored {
+		return info
+	}
+	if info, anchored := parseSandboxBody(name, false); anchored {
+		return info
+	}
+	// Neither is anchored: keep the historical best-effort legacy strip.
+	info, _ := parseSandboxBody(remainder, task)
+	return info
+}
+
+// parseSandboxBody parses a sandbox name body, returning the identity and
+// whether it anchored on a slug hash.
+func parseSandboxBody(remainder string, task bool) (ArtifactInfo, bool) {
 	hashStart := findHashSuffix(remainder)
 	if hashStart == -1 {
-		return ArtifactInfo{Slug: remainder, Task: task, Digest: "", Agent: ""}
+		return ArtifactInfo{Slug: remainder, Task: task, Digest: "", Agent: ""}, false
 	}
 	folderName := remainder[:hashStart-1]
 	hash := remainder[hashStart : hashStart+14]
 	slug := folderName + "-" + hash
 	rest := remainder[hashStart+14:]
 	if len(rest) < 2 || rest[0] != '-' {
-		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}
+		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}, true
 	}
 	rest = rest[1:]
 	parts := strings.Split(rest, "-")
 	if len(parts) > 1 && allDigits(parts[len(parts)-1]) {
-		return ArtifactInfo{Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Task: true, Digest: ""}
+		return ArtifactInfo{Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Task: true, Digest: ""}, true
 	}
-	return ArtifactInfo{Slug: slug, Agent: rest, Task: task, Digest: ""}
+	return ArtifactInfo{Slug: slug, Agent: rest, Task: task, Digest: ""}, true
 }
 
 // ParseHomeVolumeName extracts the slug, optional digest, and agent from a home
@@ -225,13 +259,36 @@ func ParseVMName(name string) ArtifactInfo {
 func ParseHomeVolumeName(name string) ArtifactInfo {
 	switch {
 	case strings.HasPrefix(name, LegacyHomePrefix):
-		return parseHomeVolumeRemainder(name[len(LegacyHomePrefix):], true)
+		return parseLegacyOrFullHome(name, len(LegacyHomePrefix))
 	case strings.HasPrefix(name, LegacyVMPrefix), strings.HasPrefix(name, LegacyTaskPrefix),
 		strings.HasPrefix(name, DockerImagePrefix):
+		// A VM/task/image name is not a home volume — unless it is a
+		// hash-anchored prefix-free volume whose folder starts with that prefix.
+		if info, anchored := parseHomeVolumeBody(name, false); anchored {
+			return info
+		}
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	default:
 		return parseHomeVolumeRemainder(name, false)
 	}
+}
+
+// parseLegacyOrFullHome mirrors parseLegacyOrFullSandbox for home volumes.
+func parseLegacyOrFullHome(name string, prefixLen int) ArtifactInfo {
+	remainder := name[prefixLen:]
+	if info, anchored := parseHomeVolumeBody(remainder, true); anchored {
+		return info
+	}
+	if info, anchored := parseHomeVolumeBody(name, false); anchored {
+		return info
+	}
+	return parseHomeVolumeRemainder(remainder, true)
+}
+
+// parseHomeVolumeBody parses a home-volume body and reports whether it anchored
+// on a slug hash.
+func parseHomeVolumeBody(remainder string, prefixed bool) (ArtifactInfo, bool) {
+	return parseHomeVolumeRemainder(remainder, prefixed), findHashSuffix(remainder) != -1
 }
 
 func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {

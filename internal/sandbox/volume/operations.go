@@ -29,10 +29,10 @@ func checkForActiveVMs(ctx context.Context, k state.Key) error {
 		if cfg != nil {
 			labels = cfg.Labels
 		}
-		if naming.IsTaskSandbox(handle.Name(), labels) {
+		artifact := naming.SandboxIdentity(handle.Name(), labels)
+		if artifact.Task {
 			continue
 		}
-		artifact := naming.ParseVMName(handle.Name())
 		if artifact.Slug == k.Slug && (artifact.Agent == k.Agent || artifact.Agent == "") {
 			status := handle.Status()
 			if !msb.IsSandboxInactive(status) {
@@ -150,7 +150,7 @@ func CmdEdit(
 			editNewMount := msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{})
 			editSb, editErr := client.CreateSandbox(ctx, editSandboxName,
 				msbSdk.WithImage(loaded.Ref),
-				msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
+				msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 				msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 					srcMount: editOldMount,
 					dstMount: editNewMount,

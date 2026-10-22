@@ -60,7 +60,7 @@ func ListSandboxes(ctx context.Context, opts ...ListOption) ([]Info, error) {
 		if cfg != nil {
 			labels = cfg.Labels
 		}
-		if naming.IsTaskSandbox(name, labels) {
+		if naming.SandboxIdentity(name, labels).Task {
 			continue
 		}
 		status := h.Status()

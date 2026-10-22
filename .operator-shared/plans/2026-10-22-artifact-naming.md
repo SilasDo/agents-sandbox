@@ -34,6 +34,19 @@ is why the bug slipped through). The adversarial review's other findings were ac
 ownership (`python:3.12`-shaped no-slash refs) or unproven/unreachable (mixed-version concurrency,
 transient `ImageInspect` errors).
 
+Greptile then raised two P1s, both real and reproduced. (1) A leftover stopped task sandbox put its
+project's real `(slug, agent)` key in `ToPrune` while the running project VM put the same key in
+`ToKeep`, so the next auto-prune reclaimed the live project's runner image and an unrecorded saved
+home volume. Fixed by moving task sandboxes out of the key maps into `PruneState.Tasks` (reclaimed by
+`PruneSandboxes` only). (2) A project whose folder begins with a legacy prefix produced a prefix-free
+name that starts with that prefix, which `ParseVMName`/`ParseHomeVolumeName` stripped by prefix alone,
+yielding a garbage slug (or an empty one). Fixed by the clean-slate label scheme plus the anchored
+legacy-strip rule. The user chose the label-based identity (not just a `type` marker): every created
+sandbox now carries `org.agents-sandbox.type` (`project`/`task`), `.slug` and `.agent`, resolved by
+`naming.SandboxIdentity` (labels first, name fallback), consumed by `vm/list.go`,
+`pruning/state.go`, `volume/operations.go` and `image/references.go`. Legacy labels are read, not
+written.
+
 ## Global Constraints
 
 - Target name shapes (exact): project VM `<slug>-<agent>`; task sandbox `<slug>-<agent>-<nanos>`; home volume `<slug>-<agent>-<ts>`; msb runner image ref `<slug>:<agent>-latest`; Docker runner image `agents-sandbox/runner-<slug>:<agent>-latest` (unchanged).

@@ -46,6 +46,7 @@ func TestCreateProjectVMUsesResolvedRef(t *testing.T) {
 		context.Background(),
 		client,
 		projectVMName(key),
+		key,
 		key.Slug,
 		image.ImageInfo{
 			DockerTag: legacyRef,
@@ -92,6 +93,7 @@ func TestCreateProjectVMCreateSandboxError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
+		testVMKey(),
 		testVMKey().Slug,
 		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",
@@ -117,6 +119,7 @@ func TestCreateProjectVMNetworkConfigError(t *testing.T) {
 		context.Background(),
 		client,
 		"agents-sandbox-vm-test",
+		testVMKey(),
 		testVMKey().Slug,
 		image.ImageInfo{DockerTag: "agents-sandbox/runner-test:latest", Ref: "agents-sandbox/runner-test:latest"},
 		"test-home-vol",

@@ -41,13 +41,20 @@ func IsLegacyHomeVolume(name string) bool {
 	return strings.HasPrefix(name, LegacyHomePrefix)
 }
 
-// IsTaskSandbox reports whether a sandbox with the given name and labels is a
-// transient task sandbox. The task label is authoritative; the trailing
-// all-digit nanos segment is the name-level fallback for a sandbox created
-// before the label existed.
-func IsTaskSandbox(name string, labels map[string]string) bool {
-	if labels[LabelTask] != "" {
-		return true
+// SandboxIdentity resolves a sandbox's project key and kind. Labels the launcher
+// writes are authoritative; a sandbox created before they existed falls back to
+// the name heuristic (ParseVMName plus the legacy task marker). A nil labels map
+// is the pure name fallback.
+func SandboxIdentity(name string, labels map[string]string) ArtifactInfo {
+	info := ParseVMName(name)
+	if labels[LabelSlug] != "" {
+		info.Slug = labels[LabelSlug]
+		info.Agent = labels[LabelAgent]
+		info.Task = labels[LabelType] == SandboxTypeTask
+		return info
 	}
-	return ParseVMName(name).Task
+	if labels[LabelType] == SandboxTypeTask || labels[LabelTask] != "" {
+		info.Task = true
+	}
+	return info
 }

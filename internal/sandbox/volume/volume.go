@@ -58,7 +58,7 @@ func (vm *Manager) PrefillVolume(
 	spin := ui.Spinner("Preparing home volume")
 	sb, err := client.CreateSandbox(ctx, prefillName,
 		msbSdk.WithImage(info.Ref),
-		msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
+		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			"/mnt/home": mountConfig,
 		}),
@@ -202,7 +202,7 @@ func (vm *Manager) CopyVolume(
 	copySbName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
 	copySb, err := client.CreateSandbox(ctx, copySbName,
 		msbSdk.WithImage(info.Ref),
-		msbSdk.WithLabels(map[string]string{naming.LabelTask: "1"}),
+		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
 		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
 			srcMount: msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{}),
 			dstMount: msbSdk.Mount.Named(newVolume, msbSdk.MountOptions{}),

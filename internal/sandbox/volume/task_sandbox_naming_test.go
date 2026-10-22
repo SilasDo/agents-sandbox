@@ -44,7 +44,9 @@ func TestPrefillSandboxNameIsPrefixFreeAndLabelled(t *testing.T) {
 	for _, opt := range client.CreatedSandboxCalls[0].Opts {
 		opt(&cfg)
 	}
-	require.Equal(t, "1", cfg.Labels[naming.LabelTask])
+	require.Equal(t, naming.SandboxTypeTask, cfg.Labels[naming.LabelType])
+	require.Equal(t, "myproject", cfg.Labels[naming.LabelSlug])
+	require.Equal(t, "opencode", cfg.Labels[naming.LabelAgent])
 }
 
 // TestTaskSandboxNameStaysWithinNameLimit pins the longest realistic task
@@ -85,5 +87,7 @@ func TestCopySandboxNameIsPrefixFreeAndLabelled(t *testing.T) {
 	for _, opt := range client.CreatedSandboxCalls[0].Opts {
 		opt(&cfg)
 	}
-	require.Equal(t, "1", cfg.Labels[naming.LabelTask])
+	require.Equal(t, naming.SandboxTypeTask, cfg.Labels[naming.LabelType])
+	require.Equal(t, "myproject", cfg.Labels[naming.LabelSlug])
+	require.Equal(t, "opencode", cfg.Labels[naming.LabelAgent])
 }

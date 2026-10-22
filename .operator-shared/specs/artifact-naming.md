@@ -72,12 +72,23 @@ by us. The prefix-based "is this ours?" filters in `vm/list.go`, `volume/list.go
 `pruning/images.go` are dropped, and `image/remove.go`'s `refuseNonRunnerRefs` becomes a "does this ref resolve to a
 cached image" check rather than a prefix check.
 
-Classification **is** still needed, because sandboxes have two kinds:
+Classification and identity **are** still needed, and both come from labels on anything the launcher creates:
 
-- A project VM and a transient task sandbox must be distinguished for pruning (project VMs are kept by age, task
-  sandboxes are always reclaimable) and for listing (task sandboxes must not appear in the sandbox list). The signal
-  is a label: project VMs already carry `org.agents-sandbox.project`/`.image`; task sandboxes get an
-  `org.agents-sandbox.task` label at their creation sites. Handle-level labels are read via `Config().Labels`.
+- Every sandbox is created with `org.agents-sandbox.type` (`project`/`task`), `org.agents-sandbox.slug` (the full
+  checkout slug, even when the name was truncated) and `org.agents-sandbox.agent`. Project VMs keep
+  `org.agents-sandbox.project` (repo slug, for `list --label`) and `.image`. A home volume carries no sandbox label;
+  its identity is name- or state-derived.
+- `naming.SandboxIdentity(name, labels)` is the resolver: labels win, else the name heuristic (`ParseVMName` plus the
+  legacy `org.agents-sandbox.task` marker) for a sandbox created before the labels existed. `Config().Labels` is the
+  read path; a config error degrades to the name fallback rather than failing.
+- The label removes the ambiguity the name shape cannot resolve: a project whose folder itself begins with a legacy
+  prefix (a folder literally named `agents-sandbox-vm`/`-task`/`-home`) produces a prefix-free name that *starts with
+  that prefix*. `ParseVMName`/`ParseHomeVolumeName` therefore strip a legacy prefix only when the stripped remainder
+  is a hash-anchored legacy body, otherwise they parse the whole name prefix-free. This also anchors on the *rightmost*
+  whole 14-char segment, so a hash-shaped folder segment does not shadow the real slug hash.
+- Pruning keeps transient task sandboxes out of the project-key sets: `PruneState.Tasks` holds them (reclaimed by
+  `PruneSandboxes`) while `ToPrune`/`ToKeep` hold only project VMs. A leftover stopped task can therefore never mark
+  its still-active project stale (which otherwise reclaims the project's runner image and an unrecorded home volume).
 - Volumes have one kind (home volumes); images have one kind (runner images). Neither needs a marker.
 
 Two name-shape checks survive for a different reason: `runtimemigration/legacy.go` scans the **legacy
@@ -99,6 +110,9 @@ copying foreign data there. Those predicates stay (and accept both shapes).
   resolved, the image is reused (no reimport) while its content matches, and the VM is reused (no rebuild); once the
   VM is recreated it comes back under the new name.
 - `volume list` / `sandbox list` / `image list` show both schemes; task sandboxes never appear in `sandbox list`.
-- `pruning` reclaims legacy-named task sandboxes and surplus refs, and keeps a live project VM's legacy ref.
+- `pruning` reclaims legacy-named task sandboxes and surplus refs, and keeps a live project VM's legacy ref. A
+  leftover stopped task sandbox never makes its live project's image or unrecorded home volume prunable.
+- A project whose folder begins with a legacy prefix (`agents-sandbox-vm`/`-task`/`-home`) keeps its full slug and is
+  not misclassified.
 - `make check` green; `CHANGELOG.md` Unreleased line; `docs/how-it-works.md`, `docs/sandboxes.md` and
   `docs/runner-image.md` updated for the new names/references.

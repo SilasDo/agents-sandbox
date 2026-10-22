@@ -197,7 +197,11 @@ command reports the bare version (e.g. `0.1.0`).
   backward compatible: artifacts created by an earlier version (prefixed names, and the old prefixed microsandbox image
   reference) are still found and reused, so an upgrade never rebuilds a VM, reimports an image, or recreates a home
   volume; only newly created artifacts use the prefix-free names, and a reused legacy VM picks up the new name the next
-  time it is recreated.
+  time it is recreated. New sandboxes also carry their identity as labels (`org.agents-sandbox.type` = `project`/`task`,
+  `.slug`, `.agent`), which is authoritative where the name shape is ambiguous — e.g. a project whose folder itself
+  begins with a legacy prefix — with the name as the fallback for pre-label sandboxes. A leftover stopped task sandbox
+  no longer counts as its project being stale, so it can no longer cause the next auto-prune to reclaim the live
+  project's runner image or an unrecorded saved home volume.
 - **Breaking** Project identity is split by scope: a checkout-scoped slug (the resolved git common dir) keys the state
   directory, VM name, home volume, locks, and runner image tag, while a repo-scoped slug (the origin URL) keys the
   per-slug user config dir and the `org.agents-sandbox.project` grouping label. Two clones of one remote now get separate

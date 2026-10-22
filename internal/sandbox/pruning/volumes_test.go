@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
+
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
@@ -275,6 +277,45 @@ func TestPruneVolumesStillRemovesUnreferencedVolume(t *testing.T) {
 	}
 	if _, err := state.ReadState(referencedKey); err != nil {
 		t.Errorf("state file for %s should survive the prune, got err=%v", referencedSlug, err)
+	}
+}
+
+// TestPruneVolumesKeepsLiveProjectVolumeWithLeftoverTask is the volume form of
+// the Greptile P1: a leftover stopped task for a live project must not make the
+// project's unrecorded (e.g. pre-reset) home volume prunable.
+func TestPruneVolumesKeepsLiveProjectVolumeWithLeftoverTask(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const slug = "proj-1mjusbm3wikhb0"
+	live := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode",
+		Status_:    msbSdk.SandboxStatusRunning,
+		UpdatedAt_: time.Now(),
+	}
+	task := &msb.MockSandboxHandle{
+		Name_:      slug + "-opencode-1729000000000000000",
+		Status_:    msbSdk.SandboxStatusStopped,
+		UpdatedAt_: time.Now(),
+	}
+	client := &msb.MockMsbClient{
+		Sandboxes: []msb.SandboxHandle{live, task},
+		Volumes:   []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: slug + "-opencode-20260806T143022"}},
+	}
+	msb.WithMsbMock(t, client)
+
+	pruneState, err := buildPruneState(context.Background(), 7*24*time.Hour)
+	if err != nil {
+		t.Fatalf("buildPruneState: %v", err)
+	}
+	r, err := PruneVolumes(context.Background(), pruneState, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneVolumes: %v", err)
+	}
+	if r.VolumesPruned != 0 || len(client.RemovedVolumes) != 0 {
+		t.Errorf(
+			"a leftover task pruned the live project's volume: pruned=%d removed=%v",
+			r.VolumesPruned,
+			client.RemovedVolumes,
+		)
 	}
 }
 

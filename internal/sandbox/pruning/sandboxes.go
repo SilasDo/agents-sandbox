@@ -14,9 +14,9 @@ type SandboxReport struct {
 	Details   []StaleEntry
 }
 
-// PruneSandboxes prunes stale VMs and stopped task sandboxes. Task sandboxes have no
-// age gate (transient workers) but running ones are skipped. A stopped VM is
-// pruned only when older than threshold (age 0 = no wait).
+// PruneSandboxes prunes stale project VMs and stopped task sandboxes. Task
+// sandboxes have no age gate (transient workers) but running ones are skipped. A
+// stopped VM is pruned only when older than threshold (age 0 = no wait).
 func PruneSandboxes(
 	ctx context.Context,
 	pruneState PruneState,
@@ -24,7 +24,13 @@ func PruneSandboxes(
 	ui termio.UI,
 ) (SandboxReport, error) {
 	report := SandboxReport{VMsPruned: 0, Details: nil}
-	for slug, handle := range pruneState.ToPrune {
+	handles := make([]msb.SandboxHandle, 0, len(pruneState.ToPrune)+len(pruneState.Tasks))
+	for _, handle := range pruneState.ToPrune {
+		handles = append(handles, handle)
+	}
+	handles = append(handles, pruneState.Tasks...)
+
+	for _, handle := range handles {
 		name := handle.Name()
 		if !msb.IsSandboxInactive(handle.Status()) {
 			continue
@@ -43,7 +49,7 @@ func PruneSandboxes(
 		report.Details = append(report.Details, StaleEntry{
 			Type:     StaleTypeVM,
 			Name:     name,
-			Slug:     slug.Slug,
+			Slug:     noteIdentity(handle).Slug,
 			StaleFor: time.Since(handle.UpdatedAt()),
 			Digest:   "",
 		})
