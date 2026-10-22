@@ -162,5 +162,38 @@ EOF
 expect "docs vendor dependency ignored" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# Terminology: "harness" is internal vocabulary and never appears in docs.
+d="$(new_fixture)"
+printf '\nThe harness starts the agent.\n' >>"$d/docs/introduction.md"
+expect "terminology harness" 1 'terminology' "$d"
+rm -rf "$d"
+
+# Terminology: the old OPENCODE_SANDBOX_ prefix is flagged off the deprecations page.
+d="$(new_fixture)"
+printf '\nSet OPENCODE_SANDBOX_FOO.\n' >>"$d/docs/introduction.md"
+expect "terminology legacy prefix flagged" 1 'terminology' "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >"$d/docs/deprecations.md" <<'EOF'
+# Deprecations
+
+The old prefix OPENCODE_SANDBOX_* still works.
+EOF
+expect "terminology legacy prefix allowed on deprecations" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Terminology: banned filler words.
+d="$(new_fixture)"
+printf '\nThis is simply done.\n' >>"$d/docs/introduction.md"
+expect "terminology banned word" 1 'terminology' "$d"
+rm -rf "$d"
+
+# Terminology: no positional "above"/"below" references.
+d="$(new_fixture)"
+printf '\nSee the note above.\n' >>"$d/docs/introduction.md"
+expect "terminology above/below" 1 'terminology' "$d"
+rm -rf "$d"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

@@ -71,7 +71,7 @@ Configuration is resolved in this order (later entries override earlier ones):
 2. **User-level** — `~/.config/agents-sandbox/`
 3. **User per-slug** — `~/.config/agents-sandbox/<slug>/`
 4. **Project-level** — `.agents-sandbox/`
-5. **Legacy environment variables** — `OPENCODE_SANDBOX_<KEY>` (deprecated)
+5. **Legacy environment variables** — the pre-rename prefix (see [Deprecations]({% link deprecations.md %}))
 6. **Environment variables** — `AGENTS_SANDBOX_<KEY>`
 7. **CLI flags** — always win when explicitly passed
 
@@ -114,7 +114,7 @@ Every field in this table can also be set with its environment variable. Env var
 but lose to an explicitly passed CLI flag. The prefix is `AGENTS_SANDBOX_`; dashes and dots in the field name become
 underscores.
 
-The historical `OPENCODE_SANDBOX_` prefix (from before the rename to agents-sandbox) is still
+The pre-rename environment-variable prefix (see [Deprecations]({% link deprecations.md %})) is still
 accepted as a deprecated alias. It sits between config files and `AGENTS_SANDBOX_` in precedence,
 and using one prints a one-time deprecation warning. When both prefixes set the same field, the
 `AGENTS_SANDBOX_` value wins. The alias will be removed in a future release; migrate your
