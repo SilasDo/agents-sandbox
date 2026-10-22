@@ -83,7 +83,7 @@ Log out and back in for the group change to take effect.
 
 The doctor command will exit with an error if you are running the x86_64 binary under Rosetta 2. Download the `darwin-arm64` binary instead. To check your current architecture:
 
-```
+```console
 uname -m
 ```
 
@@ -93,13 +93,13 @@ Expected output on supported hardware: `arm64`.
 
 On macOS, the Docker socket is managed by Docker Desktop or colima. Verify it is running:
 
-```
+```console
 docker info
 ```
 
 If Docker Desktop is installed but not running, launch it from Applications. If using colima:
 
-```
+```console
 colima start
 ```
 
@@ -107,14 +107,14 @@ agents-sandbox finds the socket the same way the `docker` CLI does: `DOCKER_HOST
 docker context, then the default `/var/run/docker.sock`. If `docker info` works but agents-sandbox reports
 the socket as unreachable, check which context is active and where it points:
 
-```
+```console
 docker context ls
 ```
 
 A context marked `*` that points at a stopped provider explains the failure — switch it with
 `docker context use <name>`, or point agents-sandbox at the socket directly:
 
-```
+```console
 export DOCKER_HOST=unix://$HOME/.colima/default/docker.sock
 ```
 

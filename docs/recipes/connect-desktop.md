@@ -9,7 +9,7 @@ nav_order: 20
 
 Serve opencode to the host and attach the Opencode Desktop client.
 
-> **Requires a daemon-based agent.** `--serve-only` starts the agent's server inside the VM, so it only works with
+> **Note:** Requires a daemon-based agent. `--serve-only` starts the agent's server inside the VM, so it only works with
 > daemon-based agents (opencode, opencode2); it is rejected for `pi` and `claude-code`. Opencode Desktop connects to an
 > opencode server, so this recipe is opencode-specific.
 

@@ -191,7 +191,7 @@ Use `agents-sandbox config home` to verify the `home:` mapping. `agents-sandbox 
 drop-in candidates, but does not show `home:` mappings or files already present in the persistent home volume.
 
 > **Note:** After running `/connect` with opencode _inside_ the agents-sandbox, you can use `!` to switch to shell mode and then run
-> ```
+> ```console
 > cat ~/.local/share/opencode/auth.json
 > ```
 > to see the credentials stored in the sandbox (to store them outside in `env.secret.yaml`).

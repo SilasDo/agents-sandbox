@@ -25,7 +25,7 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
 `--worktree` and `--serve-only` are rejected for pi and claude-code (they have no daemon); they run through the
 interactive TUI instead. Passing an unsupported `--agent` name reports the valid names in its error message.
 
-> **opencode2 server auth:** v2's `serve` requires HTTP basic auth on every `/api/*` route and would otherwise generate a
+> **Note:** opencode2 server auth — v2's `serve` requires HTTP basic auth on every `/api/*` route and would otherwise generate a
 > random password the launcher cannot know. The runner image therefore bakes a fixed `OPENCODE_SERVER_PASSWORD`, and the
 > health probe, worktree API calls, and in-VM attach client all use it. v2 hardcodes the basic-auth username to
 > `opencode` (there is no `OPENCODE_SERVER_USERNAME`), so the fixed credential is `opencode:opencode` — the value an
@@ -36,7 +36,7 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 - **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`, `~/.config/agents-sandbox/opencode2/`)
 - **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
 
-> **Legacy fallback (migrating from an older version):** the `opencode2` launcher config dir is new. While **no**
+> **Note:** Legacy fallback, migrating from an older version — the `opencode2` launcher config dir is new. While **no**
 > `opencode2` dir exists in **either** scope, `opencode2` reads the old shared `opencode` dir — which the `opencode`
 > agent also uses — and warns on every run while it falls back. To migrate, **copy** the files you want `opencode2` to
 > read from `~/.config/agents-sandbox/opencode/` into `~/.config/agents-sandbox/opencode2/` (and the project
@@ -98,7 +98,7 @@ Precedence when the same VM path is reachable from multiple sources:
 
 `home:` > merged snippet config > verbatim mirror > drop-in provisioning
 
-> **File modes:** Home mappings, the verbatim mirror, and the default drop-in
+> **Note:** File modes — home mappings, the verbatim mirror, and the default drop-in
 > copy preserve ordinary Unix permission bits, including executable bits.
 > Launcher scripts therefore remain directly executable in the VM.
 
@@ -143,7 +143,7 @@ from existing home volumes so they cannot linger.
 
 ### Authentication: file copy vs. env-secret
 
-> **Security note:** because of the drop-in provisioning, the opencode `auth.json` credential file is now copied
+> **Warning:** because of the drop-in provisioning, the opencode `auth.json` credential file is now copied
 > into the VM by default. If you prefer to deliver credentials exclusively through the env-secret mechanism (which never
 > writes them into the VM, see [Secrets]({% link configuration/secrets.md %})), you can opt out of the credential file copy. The env-secret channel
 > remains fully supported and unchanged; this does not replace it.
@@ -190,6 +190,6 @@ project). Place a snippet in your project, e.g. `.agents-sandbox/opencode/permis
 }
 ```
 
-> **Caveat:** these rules are advisory for opencode's own Q&A tools. The `bash` tool executes arbitrary commands inside
+> **Warning:** these rules are advisory for opencode's own Q&A tools. The `bash` tool executes arbitrary commands inside
 > the VM and can read any file regardless of these deny rules, so they are not a security boundary — keep secrets out of
 > the VM or rely on the [secret mechanism]({% link configuration/secrets.md %}) instead.

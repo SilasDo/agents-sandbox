@@ -168,14 +168,17 @@ check_terminology() {
     while IFS= read -r msg; do
       report "$msg"
     done < <(awk -v rel="$rel" '
-      /^[[:space:]]*(```|~~~)/ { fence = !fence; next }
+      /^[[:space:]]*(>[[:space:]]*)*```/ || /^[[:space:]]*(>[[:space:]]*)*~~~/ { fence = !fence; next }
       fence { next }
       {
-        low = tolower($0)
+        scrub = $0
+        gsub(/`[^`]*`/, "", scrub)
+        gsub(/https?:\/\/[^[:space:]]+/, "", scrub)
+        low = tolower(scrub)
         if (low ~ /(^|[^[:alnum:]_])harness([^[:alnum:]_]|$)/)
           printf "%s:%d: terminology: \"harness\" is internal vocabulary; use \"agent\"\n", rel, NR
-        if (rel != "docs/deprecations.md" && rel != "docs/install/upgrading.md" && $0 ~ /OPENCODE_SANDBOX_/)
-          printf "%s:%d: terminology: the OPENCODE_SANDBOX_ prefix is named only on the deprecations page\n", rel, NR
+        if (rel != "docs/deprecations.md" && rel != "docs/install/upgrading.md" && scrub ~ /OPENCODE_SANDBOX_/)
+          printf "%s:%d: terminology: the OPENCODE_SANDBOX_ prefix is named only on the deprecations and upgrading pages\n", rel, NR
         if (low ~ /(^|[^[:alnum:]_])(simply|easy|quickly)([^[:alnum:]_]|$)/ || low ~ /let\047s/)
           printf "%s:%d: terminology: avoid the filler words \"simply\", \"easy\", \"quickly\", and \"let\047s\"\n", rel, NR
         if (low ~ /(^|[^[:alnum:]_])(above|below)([^[:alnum:]_]|$)/)

@@ -1,6 +1,6 @@
 ---
 title: Switch from your existing agent
-description: "Run your existing Claude Code, opencode or pi setup inside an agents-sandbox microVM without writing any config."
+description: "Run your existing Claude Code, opencode, opencode2 or pi setup inside an agents-sandbox microVM without writing any config."
 layout: default
 parent: Get started
 nav_order: 30
@@ -24,7 +24,7 @@ and credentials into the VM by default, so your normal agent,
 models, and permissions are available immediately, now running in a hardware-isolated VM with
 your project at `/workspace`.
 
-> **Keep your normal workflow.** Because your config is mirrored, you can keep managing it where
+> **Note:** Keep your normal workflow — because your config is mirrored, you can keep managing it where
 > and how you already do, including managing config via the agents' TUI on the host, and it stays in sync
 > with the sandbox.
 

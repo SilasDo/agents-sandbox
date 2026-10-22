@@ -11,6 +11,7 @@ has_toc: false
 Hands-on how-tos for common workflows with agents-sandbox. Each recipe is
 self-contained, so you can jump straight to the one you need.
 
+- [Worktree Sessions]({% link branch-sessions.md %})
 - [Connect Opencode Desktop]({% link recipes/connect-desktop.md %})
 - [Bare Checkout with Worktrees Inside]({% link recipes/bare-worktrees.md %})
 - [Trust the Sandbox CA in Java]({% link recipes/java-ca-trust.md %})

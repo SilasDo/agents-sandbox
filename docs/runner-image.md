@@ -48,7 +48,7 @@ recreated on the next run so it uses the new image (the home volume is preserved
 Runner images are tagged **per agent** on both Docker and microsandbox. The `-latest` tag is namespaced by the agent,
 so each agent's image can be identified and updated independently:
 
-```
+```text
 agents-sandbox/runner-<slug>:<agent>-latest
 ```
 

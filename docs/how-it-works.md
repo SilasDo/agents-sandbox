@@ -15,7 +15,7 @@ describes that flow and how a project's identity and state are laid out.
 
 1. **Image build** — Builds a Docker image from `.agents-sandbox/Dockerfile` if present, or uses the base image (in a
    bare checkout the project directory is the bare root next to `.git`). The image
-   contains the selected coding agent, Node.js 26, and common CLI tools.
+   contains the selected coding agent, Node.js (when the agent needs it), and common CLI tools.
 2. **Volume setup** — Creates a persistent home volume (managed by the private microsandbox runtime, name: `agents-sandbox-home-<checkout-slug>-<timestamp>`) for the
    checkout, preserving editor state, caches, and config across sessions.
 3. **VM creation or reuse** — Creates a new project VM on first boot; subsequent runs connect to the existing VM (or
