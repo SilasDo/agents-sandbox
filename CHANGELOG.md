@@ -173,6 +173,11 @@ command reports the bare version (e.g. `0.1.0`).
   CI job on every PR and in `make verify`, deliberately not as a release prerequisite. Ship-green: 12 internal functions
   unreachable from any `main` package were deleted and 11 test seams plus 10 test-support files were marked — no
   user-visible behavior change.
+- Self-upgrade: a new `upgrade.channel` setting (`stable` default, `canary`) lets an install opt into canary
+  prereleases. The canary channel follows the newest release eligible for it — the newest canary prerelease, and then
+  the real release once it ships, so testers roll forward automatically. `agents-sandbox upgrade` accepts a one-shot
+  `--channel` override. Homebrew installs are unaffected. Set it back to `stable` to leave the canary line at the next
+  release.
 
 ### Changed
 
@@ -216,11 +221,6 @@ command reports the bare version (e.g. `0.1.0`).
   volume would be created or reused — without building the runner image, creating a home volume, writing project state,
   starting a VM, attaching, or making any network request (no version resolution and no base-image pull). The
   `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image and inspect/build nothing.
-- Self-upgrade: a new `upgrade.channel` setting (`stable` default, `canary`) lets an install opt into canary
-  prereleases. The canary channel follows the newest release eligible for it — the newest canary prerelease, and then
-  the real release once it ships, so testers roll forward automatically. `agents-sandbox upgrade` accepts a one-shot
-  `--channel` override. Homebrew installs are unaffected. Set it back to `stable` to leave the canary line at the next
-  release.
 
 ### Fixed
 

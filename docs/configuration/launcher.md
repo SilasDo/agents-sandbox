@@ -102,6 +102,7 @@ Configuration is resolved in this order (later entries override earlier ones):
 | `docker`                        | `--docker`               | Append the Docker engine block to the runner image (overridable with `--docker`; `dind` is a deprecated alias)                                                                                                             |
 | `upgrade.mode`                   | —                        | How to handle a newer release when one is found: `prompt`, `notify`, `auto`, or `auto-exit` (default `prompt`, see [Self-upgrade]({% link configuration/self-upgrade.md %}))                                                            |
 | `upgrade.interval`               | —                        | How often to check for a newer release (default `1d`, minimum `1h`, see [Self-upgrade]({% link configuration/self-upgrade.md %}))                                                                                                                        |
+| `upgrade.channel`                | —                        | Opt into a release channel: `stable` (default) or `canary` (see [Self-upgrade]({% link configuration/self-upgrade.md %}))
 | `notify.desktop`                 | —                        | Show desktop notifications via `notify-send` (Linux) / `osascript` (macOS) (default false, see [Notifications]({% link configuration/notifications.md %}))                                                                                                |
 | `notify.audio`                   | —                        | Audio notification channel: `system`, `bell`, or `off` (default `off`, see [Notifications]({% link configuration/notifications.md %}))                                                                                                                  |
 | `notify.on-input`                | —                        | Notify when the agent is waiting on user input (default false)                                                                                                                                                               |
@@ -154,6 +155,7 @@ The launcher validates:
 - `cpus` must be between 0 and 255
 - `upgrade.mode` must be one of `prompt`, `notify`, `auto`, `auto-exit`
 - `upgrade.interval` must be at least `1h` (a floor guarding against GitHub rate limits)
+- `upgrade.channel` must be `stable` or `canary` (an unknown value is rejected)
 
 Invalid config files prevent the launcher from starting.
 
@@ -223,6 +225,7 @@ configuration to `AGENTS_SANDBOX_`.
 | `docker`                        | `AGENTS_SANDBOX_DOCKER`                                         |
 | `upgrade.mode`                   | `AGENTS_SANDBOX_UPGRADE_MODE`                                    |
 | `upgrade.interval`               | `AGENTS_SANDBOX_UPGRADE_INTERVAL`                                |
+| `upgrade.channel`                | `AGENTS_SANDBOX_UPGRADE_CHANNEL`                                 |
 | `notify` (override)              | `AGENTS_SANDBOX_NOTIFY`                                          |
 
 Action toggles (`--rebuild`, `--dry-run`, `--force`, ...) are CLI-only and cannot be set via
