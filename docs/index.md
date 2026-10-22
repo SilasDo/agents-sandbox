@@ -7,13 +7,9 @@ nav_order: 0
 
 # agents-sandbox
 
-agents-sandbox allows you to isolate your coding agents from the rest of your dev environment. You are put in control over what parts of your host machine and network environment are available to each agent. agents-sandbox acts as a launcher for [opencode](https://opencode.ai), [opencode2](https://opencode.ai),
-[pi](https://pi.dev), and [Claude Code](https://claude.com/product/claude-code). It builds or reuses a dedicated [microsandbox](https://microsandbox.dev/) VM per
-project and agent, then attaches the selected agent inside that VM.
+agents-sandbox runs coding agents — [opencode](https://opencode.ai), [opencode2](https://opencode.ai), [pi](https://pi.dev), and [Claude Code](https://claude.com/product/claude-code) — inside a dedicated [microsandbox](https://microsandbox.dev/) VM for each project, instead of directly on your machine, with your project mounted at `/workspace`.
 
-On top of that, agents-sandbox utilizes the robust secrets management of microsandbox, which significantly reduces the exposure of secrets to the agent. This way, your helpful assistant (or even a rogue agent) won't be able to accidentally publish dev secrets to a public wiki page ;)
-
-At the same time, agents-sandbox moves out of the way as much as possible, so that you don't have to adapt to a completely new workflow.
+It provisions its own microsandbox runtime and keeps credentials on the host, so the VM sees only a placeholder that the proxy substitutes for the hosts you allow.
 
 ## Comparison
 
@@ -42,15 +38,11 @@ Legend for the first four rows: ✅ = stronger isolation or host-side handling; 
 
 ## Explore
 
-- [Why?]({% link introduction.md %})
-- [Installation]({% link install/installation.md %})
-- [Switch from your existing agent]({% link switch.md %})
-- [Manage config in the sandbox]({% link manage-config.md %})
-- [Configuration]({% link configuration/index.md %})
-- [Sandboxes]({% link sandboxes.md %})
-- [Runner Image]({% link runner-image.md %})
-- [Commands]({% link commands.md %})
-- [Worktree Sessions]({% link branch-sessions.md %})
-- [Recipes]({% link recipes.md %})
-- [Architecture & Concepts]({% link how-it-works.md %})
-- [Troubleshooting]({% link troubleshooting.md %})
+Each section groups the pages by what you are trying to do.
+
+- [Get started]({% link get-started.md %}) — install agents-sandbox and run your first agent.
+- [Guides]({% link guides.md %}) — sandboxes, the runner image, and upgrading.
+- [Recipes]({% link recipes.md %}) — walkthroughs for specific setups.
+- [Configuration]({% link configuration/index.md %}) — config files, secrets, networking, and mounts.
+- [Concepts]({% link concepts.md %}) — why the isolation is built this way.
+- [Reference]({% link reference.md %}) — commands, troubleshooting, and deprecations.
