@@ -47,7 +47,7 @@ Install agents-sandbox with Homebrew or a release binary.
   curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-linux-arm64
   ```
 
-  To install, simply set permissions and move to your path:
+  To install, set permissions and move it onto your path:
 
   ```console
   chmod u+x agents-sandbox
