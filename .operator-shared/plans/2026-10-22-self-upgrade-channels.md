@@ -1004,3 +1004,10 @@ Deviations from this plan's text, recorded after the work landed on `feat/upgrad
   `main`, there is no `codecov.yml` in the repo, and no brain document states a coverage goal — yet it caught five
   branches the feature's whole-branch review had explicitly accepted as non-blocking. See
   `specs/test-coverage.md`.
+- **Task 4's snippet was corrected after PR review** (commit `2c56ef1`). The body prescribed above tests for a hyphen
+  anywhere in the tag, which misclassifies a final release whose *build metadata* contains one: for `v1.9.0+build-42`,
+  GitHub would publish it as a prerelease, `/releases/latest` would hide it from every stable install, and both Homebrew
+  steps would be skipped — while the launcher's own semver parser treats the same tag as final, and the spec requires
+  classification by the semver prerelease part. The step now strips build metadata (`version="${version%%+*}"`) before
+  the hyphen test, so `IS_PRERELEASE` is true exactly when the tag's semver prerelease part is non-empty. The snippet
+  above is left as the plan's original text.

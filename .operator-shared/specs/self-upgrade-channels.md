@@ -161,7 +161,9 @@ Required change:
 
 - The `publish` job classifies the tag as a prerelease when it carries a semver prerelease part, and passes
   `prerelease: true` to `action-gh-release`. `make_latest` needs no change: GitHub does not allow a prerelease to be
-  "latest".
+  "latest". The test is the **semver prerelease part**, not a hyphen test: build metadata may itself contain a hyphen
+  (`v1.9.0+build-42` is a final release), so strip a `+…` suffix before looking for the prerelease hyphen. Note the two
+  rules are independent — this flag is true for `-rc.N`/`-alpha.N` too, which are prereleases but not canary-eligible.
 - The Homebrew bump steps are skipped for a prerelease tag, so the tap keeps pointing at a full release.
 
 The `release` job already resolves `BARE_VERSION=${GITHUB_REF_NAME#v}` and bakes it into the binary, which is what makes
