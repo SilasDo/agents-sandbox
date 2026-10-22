@@ -216,12 +216,16 @@ jobs:
       - name: Classify release tag
         run: |
           set -euo pipefail
-          # Release tags are v<semver> (the workflow triggers on v*), so a
-          # hyphen marks a semver prerelease part, e.g. v1.9.0-canary.1. A
-          # prerelease must not be served by /releases/latest (that is the
-          # stable channel's only source of truth) and must not bump the
-          # Homebrew formula (the tap serves full releases only).
-          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+          # Release tags are v<semver> (the workflow triggers on v*). Build
+          # metadata (a `+...` suffix) does not affect precedence, so drop it
+          # before looking for the prerelease hyphen: v1.9.0+build-42 is a final
+          # release whose metadata happens to contain a hyphen. A prerelease
+          # must not be served by /releases/latest (the stable channel's only
+          # source of truth) and must not bump the Homebrew formula (the tap
+          # serves full releases only).
+          version="${GITHUB_REF_NAME#v}"
+          version="${version%%+*}"
+          if [[ "$version" == *-* ]]; then
             echo "IS_PRERELEASE=true" >> "$GITHUB_ENV"
           else
             echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
