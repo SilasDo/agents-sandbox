@@ -51,18 +51,6 @@ func TestRuntimePreparationHelpers(t *testing.T) {
 	}
 }
 
-func TestValidateInstalledUsesSDKResolve(t *testing.T) {
-	// The real SDK installer is deliberately not exercised here. This test
-	// covers the production adapter's validation seam without downloading a
-	// runtime into the test environment.
-	configpaths.WithMockConfigPaths(t)
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("MSB_HOME", "")
-	if err := ValidateInstalled(context.Background()); err == nil {
-		t.Fatal("ValidateInstalled() error = nil, want missing runtime error")
-	}
-}
-
 // TestValidateInstalledPassesPrivateHome asserts the resolve call names the
 // private home explicitly instead of relying on the process-global MSB_HOME.
 func TestValidateInstalledPassesPrivateHome(t *testing.T) {

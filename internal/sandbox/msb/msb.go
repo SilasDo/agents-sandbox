@@ -44,6 +44,27 @@ func runtimeConfig() msbSdk.RuntimeConfig {
 	return msbSdk.RuntimeConfig{Home: configpaths.MSBHome()}
 }
 
+// Seams over the SDK calls realMsbClient delegates to, so its unit tests inject
+// fakes and never load the native library or read the developer's real runtime.
+// The real client is exercised by the msb-tagged tests and by the running
+// launcher, not here.
+var (
+	getSandbox        = msbSdk.GetSandbox
+	createSandbox     = msbSdk.CreateSandbox
+	listSandboxesWith = msbSdk.ListSandboxesWith
+	getVolume         = msbSdk.GetVolume
+	createVolume      = msbSdk.CreateVolume
+	listVolumes       = msbSdk.ListVolumes
+	removeVolume      = msbSdk.RemoveVolume
+	imageGet          = msbSdk.Image.Get
+	imageList         = msbSdk.Image.List
+	imageRemove       = msbSdk.Image.Remove
+	imageLoad         = msbSdk.Image.Load
+	realImageInspect  = msbSdk.Image.Inspect
+	imagePrune        = msbSdk.Image.Prune
+	storageUsage      = msbSdk.StorageUsage
+)
+
 // ValidateInstalled checks the SDK-managed runtime without downloading it.
 func ValidateInstalled(_ context.Context) error {
 	_, err := resolveRuntime(runtimeConfig())
@@ -283,7 +304,7 @@ func (realMsbClient) EnsureInstalled(ctx context.Context) error {
 }
 
 func (realMsbClient) GetSandbox(ctx context.Context, name string) (SandboxHandle, error) {
-	h, err := msbSdk.GetSandbox(ctx, name)
+	h, err := getSandbox(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +312,7 @@ func (realMsbClient) GetSandbox(ctx context.Context, name string) (SandboxHandle
 }
 
 func (realMsbClient) CreateSandbox(ctx context.Context, name string, opts ...msbSdk.SandboxOption) (Sandbox, error) {
-	sb, err := msbSdk.CreateSandbox(ctx, name, opts...)
+	sb, err := createSandbox(ctx, name, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +332,7 @@ func (realMsbClient) ListSandboxes(ctx context.Context, labels map[string]string
 		if cursor != nil {
 			opts = append(opts, msbSdk.WithListCursor(*cursor))
 		}
-		page, err = msbSdk.ListSandboxesWith(ctx, opts...)
+		page, err = listSandboxesWith(ctx, opts...)
 		if err != nil {
 			return nil, err
 		}
@@ -327,7 +348,7 @@ func (realMsbClient) ListSandboxes(ctx context.Context, labels map[string]string
 }
 
 func (realMsbClient) GetVolume(ctx context.Context, name string) (VolumeHandle, error) {
-	v, err := msbSdk.GetVolume(ctx, name)
+	v, err := getVolume(ctx, name)
 	if err != nil {
 		return nil, err
 	}
@@ -335,7 +356,7 @@ func (realMsbClient) GetVolume(ctx context.Context, name string) (VolumeHandle, 
 }
 
 func (realMsbClient) CreateVolume(ctx context.Context, name string, opts ...msbSdk.VolumeOption) (VolumeHandle, error) {
-	vol, err := msbSdk.CreateVolume(ctx, name, opts...)
+	vol, err := createVolume(ctx, name, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -343,7 +364,7 @@ func (realMsbClient) CreateVolume(ctx context.Context, name string, opts ...msbS
 }
 
 func (realMsbClient) ListVolumes(ctx context.Context) ([]VolumeHandle, error) {
-	handles, err := msbSdk.ListVolumes(ctx)
+	handles, err := listVolumes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -355,16 +376,16 @@ func (realMsbClient) ListVolumes(ctx context.Context) ([]VolumeHandle, error) {
 }
 
 func (realMsbClient) RemoveVolume(ctx context.Context, name string) error {
-	return msbSdk.RemoveVolume(ctx, name)
+	return removeVolume(ctx, name)
 }
 
 func (realMsbClient) ImageGet(ctx context.Context, ref string) error {
-	_, err := msbSdk.Image.Get(ctx, ref)
+	_, err := imageGet(ctx, ref)
 	return err
 }
 
 func (realMsbClient) ImageList(ctx context.Context) ([]ImageHandle, error) {
-	handles, err := msbSdk.Image.List(ctx)
+	handles, err := imageList(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -376,11 +397,11 @@ func (realMsbClient) ImageList(ctx context.Context) ([]ImageHandle, error) {
 }
 
 func (realMsbClient) ImagePrune(ctx context.Context) (*msbSdk.ImagePruneReport, error) {
-	return msbSdk.Image.Prune(ctx)
+	return imagePrune(ctx)
 }
 
 func (realMsbClient) ImageRemove(ctx context.Context, ref string, force bool) error {
-	return msbSdk.Image.Remove(ctx, ref, force)
+	return imageRemove(ctx, ref, force)
 }
 
 func (realMsbClient) ImageLoad(ctx context.Context, ref string, r io.Reader) (err error) {
@@ -402,15 +423,11 @@ func (realMsbClient) ImageLoad(ctx context.Context, ref string, r io.Reader) (er
 		return fmt.Errorf("syncing image archive: %w", err)
 	}
 
-	if _, err := msbSdk.Image.Load(ctx, tmp.Name(), ref); err != nil {
+	if _, err := imageLoad(ctx, tmp.Name(), ref); err != nil {
 		return fmt.Errorf("loading image into microsandbox: %w", err)
 	}
 	return nil
 }
-
-// realImageInspect is a seam over the SDK image inspect so the adapter's success
-// path is unit-testable without a populated image cache.
-var realImageInspect = msbSdk.Image.Inspect
 
 func (realMsbClient) ImageInspect(ctx context.Context, ref string) (*msbSdk.ImageConfig, error) {
 	detail, err := realImageInspect(ctx, ref)
@@ -441,7 +458,7 @@ func (realMsbClient) ImageInspectDetail(ctx context.Context, ref string) (*Image
 }
 
 func (realMsbClient) StorageUsage(ctx context.Context) (*msbSdk.StorageUsageReport, error) {
-	return msbSdk.StorageUsage(ctx)
+	return storageUsage(ctx)
 }
 
 // realVolumeHandle adapts *msbSdk.Volume or *msbSdk.VolumeHandle to VolumeHandle.
