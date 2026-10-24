@@ -54,6 +54,10 @@ load the library, so they build with the tag and need no `MICROSANDBOX_FFI_PATH`
 (`microsandbox_ffi_path`), and `test-integration` passes `integration $(NO_EMBEDDED_FFI_TAG)`. The `msb`-tagged
 tests (`make test-msb`) keep the embed: they are the tests that actually load the library.
 
+Go cannot make a module's build tag the default from inside a repo, and putting the tag in `GOFLAGS` would also
+hit `go build`/`go run`, producing a launcher with no embedded library. So a bare `go test ./...` still builds
+the embedded (slower) configuration; use the make targets.
+
 Measured warm effect on this machine: full `make test` ~10.6 s → ~10.0 s, build-only ~9.5 s → ~9.0 s
 (user ~50 s → ~46 s, sys ~24 s → ~20 s). The wall win is modest because go-tool and compile overhead remain;
 the binary size and the ~1.3 GB/run of writes are what drop.
