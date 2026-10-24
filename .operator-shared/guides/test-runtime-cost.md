@@ -50,8 +50,8 @@ load the library, so they build with the tag and need no `MICROSANDBOX_FFI_PATH`
 | `internal/sandbox/vm` | 54 MB | 19 MB |
 | `internal/sandbox/image` (integration) | 50 MB | 15 MB |
 
-`make test`, `test-race`, `coverage`, and `coverage-junit` pass `NO_NATIVE_LIB_TAG`
-(`microsandbox_ffi_path`), and `test-integration` passes `integration $(NO_NATIVE_LIB_TAG)`. The `msb`-tagged
+`make test`, `test-race`, `coverage`, and `coverage-junit` pass `NO_EMBEDDED_FFI_TAG`
+(`microsandbox_ffi_path`), and `test-integration` passes `integration $(NO_EMBEDDED_FFI_TAG)`. The `msb`-tagged
 tests (`make test-msb`) keep the embed: they are the tests that actually load the library.
 
 Measured warm effect on this machine: full `make test` ~10.6 s → ~10.0 s, build-only ~9.5 s → ~9.0 s

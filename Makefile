@@ -17,10 +17,12 @@ DEADCODE_VERSION = v0.52.0
 # Per-binary cap for the unit suite: a wedged test panics with a stack dump
 # instead of blocking for go test's default 10m. Override for a slow machine.
 TEST_TIMEOUT ?= 5m
-# Build tag that drops the SDK's embedded ~36 MB native library. The unit and
-# integration suites reach the SDK only through seams, so they never load it,
-# and no MICROSANDBOX_FFI_PATH is needed. The msb-tagged tests keep the embed.
-NO_NATIVE_LIB_TAG = microsandbox_ffi_path
+# The SDK's microsandbox_ffi_path tag swaps its //go:embed for reading the FFI
+# library from $MICROSANDBOX_FFI_PATH at runtime. The unit and integration
+# suites reach the SDK only through seams, so they never read that path and need
+# no env var — the ~36 MB library simply leaves the test binary. The msb-tagged
+# tests keep the embed: they are the tests that load it.
+NO_EMBEDDED_FFI_TAG = microsandbox_ffi_path
 
 ARTIFACT = agents-sandbox-$(GOOS)-$(GOARCH)
 
@@ -84,14 +86,14 @@ bootstrap:
 	fi
 
 test:
-	CGO_ENABLED=1 go test -tags $(NO_NATIVE_LIB_TAG) -timeout $(TEST_TIMEOUT) ./...
+	CGO_ENABLED=1 go test -tags $(NO_EMBEDDED_FFI_TAG) -timeout $(TEST_TIMEOUT) ./...
 
 # Race-detector run across the module. The launcher runs concurrent state
 # transactions, legacy-volume copy campaigns, daemon health polling, and
 # watchers, so a data race is a real bug; kept out of `test`/`check` because
 # it is substantially slower.
 test-race:
-	CGO_ENABLED=1 go test -tags $(NO_NATIVE_LIB_TAG) -race ./...
+	CGO_ENABLED=1 go test -tags $(NO_EMBEDDED_FFI_TAG) -race ./...
 
 # Drive the fuzz targets with generated input for a bounded time per target.
 # The seed corpus (and any committed crasher) already runs as part of `make
@@ -123,7 +125,7 @@ fuzz:
 # build tag. Requires a working docker daemon and network access (base image
 # pulls, agent installs, registry round-trips).
 test-integration:
-	CGO_ENABLED=1 go test -tags 'integration $(NO_NATIVE_LIB_TAG)' -timeout 60m -count=1 ./...
+	CGO_ENABLED=1 go test -tags 'integration $(NO_EMBEDDED_FFI_TAG)' -timeout 60m -count=1 ./...
 
 # Harness smoke tests plus the real-client msb tests: start every registered
 # harness to its TUI in a real microsandbox VM, and drive the real SDK client
@@ -181,12 +183,12 @@ mutation:
 		$(PKG)
 
 coverage:
-	CGO_ENABLED=1 go test -tags $(NO_NATIVE_LIB_TAG) -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 go test -tags $(NO_EMBEDDED_FFI_TAG) -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
 
 # Single test run that also emits JUnit XML (junit.xml) for Codecov Test Analytics.
 coverage-junit:
-	CGO_ENABLED=1 go run gotest.tools/gotestsum@v$(GOTESTSUM_VERSION) --junitfile junit.xml -- -tags $(NO_NATIVE_LIB_TAG) -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 go run gotest.tools/gotestsum@v$(GOTESTSUM_VERSION) --junitfile junit.xml -- -tags $(NO_EMBEDDED_FFI_TAG) -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
 
 lint:
