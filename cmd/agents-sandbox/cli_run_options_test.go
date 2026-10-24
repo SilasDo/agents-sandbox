@@ -46,6 +46,23 @@ func TestRunAndShellHaveDNSFlag(t *testing.T) {
 	}
 }
 
+func TestRunAndShellHaveComposableNetworkFlag(t *testing.T) {
+	for _, name := range []string{cmdRun, cmdShell} {
+		cmd, _ := setupCommandFixtures(t, name, "--help")
+		foundCmd, _, err := cmd.Find([]string{name})
+		if err != nil {
+			t.Fatalf("Find %q: %v", name, err)
+		}
+		flag := foundCmd.Flags().Lookup(flagNetwork)
+		if flag == nil {
+			t.Fatalf("%s command must have --network flag", name)
+		}
+		if flag.Value.Type() != "stringSlice" {
+			t.Errorf("%s --network type = %q, want stringSlice (comma-separated or repeated)", name, flag.Value.Type())
+		}
+	}
+}
+
 // noDaemonAgent is a minimal agent.Agent that intentionally does not implement
 // DaemonProvider, so agent-support checks can be exercised without polluting
 // the global agent registry.

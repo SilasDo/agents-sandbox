@@ -134,12 +134,12 @@ func TestBuildSecretState(t *testing.T) {
 }
 
 func TestNetworkChanged(t *testing.T) {
-	policy := network.Policy{Profile: network.ProfilePublic}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfilePublic}}
 	fp := policy.Fingerprint()
 	if NetworkChanged(NetworkState{Hash: fp}, policy) {
 		t.Error("NetworkChanged should be false when hashes match")
 	}
-	if !NetworkChanged(NetworkState{Hash: fp}, network.Policy{Profile: network.ProfileNone}) {
+	if !NetworkChanged(NetworkState{Hash: fp}, network.Policy{Profiles: []network.Profile{network.ProfileNone}}) {
 		t.Error("NetworkChanged should be true when profile changes")
 	}
 	if !NetworkChanged(NetworkState{}, policy) {
@@ -151,7 +151,7 @@ func TestNetworkChanged(t *testing.T) {
 }
 
 func TestBuildNetworkState(t *testing.T) {
-	policy := network.Policy{Profile: network.ProfileNone}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 	st := BuildNetworkState(policy)
 	if st.Hash != policy.Fingerprint() {
 		t.Errorf("BuildNetworkState.Hash = %q, want fingerprint %q", st.Hash, policy.Fingerprint())

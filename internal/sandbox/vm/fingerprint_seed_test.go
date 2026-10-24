@@ -32,7 +32,7 @@ func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 	}
 	ui := termio.NewTestMock(t)
 	k := state.Key{Slug: "seedproj", Agent: "opencode"}
-	policy := network.Policy{Profile: network.ProfileNone}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 	extraMounts := mounts.Mounts{
 		"/host/data": {Source: "/host/data"},
 	}

@@ -20,8 +20,9 @@ Mounts are the exception: they are read live from the persisted config JSON (`sp
   changed **only when the desired setting is non-empty**.
 - `NetworkState` — a `network.Policy.Fingerprint()` hash. Empty applied counts as changed **unconditionally**, to force
   one-time migration of VMs created before the deny-by-default network change (#86). `BuildNetworkState` applies
-  `Policy.Effective()`, so an unset profile fingerprints as `none`; `Fingerprint` sorts its lines, so list order does not
-  matter.
+  `Policy.Effective()`, so an unset profile fingerprints as the `public` default; `Fingerprint` sorts its lines, so
+  profile and list order do not matter. Profile composition and its fingerprint-stability rule are in
+  `specs/network-profiles.md`.
 
 Fingerprints are written by `persistConfigHashes`, which runs only when the VM was created this run (`boot ==
 vmBootCreated`). A fresh home volume's state is additionally seeded with the desired fingerprints at creation

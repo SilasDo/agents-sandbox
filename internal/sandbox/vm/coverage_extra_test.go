@@ -104,7 +104,7 @@ func TestPersistConfigHashesCoversEnvSecretAndNetwork(t *testing.T) {
 	ui := termio.NewTestMock(t)
 
 	slug := "hashproj"
-	policy := network.Policy{Profile: network.ProfileNone}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 
 	persistConfigHashes(
 		state.Key{Slug: slug, Agent: "opencode"},

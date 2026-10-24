@@ -87,6 +87,10 @@ command reports the bare version (e.g. `0.1.0`).
   the real release once it ships — so testers roll forward automatically. `agents-sandbox upgrade` accepts a one-shot
   `--channel` override. Homebrew installs are unaffected. Set the channel back to `stable` to leave the canary line at
   the next release.
+- Networking: the `network.profile` key (and `--network` / `AGENTS_SANDBOX_NETWORK_PROFILE`) now accepts a list, so the
+  composable `public`, `private`, and `host` profiles can be combined, e.g. `profile: [public, host]` to let a VM reach
+  both the internet and a service on the host such as a local MCP bridge. `none` remains a terminal, allowlist-only
+  policy and cannot be combined with another profile. Existing single-profile configuration is unchanged (#289).
 
 ### Changed
 

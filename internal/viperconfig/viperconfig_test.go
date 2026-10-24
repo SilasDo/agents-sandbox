@@ -3,10 +3,13 @@ package viperconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/cobra"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -16,6 +19,14 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 	"github.com/inoio/agents-sandbox/internal/upgrade"
 )
+
+// wantNetworkProfiles asserts the effective network policy's profile set.
+func wantNetworkProfiles(t *testing.T, policy network.Policy, want ...network.Profile) {
+	t.Helper()
+	if got := policy.Effective().Profiles; !slices.Equal(got, want) {
+		t.Fatalf("network profiles = %v, want %v", got, want)
+	}
+}
 
 func TestResolverGettersReturnConfig(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
@@ -458,8 +469,8 @@ func TestNetworkProfileEnvVar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if got := r.cfg.Network.Effective(); got.Profile != network.ProfileNone {
-		t.Fatalf("Network().Profile = %q, want %q", got.Profile, network.ProfileNone)
+	if got := r.cfg.Network.Effective(); !slices.Equal(got.Profiles, []network.Profile{network.ProfileNone}) {
+		t.Fatalf("Network().Profiles = %v, want [none]", got.Profiles)
 	}
 }
 
@@ -469,9 +480,7 @@ func TestNetworkDefaultPublic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if got := r.cfg.Network.Effective(); got.Profile != network.ProfilePublic {
-		t.Errorf("with no network config, Network().Profile = %q, want %q", got.Profile, network.ProfilePublic)
-	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic)
 }
 
 func TestNetworkInvalidProfileRejected(t *testing.T) {
@@ -491,9 +500,7 @@ func TestNetworkDNSServersEnvVar(t *testing.T) {
 		t.Fatalf("NewResolver: %v", err)
 	}
 	got := r.cfg.Network.Effective()
-	if got.Profile != network.ProfilePublic {
-		t.Fatalf("Network().Profile = %q, want public (dns-only)", got.Profile)
-	}
+	wantNetworkProfiles(t, got, network.ProfilePublic)
 	if len(got.DNSServers) != 2 || got.DNSServers[0] != "1.1.1.1" || got.DNSServers[1] != "8.8.8.8" {
 		t.Fatalf("Network().DNSServers = %v, want [1.1.1.1 8.8.8.8]", got.DNSServers)
 	}
@@ -513,9 +520,7 @@ func TestNetworkDNSServersFromConfigFile(t *testing.T) {
 		t.Fatalf("NewResolver: %v", err)
 	}
 	got := r.cfg.Network.Effective()
-	if got.Profile != network.ProfileNone {
-		t.Fatalf("Network().Profile = %q, want none", got.Profile)
-	}
+	wantNetworkProfiles(t, got, network.ProfileNone)
 	if len(got.DNSServers) != 2 || got.DNSServers[0] != "1.1.1.1" || got.DNSServers[1] != "8.8.8.8:5353" {
 		t.Fatalf("Network().DNSServers = %v, want [1.1.1.1 8.8.8.8:5353]", got.DNSServers)
 	}
@@ -535,6 +540,200 @@ func TestNetworkDNSServersScalarConfigFile(t *testing.T) {
 	if len(got) != 2 || got[0] != "1.1.1.1" || got[1] != "8.8.8.8" {
 		t.Fatalf("Network().DNSServers = %v, want [1.1.1.1 8.8.8.8]", got)
 	}
+}
+
+func TestNetworkProfilesListFromConfigFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{
+			"profile": []string{"public", "host"},
+		},
+	})
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesCommaEnvVar(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_NETWORK_PROFILE", "public,host")
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesSpacedCommaEnvVar(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_NETWORK_PROFILE", "public, host")
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesSpacedScalarConfigFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{"profile": "public, host"},
+	})
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesSpacedListConfigFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{"profile": []string{"public", " host"}},
+	})
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesNoneCombinedRejected(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{
+			"profile": []string{"none", "public"},
+		},
+	})
+	if _, err := NewResolver(nil, ""); err == nil {
+		t.Fatal("expected error for none combined with another profile")
+	}
+}
+
+func TestProfileEntries(t *testing.T) {
+	got, err := profileEntries("public,host")
+	if err != nil {
+		t.Fatalf("profileEntries: %v", err)
+	}
+	if len(got) != 2 || got[0] != "public" || got[1] != "host" {
+		t.Fatalf("profileEntries = %v, want [public host]", got)
+	}
+
+	if got, err := profileEntries([]string{"public", "host"}); err != nil || len(got) != 2 {
+		t.Fatalf("profileEntries([]string) = %v, %v; want [public host], nil", got, err)
+	}
+	if got, err := profileEntries([]any{"public", "host"}); err != nil || len(got) != 2 {
+		t.Fatalf("profileEntries([]any) = %v, %v; want [public host], nil", got, err)
+	}
+	if _, err := profileEntries([]any{42}); err == nil {
+		t.Fatal("profileEntries with a non-string entry should error")
+	}
+	if _, err := profileEntries(""); err == nil {
+		t.Fatal("profileEntries(\"\") should error")
+	}
+	if _, err := profileEntries(42); err == nil {
+		t.Fatal("profileEntries(42) should error")
+	}
+}
+
+func TestNetworkProfileInvalidTypeRejected(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{"profile": 42},
+	})
+	if _, err := NewResolver(nil, ""); err == nil {
+		t.Fatal("expected error for a non-string network.profile")
+	}
+}
+
+func TestStringToSliceDecodeHook(t *testing.T) {
+	hook := stringToSliceDecodeHook()
+
+	strType := reflect.TypeFor[string]()
+	sliceType := reflect.TypeFor[[]string]()
+	profileSliceType := reflect.TypeFor[[]network.Profile]()
+
+	exec := func(to reflect.Type, data any) (any, error) {
+		return mapstructure.DecodeHookExec(hook, reflect.ValueOf(data), reflect.New(to).Elem())
+	}
+
+	t.Run("comma string splits into []string", func(t *testing.T) {
+		got, err := exec(sliceType, "a,b")
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if !slices.Equal(got.([]string), []string{"a", "b"}) {
+			t.Errorf("hook(a,b) = %v, want [a b]", got)
+		}
+	})
+
+	t.Run("named string element type splits too", func(t *testing.T) {
+		got, err := exec(profileSliceType, "public,host")
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if !slices.Equal(got.([]string), []string{"public", "host"}) {
+			t.Errorf("hook(public,host) = %v, want [public host]", got)
+		}
+	})
+
+	t.Run("empty string yields empty slice", func(t *testing.T) {
+		got, err := exec(sliceType, "")
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if len(got.([]string)) != 0 {
+			t.Errorf("hook(\"\") = %v, want empty", got)
+		}
+	})
+
+	t.Run("non-string source passes through", func(t *testing.T) {
+		got, err := exec(sliceType, 7)
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if got != 7 {
+			t.Errorf("hook(int->slice) = %v, want unchanged", got)
+		}
+	})
+
+	t.Run("non-slice target passes through", func(t *testing.T) {
+		got, err := exec(strType, "a,b")
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if got != "a,b" {
+			t.Errorf("hook(string->string) = %v, want unchanged", got)
+		}
+	})
+
+	t.Run("named string source passes through", func(t *testing.T) {
+		src := network.ProfilePublic
+		got, err := exec(sliceType, src)
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if got != src {
+			t.Errorf("hook(Profile->slice) = %v, want unchanged", got)
+		}
+	})
+
+	t.Run("non-string element type passes through", func(t *testing.T) {
+		got, err := exec(reflect.TypeFor[[]int](), "a,b")
+		if err != nil {
+			t.Fatalf("hook error: %v", err)
+		}
+		if got != "a,b" {
+			t.Errorf("hook(string->[]int) = %v, want unchanged", got)
+		}
+	})
 }
 
 func TestDNSServerEntries(t *testing.T) {
