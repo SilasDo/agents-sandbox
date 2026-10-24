@@ -25,9 +25,10 @@ deny-by-default, allowlist-only policy.
 | `dns-servers`       | []string | DNS upstream resolvers: a bare IP (auto-appends `:53`) or `host:port`. Overrides microsandbox's default resolver.     |
 
 - `public` (the default) allows egress to the public internet only; `private` allows the private/LAN ranges (RFC 1918,
-  ULA, CGN) — your whole local network, including other machines, not just the host; `host` allows the host machine's
-  gateway addresses (`host.microsandbox.internal`). These are disjoint destination groups, so `public` does **not**
-  already include `private` or `host`, and enabling `public` never reaches your LAN or host.
+  ULA, CGN) — your whole local network, including other machines, not just the host, and any private resources you reach
+  through a VPN routed on your machine; `host` allows the host machine's gateway addresses
+  (`host.microsandbox.internal`). These are disjoint destination groups, so `public` does **not** already include
+  `private` or `host`, and enabling `public` never reaches your LAN, VPN, or host.
 - Profiles compose: set any combination of `public`, `private`, and `host` as a list, e.g. `profile: [public, host]`. The
   VM then gets the union of their rules. Duplicate profiles are ignored.
 - `profile: none` is a **terminal, allowlist-only** policy: egress is deny-by-default, ingress is allowed, and only the
