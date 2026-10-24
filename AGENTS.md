@@ -69,7 +69,9 @@ Common development commands (run from the Go module root):
 - `make check` — run fmt, lint, test targets. Execute this when finalizing work.
 - `go run ./cmd/agents-sandbox --dry-run` — build and run locally without producing a binary or starting interactively
   (skips launching the agent)
-- `make test`/`go test ./...` — run all tests.
+- `make test`/`go test ./...` — run all tests. `make test` passes `-tags microsandbox_ffi_path`, which keeps the
+  SDK's ~36 MB native library out of every test binary; a bare `go test ./...` links it and is slower. See
+  `.operator-shared/guides/test-runtime-cost.md`.
 - `make compile-all` — compile every test binary including `integration`-tagged files without a docker daemon (catches
   tagged-only compile regressions; run by CI on every PR). Its `-run='^$'` output reads `[no tests to run]` for every
   package — that is compile-only, not skipped tests.

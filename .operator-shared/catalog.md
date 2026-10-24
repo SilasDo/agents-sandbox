@@ -26,6 +26,9 @@
 - `dead-code-detection-go.md`
   - Description: Using x/tools `deadcode` to find production code only tests keep alive: why staticcheck U1000 cannot, the default vs `-test` modes, the test-support paths to filter, and `-whylive` for seam-vs-accident triage.
   - Read If: Looking for dead or unreferenced production code, auditing whether a seam is still wired, evaluating a dead-code linter, or adding an on-demand dead-code Makefile target.
+- `test-runtime-cost.md`
+  - Description: Where `go test ./...` wall time goes (run-mode `-o $WORK` defeats the link cache, so every test binary is re-linked each run), how `-tags microsandbox_ffi_path` drops the SDK's ~36 MB embedded native library from the unit and integration suites, the test-body hotspots, and the polling/timeout seams that set failure latency.
+  - Read If: Speeding up `go test`/`make test`, diagnosing a slow or hanging test run, adding a polling/wait seam or a `TestMain`, adding a real-SDK test, or deciding whether a test may consume a production timeout budget.
 - `opencode2-live-event-probe.md`
   - Description: Capturing and driving the running opencode2 daemon's SSE stream from inside the VM (auth, `/api/event`, session creation with an `effect: ask` rule, replying to permissions) and the observed ordering that drove the notify event-id fix.
   - Read If: Needing to observe real opencode/opencode2 events, reproduce an input/awaiting-input trigger, or verify a notify change against the live daemon.
@@ -57,8 +60,8 @@
   - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
 - `test-isolation.md`
-  - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `WithMockConfigPaths` home redirect, and the enforcement tests that derive each package's required set from the import graph.
-  - Read If: Adding a test package or a `TestMain`, or debugging a test that reads or writes real host state (config, home, docker, msb, doctor, notify).
+  - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `realMsbClient` SDK seams that keep unit tests off the native library, the `WithMockConfigPaths` home redirect, and the enforcement tests that derive each package's required set from the import graph.
+  - Read If: Adding a test package or a `TestMain`, adding a real-SDK test, or debugging a test that reads or writes real host state (config, home, docker, msb, doctor, notify).
 - `opencode2-config-fork.md`
   - Description: Design for forking opencode2's launcher config namespace (`opencode2` for user/project dirs, while the guest VM path and host drop-in stay `opencode`), the `ConfigDirAliaser` capability, `configpaths` candidate dirs, and `ResolveConfigSource`.
   - Read If: Working on opencode2 config provisioning, snippet merge or mirror, agent config-dir resolution, or the opencode2 config-namespace fork.
@@ -144,7 +147,7 @@
   - Description: Contract for the `fuzz` workflow: it discovers targets from sources the same way `make fuzz` does (a `discover` job feeding the matrix), is never a PR gate, and caches a per-target corpus keyed by the flattened package name.
   - Read If: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.
 - `harness-smoke-tests.md`
-  - Description: Contract for the `msb`-tagged harness smoke tests in `test/harness/`: every registered harness starts in a real VM under a pty and must reach its TUI and exit; hard child-env isolation, a short `/tmp` root (the sandbox socket's `sun_path` limit), the sized terminal, the skip-before-pay phase order, and the tap-until-exit quit loop (early taps are ignored; `claude-code` needs three Ctrl-Cs).
+  - Description: Contract for the `msb`-tagged tests: the harness smoke suite in `test/harness/` (every registered harness starts in a real VM under a pty and must reach its TUI and exit; hard child-env isolation, a short `/tmp` root (the sandbox socket's `sun_path` limit), the sized terminal, the skip-before-pay phase order, the tap-until-exit quit loop) and the real-client tests in `internal/sandbox/msb/`.
   - Read If: Adding or changing the harness smoke tests, the `msb` build tag or `make test-msb`, the harness quit-key table, or when a harness's TUI startup, readiness, or exit behavior changes.
 - `notify-opencode2-subagent-filter.md`
   - Description: Contract for notify on opencode/opencode2: the agent-owned stream decoder (`EventStreamSpec.Parse`), opencode2's authed `GET /api/event` envelope and the v1/v2 event mapping, subagent filtering via `parentID`, per-connect session seeding, and why v1 latches `session.error` while v2's turn-scoped errors do not.

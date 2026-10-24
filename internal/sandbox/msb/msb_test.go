@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -177,75 +176,266 @@ func TestRealSandboxHandleOperationsReturnErrors(t *testing.T) {
 	}
 }
 
-func TestRealMsbClientLookupErrors(t *testing.T) {
-	c := &realMsbClient{}
-	ctx := context.Background()
+// swapSeam replaces a package-level SDK seam for the duration of the test and
+// restores the real call on cleanup, so unit tests exercise the adapters
+// against fakes without loading the native library or reading real runtime
+// state. The real adapter-over-SDK behavior lives in the msb-tagged tests.
+func swapSeam[T any](t *testing.T, seam *T, replacement T) {
+	t.Helper()
+	original := *seam
+	*seam = replacement
+	t.Cleanup(func() { *seam = original })
+}
 
-	if _, err := c.GetSandbox(ctx, "does-not-exist"); err == nil {
-		t.Error("GetSandbox() = nil error, want error for missing sandbox")
+// TestRealMsbClientAdapterErrors pins that every adapter propagates the SDK
+// error through its seam.
+func TestRealMsbClientAdapterErrors(t *testing.T) {
+	ctx := context.Background()
+	wantErr := errors.New("sdk failed")
+
+	swapSeam(t, &getSandbox, func(context.Context, string) (*msbSdk.SandboxHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &createSandbox, func(context.Context, string, ...msbSdk.SandboxOption) (*msbSdk.Sandbox, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &listSandboxesWith, func(context.Context, ...msbSdk.SandboxListOption) (*msbSdk.SandboxPage, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &getVolume, func(context.Context, string) (*msbSdk.VolumeHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &createVolume, func(context.Context, string, ...msbSdk.VolumeOption) (*msbSdk.Volume, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &listVolumes, func(context.Context) ([]*msbSdk.VolumeHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &removeVolume, func(context.Context, string) error { return wantErr })
+	swapSeam(t, &imageGet, func(context.Context, string) (*msbSdk.ImageHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &imageList, func(context.Context) ([]*msbSdk.ImageHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &imageRemove, func(context.Context, string, bool) error { return wantErr })
+	swapSeam(t, &imageLoad, func(context.Context, string, ...string) ([]*msbSdk.ImageHandle, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &realImageInspect, func(context.Context, string) (*msbSdk.ImageDetail, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &imagePrune, func(context.Context) (*msbSdk.ImagePruneReport, error) {
+		return nil, wantErr
+	})
+	swapSeam(t, &storageUsage, func(context.Context) (*msbSdk.StorageUsageReport, error) {
+		return nil, wantErr
+	})
+
+	c := &realMsbClient{}
+	cases := []struct {
+		name string
+		call func() error
+	}{
+		{"GetSandbox", func() error { _, err := c.GetSandbox(ctx, "x"); return err }},
+		{"CreateSandbox", func() error { _, err := c.CreateSandbox(ctx, "x"); return err }},
+		{"ListSandboxes", func() error { _, err := c.ListSandboxes(ctx, nil); return err }},
+		{"GetVolume", func() error { _, err := c.GetVolume(ctx, "x"); return err }},
+		{"CreateVolume", func() error { _, err := c.CreateVolume(ctx, "x"); return err }},
+		{"ListVolumes", func() error { _, err := c.ListVolumes(ctx); return err }},
+		{"RemoveVolume", func() error { return c.RemoveVolume(ctx, "x") }},
+		{"ImageGet", func() error { return c.ImageGet(ctx, "x") }},
+		{"ImageList", func() error { _, err := c.ImageList(ctx); return err }},
+		{"ImageRemove", func() error { return c.ImageRemove(ctx, "x", false) }},
+		{"ImageLoad", func() error { return c.ImageLoad(ctx, "x", strings.NewReader("")) }},
+		{"ImageInspect", func() error { _, err := c.ImageInspect(ctx, "x"); return err }},
+		{"ImagePrune", func() error { _, err := c.ImagePrune(ctx); return err }},
+		{"StorageUsage", func() error { _, err := c.StorageUsage(ctx); return err }},
 	}
-	if _, err := c.CreateSandbox(ctx, "does-not-exist"); err == nil {
-		t.Error("CreateSandbox() = nil error, want error without image source")
-	}
-	if _, err := c.GetVolume(ctx, "does-not-exist"); err == nil {
-		t.Error("GetVolume() = nil error, want error for missing volume")
-	}
-	if err := c.ImageGet(ctx, "does-not-exist"); err == nil {
-		t.Error("ImageGet() = nil error, want error for missing image")
-	}
-	if err := c.ImageRemove(ctx, "does-not-exist", false); err == nil {
-		t.Error("ImageRemove() = nil error, want error for missing image")
-	}
-	if _, err := c.ImageInspect(ctx, "does-not-exist"); err == nil {
-		t.Error("ImageInspect() = nil error, want error for missing image")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); !errors.Is(err, wantErr) {
+				t.Fatalf("%s error = %v, want the seam error", tc.name, err)
+			}
+		})
 	}
 }
 
+// TestRealMsbClientLists pins the slice mapping of the three list adapters.
 func TestRealMsbClientLists(t *testing.T) {
-	c := &realMsbClient{}
 	ctx := context.Background()
+	swapSeam(t, &listSandboxesWith, func(context.Context, ...msbSdk.SandboxListOption) (*msbSdk.SandboxPage, error) {
+		return &msbSdk.SandboxPage{Sandboxes: []*msbSdk.SandboxHandle{{}}}, nil
+	})
+	swapSeam(t, &listVolumes, func(context.Context) ([]*msbSdk.VolumeHandle, error) {
+		return []*msbSdk.VolumeHandle{{}}, nil
+	})
+	swapSeam(t, &imageList, func(context.Context) ([]*msbSdk.ImageHandle, error) {
+		return []*msbSdk.ImageHandle{{}}, nil
+	})
 
-	if handles, err := c.ListSandboxes(ctx, nil); err != nil {
-		t.Errorf("ListSandboxes() = %v, %v; want no error", handles, err)
+	c := &realMsbClient{}
+	if handles, err := c.ListSandboxes(ctx, nil); err != nil || len(handles) != 1 {
+		t.Errorf("ListSandboxes() = %d handles, %v; want 1, nil", len(handles), err)
 	}
-	if handles, err := c.ListVolumes(ctx); err != nil {
-		t.Errorf("ListVolumes() = %v, %v; want no error", handles, err)
+	if handles, err := c.ListVolumes(ctx); err != nil || len(handles) != 1 {
+		t.Errorf("ListVolumes() = %d handles, %v; want 1, nil", len(handles), err)
 	}
-	if handles, err := c.ImageList(ctx); err != nil {
-		t.Errorf("ImageList() = %v, %v; want no error", handles, err)
+	if handles, err := c.ImageList(ctx); err != nil || len(handles) != 1 {
+		t.Errorf("ImageList() = %d handles, %v; want 1, nil", len(handles), err)
 	}
 }
 
+// TestRealMsbClientListSandboxesPagination drives the paging loop and the label
+// and cursor option branches. The first page carries the label option; the
+// second, reached through NextCursor, adds the cursor option.
+func TestRealMsbClientListSandboxesPagination(t *testing.T) {
+	ctx := context.Background()
+	next := "page-2"
+	pages := []*msbSdk.SandboxPage{
+		{Sandboxes: []*msbSdk.SandboxHandle{{}}, NextCursor: &next},
+		{Sandboxes: []*msbSdk.SandboxHandle{{}}, NextCursor: nil},
+	}
+	var optionCounts []int
+	swapSeam(
+		t,
+		&listSandboxesWith,
+		func(_ context.Context, opts ...msbSdk.SandboxListOption) (*msbSdk.SandboxPage, error) {
+			optionCounts = append(optionCounts, len(opts))
+			return pages[len(optionCounts)-1], nil
+		},
+	)
+
+	handles, err := (&realMsbClient{}).ListSandboxes(ctx, map[string]string{"project": "demo"})
+	if err != nil || len(handles) != 2 {
+		t.Fatalf("ListSandboxes() = %d handles, %v; want 2 over two pages", len(handles), err)
+	}
+	if len(optionCounts) != 2 || optionCounts[0] != 1 || optionCounts[1] != 2 {
+		t.Errorf("ListSandboxesWith option counts = %v, want [1 2]", optionCounts)
+	}
+}
+
+// TestRealMsbClientEnsureInstalled covers EnsureInstalled's error path through
+// the installer seam. The real SDK installer is deliberately not exercised: it
+// downloads a runtime over the network, which makes a unit test slow and flaky,
+// and the success path (including the private home it must name) is covered by
+// TestRealClientEnsureInstalledPassesPrivateHome.
 func TestRealMsbClientEnsureInstalled(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	c := &realMsbClient{}
-	if err := c.EnsureInstalled(context.Background()); err != nil {
-		t.Errorf("EnsureInstalled() error = %v, want nil", err)
+	previous := skipRuntimeInstall
+	skipRuntimeInstall = false
+	t.Cleanup(func() { skipRuntimeInstall = previous })
+
+	installErr := errors.New("installer unavailable")
+	orig := ensureRuntime
+	ensureRuntime = func(
+		context.Context, msbSdk.RuntimeConfig, msbSdk.InstallOptions,
+	) (msbSdk.ResolvedRuntime, error) {
+		return msbSdk.ResolvedRuntime{}, installErr
+	}
+	t.Cleanup(func() { ensureRuntime = orig })
+
+	if err := (&realMsbClient{}).EnsureInstalled(context.Background()); !errors.Is(err, installErr) {
+		t.Errorf("EnsureInstalled() error = %v, want %v", err, installErr)
 	}
 }
 
 func TestRealMsbClientCreateRemoveVolume(t *testing.T) {
-	c := &realMsbClient{}
 	ctx := context.Background()
-	name := "agents-sandbox-test-" + strconv.FormatInt(time.Now().UnixNano(), 10)
+	var createdName, removedName string
+	swapSeam(t, &createVolume, func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (*msbSdk.Volume, error) {
+		createdName = name
+		return &msbSdk.Volume{}, nil
+	})
+	swapSeam(t, &removeVolume, func(_ context.Context, name string) error {
+		removedName = name
+		return nil
+	})
 
-	if _, err := c.CreateVolume(ctx, name); err != nil {
+	c := &realMsbClient{}
+	if _, err := c.CreateVolume(ctx, "vol"); err != nil {
 		t.Fatalf("CreateVolume() error = %v, want nil", err)
 	}
-	if err := c.RemoveVolume(ctx, name); err != nil {
+	if err := c.RemoveVolume(ctx, "vol"); err != nil {
 		t.Errorf("RemoveVolume() error = %v, want nil", err)
+	}
+	if createdName != "vol" || removedName != "vol" {
+		t.Errorf("create=%q remove=%q, want both %q", createdName, removedName, "vol")
 	}
 }
 
-func TestRealMsbClientImageLoadErrors(t *testing.T) {
-	c := &realMsbClient{}
+// TestRealMsbClientSandboxAdapters covers the GetSandbox and CreateSandbox
+// success paths, wrapping the seam's SDK handle in the adapter.
+func TestRealMsbClientSandboxAdapters(t *testing.T) {
 	ctx := context.Background()
+	swapSeam(t, &getSandbox, func(context.Context, string) (*msbSdk.SandboxHandle, error) {
+		return &msbSdk.SandboxHandle{}, nil
+	})
+	swapSeam(t, &createSandbox, func(context.Context, string, ...msbSdk.SandboxOption) (*msbSdk.Sandbox, error) {
+		return &msbSdk.Sandbox{}, nil
+	})
 
-	if err := c.ImageLoad(ctx, "ref", errReader{}); err == nil {
-		t.Error("ImageLoad() with failing reader = nil error, want spooling error")
+	c := &realMsbClient{}
+	if handle, err := c.GetSandbox(ctx, "s"); err != nil || handle == nil {
+		t.Errorf("GetSandbox() = %v, %v; want a handle, nil", handle, err)
 	}
-	if err := c.ImageLoad(ctx, "ref", strings.NewReader("")); err == nil {
-		t.Error("ImageLoad() with empty archive = nil error, want SDK load error")
+	if sandbox, err := c.CreateSandbox(ctx, "s"); err != nil || sandbox == nil {
+		t.Errorf("CreateSandbox() = %v, %v; want a sandbox, nil", sandbox, err)
+	}
+}
+
+// TestRealMsbClientGetVolume covers the GetVolume success path.
+func TestRealMsbClientGetVolume(t *testing.T) {
+	swapSeam(t, &getVolume, func(context.Context, string) (*msbSdk.VolumeHandle, error) {
+		return &msbSdk.VolumeHandle{}, nil
+	})
+	if handle, err := (&realMsbClient{}).GetVolume(context.Background(), "v"); err != nil || handle == nil {
+		t.Errorf("GetVolume() = %v, %v; want a handle, nil", handle, err)
+	}
+}
+
+// TestRealMsbClientImageAdapters covers the single-object image adapter success
+// paths (ImageList is covered by TestRealMsbClientLists).
+func TestRealMsbClientImageAdapters(t *testing.T) {
+	ctx := context.Background()
+	swapSeam(t, &imageGet, func(context.Context, string) (*msbSdk.ImageHandle, error) {
+		return &msbSdk.ImageHandle{}, nil
+	})
+	swapSeam(t, &imageRemove, func(context.Context, string, bool) error { return nil })
+	swapSeam(t, &imageLoad, func(context.Context, string, ...string) ([]*msbSdk.ImageHandle, error) {
+		return []*msbSdk.ImageHandle{{}}, nil
+	})
+	swapSeam(t, &imagePrune, func(context.Context) (*msbSdk.ImagePruneReport, error) {
+		return &msbSdk.ImagePruneReport{ManifestsRemoved: 2}, nil
+	})
+	swapSeam(t, &storageUsage, func(context.Context) (*msbSdk.StorageUsageReport, error) {
+		return &msbSdk.StorageUsageReport{}, nil
+	})
+
+	c := &realMsbClient{}
+	if err := c.ImageGet(ctx, "ref"); err != nil {
+		t.Errorf("ImageGet() = %v, want nil", err)
+	}
+	if err := c.ImageRemove(ctx, "ref", true); err != nil {
+		t.Errorf("ImageRemove() = %v, want nil", err)
+	}
+	if err := c.ImageLoad(ctx, "ref", strings.NewReader("")); err != nil {
+		t.Errorf("ImageLoad() = %v, want nil", err)
+	}
+	if report, err := c.ImagePrune(ctx); err != nil || report.ManifestsRemoved != 2 {
+		t.Errorf("ImagePrune() = %v, %v; want 2 manifests removed", report, err)
+	}
+	if report, err := c.StorageUsage(ctx); err != nil || report == nil {
+		t.Errorf("StorageUsage() = %v, %v; want a report, nil", report, err)
+	}
+}
+
+// TestRealMsbClientImageLoadErrors covers the spooling failure before the SDK
+// seam is reached; the SDK load failure is covered by
+// TestRealMsbClientAdapterErrors.
+func TestRealMsbClientImageLoadErrors(t *testing.T) {
+	if err := (&realMsbClient{}).ImageLoad(context.Background(), "ref", errReader{}); err == nil {
+		t.Error("ImageLoad() with failing reader = nil error, want spooling error")
 	}
 }
 
