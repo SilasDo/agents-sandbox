@@ -26,6 +26,9 @@
 - `dead-code-detection-go.md`
   - Description: Using x/tools `deadcode` to find production code only tests keep alive: why staticcheck U1000 cannot, the default vs `-test` modes, the test-support paths to filter, and `-whylive` for seam-vs-accident triage.
   - Read If: Looking for dead or unreferenced production code, auditing whether a seam is still wired, evaluating a dead-code linter, or adding an on-demand dead-code Makefile target.
+- `test-runtime-cost.md`
+  - Description: Where `go test ./...` wall time goes (run-mode `-o $WORK` defeats the link cache, so every test binary is re-linked each run; every binary embeds the ~36 MB microsandbox native bundle via `testutil/mocks`), the test-body hotspots, and the polling/timeout seams that set failure latency.
+  - Read If: Speeding up `go test`/`make test`, diagnosing a slow or hanging test run, adding a polling/wait seam or a `TestMain`, or deciding whether a test may consume a production timeout budget.
 - `opencode2-live-event-probe.md`
   - Description: Capturing and driving the running opencode2 daemon's SSE stream from inside the VM (auth, `/api/event`, session creation with an `effect: ask` rule, replying to permissions) and the observed ordering that drove the notify event-id fix.
   - Read If: Needing to observe real opencode/opencode2 events, reproduce an input/awaiting-input trigger, or verify a notify change against the live daemon.
@@ -158,6 +161,9 @@
 
 ### `plans/` - TDD implementation plans
 
+- `2026-10-24-test-build-cost-reduction.md`
+  - Description: 3-task TDD plan to cut the per-run test-binary link cost: derive each test package's required fail-fast seam set from reachability instead of the acyclic superset, migrate every `TestMain` off the blanket `InitFailFastMocks` wrapper, and update `specs/test-isolation.md`. Motivated by every test binary embedding the ~36 MB microsandbox native bundle.
+  - Read If: Implementing or resuming the reachable-seam-families contract so leaf test binaries stop linking the native bundle.
 - `2026-10-22-artifact-naming.md`
   - Description: 7-task TDD plan for `specs/artifact-naming.md`: the prefix-free and legacy name/reference constructors, the dual-scheme parsers, project VMs, task sandboxes, home volumes, the `ImageInfo` Docker-tag/msb-ref split, image discovery/reference scans, and the legacy foreign scan.
   - Read If: Implementing the prefix-free artifact naming change.
