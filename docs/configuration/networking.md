@@ -10,9 +10,12 @@ nav_order: 30
 
 The `network:` block controls the VM's network policy. It is baked in at VM creation, so changing it recreates the VM
 (see [Resource Config Application]({% link configuration/launcher.md %}#resource-config-application)). When the whole `network:` block is absent,
-the VM uses the `public` profile: outbound internet is allowed so the agent can reach its APIs and package registries. The
-`public`, `private`, and `host` profiles compose into one policy; use `profile: none` for a deny-by-default, allowlist-only
-policy.
+the VM uses the `public` profile: outbound internet is allowed so the agent can reach its APIs and package registries,
+while private networks, the host, the guest's own loopback, link-local addresses, and cloud metadata endpoints stay
+blocked. That default is deliberately the narrowest profile an agent usually needs; the `private` and `host` profiles are
+opt-in because they reach beyond the public internet — your local network, and the machine running agents-sandbox,
+respectively. The `public`, `private`, and `host` profiles compose into one policy; use `profile: none` for a
+deny-by-default, allowlist-only policy.
 
 | Field               | Type     | Description                                                                                                          |
 |---------------------|----------|----------------------------------------------------------------------------------------------------------------------|
@@ -21,9 +24,10 @@ policy.
 | `egress-deny`       | []string | Egress carve-outs, same destination forms as `egress-allow`. Emitted **before** allow rules (deny-before-allow).     |
 | `dns-servers`       | []string | DNS upstream resolvers: a bare IP (auto-appends `:53`) or `host:port`. Overrides microsandbox's default resolver.     |
 
-- `public` (the default) allows egress to the public internet; `private` allows private/LAN ranges (RFC 1918, ULA, CGN);
-  `host` allows the host machine's gateway addresses (`host.microsandbox.internal`). These are disjoint destination
-  groups, so `public` does not already include `private` or `host`.
+- `public` (the default) allows egress to the public internet only; `private` allows the private/LAN ranges (RFC 1918,
+  ULA, CGN) — your whole local network, including other machines, not just the host; `host` allows the host machine's
+  gateway addresses (`host.microsandbox.internal`). These are disjoint destination groups, so `public` does **not**
+  already include `private` or `host`, and enabling `public` never reaches your LAN or host.
 - Profiles compose: set any combination of `public`, `private`, and `host` as a list, e.g. `profile: [public, host]`. The
   VM then gets the union of their rules. Duplicate profiles are ignored.
 - `profile: none` is a **terminal, allowlist-only** policy: egress is deny-by-default, ingress is allowed, and only the
