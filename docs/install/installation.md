@@ -109,7 +109,7 @@ Then set `upgrade.channel: canary` (or `AGENTS_SANDBOX_UPGRADE_CHANNEL=canary`) 
 
 ## Verify your setup
 
-`run`, `shell`, and `build` check the host automatically before they start a sandbox. A failing check prints the
+`run` and `shell` check the host automatically before they start a sandbox. A failing check prints the
 command that fixes it and links to the matching [troubleshooting]({% link troubleshooting.md %}) section, so you do not
 have to check the host by hand.
 

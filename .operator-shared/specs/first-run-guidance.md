@@ -9,9 +9,9 @@ How agents-sandbox routes a new user from install to a working sandbox, and how 
 
 ## Doctor remediation contract
 
-The prerequisite checks run automatically as a preflight on `run`, `shell`, and `build`, so starting a sandbox does not
-require invoking `agents-sandbox doctor` by hand. The `doctor` command is the standalone diagnostic and the fresh-install
-verification.
+The prerequisite checks run automatically as a preflight on `run` and `shell` (`build` checks only the Docker
+prerequisite), so starting a sandbox does not require invoking `agents-sandbox doctor` by hand. The `doctor` command is
+the standalone diagnostic and the fresh-install verification.
 
 Each failing check reports, in order:
 

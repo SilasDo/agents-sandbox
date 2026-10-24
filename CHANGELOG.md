@@ -203,7 +203,7 @@ command reports the bare version (e.g. `0.1.0`).
   the FFI cache and non-setup SDK operations (#160).
 - Doctor: a failing prerequisite check now prints the command that fixes it — start the Docker daemon, add your user to
   the `kvm` group, or download the right architecture — followed by a link to the matching troubleshooting section.
-  The checks still run automatically before `run`, `shell`, and `build`.
+  The checks still run automatically before `run` and `shell`.
 
 ### Deprecated
 
