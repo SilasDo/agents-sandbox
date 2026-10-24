@@ -83,9 +83,15 @@ jobs:
         uses: actions/configure-pages@v6
       - name: Inject release version
         working-directory: docs
+        env:
+          # Pass the resolved tag through the environment rather than
+          # interpolating it into the script: a tag is repository-controlled
+          # text and `${{ }}` expands before the shell runs, so a name such as
+          # `v$(id)` would execute. Quoted `$DOCS_TAG` stays literal.
+          DOCS_TAG: ${{ needs.classify.outputs.tag }}
         run: |
           mkdir -p _data
-          printf 'release: %s\n' "${{ needs.classify.outputs.tag }}" > _data/version.yml
+          printf 'release: %s\n' "$DOCS_TAG" > _data/version.yml
       - name: Render PlantUML diagrams
         working-directory: docs
         run: |
