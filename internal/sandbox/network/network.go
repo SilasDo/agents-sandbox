@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"sort"
 	"strings"
 
@@ -35,25 +36,57 @@ func ParseProfile(s string) (Profile, error) {
 	}
 }
 
+// ParseProfiles parses a list of profile names, erroring on an unknown value or
+// when `none` is combined with another profile.
+func ParseProfiles(in []string) ([]Profile, error) {
+	profiles := make([]Profile, 0, len(in))
+	for _, s := range in {
+		p, err := ParseProfile(strings.TrimSpace(s))
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, p)
+	}
+	if err := checkProfileCombination(profiles); err != nil {
+		return nil, err
+	}
+	return profiles, nil
+}
+
+// checkProfileCombination rejects mixing the terminal `none` profile with any
+// other, mirroring microsandbox's own treatment of none/all as whole-policy
+// values rather than composable profiles.
+func checkProfileCombination(profiles []Profile) error {
+	if len(profiles) <= 1 {
+		return nil
+	}
+	if slices.Contains(profiles, ProfileNone) {
+		return errors.New(`network profile "none" cannot be combined with other profiles`)
+	}
+	return nil
+}
+
 // Policy is the resolved launcher network policy. The mapstructure tags let
 // viper decode the nested `network:` YAML block (profile, egress-allow,
-// egress-deny, dns-servers) directly into this struct.
+// egress-deny, dns-servers) directly into this struct. The `profile` key
+// accepts a single name, a comma-separated string, or a YAML list; viperconfig's
+// string-to-slice decode hook normalizes the scalar forms into Profiles.
 type Policy struct {
-	Profile     Profile  `mapstructure:"profile"`
-	EgressAllow []string `mapstructure:"egress-allow"`
-	EgressDeny  []string `mapstructure:"egress-deny"`
-	DNSServers  []string `mapstructure:"dns-servers"`
+	Profiles    []Profile `mapstructure:"profile"`
+	EgressAllow []string  `mapstructure:"egress-allow"`
+	EgressDeny  []string  `mapstructure:"egress-deny"`
+	DNSServers  []string  `mapstructure:"dns-servers"`
 }
 
 // Empty reports whether the policy is unset (zero value).
 func (p Policy) Empty() bool {
-	return p.Profile == "" && len(p.EgressAllow) == 0 && len(p.EgressDeny) == 0 && len(p.DNSServers) == 0
+	return len(p.Profiles) == 0 && len(p.EgressAllow) == 0 && len(p.EgressDeny) == 0 && len(p.DNSServers) == 0
 }
 
 // Effective applies the default profile when no profile was selected.
 func (p Policy) Effective() Policy {
-	if p.Profile == "" {
-		p.Profile = DefaultProfile
+	if len(p.Profiles) == 0 {
+		p.Profiles = []Profile{DefaultProfile}
 	}
 	return p
 }
@@ -64,7 +97,9 @@ func (p Policy) Effective() Policy {
 func (p Policy) Fingerprint() string {
 	p = p.Effective()
 	var lines []string
-	lines = append(lines, "profile="+string(p.Profile))
+	for _, prof := range dedupeProfiles(p.Profiles) {
+		lines = append(lines, "profile="+prof.String())
+	}
 	for _, d := range p.DNSServers {
 		lines = append(lines, "dns="+d)
 	}
@@ -113,26 +148,32 @@ func NormalizeDNSServers(in []string) ([]string, error) {
 
 // Config converts the policy into a microsandbox NetworkConfig.
 //
-// The `none` profile is an allowlist-only policy: egress is deny-by-default,
-// ingress is allowed, and only the gateway-DNS rule plus the explicit
-// egress-allow/egress-deny lists apply. It is not an airgap. A policy with no
-// profile, including one with only DNSServers set, defaults to public.
+// `public`, `private`, and `host` compose: the SDK unions their allow rules
+// (deduplicated, canonical order) and adds one narrow gateway-DNS rule. The
+// `none` profile is launcher-only and selects no profile rules — deny-by-default
+// egress, allow ingress — so the gateway-DNS rule is added manually. It is an
+// allowlist-only policy, not an airgap, and cannot be combined with another
+// profile. A policy with no profile, including one with only DNSServers set,
+// defaults to public.
 func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
-	profile := p.Effective().Profile
-	var cfg *msbSdk.NetworkConfig
-	var err error
-	if profile == ProfileNone {
-		// Deny-by-default egress, allow ingress, with no profile rules. The
-		// gateway-DNS rule is added manually so named allow-listed hosts can
-		// resolve.
-		cfg, err = msbSdk.NetworkPolicy.FromProfilesChecked()
-	} else {
-		cfg, err = msbSdk.NetworkPolicy.FromProfilesChecked(msbSdk.NetworkProfile(profile))
+	profiles := dedupeProfiles(p.Effective().Profiles)
+	if err := checkProfileCombination(profiles); err != nil {
+		return nil, err
 	}
+	msbProfiles := make([]msbSdk.NetworkProfile, 0, len(profiles))
+	for _, prof := range profiles {
+		if prof == ProfileNone {
+			continue
+		}
+		msbProfiles = append(msbProfiles, msbSdk.NetworkProfile(prof))
+	}
+	cfg, err := msbSdk.NetworkPolicy.FromProfilesChecked(msbProfiles...)
 	if err != nil {
 		return nil, err
 	}
-	if profile == ProfileNone {
+	if len(msbProfiles) == 0 {
+		// none contributes no SDK profile rules, so the SDK adds no gateway DNS;
+		// add it here so named allow-listed hosts can resolve.
 		cfg.Rules = append(cfg.Rules, msbSdk.Rule.AllowDNS())
 	}
 	if len(p.DNSServers) > 0 {
@@ -168,6 +209,20 @@ func dedupe(in []string) []string {
 		if s != "" && !seen[s] {
 			seen[s] = true
 			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// dedupeProfiles drops repeated profile names so the fingerprint and the SDK
+// input ignore duplicates.
+func dedupeProfiles(in []Profile) []Profile {
+	seen := make(map[Profile]bool, len(in))
+	out := make([]Profile, 0, len(in))
+	for _, p := range in {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
 		}
 	}
 	return out

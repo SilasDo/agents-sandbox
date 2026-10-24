@@ -380,7 +380,7 @@ func TestCreateProjectVMNetworkError(t *testing.T) {
 		t.TempDir(),
 		options.RunOptions{
 			Memory:  "1G",
-			Network: network.Policy{Profile: network.Profile("bogus-profile")},
+			Network: network.Policy{Profiles: []network.Profile{network.Profile("bogus-profile")}},
 		},
 		&ui,
 	)
@@ -461,7 +461,7 @@ func TestCreateProjectVMServeOnlyAndNetwork(t *testing.T) {
 		options.RunOptions{
 			Memory:    "1G",
 			ServeOnly: true,
-			Network:   network.Policy{Profile: network.ProfilePublic},
+			Network:   network.Policy{Profiles: []network.Profile{network.ProfilePublic}},
 		},
 		&ui,
 	)

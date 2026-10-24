@@ -32,7 +32,7 @@ func TestEnsureNewHomeSeedsFingerprints(t *testing.T) {
 	ui := &termio.Mock{}
 	k := state.Key{Slug: "seedproj", Agent: "opencode"}
 	desired := state.Fingerprints{
-		Network: state.BuildNetworkState(network.Policy{Profile: network.ProfileNone}),
+		Network: state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
 		Mount:   state.BuildMountState(mounts.Mounts{"/host/data": {Source: "/host/data"}}),
 	}
 
@@ -131,7 +131,7 @@ func TestResolveHomeVolumeRepairCorruptSeedsFingerprintsAndClearsUpgradeFields(t
 	}
 
 	desired := state.Fingerprints{
-		Network: state.BuildNetworkState(network.Policy{Profile: network.ProfileNone}),
+		Network: state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
 		Mount:   state.BuildMountState(mounts.Mounts{"/host/data": {Source: "/host/data"}}),
 	}
 	_, hs, err := NewManager(ui).ResolveHomeVolume(
@@ -177,7 +177,7 @@ func TestResolveHomeVolumeExistingStateKeepsFingerprints(t *testing.T) {
 	ui := &termio.Mock{}
 	k := state.Key{Slug: "existingproj", Agent: "opencode"}
 	stored := state.BuildNetworkState(
-		network.Policy{Profile: network.ProfilePublic, EgressAllow: []string{"example.com"}},
+		network.Policy{Profiles: []network.Profile{network.ProfilePublic}, EgressAllow: []string{"example.com"}},
 	)
 	if err := seedHomeState(k, state.HomeState{
 		HomeVolume:   "home-vol",
@@ -188,7 +188,7 @@ func TestResolveHomeVolumeExistingStateKeepsFingerprints(t *testing.T) {
 	}
 
 	desired := state.Fingerprints{
-		Network: state.BuildNetworkState(network.Policy{Profile: network.ProfileNone}),
+		Network: state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
 	}
 	_, hs, err := NewManager(ui).ResolveHomeVolume(
 		context.Background(),

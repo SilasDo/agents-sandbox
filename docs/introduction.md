@@ -38,9 +38,10 @@ use secret-backed configuration when that is not acceptable. Project `.env` file
 shared; they are not hidden by the VM boundary.
 
 Network egress uses the `public` profile by default, so the agent can reach its APIs and package registries. The `network:`
-configuration can narrow this: the `private` and `host` profiles, the allowlist-only `none` profile, or explicit allow/deny
-rules. `profile: none` is deny-by-default egress with explicit allow rules, not a complete air gap, and network policy does
-not change which files are shared with the guest.
+configuration can refine this: profiles `private` and `host` compose with `public`, the allowlist-only `none` profile
+restricts egress to explicit allow rules, and allow/deny rules refine the set. `profile: none` is deny-by-default egress
+with explicit allow rules, not a complete air gap, and network policy does not change which files are shared with the
+guest.
 
 ## What this is for
 

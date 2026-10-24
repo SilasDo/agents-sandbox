@@ -26,7 +26,7 @@ func registerRunFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(FlagDryRunVM, false, "dry-run-vm")
 	cmd.Flags().Bool(FlagServeOnly, false, "serve-only")
 	cmd.Flags().String(FlagAgent, defaultAgentName, "agent")
-	cmd.Flags().String(FlagNetwork, "", "network")
+	cmd.Flags().StringSlice(FlagNetwork, nil, "network")
 	cmd.Flags().StringSlice(FlagDNSServers, nil, "dns")
 	cmd.Flags().String(FlagNotify, "", "notify")
 	cmd.Flags().Lookup(FlagNotify).NoOptDefVal = "on"
@@ -85,9 +85,7 @@ func TestBuildRunOptionsDefaults(t *testing.T) {
 	if opts.IdleTimeout != 10*time.Second {
 		t.Errorf("IdleTimeout = %v; want 10s", opts.IdleTimeout)
 	}
-	if opts.Network.Profile != network.ProfilePublic {
-		t.Errorf("Network.Profile = %q; want %q by default", opts.Network.Profile, network.ProfilePublic)
-	}
+	wantNetworkProfiles(t, opts.Network, network.ProfilePublic)
 }
 
 // AutoStopOnActiveSessions: true propagates to ReapPolicy.
@@ -420,9 +418,21 @@ func TestBuildRunOptionsNetworkFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRunOptions: %v", err)
 	}
-	if opts.Network.Profile != network.ProfileNone {
-		t.Fatalf("Network.Profile = %q, want none", opts.Network.Profile)
+	wantNetworkProfiles(t, opts.Network, network.ProfileNone)
+}
+
+func TestBuildRunOptionsNetworkFlagCombinesProfiles(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set(FlagNetwork, "public,host"); err != nil {
+		t.Fatalf("set network: %v", err)
 	}
+	r := mustResolver(t, cmd)
+	opts, err := r.BuildRunOptions(cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("BuildRunOptions: %v", err)
+	}
+	wantNetworkProfiles(t, opts.Network, network.ProfilePublic, network.ProfileHost)
 }
 
 func TestBuildRunOptionsNetworkFromResolver(t *testing.T) {
@@ -434,9 +444,7 @@ func TestBuildRunOptionsNetworkFromResolver(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRunOptions: %v", err)
 	}
-	if opts.Network.Profile != network.ProfilePrivate {
-		t.Fatalf("Network.Profile = %q, want private (from resolver)", opts.Network.Profile)
-	}
+	wantNetworkProfiles(t, opts.Network, network.ProfilePrivate)
 }
 
 func TestBuildRunOptionsNetworkInvalid(t *testing.T) {
@@ -490,9 +498,7 @@ func TestBuildRunOptionsDNSCombinedWithNetworkNone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildRunOptions: %v", err)
 	}
-	if opts.Network.Profile != network.ProfileNone {
-		t.Fatalf("Network.Profile = %q, want none", opts.Network.Profile)
-	}
+	wantNetworkProfiles(t, opts.Network, network.ProfileNone)
 	if len(opts.Network.DNSServers) != 1 || opts.Network.DNSServers[0] != "1.1.1.1" {
 		t.Fatalf("Network.DNSServers = %v, want [1.1.1.1]", opts.Network.DNSServers)
 	}

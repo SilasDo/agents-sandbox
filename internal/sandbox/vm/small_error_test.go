@@ -29,7 +29,7 @@ func TestPersistNetworkStateReadError(t *testing.T) {
 
 	err := persistNetworkState(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.BuildNetworkState(network.Policy{Profile: network.ProfileNone}),
+		state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
 	)
 	if err == nil {
 		t.Fatal("expected error for corrupted state YAML")
@@ -99,7 +99,9 @@ func TestPersistConfigHashesWarnsOnError(t *testing.T) {
 
 	persistConfigHashes(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.Fingerprints{Network: state.BuildNetworkState(network.Policy{Profile: network.ProfileNone})},
+		state.Fingerprints{
+			Network: state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
+		},
 		&ui,
 	)
 

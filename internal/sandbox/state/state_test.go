@@ -20,7 +20,7 @@ func TestNetworkFingerprintSurvivesStateRoundTrip(t *testing.T) {
 
 	k := Key{Slug: "netproj-aBc1234D", Agent: "opencode"}
 	policy := network.Policy{
-		Profile:     network.ProfilePrivate,
+		Profiles:    []network.Profile{network.ProfilePrivate},
 		EgressAllow: []string{"api.example.com", "*.example.com"},
 		DNSServers:  []string{"1.1.1.1"},
 	}

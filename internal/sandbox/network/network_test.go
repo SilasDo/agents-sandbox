@@ -7,7 +7,7 @@ import (
 )
 
 func TestConfigNoneAllowlistBase(t *testing.T) {
-	cfg, err := (Policy{Profile: ProfileNone}).Config()
+	cfg, err := (Policy{Profiles: []Profile{ProfileNone}}).Config()
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
@@ -48,19 +48,60 @@ func TestConfigUnsetDefaultsToPublic(t *testing.T) {
 // allowsPublic reports whether the config carries an allow rule for the public
 // destination group.
 func allowsPublic(cfg *msbSdk.NetworkConfig) bool {
+	return allowsProfile(cfg, "public")
+}
+
+// allowsProfile reports whether the config carries an egress allow rule for the
+// named destination group.
+func allowsProfile(cfg *msbSdk.NetworkConfig, group string) bool {
 	for _, r := range cfg.Rules {
 		if r.Direction == msbSdk.PolicyDirectionEgress &&
 			r.Action == msbSdk.PolicyActionAllow &&
-			r.Destination == "public" {
+			r.Destination == group {
 			return true
 		}
 	}
 	return false
 }
 
+func TestConfigCombinesProfiles(t *testing.T) {
+	cfg, err := (Policy{Profiles: []Profile{ProfilePublic, ProfileHost}}).Config()
+	if err != nil {
+		t.Fatalf("Config: %v", err)
+	}
+	for _, group := range []string{"public", "host"} {
+		if !allowsProfile(cfg, group) {
+			t.Errorf("combined policy should allow the %s group, got %+v", group, cfg.Rules)
+		}
+	}
+}
+
+func TestConfigRejectsNoneCombinedWithOther(t *testing.T) {
+	if _, err := (Policy{Profiles: []Profile{ProfileNone, ProfilePublic}}).Config(); err == nil {
+		t.Fatal("Config must reject none combined with another profile")
+	}
+}
+
+func TestParseProfiles(t *testing.T) {
+	got, err := ParseProfiles([]string{"public", "host"})
+	if err != nil {
+		t.Fatalf("ParseProfiles: %v", err)
+	}
+	if len(got) != 2 || got[0] != ProfilePublic || got[1] != ProfileHost {
+		t.Fatalf("ParseProfiles = %v, want [public host]", got)
+	}
+
+	if _, err := ParseProfiles([]string{"bogus"}); err == nil {
+		t.Fatal("ParseProfiles(bogus) should error")
+	}
+	if _, err := ParseProfiles([]string{"none", "public"}); err == nil {
+		t.Fatal("ParseProfiles(none, public) should error")
+	}
+}
+
 func TestConfigNoneSingleHostAllowlist(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:     ProfileNone,
+		Profiles:    []Profile{ProfileNone},
 		EgressAllow: []string{"api.example.com"},
 	}).Config()
 	if err != nil {
@@ -82,7 +123,7 @@ func TestConfigNoneSingleHostAllowlist(t *testing.T) {
 }
 
 func TestConfigPublicProfileRules(t *testing.T) {
-	cfg, err := (Policy{Profile: ProfilePublic}).Config()
+	cfg, err := (Policy{Profiles: []Profile{ProfilePublic}}).Config()
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
@@ -96,7 +137,7 @@ func TestConfigPublicProfileRules(t *testing.T) {
 
 func TestConfigDenyBeforeAllow(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:     ProfilePublic,
+		Profiles:    []Profile{ProfilePublic},
 		EgressAllow: []string{"123.123.0.0/16"},
 		EgressDeny:  []string{"123.123.123.0/24"},
 	}).Config()
@@ -125,7 +166,7 @@ func TestConfigDenyBeforeAllow(t *testing.T) {
 
 func TestConfigNoneAppliesLists(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:     ProfileNone,
+		Profiles:    []Profile{ProfileNone},
 		EgressAllow: []string{"1.1.1.1"},
 	}).Config()
 	if err != nil {
@@ -145,7 +186,7 @@ func TestConfigNoneAppliesLists(t *testing.T) {
 
 func TestConfigDeDuplicatesEntries(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:     ProfilePublic,
+		Profiles:    []Profile{ProfilePublic},
 		EgressAllow: []string{"api.github.com", "api.github.com"},
 	}).Config()
 	if err != nil {
@@ -173,7 +214,7 @@ func TestParseProfile(t *testing.T) {
 
 func TestConfigDeDuplicatesEmptyEntries(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:     ProfilePublic,
+		Profiles:    []Profile{ProfilePublic},
 		EgressAllow: []string{"", "api.github.com", ""},
 	}).Config()
 	if err != nil {
@@ -194,13 +235,13 @@ func TestConfigDeDuplicatesEmptyEntries(t *testing.T) {
 }
 
 func TestConfigUnknownProfileErrors(t *testing.T) {
-	if _, err := (Policy{Profile: Profile("bogus")}).Config(); err == nil {
+	if _, err := (Policy{Profiles: []Profile{Profile("bogus")}}).Config(); err == nil {
 		t.Fatal("Config with unknown profile should error")
 	}
 }
 
 func TestFingerprintStable(t *testing.T) {
-	p := Policy{Profile: ProfileNone, EgressAllow: []string{"b", "a"}}
+	p := Policy{Profiles: []Profile{ProfileNone}, EgressAllow: []string{"b", "a"}}
 	first := p.Fingerprint()
 	for range 3 {
 		if got := p.Fingerprint(); got != first {
@@ -211,13 +252,13 @@ func TestFingerprintStable(t *testing.T) {
 
 func TestFingerprintOrderIndependent(t *testing.T) {
 	a := Policy{
-		Profile:     ProfileNone,
+		Profiles:    []Profile{ProfileNone},
 		EgressAllow: []string{"b.example.com", "a.example.com"},
 		EgressDeny:  []string{"z.example.com", "y.example.com"},
 		DNSServers:  []string{"1.1.1.1", "8.8.8.8"},
 	}
 	b := Policy{
-		Profile:     ProfileNone,
+		Profiles:    []Profile{ProfileNone},
 		EgressAllow: []string{"a.example.com", "b.example.com"},
 		EgressDeny:  []string{"y.example.com", "z.example.com"},
 		DNSServers:  []string{"8.8.8.8", "1.1.1.1"},
@@ -228,14 +269,14 @@ func TestFingerprintOrderIndependent(t *testing.T) {
 }
 
 func TestFingerprintDistinguishesConfigs(t *testing.T) {
-	none := Policy{Profile: ProfileNone, EgressAllow: []string{"api.example.com"}}
-	public := Policy{Profile: ProfilePublic, EgressAllow: []string{"api.example.com"}}
+	none := Policy{Profiles: []Profile{ProfileNone}, EgressAllow: []string{"api.example.com"}}
+	public := Policy{Profiles: []Profile{ProfilePublic}, EgressAllow: []string{"api.example.com"}}
 	if none.Fingerprint() == public.Fingerprint() {
 		t.Fatal("different profiles must have different fingerprints")
 	}
 
-	allow := Policy{Profile: ProfileNone, EgressAllow: []string{"a.example.com"}}
-	deny := Policy{Profile: ProfileNone, EgressDeny: []string{"a.example.com"}}
+	allow := Policy{Profiles: []Profile{ProfileNone}, EgressAllow: []string{"a.example.com"}}
+	deny := Policy{Profiles: []Profile{ProfileNone}, EgressDeny: []string{"a.example.com"}}
 	if allow.Fingerprint() == deny.Fingerprint() {
 		t.Fatal("allow vs deny lists must have different fingerprints")
 	}
@@ -315,7 +356,7 @@ func TestNormalizeDNSServers(t *testing.T) {
 
 func TestConfigDNSServersNormalized(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:    ProfilePublic,
+		Profiles:   []Profile{ProfilePublic},
 		DNSServers: []string{"1.1.1.1", "8.8.8.8:5353"},
 	}).Config()
 	if err != nil {
@@ -336,7 +377,7 @@ func TestConfigDNSServersNormalized(t *testing.T) {
 }
 
 func TestConfigDNSNilWhenAbsent(t *testing.T) {
-	cfg, err := (Policy{Profile: ProfilePublic}).Config()
+	cfg, err := (Policy{Profiles: []Profile{ProfilePublic}}).Config()
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
@@ -347,7 +388,7 @@ func TestConfigDNSNilWhenAbsent(t *testing.T) {
 
 func TestConfigDNSWithNoneProfile(t *testing.T) {
 	cfg, err := (Policy{
-		Profile:    ProfileNone,
+		Profiles:   []Profile{ProfileNone},
 		DNSServers: []string{"1.1.1.1"},
 	}).Config()
 	if err != nil {
@@ -383,7 +424,7 @@ func TestConfigDNSOnlyDefaultsToPublic(t *testing.T) {
 
 func TestConfigDNSInvalidErrors(t *testing.T) {
 	if _, err := (Policy{
-		Profile:    ProfilePublic,
+		Profiles:   []Profile{ProfilePublic},
 		DNSServers: []string{"garbage"},
 	}).Config(); err == nil {
 		t.Fatal("Config with invalid DNS server should error")
@@ -394,7 +435,7 @@ func TestPolicyEmpty(t *testing.T) {
 	if !(Policy{}).Empty() {
 		t.Error("zero Policy should be empty")
 	}
-	if (Policy{Profile: ProfilePublic}).Empty() {
+	if (Policy{Profiles: []Profile{ProfilePublic}}).Empty() {
 		t.Error("Policy with a profile should not be empty")
 	}
 	if (Policy{DNSServers: []string{"1.1.1.1"}}).Empty() {
@@ -402,25 +443,52 @@ func TestPolicyEmpty(t *testing.T) {
 	}
 }
 
+func TestFingerprintProfileSetOrderIndependent(t *testing.T) {
+	a := Policy{Profiles: []Profile{ProfilePublic, ProfileHost}}
+	b := Policy{Profiles: []Profile{ProfileHost, ProfilePublic}}
+	if a.Fingerprint() != b.Fingerprint() {
+		t.Fatalf("fingerprint must be independent of profile order: %q vs %q", a.Fingerprint(), b.Fingerprint())
+	}
+}
+
+func TestFingerprintProfileSetDeduplicates(t *testing.T) {
+	once := Policy{Profiles: []Profile{ProfilePublic}}
+	twice := Policy{Profiles: []Profile{ProfilePublic, ProfilePublic}}
+	if once.Fingerprint() != twice.Fingerprint() {
+		t.Fatal("duplicate profiles must not change the fingerprint")
+	}
+}
+
+// TestFingerprintSingleProfileMatchesLegacyFormat pins the exact digest a
+// single-profile policy produced before profiles became composable: the
+// fingerprint emits one "profile=" line per profile, so widening the model must
+// not change existing state and force every project VM to be recreated.
+func TestFingerprintSingleProfileMatchesLegacyFormat(t *testing.T) {
+	const legacyPublic = "a22d48312e2ea6d5e08a1b5bca6f04e1a42da13d2daaa1337b4d5be145a31116"
+	if got := (Policy{Profiles: []Profile{ProfilePublic}}).Fingerprint(); got != legacyPublic {
+		t.Fatalf("single-profile fingerprint = %q, want legacy %q", got, legacyPublic)
+	}
+}
+
 func TestFingerprintEmptyUsesPublicDefault(t *testing.T) {
-	if (Policy{}).Fingerprint() != (Policy{Profile: ProfilePublic}).Fingerprint() {
+	if (Policy{}).Fingerprint() != (Policy{Profiles: []Profile{ProfilePublic}}).Fingerprint() {
 		t.Fatal("unset policy and explicit public policy must have the same fingerprint")
 	}
 }
 
 func TestFingerprintDistinguishesDNSServers(t *testing.T) {
-	base := Policy{Profile: ProfilePublic}
-	withDNS := Policy{Profile: ProfilePublic, DNSServers: []string{"1.1.1.1", "8.8.8.8"}}
+	base := Policy{Profiles: []Profile{ProfilePublic}}
+	withDNS := Policy{Profiles: []Profile{ProfilePublic}, DNSServers: []string{"1.1.1.1", "8.8.8.8"}}
 	if base.Fingerprint() == withDNS.Fingerprint() {
 		t.Fatal("adding dns-servers must change the fingerprint")
 	}
 
-	reordered := Policy{Profile: ProfilePublic, DNSServers: []string{"8.8.8.8", "1.1.1.1"}}
+	reordered := Policy{Profiles: []Profile{ProfilePublic}, DNSServers: []string{"8.8.8.8", "1.1.1.1"}}
 	if reordered.Fingerprint() != withDNS.Fingerprint() {
 		t.Fatal("fingerprint must be independent of dns-servers order")
 	}
 
-	different := Policy{Profile: ProfilePublic, DNSServers: []string{"8.8.8.8"}}
+	different := Policy{Profiles: []Profile{ProfilePublic}, DNSServers: []string{"8.8.8.8"}}
 	if different.Fingerprint() == withDNS.Fingerprint() {
 		t.Fatal("different dns-servers must change the fingerprint")
 	}

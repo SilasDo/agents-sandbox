@@ -77,6 +77,9 @@
 - `reconfig-decision.md`
   - Description: Contract for the per-startup project-VM reconfiguration decision: fingerprint-backed detection of env/secret/network/mount changes, which changes recreate vs restart the daemon, the fingerprint-preservation invariant on state rewrites, order-stability of `ConfigFiles.Keys`, and the #183/#223 resolutions.
   - Read If: Changing `decideReconfig`/`PlanReconfig`, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
+- `network-profiles.md`
+  - Description: Contract for composable network profiles: `public`/`private`/`host` union through one microsandbox policy, `none` is terminal and allowlist-only, the config/env/flag surface accepts a scalar/comma-string/list, and the fingerprint keeps one `profile=` line per profile so single-profile digests are stable.
+  - Read If: Changing `network.Policy`, `ParseProfile`/`ParseProfiles`, viperconfig `profileEntries`/`stringToSliceDecodeHook`, the `network.profile`/`--network`/`AGENTS_SANDBOX_NETWORK_PROFILE` surface, or network fingerprinting and its VM-recreation trigger.
 - `home-volume-recovery.md`
   - Description: Contract for recovering a project's home volume when `state.yaml` is lost: resolution order (state → the live VM's mounted volume → fresh prefill), why the live VM config is authoritative, the warning + rewrite, and the deliberate non-recovery of fingerprints (#219).
   - Read If: Changing `volume.Manager.ResolveHomeVolume`/`recoverOrCreateHome`, `liveHomeVolume`, home-volume resolution, or diagnosing a duplicate/orphaned home volume after state loss.

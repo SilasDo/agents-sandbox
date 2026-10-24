@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
@@ -85,7 +86,7 @@ func TestResolverDottedKeyUsesAgentsEnvPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.cfg.Network.Profile != "private" {
-		t.Errorf("Network.Profile = %q; want private", r.cfg.Network.Profile)
+	if !slices.Equal(r.cfg.Network.Profiles, []network.Profile{network.ProfilePrivate}) {
+		t.Errorf("Network.Profiles = %v; want [private]", r.cfg.Network.Profiles)
 	}
 }

@@ -143,7 +143,7 @@ func TestPersistNetworkState_RoundTrip(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "netproj"
-	policy := network.Policy{Profile: network.ProfileNone, EgressAllow: []string{"api.example.com"}}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}, EgressAllow: []string{"api.example.com"}}
 
 	if err := persistNetworkState(
 		state.Key{Slug: slug, Agent: "opencode"},
@@ -176,7 +176,7 @@ func TestDecideReconfig_NetworkChangedWithPersistedState(t *testing.T) {
 		HomeVolume:  "vol",
 		ImageDigest: "sha256:samedigest",
 	}
-	opts := options.RunOptions{Network: network.Policy{Profile: network.ProfileNone}}
+	opts := options.RunOptions{Network: network.Policy{Profiles: []network.Profile{network.ProfileNone}}}
 
 	ui := termio.NewTestMock(t)
 	cfs, err := reprovision.LoadConfigFilesForHost(opencodeAgent(t), t.TempDir(), reprovision.VMHomeDir, &ui, true)
@@ -214,7 +214,7 @@ func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
 
 	vm := volume.NewManager(&termio.Mock{})
 
-	policy := network.Policy{Profile: network.ProfileNone}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 	persistedState := state.HomeState{
 		HomeVolume:   "vol",
 		ImageDigest:  "sha256:samedigest",
@@ -251,7 +251,7 @@ func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
 }
 
 func TestNetworkChanged_ZeroApplied_NonEmptyDesired(t *testing.T) {
-	got := state.NetworkChanged(state.NetworkState{}, network.Policy{Profile: network.ProfileNone})
+	got := state.NetworkChanged(state.NetworkState{}, network.Policy{Profiles: []network.Profile{network.ProfileNone}})
 	if !got {
 		t.Error("expected change when applied is zero and desired is non-empty")
 	}
@@ -265,7 +265,7 @@ func TestNetworkChanged_ZeroApplied_EmptyDesired(t *testing.T) {
 }
 
 func TestNetworkChanged_MatchingHash(t *testing.T) {
-	policy := network.Policy{Profile: network.ProfileNone, EgressAllow: []string{"api.example.com"}}
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}, EgressAllow: []string{"api.example.com"}}
 	applied := state.BuildNetworkState(policy)
 	if got := state.NetworkChanged(applied, policy); got {
 		t.Error("expected NO change when fingerprints match")
@@ -273,8 +273,8 @@ func TestNetworkChanged_MatchingHash(t *testing.T) {
 }
 
 func TestNetworkChanged_DifferentHash(t *testing.T) {
-	policy := network.Policy{Profile: network.ProfileNone, EgressAllow: []string{"api.example.com"}}
-	applied := state.BuildNetworkState(network.Policy{Profile: network.ProfileNone})
+	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}, EgressAllow: []string{"api.example.com"}}
+	applied := state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}})
 	if got := state.NetworkChanged(applied, policy); !got {
 		t.Error("expected change when fingerprints differ")
 	}

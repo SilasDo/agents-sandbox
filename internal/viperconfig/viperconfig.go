@@ -56,7 +56,7 @@ type Config struct {
 	AutoStopTimeout           time.Duration `mapstructure:"auto-stop-timeout"`
 	AutoStopMaxSessionRetries int           `mapstructure:"auto-stop-max-session-retries"`
 
-	// Network holds the egress policy. Only Profile is settable via env/flag.
+	// Network holds the egress policy. Only Profiles is settable via env/flag.
 	Network network.Policy `mapstructure:"network"`
 	// Mounts is excluded from viper.Unmarshal (mapstructure:"-") and decoded
 	// from v.Get("mounts") instead: viper flattens dotted guest paths such as
@@ -258,9 +258,10 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 			mapstructure.StringToTimeDurationHookFunc(),
 			// Split comma-separated strings (env vars, CLI StringSlice flags)
 			// into []string fields such as network.egress-allow and
-			// network.dns-servers. It also leniently accepts a scalar string
-			// for those list fields in config files.
-			mapstructure.StringToSliceHookFunc(","),
+			// network.dns-servers, and into []Profile for network.profile. It
+			// also leniently accepts a scalar string for those list fields in
+			// config files.
+			stringToSliceDecodeHook(),
 		),
 	)); err != nil {
 		return nil, fmt.Errorf("decode launcher config: %w", err)
@@ -499,6 +500,29 @@ func ParseHumanDuration(s string) (time.Duration, bool) {
 	return d, true
 }
 
+// stringToSliceDecodeHook splits a comma-separated string into a slice whose
+// element kind is string. It generalizes mapstructure's StringToSliceHookFunc
+// (which fires only for []string) so named string types such as network.Profile
+// decode the same way from env vars and StringSlice flags.
+func stringToSliceDecodeHook() mapstructure.DecodeHookFunc {
+	return func(f reflect.Type, t reflect.Type, data any) (any, error) {
+		if f.Kind() != reflect.String || t.Kind() != reflect.Slice {
+			return data, nil
+		}
+		if t.Elem().Kind() != reflect.String {
+			return data, nil
+		}
+		raw, ok := data.(string)
+		if !ok {
+			return data, nil
+		}
+		if raw == "" {
+			return []string{}, nil
+		}
+		return strings.Split(raw, ","), nil
+	}
+}
+
 func durationDecodeHook() mapstructure.DecodeHookFunc {
 	return func(f reflect.Type, t reflect.Type, data any) (any, error) {
 		if f.Kind() != reflect.String {
@@ -613,8 +637,11 @@ func validateNetworkProfile(v *viper.Viper) error {
 	if !v.IsSet(keyNetworkProfile) {
 		return nil
 	}
-	profileStr := v.GetString(keyNetworkProfile)
-	if _, err := network.ParseProfile(profileStr); err != nil {
+	entries, err := profileEntries(v.Get(keyNetworkProfile))
+	if err != nil {
+		return fmt.Errorf("launcher config %s: %w", keyNetworkProfile, err)
+	}
+	if _, err := network.ParseProfiles(entries); err != nil {
 		return err
 	}
 	return nil
@@ -660,6 +687,32 @@ func dnsServerEntries(raw any) ([]string, error) {
 		return entries, nil
 	default:
 		return nil, fmt.Errorf("must be a list of DNS servers, got %T", raw)
+	}
+}
+
+// profileEntries converts a raw network.profile value (comma-separated string
+// or list) into the individual profile names.
+func profileEntries(raw any) ([]string, error) {
+	switch val := raw.(type) {
+	case string:
+		if val == "" {
+			return nil, errors.New("must not be empty")
+		}
+		return strings.Split(val, ","), nil
+	case []string:
+		return val, nil
+	case []any:
+		entries := make([]string, 0, len(val))
+		for _, e := range val {
+			s, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("entries must be strings, got %T", e)
+			}
+			entries = append(entries, s)
+		}
+		return entries, nil
+	default:
+		return nil, fmt.Errorf("must be a profile name or a list of profile names, got %T", raw)
 	}
 }
 
@@ -986,12 +1039,12 @@ func (r *Resolver) resolveNotifyConfig(cmd *cobra.Command) (notify.Config, error
 // resolver's policy; --dns then replaces the DNS servers while keeping any
 // profile and egress lists.
 func (r *Resolver) resolveNetwork(cmd *cobra.Command, opts *options.RunOptions) error {
-	if raw, _ := cmd.Flags().GetString(FlagNetwork); raw != "" {
-		prof, err := network.ParseProfile(raw)
+	if raw, _ := cmd.Flags().GetStringSlice(FlagNetwork); len(raw) > 0 {
+		profiles, err := network.ParseProfiles(raw)
 		if err != nil {
 			return err
 		}
-		opts.Network = network.Policy{Profile: prof, EgressAllow: nil, EgressDeny: nil, DNSServers: nil}
+		opts.Network = network.Policy{Profiles: profiles, EgressAllow: nil, EgressDeny: nil, DNSServers: nil}
 	} else if r != nil {
 		opts.Network = r.cfg.Network.Effective()
 	}

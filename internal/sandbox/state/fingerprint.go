@@ -145,9 +145,13 @@ func NetworkChanged(applied NetworkState, desired network.Policy) bool {
 // BuildNetworkState computes the fingerprint for the desired network policy.
 func BuildNetworkState(desired network.Policy) NetworkState {
 	desired = desired.Effective()
+	names := make([]string, 0, len(desired.Profiles))
+	for _, p := range desired.Profiles {
+		names = append(names, p.String())
+	}
 	return NetworkState{
 		Hash:  desired.Fingerprint(),
-		Names: []string{string(desired.Profile)},
+		Names: names,
 	}
 }
 

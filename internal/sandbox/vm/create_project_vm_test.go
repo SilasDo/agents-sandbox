@@ -126,7 +126,7 @@ func TestCreateProjectVMNetworkConfigError(t *testing.T) {
 		t.TempDir(),
 		options.RunOptions{
 			Memory:  "1G",
-			Network: network.Policy{Profile: network.Profile("bogus-profile")},
+			Network: network.Policy{Profiles: []network.Profile{network.Profile("bogus-profile")}},
 		},
 		ui,
 	)

@@ -45,7 +45,7 @@ Legend for the first four rows: ✅ = stronger isolation or host-side handling; 
 | Agent home                | Stored in a persistent `/home/dev` volume scoped to the project and agent. Recreating the VM does not remove this volume unless you reset or prune it.                                                       |
 | `/workspace`              | The host project directory, mounted read-write in a normal session. Some agents allow you to optionally use a  [worktree-session](https://inoio.github.io/agents-sandbox/branch-sessions.html) for a VM-internal worktree instead. |
 | Other host files          | Not visible unless they are copied, provisioned with `home:`, or exposed through an explicit host mount.                                                                                                     |
-| Network                   | Egress uses the `public` profile by default; `private`, `host`, and the allowlist-only `none` profile, plus allow/deny rules, narrow it. `profile: none` is deny-by-default egress, not a complete air gap.                                                              |
+| Network                   | Egress uses the `public` profile by default; the composable `private` and `host` profiles extend it, and the allowlist-only `none` profile replaces it, with allow/deny rules refining either. `none` is deny-by-default egress, not a complete air gap.                                                              |
 | Raw credentials           | `env.secret` and `env.secret.yaml` keep the real value on the host and expose a placeholder to the guest. This is separate from ordinary file provisioning. |
 
 > **Credential warning:** The convenience setup copies the active agent's host configuration into the VM by default. For
