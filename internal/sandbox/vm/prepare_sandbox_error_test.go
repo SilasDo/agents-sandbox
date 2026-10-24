@@ -27,7 +27,7 @@ func TestPrepareSandboxImageError(t *testing.T) {
 	})
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected error when the opencode version cannot be resolved")
 	}
 }
@@ -53,7 +53,7 @@ func TestPrepareSandboxVersionResolutionError(t *testing.T) {
 		},
 	}
 
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, ui); err == nil {
 		t.Fatal("expected error when the opencode version prompt fails")
 	}
 }

@@ -174,8 +174,13 @@ func TestDockerdRestartCmdTearsDownContainerd(t *testing.T) {
 }
 
 func TestDockerdReadyTimeoutAllowsFailOver(t *testing.T) {
-	if dockerdReadyTimeout < 25*time.Second {
-		t.Fatalf("dockerdReadyTimeout=%v must exceed dockerd's 15s containerd start timeout", dockerdReadyTimeout)
+	// The invariant is on the production default: TestMain shortens the var, so
+	// assert the default the var is initialised from.
+	if dockerdReadyTimeoutDefault < 25*time.Second {
+		t.Fatalf(
+			"dockerdReadyTimeoutDefault=%v must exceed dockerd's 15s containerd start timeout",
+			dockerdReadyTimeoutDefault,
+		)
 	}
 }
 

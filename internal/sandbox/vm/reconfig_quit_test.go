@@ -58,7 +58,7 @@ func TestDecideReconfigHomeQuit(t *testing.T) {
 		mock,
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
 		"vol",
 		persisted,

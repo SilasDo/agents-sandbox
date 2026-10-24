@@ -6,6 +6,14 @@ import (
 	"path/filepath"
 )
 
+// opencodeCmdName is the opencode (v1) shell command the launcher invokes in
+// the VM (serve, attach, --version, pkill).
+const opencodeCmdName = "opencode"
+
+// opencodeConfigDirName is the opencode (v1) launcher config directory name,
+// which opencode2 also falls back to as its legacy alias.
+const opencodeConfigDirName = "opencode"
+
 // opencodeConfig carries opencode (v1)'s config behavior: the snippet pattern,
 // merged config path, config file names, and provisioning rules. opencode2
 // embeds it for those guest-side concerns (it still reads v1's ~/.config/opencode
@@ -26,7 +34,7 @@ const opencodeAutoupdateDisabled = "true"
 // build naming the tool instead of failing at runtime.
 var daemonGuestTools = []string{"curl", "nohup", "pkill"}
 
-func (opencodeConfig) ConfigDirName() string { return opencodeName }
+func (opencodeConfig) ConfigDirName() string { return opencodeConfigDirName }
 
 func (opencodeConfig) SnippetPattern() string { return "opencode*.json*" }
 

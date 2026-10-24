@@ -306,7 +306,7 @@ func TestPrepareSandboxEnsureVMError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonShellFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected error when the VM lookup fails")
 	}
 }
@@ -378,7 +378,7 @@ func TestPrepareSandboxSetUpError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonShellFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected error when setUpSandbox fails")
 	}
 }

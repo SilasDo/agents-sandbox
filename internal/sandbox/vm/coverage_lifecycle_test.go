@@ -64,7 +64,7 @@ func TestEnsureProjectVMConnectRetryReconnectSucceeds(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -106,7 +106,7 @@ func TestEnsureProjectVMConnectRetryThenStart(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -148,7 +148,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -186,7 +186,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -232,7 +232,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -359,7 +359,7 @@ func TestEnsureProjectVMConnectRetryRefreshError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -442,7 +442,7 @@ func TestEnsureProjectVMConnectRetryStartError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",

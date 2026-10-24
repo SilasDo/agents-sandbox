@@ -12,8 +12,8 @@ agents-sandbox is agent-aware. A `--agent <name>` flag on `run`, `shell`, `build
 selects the coding-agent profile to run, build, provision, or manage. The agent can also be selected via the `agent`
 config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship as built-in profiles:
 
-- **`opencode`** (default) — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
-- **`opencode2`** — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the
+- **`opencode`** — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
+- **`opencode2`** (default) — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the
   opencode update API's `latest` channel is used for upgrade checks and unpinned builds. Daemon-based with serve/attach, worktree sessions. It owns its own launcher
   config namespace
   (`~/.config/agents-sandbox/opencode2/` and `.agents-sandbox/opencode2/`), separate from `opencode`, because v2's config

@@ -217,7 +217,7 @@ func setUpSandboxProvisionsConfig(t *testing.T, provisionMsg string) {
 		context.Background(),
 		testVMKey(),
 		sb,
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		cfs,
 		ui,
 		false,
@@ -313,7 +313,7 @@ func TestSetUpSandboxRestartsDaemonsOnReuseDecision(t *testing.T) {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
 	target, err := setUpSandbox(
-		context.Background(), testVMKey(), sb, options.RunOptions{},
+		context.Background(), testVMKey(), sb, options.RunOptions{Agent: "opencode"},
 		cfs, &ui, true, vmBootStarted, mounts.WorkspaceMountPath,
 	)
 	if err != nil {
@@ -363,7 +363,7 @@ func TestSetUpSandboxSkipsRestartOnProvisionError(t *testing.T) {
 		context.Background(),
 		testVMKey(),
 		sb,
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		cfs,
 		&ui,
 		true,
@@ -422,7 +422,7 @@ func TestSetUpSandboxProvisionsUpdatedConfigOnKeep(t *testing.T) {
 		context.Background(),
 		testVMKey(),
 		sb,
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		cfs,
 		ui,
 		false, // restart=false (user chose "keep")
@@ -477,7 +477,7 @@ func TestSetUpSandboxRunsHooksOnlyOnBoot(t *testing.T) {
 				context.Background(),
 				testVMKey(),
 				sb,
-				options.RunOptions{},
+				options.RunOptions{Agent: "opencode"},
 				cfs,
 				ui,
 				false,
@@ -528,7 +528,7 @@ func TestSetUpSandboxProvisionsMirrorOnly(t *testing.T) {
 		context.Background(),
 		testVMKey(),
 		sb,
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		cfs,
 		ui,
 		false,

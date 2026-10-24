@@ -95,7 +95,7 @@ func TestDecideReconfigDetachErrorVerbose(t *testing.T) {
 		mock,
 		vm,
 		state.Key{Slug: "testproj", Agent: "opencode"},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:same"},
 		"vol",
 		persisted,

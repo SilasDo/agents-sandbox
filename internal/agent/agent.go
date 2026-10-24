@@ -5,8 +5,9 @@ package agent
 
 import "sort"
 
-// opencodeName is the canonical registry name of the default agent.
-const opencodeName = "opencode"
+// DefaultAgentName is the registry name of the agent a bare `agents-sandbox`
+// runs: the profile an empty --agent and an unset agent config resolve to.
+const DefaultAgentName = opencode2Name
 
 // Agent is a built-in coding agent profile. It carries the stable identity and
 // the structured bits needed to bake the agent into the runner image.
@@ -55,11 +56,11 @@ func Register(a Agent) {
 	registry[a.Name()] = a
 }
 
-// Lookup returns the agent profile for name. An empty name or "opencode"
-// resolves to the default opencode profile, preserving zero-config behavior.
+// Lookup returns the agent profile for name. An empty name resolves to
+// DefaultAgentName, preserving zero-config behavior.
 func Lookup(name string) (Agent, bool) {
 	if name == "" {
-		name = opencodeName
+		name = DefaultAgentName
 	}
 	a, ok := registry[name]
 	return a, ok

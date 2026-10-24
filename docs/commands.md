@@ -62,7 +62,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--workspace-quota` | — | `16G` | Guest-write quota for the `/workspace` bind mount (e.g. `32G`), bounding writes on top of the host repo. Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
 | `--dry-run-vm` | —     | `false`  | Skip VM lifecycle but prepare everything else                                                                                              |
 | `--serve-only` | `-s`  | `false`  | Start the agent server published on host loopback at a dynamically allocated host port (no in-VM TUI); press `Ctrl-D` to exit. The printed `http://127.0.0.1:<port>` URL is authoritative — use it (rather than assuming a fixed port) to connect from clients like Opencode Desktop. Set `OPENCODE_SERVER_PASSWORD` for basic auth (opencode); opencode2's server requires the baked credential `opencode:opencode` (username:password). |
-| `--agent`      | —     | `opencode` | Coding-agent profile to run: `opencode` (default), `opencode2`, `pi`, or `claude-code`.                                                                |
+| `--agent`      | —     | `opencode2` | Coding-agent profile to run: `opencode`, `opencode2` (default), `pi`, or `claude-code`.                                                                |
 | `--notify`     | —     | `off`     | Notify on session status: `on`, `off`, `desktop`, or `audio` (bare `--notify` = `on`). Overridable via `AGENTS_SANDBOX_NOTIFY`. Only applies to the `opencode` and `opencode2` agents (the only agents with a session event stream). |
 | `--docker`     | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias)                                                               |
 
@@ -106,7 +106,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 |----------------------|-------|----------|-----------------------------------------------------------------|
 | `--rebuild`          | `-r`  | `false`  | Force a clean rebuild                                           |
 | `--dry-run`          | `-n`  | `false`  | Dry run without building                                        |
-| `--agent`            | —     | `opencode` | Coding-agent profile to build: `opencode` (default), `opencode2`, `pi`, or `claude-code`. |
+| `--agent`            | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2` (default), `pi`, or `claude-code`. |
 | `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest) |
 | `--docker`           | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
 
@@ -129,7 +129,7 @@ agents-sandbox build dockerfile --agent claude-code
 
 | Flag              | Short | Default    | Purpose                                                     |
 |-------------------|-------|------------|-------------------------------------------------------------|
-| `--agent`         | —     | `opencode` | Coding-agent profile to build: `opencode`, `opencode2`, `pi`, or `claude-code`. |
+| `--agent`         | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2`, `pi`, or `claude-code`. |
 | `--agent-version` | —     | `""`       | Pin the agent version rendered into the preview (default: no pinned default) |
 | `--docker`        | —     | `false`    | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
 
@@ -154,7 +154,7 @@ agents-sandbox stop -f     # stop and remove VM state
 |-------------|-------|-------------|---------------------------------------------|
 | `--force`   | `-f`  | `false`     | Remove VM's persisted state                 |
 | `--dry-run` | `-n`  | `false`     | Show what would be stopped without stopping |
-| `--agent`   | —     | `opencode`  | Coding-agent profile to stop                |
+| `--agent`   | —     | `opencode2`  | Coding-agent profile to stop                |
 
 ---
 
@@ -175,7 +175,7 @@ agents-sandbox kill -f     # kill and remove VM state
 |-------------|-------|-------------|-------------------------------------------|
 | `--force`   | `-f`  | `false`     | Remove VM's persisted state               |
 | `--dry-run` | `-n`  | `false`     | Show what would be killed without killing |
-| `--agent`   | —     | `opencode`  | Coding-agent profile to kill              |
+| `--agent`   | —     | `opencode2`  | Coding-agent profile to kill              |
 
 ---
 
@@ -372,7 +372,7 @@ agents-sandbox cfg
 
 #### config agent [name]
 
-Show the merged snippet config, the verbatim config-dir mirror files, and the host files drop-in-provisioned into the VM for an agent (default: the configured agent, `opencode`).
+Show the merged snippet config, the verbatim config-dir mirror files, and the host files drop-in-provisioned into the VM for an agent (default: the configured agent, `opencode2`).
 
 ```console
 agents-sandbox config agent opencode
@@ -383,9 +383,9 @@ agents-sandbox config agent --agent pi
 
 | Flag       | Short | Default    | Purpose                                                                 |
 |------------|-------|------------|-------------------------------------------------------------------------|
-| `--agent`  | —     | `opencode` | Coding-agent profile to inspect: `opencode` (default), `opencode2`, `pi`, or `claude-code`. |
+| `--agent`  | —     | `opencode2` | Coding-agent profile to inspect: `opencode`, `opencode2` (default), `pi`, or `claude-code`. |
 
-The agent is resolved from the `--agent` flag, then the positional `[name]`, then the configured agent, then `opencode`. Passing both `--agent` and a positional `[name]` (conflicting values) returns an "ambiguous" error.
+The agent is resolved from the `--agent` flag, then the positional `[name]`, then the configured agent, then `opencode2`. Passing both `--agent` and a positional `[name]` (conflicting values) returns an "ambiguous" error.
 
 The output names the launcher (host) config dirs actually read, as absolute paths:
 
@@ -687,7 +687,7 @@ Create a new home volume and copy files from the old volume on top of it.
 - **Flags:**
   - `--rm` — remove old volume after successful migration
   - `--dry-run` — show what would be done
-  - `--agent` — coding-agent profile to provision (`opencode` default)
+  - `--agent` — coding-agent profile to provision (`opencode2` default)
 
 #### `agents-sandbox volume reset [volume-name]`
 
@@ -698,7 +698,7 @@ Create a new home volume from the image contents only (fresh, no copy).
 - **Flags:**
   - `--rm` — remove old volume after reset
   - `--dry-run` — show what would be done
-  - `--agent` — coding-agent profile to provision (`opencode` default)
+  - `--agent` — coding-agent profile to provision (`opencode2` default)
 
 #### `agents-sandbox volume edit [volume-name]`
 

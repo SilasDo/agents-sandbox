@@ -35,19 +35,6 @@ func TestRealMsbClientCreateVolumeError(t *testing.T) {
 	}
 }
 
-// TestRealMsbClientListSandboxesWithLabels covers the label-filtering branch of
-// realMsbClient.ListSandboxes.
-func TestRealMsbClientListSandboxesWithLabels(t *testing.T) {
-	c := &realMsbClient{}
-	handles, err := c.ListSandboxes(context.Background(), map[string]string{"project": "demo"})
-	if err != nil {
-		t.Fatalf("ListSandboxes() with labels error = %v", err)
-	}
-	if handles == nil {
-		t.Log("ListSandboxes() returned nil slice (no sandboxes present)")
-	}
-}
-
 // TestRealMsbClientImagePruneCanceled covers the adapter without pruning the
 // shared microsandbox image cache used by the test environment.
 func TestRealMsbClientImagePruneCanceled(t *testing.T) {

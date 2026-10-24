@@ -135,7 +135,7 @@ func notifyEnvOverride() (string, string) {
 }
 
 // defaultAgentName is the fallback agent used when --agent is not provided.
-const defaultAgentName = "opencode"
+const defaultAgentName = agent.DefaultAgentName
 
 // UpgradeConfig holds self-upgrade settings.
 type UpgradeConfig struct {

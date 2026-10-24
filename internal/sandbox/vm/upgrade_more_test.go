@@ -30,7 +30,13 @@ func TestResolveOpenCodeVersionInteractiveSelectError(t *testing.T) {
 		},
 	}
 
-	_, _, _, err := resolveBuildVersion(context.Background(), k, opencodeAgent(t), ui, options.RunOptions{})
+	_, _, _, err := resolveBuildVersion(
+		context.Background(),
+		k,
+		opencodeAgent(t),
+		ui,
+		options.RunOptions{Agent: "opencode"},
+	)
 	if err == nil {
 		t.Fatal("expected error when the interactive selection fails")
 	}
@@ -54,7 +60,13 @@ func TestResolveOpenCodeVersionInteractiveDefaultChoice(t *testing.T) {
 		},
 	}
 
-	got, upgraded, _, err := resolveBuildVersion(context.Background(), k, opencodeAgent(t), ui, options.RunOptions{})
+	got, upgraded, _, err := resolveBuildVersion(
+		context.Background(),
+		k,
+		opencodeAgent(t),
+		ui,
+		options.RunOptions{Agent: "opencode"},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -83,7 +95,13 @@ func TestResolveOpenCodeVersionInteractiveKeep(t *testing.T) {
 		},
 	}
 
-	got, upgraded, _, err := resolveBuildVersion(context.Background(), k, opencodeAgent(t), ui, options.RunOptions{})
+	got, upgraded, _, err := resolveBuildVersion(
+		context.Background(),
+		k,
+		opencodeAgent(t),
+		ui,
+		options.RunOptions{Agent: "opencode"},
+	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -107,7 +125,7 @@ func TestResolveBuildVersionWithoutUpgradeChecker(t *testing.T) {
 		k,
 		&fakeAgent{},
 		&termio.Mock{},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 	)
 	if err != nil {
 		t.Fatalf("resolveBuildVersion: %v", err)

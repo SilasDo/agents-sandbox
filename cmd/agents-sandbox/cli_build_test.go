@@ -188,7 +188,7 @@ func TestBuildDockerfileCommand(t *testing.T) {
 				out := ui.StdOutBuffer.String()
 				for _, want := range []string{
 					"FROM debian:trixie-slim",
-					"LABEL org.agents-sandbox.agent=opencode",
+					"LABEL org.agents-sandbox.agent=opencode2",
 					"USER dev",
 					"WORKDIR /workspace",
 				} {
@@ -282,7 +282,7 @@ func TestBuildDockerfileCommandRendersAgentVersion(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out := ui.StdOutBuffer.String(); !strings.Contains(out, "ARG OPENCODE_VERSION=9.9.9") {
+	if out := ui.StdOutBuffer.String(); !strings.Contains(out, "ARG OPENCODE2_VERSION=9.9.9") {
 		t.Errorf("dockerfile output must pin the agent version; got:\n%s", out)
 	}
 }

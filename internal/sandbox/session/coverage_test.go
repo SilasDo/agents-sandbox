@@ -221,7 +221,7 @@ func TestRunUsesSessionKeyForLease(t *testing.T) {
 
 	if err := Run(
 		context.Background(),
-		options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.RunOptions{Agent: "opencode", ReapPolicy: options.NewReapPolicy(true, 5)},
 		ui,
 	); err != nil {
 		t.Fatalf("Run: %v", err)

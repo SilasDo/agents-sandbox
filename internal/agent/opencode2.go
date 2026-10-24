@@ -57,7 +57,7 @@ func (opencode2Profile) ConfigDirName() string { return opencode2Name }
 
 // ConfigDirAliases names the legacy shared config dir opencode2 used before it
 // gained its own namespace.
-func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeName} }
+func (opencode2Profile) ConfigDirAliases() []string { return []string{opencodeConfigDirName} }
 
 // WorktreeCreatesDetachedHead reports that v2's daemon creates worktrees on a
 // detached HEAD (v1 keeps its own branch), so the launcher can tell the user how

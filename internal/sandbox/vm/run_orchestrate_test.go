@@ -121,7 +121,7 @@ func TestPrepareHomeVolumeOfferErrorPropagates(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		state.Fingerprints{},
 		&ui,
 	)
@@ -265,7 +265,7 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{Digest: "sha256:def"},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		state.Fingerprints{},
 		&ui,
 	)
@@ -285,7 +285,7 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 }
 
 func TestResolveServeHostPortNotServeOnly(t *testing.T) {
-	if got := resolveServeHostPort(options.RunOptions{}, 0); got != 0 {
+	if got := resolveServeHostPort(options.RunOptions{Agent: "opencode"}, 0); got != 0 {
 		t.Errorf("resolveServeHostPort(not serve-only) = %d, want 0", got)
 	}
 }
@@ -376,7 +376,7 @@ func TestPrepareSandboxResolveWorkspaceDirError(t *testing.T) {
 	}
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected error when the workspace directory cannot be resolved")
 	}
 }
@@ -420,7 +420,7 @@ func TestPrepareHomeVolumeRecoversPersistedAdoptionVolume(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{Digest: "sha256:def"},
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		state.Fingerprints{},
 		&ui,
 	)
