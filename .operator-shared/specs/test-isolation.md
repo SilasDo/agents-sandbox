@@ -65,6 +65,20 @@ reachable subset directly, mirroring that body:
 
 Add a `main_test.go` with such a `TestMain` to every new package that has tests; the contract test fails without one.
 
+## The SDK and the native library
+
+Tests must not reach the real microsandbox SDK either. `realMsbClient` delegates every SDK call through a
+package seam var — `getSandbox`, `createSandbox`, `listSandboxesWith`, `getVolume`, `createVolume`,
+`listVolumes`, `removeVolume`, `imageGet`, `imageList`, `imageRemove`, `imageLoad`, `realImageInspect`,
+`imagePrune`, `storageUsage`, plus `resolveRuntime`/`ensureRuntime` — so its unit tests inject fakes and never
+load the embedded native library or read the developer's real runtime. A new adapter routes its SDK call
+through a seam and gets a fake-based unit test; the real round trip, if wanted, goes in an `msb`-tagged test
+(`make test-msb`), which keeps the embedded library.
+
+This is also why the unit and integration suites build with `-tags microsandbox_ffi_path` (see
+`guides/test-runtime-cost.md`): the tag drops the SDK's ~36 MB embedded library from every test binary, and
+because the tests reach the SDK only through seams, no `MICROSANDBOX_FFI_PATH` is needed.
+
 ## Host-home redirect
 
 `configpaths.WithMockConfigPaths(t)` roots a `mockConfigPaths` in `t.TempDir()` **and** redirects `$HOME` into

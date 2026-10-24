@@ -27,7 +27,8 @@ The same gap means a newly registered harness has no test that it starts at all.
 ## Contract
 
 **Tag and location.** The suite lives in package `test/harness/` behind the build tag `msb` (a tag names the
-runtime it requires, as `integration` names a real docker daemon). `make test-msb` runs it; it is not part of
+runtime it requires, as `integration` names a real docker daemon). `make test-msb` runs it, together with the
+`msb`-tagged real-client tests in `internal/sandbox/msb/` (`realstack_msb_test.go`); it is not part of
 `make check`, `make test`, or the default CI. `make compile-all` compiles it (`-tags 'integration msb'`) so a
 tagged-only compile regression is caught on every PR.
 
