@@ -568,6 +568,43 @@ func TestNetworkProfilesCommaEnvVar(t *testing.T) {
 	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
 }
 
+func TestNetworkProfilesSpacedCommaEnvVar(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_NETWORK_PROFILE", "public, host")
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesSpacedScalarConfigFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{"profile": "public, host"},
+	})
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
+func TestNetworkProfilesSpacedListConfigFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
+		"network": map[string]any{"profile": []string{"public", " host"}},
+	})
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	wantNetworkProfiles(t, r.cfg.Network, network.ProfilePublic, network.ProfileHost)
+}
+
 func TestNetworkProfilesNoneCombinedRejected(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{

@@ -47,6 +47,9 @@ func ParseProfiles(in []string) ([]Profile, error) {
 		}
 		profiles = append(profiles, p)
 	}
+	// Dedupe before checking so repeating the same profile (e.g. `--network
+	// none --network none`) is not mistaken for combining `none` with another.
+	profiles = dedupeProfiles(profiles)
 	if err := checkProfileCombination(profiles); err != nil {
 		return nil, err
 	}

@@ -447,6 +447,18 @@ func TestBuildRunOptionsNetworkFromResolver(t *testing.T) {
 	wantNetworkProfiles(t, opts.Network, network.ProfilePrivate)
 }
 
+func TestBuildRunOptionsNetworkSpacedFromResolver(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_NETWORK_PROFILE", "public, host")
+	cmd := newRunCommand()
+	r := mustResolver(t, cmd)
+	opts, err := r.BuildRunOptions(cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("BuildRunOptions: %v", err)
+	}
+	wantNetworkProfiles(t, opts.Network, network.ProfilePublic, network.ProfileHost)
+}
+
 func TestBuildRunOptionsNetworkInvalid(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cmd := newRunCommand()

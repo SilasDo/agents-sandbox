@@ -99,6 +99,20 @@ func TestParseProfiles(t *testing.T) {
 	}
 }
 
+func TestParseProfilesRepeatedNone(t *testing.T) {
+	got, err := ParseProfiles([]string{"none", "none"})
+	if err != nil {
+		t.Fatalf("ParseProfiles(none, none): %v", err)
+	}
+	if len(got) != 1 || got[0] != ProfileNone {
+		t.Fatalf("ParseProfiles(none, none) = %v, want [none]", got)
+	}
+
+	if _, err := ParseProfiles([]string{"none", "none", "public"}); err == nil {
+		t.Fatal("ParseProfiles(none, none, public) should error")
+	}
+}
+
 func TestConfigNoneSingleHostAllowlist(t *testing.T) {
 	cfg, err := (Policy{
 		Profiles:    []Profile{ProfileNone},

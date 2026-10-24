@@ -611,7 +611,7 @@ func validate(v *viper.Viper) error {
 	if err := validateAutoStopTimeout(v); err != nil {
 		return err
 	}
-	if err := validateNetworkProfile(v); err != nil {
+	if err := normalizeNetworkProfile(v); err != nil {
 		return err
 	}
 	if err := validateNetworkDNSServers(v); err != nil {
@@ -633,7 +633,13 @@ func validate(v *viper.Viper) error {
 	return nil
 }
 
-func validateNetworkProfile(v *viper.Viper) error {
+// normalizeNetworkProfile validates network.profile and stores the canonical
+// profile list back on the viper key. A scalar, comma-separated, or list value
+// with surrounding spaces (e.g. "public, host") validates fine, but would
+// otherwise decode with the spaces intact and be rejected by the microsandbox
+// SDK at VM creation. Storing the parsed result keeps decode in agreement with
+// validation.
+func normalizeNetworkProfile(v *viper.Viper) error {
 	if !v.IsSet(keyNetworkProfile) {
 		return nil
 	}
@@ -641,9 +647,11 @@ func validateNetworkProfile(v *viper.Viper) error {
 	if err != nil {
 		return fmt.Errorf("launcher config %s: %w", keyNetworkProfile, err)
 	}
-	if _, err := network.ParseProfiles(entries); err != nil {
+	profiles, err := network.ParseProfiles(entries)
+	if err != nil {
 		return err
 	}
+	v.Set(keyNetworkProfile, profiles)
 	return nil
 }
 

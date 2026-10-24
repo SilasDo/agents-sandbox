@@ -1,6 +1,6 @@
 ---
 description: Contract for the launcher's composable network profiles: public/private/host compose into one microsandbox policy, none is terminal and allowlist-only, the config/env/flag surfaces accept a scalar, comma string, or list, and the fingerprint keeps one profile= line per profile so single-profile digests (and existing VMs) do not change.
-read_if: Changing network.Policy, profile parsing or validation (ParseProfile, ParseProfiles, viperconfig profileEntries/stringToSliceDecodeHook), the network.profile / --network / AGENTS_SANDBOX_NETWORK_PROFILE surface, or network fingerprinting and its VM-reconfiguration trigger.
+read_if: Changing network.Policy, profile parsing or validation (ParseProfile, ParseProfiles, viperconfig profileEntries/normalizeNetworkProfile/stringToSliceDecodeHook), the network.profile / --network / AGENTS_SANDBOX_NETWORK_PROFILE surface, or network fingerprinting and its VM-reconfiguration trigger.
 ---
 
 # Network profiles
@@ -28,8 +28,10 @@ any other profile is a validation error (`checkProfileCombination`), mirroring m
 `network.profile` accepts a scalar, a comma-separated string, or a YAML list. `--network` is a `StringSlice` flag
 (comma-separated or repeated) and `AGENTS_SANDBOX_NETWORK_PROFILE` takes a comma-separated string. viperconfig's
 `stringToSliceDecodeHook` — not mapstructure's `StringToSliceHookFunc`, which fires only for `[]string` — normalizes the
-scalar string forms into `[]network.Profile`; `profileEntries` plus `network.ParseProfiles` validate the raw config value
-before decode. Precedence is unchanged: flag > env > config > default.
+scalar string forms into `[]network.Profile`. Whitespace around a profile name is insignificant in every shape, and
+repeated names collapse instead of erroring (`network.ParseProfiles` trims and dedupes). `profileEntries` plus
+`network.ParseProfiles` validate the raw config value before decode, and `normalizeNetworkProfile` stores the parsed list
+back on the viper key so decode cannot disagree with validation. Precedence is unchanged: flag > env > config > default.
 
 ## Fingerprint stability (do not drift)
 
