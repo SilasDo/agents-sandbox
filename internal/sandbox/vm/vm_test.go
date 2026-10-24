@@ -748,7 +748,7 @@ func TestEnsureProjectVMReusesWhenNotFlagged(t *testing.T) {
 
 	sb, created, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "old:tag", Ref: "old:tag"},
 		"homevol",
 		"/workspace",

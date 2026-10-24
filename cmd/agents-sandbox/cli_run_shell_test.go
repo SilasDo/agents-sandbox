@@ -227,7 +227,7 @@ func TestRunShellWorktreeReusesExisting(t *testing.T) {
 		"",
 		nil,
 	)
-	root, ui := setupRunMocks(t, mock, sb, "run", "--worktree", "bugfix-exit-zero")
+	root, ui := setupRunMocks(t, mock, sb, "run", "--agent", "opencode", "--worktree", "bugfix-exit-zero")
 	_ = root.Execute()
 
 	found := false

@@ -255,7 +255,7 @@ func TestSetUpSandboxProvisionError(t *testing.T) {
 		context.Background(),
 		testVMKey(),
 		sb,
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		cfs,
 		&ui,
 		false,
@@ -345,7 +345,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",

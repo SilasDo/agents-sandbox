@@ -69,7 +69,7 @@ func TestPreviewSandboxReportsBuildAndCreate(t *testing.T) {
 	noVolumeCreateMock(t)
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -121,7 +121,7 @@ func TestPreviewSandboxReportsReuse(t *testing.T) {
 	}
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -166,7 +166,7 @@ func TestPreviewSandboxRecoversVersionFromImageLabelReadOnly(t *testing.T) {
 	noVolumeCreateMock(t)
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -196,7 +196,7 @@ func TestPreviewSandboxPinnedVersionWinsAndNeverChecksNetwork(t *testing.T) {
 	t.Cleanup(func() { SetAgentLatestVersion(orig) })
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{AgentVersion: "2.0.0"}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode", AgentVersion: "2.0.0"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -222,7 +222,7 @@ func TestPreviewSandboxCorruptStateReportsCreate(t *testing.T) {
 	testutil.WriteFile(t, state.KeyDir(k), "state.yaml", string(corrupt))
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v, want a tolerated corrupt state", err)
 	}
@@ -250,7 +250,7 @@ func TestPreviewSandboxSurfacesRenderError(t *testing.T) {
 	testutil.WritePath(t, dockerfilePath, "FROM ubuntu:24.04 AS agents-sandbox-base\n")
 
 	ui := termio.NewTestMock(t)
-	if _, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected the render error for a reserved stage alias to surface")
 	}
 }
@@ -274,7 +274,7 @@ func TestPreviewSandboxWorkspaceDirError(t *testing.T) {
 	}
 
 	ui := termio.NewTestMock(t)
-	if _, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected an error when the workspace directory cannot be resolved")
 	}
 }
@@ -313,7 +313,7 @@ func TestPreviewSandboxUserProvidedAgentIgnoresPin(t *testing.T) {
 	t.Cleanup(func() { SetAgentLatestVersion(orig) })
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{AgentVersion: "9.9.9"}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode", AgentVersion: "9.9.9"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -345,7 +345,7 @@ func TestPreviewSandboxUserProvidedAgentNeverRecoversVersion(t *testing.T) {
 	t.Cleanup(func() { existingAgentVersion = orig })
 
 	ui := termio.NewTestMock(t)
-	p, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PreviewSandbox() error = %v", err)
 	}
@@ -373,7 +373,7 @@ func TestPreviewSandboxSurfacesAdoptionError(t *testing.T) {
 	testutil.WriteFile(t, state.KeyDir(legacyKey), "state.yaml", `": [`)
 
 	ui := termio.NewTestMock(t)
-	if _, err := PreviewSandbox(context.Background(), options.RunOptions{}, &ui); err == nil {
+	if _, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
 		t.Fatal("expected the pending-identity check error to surface")
 	}
 }

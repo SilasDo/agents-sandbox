@@ -48,7 +48,7 @@ func TestVolumeMigrateRebuildIsDeprecatedNoOp(t *testing.T) {
 	image.WithMockAgentVersion(t, "0.0.0-test")
 	docker.WithNoopDockerMock(t)
 	slug := git.CheckoutSlug()
-	if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+	if err := seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", slug),
 	}); err != nil {
 		t.Fatalf("seed state: %v", err)
@@ -84,7 +84,7 @@ func TestVolumeOpsRebuildDeprecatedAcrossOps(t *testing.T) {
 			image.WithMockAgentVersion(t, "0.0.0-test")
 			docker.WithNoopDockerMock(t)
 			slug := git.CheckoutSlug()
-			if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+			if err := seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 				HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", slug),
 			}); err != nil {
 				t.Fatalf("seed state: %v", err)

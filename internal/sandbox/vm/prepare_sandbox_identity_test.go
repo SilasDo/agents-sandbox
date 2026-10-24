@@ -184,7 +184,7 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 	firstKey := state.Key{Slug: firstIdentity.CheckoutSlug, Agent: "opencode"}
 	seedMatchingHomeState(t, firstKey)
 	firstMock := installPrepareSandboxMSBMock(t)
-	firstSession, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
+	firstSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in first clone: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 	secondKey := state.Key{Slug: secondIdentity.CheckoutSlug, Agent: "opencode"}
 	seedMatchingHomeState(t, secondKey)
 	secondMock := installPrepareSandboxMSBMock(t)
-	secondSession, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
+	secondSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in second clone: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	seedMatchingHomeState(t, key)
 	mock := installPrepareSandboxMSBMock(t)
 
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in an outside worktree: %v", err)
 	}
@@ -319,7 +319,7 @@ func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) 
 	t.Chdir(clone)
 	installPrepareSandboxMSBMock(t)
 
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{DryRun: true}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", DryRun: true}, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (dry-run): %v", err)
 	}
@@ -377,7 +377,7 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 	}
 
 	t.Chdir(clone)
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (migrate): %v", err)
 	}
@@ -418,7 +418,7 @@ func TestPrepareSandboxAdoptionFailureReturnsError(t *testing.T) {
 	testutil.WriteFile(t, legacyDir, "state.yaml", `": [`)
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui); err == nil ||
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil ||
 		!strings.Contains(err.Error(), "check for a pending legacy identity") {
 		t.Fatalf(
 			"PrepareSandbox with an unreadable legacy state: error = %v, want the fail-closed predicate error",

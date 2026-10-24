@@ -481,7 +481,11 @@ func TestRunServeOnlyReapFailureWarns(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(false, 5)}, ui)
+		done <- Run(ctx, options.RunOptions{
+			Agent:      "opencode",
+			ServeOnly:  true,
+			ReapPolicy: options.NewReapPolicy(false, 5),
+		}, ui)
 	}()
 	cancel()
 	var err error
@@ -542,7 +546,10 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Run(context.Background(), options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+	err := Run(context.Background(), options.RunOptions{
+		Agent:      "opencode",
+		ReapPolicy: options.NewReapPolicy(true, 5),
+	}, ui)
 	if err != nil {
 		t.Fatalf("Run normal: %v", err)
 	}
@@ -725,7 +732,7 @@ func TestRunAttachWarnsOnReapFailure(t *testing.T) {
 	cancel()
 
 	err := runAttach(ctx, sb, "reaperrproj", "/workspace", ui,
-		options.RunOptions{ReapPolicy: options.NewReapPolicy(false, 5)}, "-l")
+		options.RunOptions{Agent: "opencode", ReapPolicy: options.NewReapPolicy(false, 5)}, "-l")
 	if err != nil {
 		t.Fatalf("runAttach should not fail on reap error: %v", err)
 	}

@@ -32,7 +32,7 @@ func resolverFromContext(ctx context.Context) *launcherconfig.Resolver {
 }
 
 // defaultAgentName is the fallback agent used when --agent is not provided.
-const defaultAgentName = "opencode"
+const defaultAgentName = agent.DefaultAgentName
 
 // warnLegacyEnvVars emits a one-time deprecation warning for each
 // OPENCODE_SANDBOX_ variable still in effect.

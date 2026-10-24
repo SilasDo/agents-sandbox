@@ -90,8 +90,8 @@ provided by a custom base or project Dockerfile.
 
 Four agents ship as built-in profiles:
 
-- **`opencode`** (default) — a daemon-based agent with serve/attach, worktree sessions, and GitHub-release upgrade checks.
-- **`opencode2`** — opencode 2 (beta), installed from its native installer; daemon-based with serve/attach, worktree
+- **`opencode`** — a daemon-based agent with serve/attach, worktree sessions, and GitHub-release upgrade checks.
+- **`opencode2`** (default) — opencode 2 (beta), installed from its native installer; daemon-based with serve/attach, worktree
   sessions, and upgrade checks via the opencode update API's `latest` channel. It owns its own launcher config dir (`~/.config/agents-sandbox/opencode2/`,
   project equivalent `.agents-sandbox/opencode2/`), while its VM config path and host drop-in stay `~/.config/opencode/`.
   While no `opencode2/` dir exists it falls back to the shared `opencode/` dir with a warning (see the agent docs).

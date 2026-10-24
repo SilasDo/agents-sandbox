@@ -95,7 +95,7 @@ func runVolumeOpScenario(t *testing.T, tc volumeOpScenario) {
 		if tc.emptyHomeVolume {
 			homeVolume = ""
 		}
-		seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+		seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 			HomeVolume:  homeVolume,
 			ImageDigest: "sha256:2e454dd5b8ba117988d3beebd09f457ca46e758724e673d2272f77ddc9b3fb12",
 			EnvState:    state.EnvState{},
@@ -183,7 +183,7 @@ func TestVolumeOpsDryRunDoesNotEnsureImage(t *testing.T) {
 
 			slug := git.CheckoutSlug()
 			homeVolume := fmt.Sprintf("agents-sandbox-home-%s-20260814T132349", slug)
-			if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+			if err := seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 				HomeVolume: homeVolume,
 			}); err != nil {
 				t.Fatalf("seed home state: %v", err)

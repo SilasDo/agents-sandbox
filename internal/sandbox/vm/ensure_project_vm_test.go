@@ -43,7 +43,7 @@ func TestEnsureProjectVMFlockDirError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -70,7 +70,7 @@ func TestEnsureProjectVMDecideActionError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -106,7 +106,7 @@ func TestEnsureProjectVMWaitsForStartingVM(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -185,7 +185,7 @@ func TestEnsureProjectVMStartingStatusError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -220,7 +220,7 @@ func TestEnsureProjectVMStartsAfterConcurrentBootFails(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -266,7 +266,7 @@ func TestEnsureProjectVMConvergesCreatedStartRace(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -302,7 +302,7 @@ func TestEnsureProjectVMConnectRetryRejectsRefreshedPausedVM(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -344,7 +344,7 @@ func TestEnsureProjectVMConnectRetryWaitsForStartingVM(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -386,7 +386,7 @@ func TestEnsureProjectVMPostLockWaitsForStartingVM(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -426,7 +426,7 @@ func TestEnsureProjectVMPostLockWaitError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -624,7 +624,7 @@ func TestEnsureProjectVMStartError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -651,7 +651,7 @@ func TestEnsureProjectVMEnsureInstalledError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -681,7 +681,7 @@ func TestEnsureProjectVMConnectRetryReconnectError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -719,7 +719,7 @@ func TestEnsureProjectVMConnectRetryStartAfterRefresh(t *testing.T) {
 	// resulting error message mentions the connect failure.
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -757,7 +757,7 @@ func TestEnsureProjectVMPostLockRecheckConnect(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -801,7 +801,7 @@ func TestEnsureProjectVMPostLockRecheckStart(t *testing.T) {
 
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
@@ -1000,7 +1000,7 @@ func TestEnsureProjectVMRecheckNonNotFoundError(t *testing.T) {
 
 	_, _, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{},
+		options.RunOptions{Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",

@@ -282,7 +282,7 @@ copy (the runner's `PATH` prefers base binaries). The pinned node stays on the v
 the v26 tarballs gained a hard `libatomic.so.1` runtime dependency the managed base does not provide, while v24 has no
 such dependency on either target architecture, so a custom base needs no extra library to run the tool-installed node.
 
-Four agents are built in: `opencode` (default), `opencode2` (the opencode 2 beta), `pi`, and `claude-code`. Only `pi`
+Four agents are built in: `opencode`, `opencode2` (default, the opencode 2 beta), `pi`, and `claude-code`. Only `pi`
 needs node: its published package is an npm-installed `#!/usr/bin/env node` bundle, so it installs through
 `npm install -g --prefix /opt/agents-sandbox @earendil-works/pi-coding-agent@$PI_VERSION`. The other three ship
 self-contained native binaries and install through their upstream installers — `opencode` and `opencode2` via

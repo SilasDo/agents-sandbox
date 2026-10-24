@@ -90,6 +90,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- The default agent is now `opencode2`. A bare `agents-sandbox` and every command whose `--agent` flag is left unset
+  (`run`/`shell`, `build`, `build dockerfile`, `stop`, `kill`, `config agent`, and `volume` migrate/reset/edit) select
+  `opencode2` instead of `opencode`; pass `--agent opencode` to keep using the v1 agent.
 - Network: the default egress profile is now `public`, so a fresh sandbox reaches the internet (agent APIs, package
   registries) with no configuration — a first run no longer has an unreachable agent (#279). The allowlist-only `none`
   profile is unchanged and available explicitly, and any sandbox with no configured profile is recreated with the new

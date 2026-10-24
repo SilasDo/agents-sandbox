@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -13,6 +14,11 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	// A daemon mock that does not answer the agent under test's health command
+	// must fail fast, not poll out the production 60s budget: these are mocked
+	// unit tests, and the first probe is healthy in every passing case.
+	daemonReadyTimeout = 2 * time.Second
+	daemonPollInterval = 10 * time.Millisecond
 	// Seal PrepareSandbox off from the developer's real legacy home: the default
 	// offer is a no-op, and the tests that exercise it opt in explicitly.
 	SetRuntimeHomeMigrationOffer(func(context.Context, msb.Client, termio.UI) error { return nil })

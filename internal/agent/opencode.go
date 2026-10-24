@@ -7,20 +7,23 @@ import (
 	"strings"
 )
 
+// opencode1Name is the canonical registry name of the opencode (v1) agent.
+const opencode1Name = "opencode"
+
 // opencodeProfile is the opencode (v1) coding agent. It embeds opencodeConfig
 // for the guest config path, auth, and host drop-in it shares with opencode2.
 type opencodeProfile struct {
 	opencodeConfig
 }
 
-func (opencodeProfile) Name() string { return opencodeName }
+func (opencodeProfile) Name() string { return opencode1Name }
 
 // GuestTools declares the daemon's in-VM runtime tools for the image-build check.
 func (opencodeProfile) GuestTools() []string { return daemonGuestTools }
 
 func (opencodeProfile) ImageSpec() ImageSpec {
 	return ImageSpec{
-		VersionArg: versionArgFor(opencodeName),
+		VersionArg: versionArgFor(opencode1Name),
 		AgentEnv: map[string]string{
 			"OPENCODE_DISABLE_AUTOUPDATE":      opencodeAutoupdateDisabled,
 			"OPENCODE_EXPERIMENTAL_WORKSPACES": "true",
@@ -40,14 +43,16 @@ func (opencodeProfile) DaemonStartCmd(serveOnly bool) string {
 		hostname = "0.0.0.0"
 	}
 	return fmt.Sprintf(
-		"nohup opencode serve --hostname %s --port %s > %s 2>&1 &",
+		"nohup "+opencodeCmdName+" serve --hostname %s --port %s > %s 2>&1 &",
 		hostname,
 		"4096",
 		opencodeServeLog,
 	)
 }
 
-func (opencodeProfile) DaemonKillCmd() string { return "pkill -f 'opencode serve' || true" }
+func (opencodeProfile) DaemonKillCmd() string {
+	return "pkill -f '" + opencodeCmdName + " serve' || true"
+}
 func (opencodeProfile) DaemonHealthCmd() string {
 	// No -f: on an HTTP error the body is kept for the health probe's
 	// diagnostic detail instead of being swallowed.
@@ -147,12 +152,12 @@ func (opencodeProfile) LatestVersion(ctx context.Context) (string, error) {
 func (opencodeProfile) NewerThan(a, b string) (bool, error) { return newerOpenCodeThan(a, b) }
 
 func (opencodeProfile) AttachCommand(target string, args []string) string {
-	parts := []string{opencodeName, "attach", "http://127.0.0.1:4096", "--dir", shellQuote(target)}
+	parts := []string{opencodeCmdName, "attach", "http://127.0.0.1:4096", "--dir", shellQuote(target)}
 	parts = append(parts, args...)
 	return strings.Join(parts, " ")
 }
 
-func (opencodeProfile) VersionCmd() string { return "opencode --version" }
+func (opencodeProfile) VersionCmd() string { return opencodeCmdName + " --version" }
 func (opencodeProfile) ParseVersion(stdout string) (string, error) {
 	return extractSemverFromOutput(stdout)
 }
@@ -172,7 +177,7 @@ func (opencodeProfile) EventStream() EventStreamSpec {
 		StickyErrorEvents: []string{sessionErrorEvent},
 		SessionEvents:     []string{"session.created", "session.updated"},
 		SessionList:       NewSessionList("curl -sf -m 30 http://127.0.0.1:4096/session", parseOpencodeV1SessionList),
-		Name:              opencodeName,
+		Name:              opencode1Name,
 		Parse:             parseOpencodeV1Event,
 	}
 }
