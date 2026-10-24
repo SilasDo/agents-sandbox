@@ -21,9 +21,16 @@ const (
 		"nohup dockerd -H unix:///var/run/docker.sock --storage-driver=vfs > /var/log/dockerd.log 2>&1 &"
 )
 
+// The readiness window must exceed dockerd's 15s containerd start timeout, so a
+// restart has time to come up before the poll gives up. Tests shorten the vars.
+const (
+	dockerdReadyTimeoutDefault = 30 * time.Second
+	dockerdPollIntervalDefault = time.Second
+)
+
 var (
-	dockerdReadyTimeout = 30 * time.Second
-	dockerdPollInterval = time.Second
+	dockerdReadyTimeout = dockerdReadyTimeoutDefault
+	dockerdPollInterval = dockerdPollIntervalDefault
 )
 
 // startDockerdIfPresent starts dockerd inside the VM if the docker image is in

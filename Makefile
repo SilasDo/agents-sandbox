@@ -14,6 +14,9 @@ GOTESTSUM_VERSION = 1.13.0
 GOVULNCHECK_VERSION = v1.9.0
 GOMUTANTS_VERSION = v0.7.1
 DEADCODE_VERSION = v0.52.0
+# Per-binary cap for the unit suite: a wedged test panics with a stack dump
+# instead of blocking for go test's default 10m. Override for a slow machine.
+TEST_TIMEOUT ?= 5m
 
 ARTIFACT = agents-sandbox-$(GOOS)-$(GOARCH)
 
@@ -77,7 +80,7 @@ bootstrap:
 	fi
 
 test:
-	CGO_ENABLED=1 go test ./...
+	CGO_ENABLED=1 go test -timeout $(TEST_TIMEOUT) ./...
 
 # Race-detector run across the module. The launcher runs concurrent state
 # transactions, legacy-volume copy campaigns, daemon health polling, and
@@ -172,12 +175,12 @@ mutation:
 		$(PKG)
 
 coverage:
-	CGO_ENABLED=1 go test -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 go test -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
 
 # Single test run that also emits JUnit XML (junit.xml) for Codecov Test Analytics.
 coverage-junit:
-	CGO_ENABLED=1 go run gotest.tools/gotestsum@v$(GOTESTSUM_VERSION) --junitfile junit.xml -- -coverprofile=coverage.out ./...
+	CGO_ENABLED=1 go run gotest.tools/gotestsum@v$(GOTESTSUM_VERSION) --junitfile junit.xml -- -timeout $(TEST_TIMEOUT) -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -1
 
 lint:

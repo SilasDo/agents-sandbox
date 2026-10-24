@@ -216,11 +216,28 @@ func TestRealMsbClientLists(t *testing.T) {
 	}
 }
 
+// TestRealMsbClientEnsureInstalled covers EnsureInstalled's error path through
+// the installer seam. The real SDK installer is deliberately not exercised: it
+// downloads a runtime over the network, which makes a unit test slow and flaky,
+// and the success path (including the private home it must name) is covered by
+// TestRealClientEnsureInstalledPassesPrivateHome.
 func TestRealMsbClientEnsureInstalled(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	c := &realMsbClient{}
-	if err := c.EnsureInstalled(context.Background()); err != nil {
-		t.Errorf("EnsureInstalled() error = %v, want nil", err)
+	previous := skipRuntimeInstall
+	skipRuntimeInstall = false
+	t.Cleanup(func() { skipRuntimeInstall = previous })
+
+	installErr := errors.New("installer unavailable")
+	orig := ensureRuntime
+	ensureRuntime = func(
+		context.Context, msbSdk.RuntimeConfig, msbSdk.InstallOptions,
+	) (msbSdk.ResolvedRuntime, error) {
+		return msbSdk.ResolvedRuntime{}, installErr
+	}
+	t.Cleanup(func() { ensureRuntime = orig })
+
+	if err := (&realMsbClient{}).EnsureInstalled(context.Background()); !errors.Is(err, installErr) {
+		t.Errorf("EnsureInstalled() error = %v, want %v", err, installErr)
 	}
 }
 
