@@ -71,6 +71,50 @@ func TestObserveMapsMSBCategoriesInOrder(t *testing.T) {
 	if images.Totals.ReclaimableBytes != nil {
 		t.Errorf("images reclaimable bytes = %v, want nil", images.Totals.ReclaimableBytes)
 	}
+
+	// Each category must draw from its own SDK field; assert every one so a
+	// selector returning the wrong field is caught.
+	wants := []struct {
+		count   uint64
+		logical uint64
+	}{
+		{2, 100}, // images
+		{1, 10},  // snapshots
+		{5, 50},  // branch_memory
+		{6, 60},  // snapshot_memory
+		{3, 30},  // sandboxes
+		{4, 40},  // volumes
+	}
+	for i, want := range wants {
+		category := report.Categories[i]
+		if got := category.Totals.Count; got == nil || *got != want.count {
+			t.Errorf("category %s count = %v, want %d", category.Name, got, want.count)
+		}
+		if got := category.Totals.LogicalBytes; got == nil || *got != want.logical {
+			t.Errorf("category %s logical bytes = %v, want %d", category.Name, got, want.logical)
+		}
+	}
+}
+
+func TestObservePropagatesNotes(t *testing.T) {
+	msb.WithMsbMock(t, &msb.MockMsbClient{StorageUsageFn: func(context.Context) (*msbSdk.StorageUsageReport, error) {
+		return &msbSdk.StorageUsageReport{
+			Images: msbSdk.StorageCategoryUsage{Notes: []string{"image note"}},
+			Notes:  []string{"report note"},
+		}, nil
+	}})
+	stubPrivateHome(t, t.TempDir())
+
+	report, err := Observe(context.Background(), Options{})
+	if err != nil {
+		t.Fatalf("Observe() error = %v", err)
+	}
+	if !slices.Contains(report.Notes, "report note") {
+		t.Errorf("report notes = %v, want the usage report note", report.Notes)
+	}
+	if notes := report.Categories[0].Notes; !slices.Contains(notes, "image note") {
+		t.Errorf("images notes = %v, want the category note", notes)
+	}
 }
 
 func TestObserveKeepsNilCountersUnknown(t *testing.T) {
@@ -118,13 +162,14 @@ func TestObserveUnsupportedDegradesToUnknown(t *testing.T) {
 }
 
 func TestObserveMSBErrorPropagates(t *testing.T) {
+	sentinel := errors.New("disk exploded")
 	msb.WithMsbMock(t, &msb.MockMsbClient{StorageUsageFn: func(context.Context) (*msbSdk.StorageUsageReport, error) {
-		return nil, errors.New("disk exploded")
+		return nil, sentinel
 	}})
 	stubPrivateHome(t, t.TempDir())
 
-	if _, err := Observe(context.Background(), Options{}); err == nil {
-		t.Fatal("Observe() error = nil, want propagation of non-unsupported error")
+	if _, err := Observe(context.Background(), Options{}); !errors.Is(err, sentinel) {
+		t.Fatalf("Observe() error = %v, want the sentinel cause preserved", err)
 	}
 }
 
@@ -191,6 +236,15 @@ func TestObserveOmitsObjectsByDefault(t *testing.T) {
 		if c.Objects != nil {
 			t.Errorf("category %s objects = %v, want nil", c.Name, c.Objects)
 		}
+	}
+}
+
+func TestObjectsFromNoItemsIsNil(t *testing.T) {
+	if got := objectsFrom(nil); got != nil {
+		t.Errorf("objectsFrom(nil) = %v, want nil", got)
+	}
+	if got := objectsFrom([]msbSdk.StorageItemUsage{}); got != nil {
+		t.Errorf("objectsFrom(empty) = %v, want nil", got)
 	}
 }
 

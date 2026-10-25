@@ -2,8 +2,11 @@ package storage
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -82,14 +85,14 @@ func TestObserveRuntimeNonDirHomeErrorPropagates(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatalf("WriteFile error = %v", err)
 	}
-	if _, err := observeRuntime(file, Options{}); err == nil {
-		t.Fatal("observeRuntime() with a regular file as home = nil error, want stat error")
+	if _, err := observeRuntime(file, Options{}); !errors.Is(err, syscall.ENOTDIR) {
+		t.Fatalf("observeRuntime() with a regular file as home error = %v, want ENOTDIR", err)
 	}
 }
 
 func TestObserveRuntimeWalkErrorPropagates(t *testing.T) {
-	if _, err := observeRuntime(lockedRuntimeHome(t), Options{}); err == nil {
-		t.Fatal("observeRuntime() error = nil, want propagation of unreadable subtree")
+	if _, err := observeRuntime(lockedRuntimeHome(t), Options{}); !errors.Is(err, fs.ErrPermission) {
+		t.Fatalf("observeRuntime() error = %v, want fs.ErrPermission from the unreadable subtree", err)
 	}
 }
 
