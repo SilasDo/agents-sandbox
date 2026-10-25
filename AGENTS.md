@@ -116,8 +116,6 @@ Always use your superpowers for appropriate tasks, never skip user approval.
 - GitHub only runs `pull_request` workflows when the PR is mergeable. While a PR has merge conflicts, the `ci`
   workflows (`lint`, `test`, codecov) silently do **not** run — they are absent, not failed. Rebase to resolve the
   conflict and they trigger on the next push.
-- `golangci-lint` caches by module/package path, so linting in a git worktree can return results for the main checkout
-  (diagnostics show `../../../workspace/...`). Run `golangci-lint cache clean` before linting in a worktree.
 - microsandbox injects a tls cert into the VM for egress inspection. This can cause docker image builds to fail with
   self-signed cert errors. Workaround (example base image):
 

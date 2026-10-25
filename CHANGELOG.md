@@ -215,6 +215,9 @@ command reports the bare version (e.g. `0.1.0`).
 - Internal: runtime setup now passes the private home explicitly via the SDK's `RuntimeConfig.Home`
   (`configpaths.MSBHome()`), so it no longer depends on `MSB_HOME` having been applied first; `MSB_HOME` still governs
   the FFI cache and non-setup SDK operations (#160).
+- Doctor: a failing prerequisite check now prints the command that fixes it — start the Docker daemon, add your user to
+  the `kvm` group, or download the right architecture — followed by a link to the matching troubleshooting section.
+  The checks still run automatically before `run` and `shell`.
 
 ### Deprecated
 
@@ -240,7 +243,7 @@ command reports the bare version (e.g. `0.1.0`).
 - A new [Upgrading to 0.6](https://inoio.github.io/agents-sandbox/install/upgrading.html) page documents the private
   runtime home, the legacy home-volume migration, the uninstall payoff for a system-wide microsandbox, and the 0.6
   renames (#208).
-- A first-run tutorial walks from install through `doctor` to a first `run`, and a new `STYLEGUIDE.md` defines the
+- A first-run tutorial walks from install to a first `run`, and a new `STYLEGUIDE.md` defines the
   documentation voice, structure, terminology, and formatting rules.
 - The site is regrouped into six navigation sections and every page is rewritten to `STYLEGUIDE.md`, with the prune and
   home-volume explanations de-duplicated and the retired `docs/install.html` URL redirecting to the new Get started
@@ -251,6 +254,13 @@ command reports the bare version (e.g. `0.1.0`).
   environment variable, and project-Dockerfile spelling with its replacement and removal target (#205).
 - SEO: a canonical URL, a published `sitemap.xml`, and a descriptive home-page title, site description, and
   link-preview title (`og:title`).
+- The Get started flow no longer opens with a separate prerequisites page. The system requirements (platforms and
+  Docker) and the `doctor` verification now live in Installation, whose last section points either to switching an
+  existing agent or to a first sandbox; the tutorial starts directly at running an agent.
+- Installation and [Troubleshooting](https://inoio.github.io/agents-sandbox/troubleshooting.html) now state the
+  container-engine requirement as any engine that serves the Docker API, name the tested engines (Docker Engine, Docker
+  Desktop, colima, podman), list other engines (Rancher Desktop, ...) as expected to work but untested, and cover the
+  engines that have no Docker API and therefore do not work.
 
 ### Fixed
 

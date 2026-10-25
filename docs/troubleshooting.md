@@ -18,9 +18,27 @@ If the doctor command reports missing prerequisites:
 
 ### Docker not running
 
-Start the Docker daemon. How to start it depends on your environment. When using Docker Desktop, start it. With Docker installed as system wide package on Linux, the normal startup procedure is to execute `sudo systemctl start docker`
+Start your container engine. agents-sandbox talks to it over the Docker API, so what matters is that the engine serves
+that API, not which vendor provides it:
+
+- **Tested** — **Docker Engine**, **Docker Desktop**, **colima**, **podman**.
+- **Expected to work, but untested** — Podman Desktop and macOS podman machines, Rancher Desktop, OrbStack, Lima, and
+  any other engine that exposes a Docker-compatible socket.
+- **Not supported** — an engine with no Docker API, such as bare containerd with `nerdctl`, or colima started with its
+  `containerd` runtime.
+
+podman only: one podman setting can stop a build that works everywhere else, see
+[The base image cannot be found](#the-base-image-cannot-be-found).
+
+How you start the engine depends on which one you use: Docker Desktop starts from Applications, and a Docker Engine
+installed as a system-wide package on Linux starts with `sudo systemctl start docker`.
 
 You can verify afterwards by running `docker info`. It should show a healthy daemon.
+
+The launcher finds the Docker endpoint the same way the `docker` CLI does: `DOCKER_HOST` first, then the active docker
+context (`docker context ls`), then the default `/var/run/docker.sock`. An engine that publishes its socket through a
+docker context, such as colima or Docker Desktop, needs no extra configuration; point `DOCKER_HOST` at an engine that
+publishes none.
 
 ### Microsandbox runtime
 
@@ -91,7 +109,7 @@ Expected output on supported hardware: `arm64`.
 
 ### Docker socket not found
 
-On macOS, the Docker socket is managed by Docker Desktop or colima. Verify it is running:
+On macOS the engine runs inside a VM, so the socket comes from whichever engine you started. Verify it is running:
 
 ```console
 docker info
