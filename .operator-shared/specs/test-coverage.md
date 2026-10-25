@@ -1,5 +1,5 @@
 ---
-description: Contract for the coverage bar on added and changed lines — every added line must be executed by a test (including error, transport, and status branches), a branch unreachable by construction must be removed rather than left uncovered, and a red `codecov/patch`/`codecov/project` check is a real finding to classify Important, not Minor. Records that the numeric thresholds live in Codecov's app settings (there is no `codecov.yml` in the repo) and that codecov is not a required status check on `main`.
+description: Contract for the coverage bar on added and changed lines — every added line must be executed by a test (including error, transport, and status branches), a branch unreachable by construction must be removed rather than left uncovered, and a red `codecov/patch`/`codecov/project` check is a real finding to classify Important, not Minor. Records that the numeric thresholds live in the repo's `.codecov.yml` and that codecov is not a required status check on `main`.
 read_if: Adding or changing production code and deciding what to test, reviewing a diff for coverage gaps, or triaging a failing `codecov/patch` or `codecov/project` check on a PR.
 ---
 
@@ -34,12 +34,18 @@ tests never execute is the failure mode this catches.
 
 ## Where the bar lives (and why it surprises)
 
-- **The numeric thresholds are not in this repo.** There is no `codecov.yml`/`.codecov.yml`; `patch` and `project`
-  targets are configured in Codecov's app settings, so they cannot be read from the checkout. `.github/workflows/ci.yml`
-  only uploads the profile via `codecov/codecov-action`.
-- **codecov is not a required status check on `main`** (`branches/main/protection` has no required contexts). A failing
-  `codecov/patch` therefore leaves a PR `MERGEABLE` with `mergeStateStatus: UNSTABLE` — mergeable with a failing
-  non-required check. Do not read `UNSTABLE` as "nothing is wrong".
+- **The numeric thresholds live in the repo's `.codecov.yml`**, which overrides Codecov's app-level settings: `project`
+  is `target: auto` with `threshold: 0.1%` (no drop beyond noise) and `patch` is `target: 100%` (every added line
+  executed). The comment updates in place and only when coverage changes, and uncovered patch lines get inline
+  annotations. A change to the file changes the gate, so review it like production code and validate it at
+  `https://api.codecov.io/validate`. `.github/workflows/ci.yml` uploads the profile via `codecov/codecov-action`; its
+  second upload (`report_type: test_results`, `junit.xml`) feeds Codecov Test Analytics, whose PR comment the
+  `comment:` block does not govern.
+- **codecov is not a required status check on `main`.** The required checks come from the repository ruleset
+  `protect main`, which lists only `lint` and `test`; classic branch protection has no required contexts, so consult the
+  ruleset, not `branches/main/protection`. A failing `codecov/patch` therefore leaves a PR `MERGEABLE` with
+  `mergeStateStatus: UNSTABLE` — mergeable with a failing non-required check; while a required check is still running the
+  status is `BLOCKED` instead. Do not read `UNSTABLE` as "nothing is wrong".
 - **Observed behaviour (PR #271, 2026-10-22):** `codecov/patch` failed at 93.88% (6 of 98 patch lines missing) and
   `codecov/project` failed at 98.77% against a 98.81% base — i.e. the project status does not tolerate a drop, and the
   patch status does not tolerate several uncovered lines.
