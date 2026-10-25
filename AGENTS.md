@@ -24,6 +24,9 @@ persisting user state via a home directory volume.
 
 - One ephemeral microsandbox VM per project, multiple clients can attach to the vm & connect
   to the server.
+- One release branch per minor line (`release/<major>.<minor>`): new work lands on `main`, a
+  released line's fixes land on its release branch, and the line's patch releases are tagged there.
+  See `.operator-shared/specs/release-branching.md`.
 
 ## Development
 

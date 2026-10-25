@@ -161,6 +161,9 @@
 - `notify-opencode2-subagent-filter.md`
   - Description: Contract for notify on opencode/opencode2: the agent-owned stream decoder (`EventStreamSpec.Parse`), opencode2's authed `GET /api/event` envelope and the v1/v2 event mapping, subagent filtering via `parentID`, per-connect session seeding, and why v1 latches `session.error` while v2's turn-scoped errors do not.
   - Read If: Changing notify for opencode/opencode2, the event-stream decode seam, subagent-session filtering, or the v1/v2 SSE event mapping; or diagnosing "notify does nothing on opencode2".
+- `release-branching.md`
+  - Description: Contract for the per-minor release branch `release/<major>.<minor>`: cut at the release commit, carries the line's patch releases, and takes the line's fixes while `main` keeps new work.
+  - Read If: Deciding where a release tag or a fix lands, cutting a patch release for a released line, backporting a fix, or changing the release branch name or flow.
 
 ### `product/` - Release and product framing for this partition
 
