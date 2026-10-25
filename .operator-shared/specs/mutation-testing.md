@@ -42,7 +42,9 @@ carries, so tests that guard behaviour are strengthened as they land rather than
     killable sibling on the same line.
   - **Record it** — if the mutant cannot change behaviour (or is genuinely uninteresting), record it in source next to
     the mutant with a reason: `// gomutants:disable <TYPE> reason="..."`. A project-wide pattern (e.g. logging
-    arguments) may use `--exclude-calls` instead.
+    arguments) may use `--exclude-calls` instead. A record is a claim of unobservability, not a shortcut: demonstrate it
+    by hand-applying the mutant and failing a test against it before recording, then re-sweep the package — a too-eager
+    record hides a testable change and can leave the package reading 0 LIVED while survivors remain.
   A survivor with neither a killing test nor a recorded reason is an open item, not a finished one. See
   `guides/mutation-triage.md` for the recurring mutant types, the assertion that kills each, and the equivalent-mutant
   traps.

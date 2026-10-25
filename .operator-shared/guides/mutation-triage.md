@@ -65,6 +65,14 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `filewalk.Walk`'s `rel == "."` root skip looked unreachable until a filter that rejects `"."` was considered — the
   mutation then calls `filter(".", true)`, which returns `SkipDir` and prunes the whole tree. Trace the fall-through
   under a hostile caller before recording a branch.
+- **Prove unobservability before recording — a too-eager record hides a testable change and the package's real state.**
+  Hand-apply the mutant and try to make a test fail before falling back to a record; "the condition looks unreachable" is
+  not a reason. `filewalk.Walk`'s `err != nil` guard was recorded as unreachable, but `filepath.WalkDir` calls the
+  callback a *second* time carrying the `ReadDir` error when a directory cannot be read, so a filter that removes the
+  directory mid-walk reaches the mutated guard, which re-invokes the filter for the same entry — a call-counting test
+  kills it. The wrong record also masked the package's true state: `filewalk` read "0 LIVED" in the PR while two
+  `readFile` success-return mutants survived untriaged, so re-sweep the whole package (`FULL=1 PKG=…`) after triage
+  instead of trusting the count.
 - **Removing `tb.Fatalf` from a test-support helper can be tested in a child process.** Have the child call the helper
   with a failing input and have the parent assert that the child failed (see `internal/upgrade/upgrade_extra_test.go`).
   Record the mutant when that test costs more than it is worth, not because the behavior is impossible to observe.
