@@ -8,6 +8,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ## [Unreleased]
 
+### Changed
+
+- Maintenance: updated the microsandbox Go SDK and managed `msb` runtime to v0.7.11.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
