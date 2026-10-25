@@ -264,6 +264,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Runner image: a custom Dockerfile that set `storage-driver` in `/etc/docker/daemon.json` (as the pre-0.6 runner wrote
+  it) made dockerd refuse to start after vfs forcing moved to a `--storage-driver=vfs` flag: dockerd rejects a directive
+  specified both as a flag and in the configuration file, even when both are `vfs`, so `run` failed with "dockerd did not
+  become ready within 30s". The launcher now reads the image's `daemon.json` and omits the flag when it already sets
+  `vfs`, and fails with a clear error when it sets any other driver, instead of the readiness timeout (#287).
 - Worktrees: `--worktree` for `opencode2` ran its worktree commands through `jq` inside the guest, so a custom runner
   base without `jq` failed with `jq: command not found`. The launcher now parses the worktree API responses in Go, so
   the worktree path needs no `jq` (only `curl`). A malformed worktree list now fails the run for both `opencode` and
