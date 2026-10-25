@@ -73,9 +73,13 @@ This is the field guide for doing it. It was distilled from the first full sweep
   kills it. The wrong record also masked the package's true state: `filewalk` read "0 LIVED" in the PR while two
   `readFile` success-return mutants survived untriaged, so re-sweep the whole package (`FULL=1 PKG=…`) after triage
   instead of trusting the count.
-- **Removing `tb.Fatalf` from a test-support helper can be tested in a child process.** Have the child call the helper
-  with a failing input and have the parent assert that the child failed (see `internal/upgrade/upgrade_extra_test.go`).
-  Record the mutant when that test costs more than it is worth, not because the behavior is impossible to observe.
+- **Removing `tb.Fatalf` from a test-support helper can be killed with a recording `testing.TB`, or a child process.**
+  A test-package fake that embeds `testing.TB` (which satisfies its private method), overrides `Helper`/`TempDir`, and
+  makes `Fatalf` append the message then `panic` a sentinel lets the test `recover` and assert the report
+  deterministically — cheaper than the child-process form (see `internal/upgrade/upgrade_extra_test.go`). Only the
+  helper's input and `tb.TempDir()` are injectable: a failure mid-sequence (between `PlainInit` and `Commit`) still
+  needs a production seam, so record those when the test costs more than it is worth. `yaml.Marshal` rejects a `chan`
+  with a `panic`, not an error — reach a marshal-error branch with a value implementing `MarshalYAML() (any, error)`.
 - **`t.Helper()` changes stack-trace metadata, not the helper's result.** Record its removal when checking the reported
   location would add little value; do not invent a production seam just to make it killable.
 
