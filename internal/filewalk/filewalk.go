@@ -23,7 +23,7 @@ type Entry struct {
 // file never aborts the walk. An error returned by visit aborts the walk.
 func Walk(root string, filter func(rel string, isDir bool) bool, visit func(Entry) error) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil { // gomutants:disable BRANCH_IF reason="no test-producible path makes WalkDir report a per-entry error (a dangling symlink arrives as a nil-error DirEntry whose readFile then fails), so the skip is unobservable"
+		if err != nil {
 			return nil //nolint:nilerr // best-effort: skip entries the walk cannot read
 		}
 		rel, _ := filepath.Rel(root, path)

@@ -95,6 +95,27 @@ func TestReadFileRejectsUnreadablePath(t *testing.T) {
 	}
 }
 
+func TestReadFileReportsContentsAndPermissionBits(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "readable")
+	writeFile(t, path, "hello")
+	// chmod is not masked by umask, so the asserted bits are exactly what
+	// readFile must return.
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatal(err)
+	}
+
+	data, mode, ok := readFile(path)
+	if !ok {
+		t.Fatal("readFile(readable) ok = false, want true")
+	}
+	if string(data) != "hello" {
+		t.Errorf("readFile data = %q, want %q", data, "hello")
+	}
+	if want := fs.FileMode(0o640); mode != want {
+		t.Errorf("readFile mode = %v, want %v", mode, want)
+	}
+}
+
 func TestWalkSkipsUnreadableEntry(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "ok.txt"), "ok")
@@ -105,6 +126,32 @@ func TestWalkSkipsUnreadableEntry(t *testing.T) {
 	got := collectRels(t, root, func(string, bool) bool { return true })
 	if !slices.Equal(got, []string{"ok.txt"}) {
 		t.Errorf("visited %v, want [ok.txt] (dangling symlink skipped)", got)
+	}
+}
+
+func TestWalkCallsFilterOnceForADirectoryThatVanishes(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	// Removing the directory makes WalkDir's ReadDir fail, so it invokes the
+	// callback a second time carrying the error. The err guard must skip that
+	// callback; otherwise the filter runs again for the same entry.
+	var subCalls int
+	filter := func(rel string, isDir bool) bool {
+		if rel == "sub" && isDir {
+			subCalls++
+			_ = os.Remove(sub) // idempotent: a repeat call finds it already gone
+		}
+		return true
+	}
+	if err := Walk(root, filter, func(Entry) error { return nil }); err != nil {
+		t.Fatalf("Walk() error = %v, want nil", err)
+	}
+	if subCalls != 1 {
+		t.Errorf("filter called %d times for the vanished directory, want 1", subCalls)
 	}
 }
 
