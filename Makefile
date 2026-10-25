@@ -233,7 +233,7 @@ docs-linkcheck-test:
 	ci/test-check-docs.sh
 
 # Serve the docs locally the same way GitHub Pages does (Jekyll build + live reload) at http://localhost:4000/.
-docs-serve:
+docs-serve: docs-diagrams
 	cd docs && bundle config set --local path vendor/bundle && bundle install && bundle exec jekyll serve --livereload
 
 install-head: build
