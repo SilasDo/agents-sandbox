@@ -3,6 +3,7 @@
 package sysinfo
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,19 @@ func TestTotalMemoryGiB(t *testing.T) {
 		procMeminfoPath = filepath.Join(dir, "does-not-exist")
 		if got := TotalMemoryGiB(); got != 0 {
 			t.Errorf("TotalMemoryGiB() with missing file = %d, want 0", got)
+		}
+	})
+
+	t.Run("partial read", func(t *testing.T) {
+		// os.ReadFile can return the bytes read before an error; a partial
+		// MemTotal line must be discarded, not parsed.
+		restore := readMeminfo
+		readMeminfo = func(string) ([]byte, error) {
+			return []byte("MemTotal: 2097152 kB\n"), errors.New("partial read")
+		}
+		t.Cleanup(func() { readMeminfo = restore })
+		if got := TotalMemoryGiB(); got != 0 {
+			t.Errorf("TotalMemoryGiB() with a partial read = %d, want 0", got)
 		}
 	})
 

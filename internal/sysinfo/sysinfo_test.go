@@ -86,3 +86,25 @@ func TestNumCPUsAtLeastOne(t *testing.T) {
 		t.Errorf("expected at least 1 CPU, got %d", cpus)
 	}
 }
+
+func TestClampNumCPUs(t *testing.T) {
+	// Values are literals, not maxCPUs-relative, so the bound itself is pinned:
+	// a maxCPUs of 254 or 256 must fail one of these cases.
+	cases := []struct {
+		in   int
+		want uint8
+	}{
+		{0, 1},
+		{1, 1},
+		{2, 2},
+		{254, 254},
+		{255, 255},
+		{256, 255},
+		{1 << 20, 255},
+	}
+	for _, c := range cases {
+		if got := clampNumCPUs(c.in); got != c.want {
+			t.Errorf("clampNumCPUs(%d) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
