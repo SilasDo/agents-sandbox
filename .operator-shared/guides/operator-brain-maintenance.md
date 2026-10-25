@@ -28,6 +28,9 @@ The catalog is a map, not a second copy of the docs.
   shared ones, never the reverse.
 - Reference code by **symbol and package name**, not `file:line`. Line numbers rot silently on every refactor;
   name the function/type/file and let the reader search. Keep a path only when the path itself is the fact.
+- A shared document must resolve from the published repo alone. Never point at untracked or local-only tooling
+  (the `.agents/skills/` runbooks, for example) as the home of the detail; inline what the reference would have
+  carried, or drop the claim.
 
 ## Index vs catalog
 
