@@ -765,6 +765,8 @@ func TestResolveBuildVersionPromptNamesThisProjectsVersion(t *testing.T) {
 	}
 	k := state.Key{Slug: "proj", Agent: "opencode"}
 	seedAgentState(t, k, "1.0.0", agentSourceTool)
+	origLatest := agentLatestVersion
+	t.Cleanup(func() { agentLatestVersion = origLatest })
 	agentLatestVersion = func(context.Context, agent.Agent) (string, error) { return "2.0.0", nil }
 	var prompt string
 	ui := &termio.Mock{
