@@ -329,7 +329,9 @@ func TestEnsureImageDockerAddsDockerVersionArg(t *testing.T) {
 	}
 }
 
-// TestResolveBaseDigestPullsAbsentBase verifies the pull-then-inspect path.
+// TestResolveBaseDigestPullsAbsentBase verifies the pull-then-inspect path: the
+// reference is pulled as given (the caller passes the qualified base ref), while
+// the returned provenance label keeps the familiar spelling.
 func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 	var pulled string
 	inspects := 0
@@ -346,22 +348,42 @@ func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 			return io.NopCloser(strings.NewReader("")), nil
 		},
 	})
-	got, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
+	const qualified = "docker.io/library/debian:trixie-slim"
+	got, err := resolveBaseDigest(context.Background(), qualified, &termio.Mock{})
 	if err != nil {
 		t.Fatalf("resolveBaseDigest: %v", err)
 	}
-	if pulled != "debian:trixie-slim" {
-		t.Errorf("ImagePull called with %q, want %q", pulled, "debian:trixie-slim")
+	if pulled != qualified {
+		t.Errorf("ImagePull called with %q, want %q", pulled, qualified)
 	}
 	if got != "debian:trixie-slim@sha256:pulled" {
-		t.Errorf("resolveBaseDigest = %q", got)
+		t.Errorf("resolveBaseDigest = %q, want the familiar spelling in the label", got)
+	}
+}
+
+// TestResolveBaseDigestKeepsUnparseableRef covers a project Dockerfile FROM that
+// is not a valid image reference: the recorded label carries it through
+// unchanged rather than dropping the base it could not parse.
+func TestResolveBaseDigestKeepsUnparseableRef(t *testing.T) {
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{ID: "sha256:odd"}, nil
+		},
+	})
+	const unparseable = "Not A Valid Ref"
+	got, err := resolveBaseDigest(context.Background(), unparseable, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("resolveBaseDigest: %v", err)
+	}
+	if got != unparseable+"@sha256:odd" {
+		t.Errorf("resolveBaseDigest = %q, want the ref carried through unchanged", got)
 	}
 }
 
 func TestBaseImageRef(t *testing.T) {
 	a := agentOpencode(t)
-	if got := baseImageRef(renderBytes(t, a, nil, false)); got != "debian:trixie-slim" {
-		t.Errorf("default baseImageRef = %q", got)
+	if got := baseImageRef(renderBytes(t, a, nil, false)); got != distroBaseRef {
+		t.Errorf("default baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
 	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {

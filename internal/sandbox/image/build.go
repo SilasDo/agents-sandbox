@@ -222,19 +222,48 @@ func buildImage(
 		),
 	})
 	if err != nil {
-		return fmt.Errorf("docker image build failed: %w", err)
+		return buildFailureError(err)
 	}
 	defer buildResp.Body.Close()
 
 	buildErr := scanBuildOutput(buildResp.Body, line)
 	if buildErr != nil {
-		if strings.Contains(buildErr.Error(), "pull access denied") {
-			return fmt.Errorf("docker image build failed (base image not found or not logged in): %w", buildErr)
-		}
-		return fmt.Errorf("docker image build failed: %w", buildErr)
+		return buildFailureError(buildErr)
 	}
 
 	return nil
+}
+
+// docsBaseURL is the published documentation site, used to point a build failure
+// at the section that fixes it.
+const docsBaseURL = "https://inoio.github.io/agents-sandbox"
+
+// buildFailureError classifies an engine build failure and tailors the message
+// for the two a user can act on: a base image the engine could not resolve
+// (Docker Engine reports "pull access denied"), and an image name with no
+// registry that the engine refused to resolve at all — podman does this when it
+// has no unqualified-search-registries, which Docker Engine never needs because
+// it assumes Docker Hub. The second points at the troubleshooting section naming
+// both remedies. Any other failure stays a plain wrap.
+func buildFailureError(err error) error {
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "pull access denied"):
+		return fmt.Errorf("docker image build failed (base image not found or not logged in): %w", err)
+	case isUnresolvedImageName(msg):
+		return fmt.Errorf(
+			"docker image build failed (the engine could not resolve an image name that has no registry): %w\n  Docs: %s",
+			err,
+			docsBaseURL+"/troubleshooting.html#the-base-image-cannot-be-found",
+		)
+	default:
+		return fmt.Errorf("docker image build failed: %w", err)
+	}
+}
+
+// isUnresolvedImageName reports whether the engine refused an unqualified image
+// name for want of a registry to resolve it against.
+func isUnresolvedImageName(msg string) bool {
+	return strings.Contains(msg, "short-name") || strings.Contains(msg, "unqualified search registries")
 }
 
 // scanBuildOutput decodes the Docker build API stream and returns errors,
@@ -640,15 +669,16 @@ func Build(
 	return err
 }
 
-// baseImageRef returns the normalized image reference that backs the rendered
-// Dockerfile's final stage, i.e., the FROM the tool must inspect/pull for the
-// base label.
+// baseImageRef returns the image reference the rendered Dockerfile's final stage
+// builds from — the token the engine resolves for that FROM, through any stage
+// aliases. It is deliberately returned unchanged: the launcher's base-digest
+// lookup and the build must name the same image, and only the engine knows which
+// registry a name without one maps to (podman's unqualified-search-registries,
+// a registry mirror, or a prefix rewrite). Qualifying it here would send a user's
+// own base to Docker Hub even when the engine resolves that name elsewhere. The
+// tool-owned distro base is qualified where it is rendered (distroBaseRef).
 func baseImageRef(rendered []byte) string {
-	token := finalStageToken(rendered)
-	if ref, err := reference.ParseNormalizedNamed(token); err == nil {
-		return reference.FamiliarString(ref)
-	}
-	return token
+	return finalStageToken(rendered)
 }
 
 // finalStageToken resolves the rendered Dockerfile's final stage FROM through
@@ -660,7 +690,10 @@ func finalStageToken(rendered []byte) string {
 
 // resolveBaseDigest returns "<ref>@sha256:<digest>" for the base image, pulling
 // it first when not present locally. The FROM itself stays a tag so it floats;
-// the digest only records what the image was built from.
+// the digest only records what the image was built from. The reference is pulled
+// as given (the rendered FROM token, so the engine resolves build and lookup
+// alike), but the returned label uses the familiar spelling, so the provenance
+// label reads the way the user wrote the base.
 func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (string, error) {
 	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
 	if err != nil {
@@ -679,5 +712,16 @@ func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (strin
 			return "", fmt.Errorf("inspect pulled base image %s: %w", baseRef, err)
 		}
 	}
-	return baseRef + "@" + inspect.ID, nil
+	return familiarImageRef(baseRef) + "@" + inspect.ID, nil
+}
+
+// familiarImageRef strips the registry from a normalized image reference so the
+// recorded base label keeps the spelling a user knows (debian:trixie-slim rather
+// than docker.io/library/debian:trixie-slim).
+func familiarImageRef(ref string) string {
+	parsed, err := reference.ParseNormalizedNamed(ref)
+	if err != nil {
+		return ref
+	}
+	return reference.FamiliarString(parsed)
 }

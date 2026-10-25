@@ -89,6 +89,19 @@ printf '\n[Missing](https://inoio.github.io/agents-sandbox/nope/)\n' >>"$d/READM
 expect "root broken html dir link" 1 "no source index page" "$d"
 rm -rf "$d"
 
+# An in-page anchor names a heading, not a file: it must be dropped before the
+# link is mapped back to its source page, so an anchored link to a real page is
+# valid (and a broken one reports the page, not a path with the fragment).
+d="$(new_fixture)"
+printf '\n[Install](https://inoio.github.io/agents-sandbox/install.html#the-base-image)\n' >>"$d/README.md"
+expect "root anchored html link" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n[Missing](https://inoio.github.io/agents-sandbox/nope.html#the-base-image)\n' >>"$d/README.md"
+expect "root anchored broken html link" 1 "docs html link 'nope.md' does not exist" "$d"
+rm -rf "$d"
+
 # Titled and angle-bracketed inline links parse to the real target.
 d="$(new_fixture)"
 printf '\n[Titled](https://inoio.github.io/agents-sandbox/nope.html "a title")\n' >>"$d/README.md"

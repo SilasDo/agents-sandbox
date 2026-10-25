@@ -146,6 +146,54 @@ func TestBuildImageReturnsGenericBuildError(t *testing.T) {
 	}
 }
 
+// TestBuildImageHintsTroubleshootingOnUnresolvedName pins the podman failure
+// mode that is not an engine bug: an image name with no registry, which podman
+// refuses to resolve when it has no search registries. The error must point at
+// the troubleshooting section naming that fix. The real message wraps the name
+// and the config path in quotes; the classification only needs these two
+// phrases.
+func TestBuildImageHintsTroubleshootingOnUnresolvedName(t *testing.T) {
+	a := agentOpencode(t)
+	const engineError = "short-name debian:trixie-slim did not resolve to an alias and no " +
+		"unqualified search registries are defined in /etc/containers/registries.conf"
+	for _, tc := range []struct {
+		name  string
+		build func() (client.ImageBuildResult, error)
+	}{
+		{
+			name: "streamed build error",
+			build: func() (client.ImageBuildResult, error) {
+				return client.ImageBuildResult{
+					Body: io.NopCloser(strings.NewReader(`{"errorDetail":{"message":"` + engineError + `"}}`)),
+				}, nil
+			},
+		},
+		{
+			name: "build call error",
+			build: func() (client.ImageBuildResult, error) {
+				return client.ImageBuildResult{}, errors.New(engineError)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			docker.WithDockerMock(t, &docker.MockDockerClient{
+				ImageBuildFn: func(
+					_ context.Context, _ io.Reader, _ client.ImageBuildOptions,
+				) (client.ImageBuildResult, error) {
+					return tc.build()
+				},
+			})
+			err := buildImage(
+				context.Background(), a, []byte("FROM debian:trixie-slim\n"),
+				"tag", false, "v", "base", "id", false, imageIdentity{}, func(string) {},
+			)
+			if err == nil || !strings.Contains(err.Error(), "troubleshooting.html#the-base-image-cannot-be-found") {
+				t.Errorf("buildImage error = %v, want a troubleshooting pointer", err)
+			}
+		})
+	}
+}
+
 func TestScanBuildOutputUnexpectedOutput(t *testing.T) {
 	err := scanBuildOutput(strings.NewReader("{not json"), func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "unexpected Docker build output") {
