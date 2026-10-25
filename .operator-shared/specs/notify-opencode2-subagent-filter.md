@@ -444,7 +444,10 @@ A second review (on the rebased head) added:
 
 The review also surfaced an unrelated **latent race in `internal/sandbox/state.AcquireClientLease`/
 `CountActiveClients`** (not part of this change): a lease file is created and only then flocked, and
-`CountActiveClients` removes any file it can lock, so a poll landing between create and flock deletes the
-lease and the live client becomes invisible. This made
+`CountActiveClients` removed any file it could lock, so a poll landing between create and flock deleted the
+lease and the live client became invisible. This made
 `internal/sandbox/session.TestReapOnLastClient_ClientReattachesDuringWait` hang to its 10-minute timeout on
-CI. Tracked separately from PR #245.
+CI. Fixed separately in #298: `CountActiveClients` counts an unlocked lease younger than a grace window
+(1s) as live, and removes an older one only while holding its own probe lock; `AcquireClientLease`
+re-checks with `sameFile` after locking and retries on a fresh name when a poll unlinked the file first,
+so a lease is never left locked on an anonymous inode.
