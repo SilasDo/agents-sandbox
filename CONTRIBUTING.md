@@ -111,7 +111,8 @@ This project defaults to **test-driven development**:
   reason="..."`.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
-  there; it always runs on `main` and on releases.
+  there; it always runs on `main` and on releases. The same suite also runs against rootless podman under the
+  `run-integration-podman` label, which keeps podman an engine this project tests rather than only documents.
 
 ## Documentation
 

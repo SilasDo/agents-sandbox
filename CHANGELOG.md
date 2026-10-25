@@ -10,6 +10,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- CI: a gated `integration-podman` job runs the runner-image build suite against a rootless podman endpoint (started
+  in-job, with `DOCKER_HOST` pointed at its socket), so podman is an engine this project exercises rather than only
+  documents. It is gated like the Docker `integration` job and opted into per PR with the `run-integration-podman`
+  label.
 - Runtime: on the first interactive `run`/`shell`, agents-sandbox offers once to copy legacy
   `~/.microsandbox/volumes/agents-sandbox-home-*` volumes into its private runtime home. The choice is mandatory. You can copy,
   start fresh/dismiss, or quit. Choice is tracked in a `migrations.runtime_home` entry in the launcher's root `state.yaml`
@@ -94,6 +98,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- Runner image: the distro base is pulled by its registry-qualified reference (`docker.io/library/debian:trixie-slim`)
+  in both the rendered Dockerfile and the base-digest lookup, so building and resolving the base no longer depend on the
+  engine's short-name resolution (a podman with an empty `unqualified-search-registries` rejected the bare name). The
+  recorded `org.agents-sandbox.base` label keeps the familiar spelling (`debian:trixie-slim@sha256:…`). The content
+  identity changes, so the runner image rebuilds once.
 - The default agent is now `opencode2`. A bare `agents-sandbox` and every command whose `--agent` flag is left unset
   (`run`/`shell`, `build`, `build dockerfile`, `stop`, `kill`, `config agent`, and `volume` migrate/reset/edit) select
   `opencode2` instead of `opencode`; pass `--agent opencode` to keep using the v1 agent.

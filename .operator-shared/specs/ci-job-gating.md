@@ -1,6 +1,6 @@
 ---
-description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, the `fuzz` workflow is deliberately outside this gating (see `fuzz-ci.md`), and the costly `integration` job runs on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the `run-integration` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
-read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, the `run-integration` opt-in label, or deciding whether a check belongs in CI.
+description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, the `fuzz` workflow is deliberately outside this gating (see `fuzz-ci.md`), and the costly `integration` (Docker Engine) and `integration-podman` (rootless podman) jobs run the same build suite on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the matching `run-integration` / `run-integration-podman` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
+read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration or integration-podman job's gating, the `run-integration`/`run-integration-podman` opt-in labels, or deciding whether a check belongs in CI.
 ---
 
 # CI job gating
@@ -19,6 +19,11 @@ paths:
 4. `github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-integration')` — a
    maintainer opts a PR in by adding the label. This is the only path that exercises the suite on PR code before merge.
 
+`integration-podman` runs the same suite against a rootless podman endpoint (the step starts `podman system service` and
+points `DOCKER_HOST` at its socket) with the same four gates and its own `run-integration-podman` label. It exists to
+hold podman to the claim that it is a tested Docker-compatible engine, so a podman-only failure has its own job and label
+and never blocks a PR a maintainer ran Docker Engine for.
+
 ## Invariants
 
 - Every `github.event_name == '<event>'` a job condition references must be declared in the workflow's `on:` block.
@@ -32,9 +37,9 @@ paths:
   workflow-level block reopens one alert per job rather than one per workflow.
 - GitHub only offers dispatch for workflows whose file exists on the default branch. The `workflow_dispatch` trigger
   therefore becomes usable when it reaches `main`; `gh workflow run ci.yml --ref <branch>` can then dispatch any branch.
-- The label name has no single source of truth: it appears in the job condition, in the job's comment, and in
-  CONTRIBUTING's Testing section. GitHub also needs the label to exist in the repository before anyone can add it:
-  `run-integration` is created there (delete with `gh label delete run-integration`).
+- The label names have no single source of truth: each appears in its job condition, in the job's comment, and in
+  CONTRIBUTING's Testing section. GitHub also needs a label to exist in the repository before anyone can add it:
+  `run-integration` and `run-integration-podman` are created there (delete with `gh label delete <name>`).
 - Applying a label needs the repository's **triage** role or higher — read alone is not enough — so anyone with write
   access qualifies and a read-only collaborator or outside contributor cannot self-serve. That is why CONTRIBUTING says
   to ask a maintainer. A label a contributor sets in their own fork does nothing: the condition reads the base
@@ -44,8 +49,9 @@ paths:
 
 - `release` gates on `lint`, `test`, and `integration` only. `race` and `vulncheck` run on a tag but do not block
   publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote them into `release.needs`
-  deliberately if that trade-off changes.
-- Adding the label re-runs the whole workflow, so `lint`/`test` run again for that event.
+  deliberately if that trade-off changes. `integration-podman` is intentionally outside `release.needs`: podman is a
+  supported engine, not the release's reference engine, and a podman-only failure must not hold a release.
+- Adding either label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
   `fuzz-ci.md` for its triggers, budgets, and corpus handling.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
