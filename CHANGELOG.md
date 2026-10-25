@@ -103,6 +103,10 @@ command reports the bare version (e.g. `0.1.0`).
   engine's short-name resolution (a podman with an empty `unqualified-search-registries` rejected the bare name). The
   recorded `org.agents-sandbox.base` label keeps the familiar spelling (`debian:trixie-slim@sha256:…`). The content
   identity changes, so the runner image rebuilds once.
+- Runner image: a build that fails because the engine could not resolve an image name with no registry (podman without
+  `unqualified-search-registries`) now says so and links to the
+  [troubleshooting](https://inoio.github.io/agents-sandbox/troubleshooting.html) section naming both remedies, instead of
+  reporting only the engine's error.
 - The default agent is now `opencode2`. A bare `agents-sandbox` and every command whose `--agent` flag is left unset
   (`run`/`shell`, `build`, `build dockerfile`, `stop`, `kill`, `config agent`, and `volume` migrate/reset/edit) select
   `opencode2` instead of `opencode`; pass `--agent opencode` to keep using the v1 agent.

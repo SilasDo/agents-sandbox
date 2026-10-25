@@ -222,19 +222,48 @@ func buildImage(
 		),
 	})
 	if err != nil {
-		return fmt.Errorf("docker image build failed: %w", err)
+		return buildFailureError(err)
 	}
 	defer buildResp.Body.Close()
 
 	buildErr := scanBuildOutput(buildResp.Body, line)
 	if buildErr != nil {
-		if strings.Contains(buildErr.Error(), "pull access denied") {
-			return fmt.Errorf("docker image build failed (base image not found or not logged in): %w", buildErr)
-		}
-		return fmt.Errorf("docker image build failed: %w", buildErr)
+		return buildFailureError(buildErr)
 	}
 
 	return nil
+}
+
+// docsBaseURL is the published documentation site, used to point a build failure
+// at the section that fixes it.
+const docsBaseURL = "https://inoio.github.io/agents-sandbox"
+
+// buildFailureError classifies an engine build failure and tailors the message
+// for the two a user can act on: a base image the engine could not resolve
+// (Docker Engine reports "pull access denied"), and an image name with no
+// registry that the engine refused to resolve at all — podman does this when it
+// has no unqualified-search-registries, which Docker Engine never needs because
+// it assumes Docker Hub. The second points at the troubleshooting section naming
+// both remedies. Any other failure stays a plain wrap.
+func buildFailureError(err error) error {
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "pull access denied"):
+		return fmt.Errorf("docker image build failed (base image not found or not logged in): %w", err)
+	case isUnresolvedImageName(msg):
+		return fmt.Errorf(
+			"docker image build failed (the engine could not resolve an image name that has no registry): %w\n  Docs: %s",
+			err,
+			docsBaseURL+"/troubleshooting.html#the-base-image-cannot-be-found",
+		)
+	default:
+		return fmt.Errorf("docker image build failed: %w", err)
+	}
+}
+
+// isUnresolvedImageName reports whether the engine refused an unqualified image
+// name for want of a registry to resolve it against.
+func isUnresolvedImageName(msg string) bool {
+	return strings.Contains(msg, "short-name") || strings.Contains(msg, "unqualified search registries")
 }
 
 // scanBuildOutput decodes the Docker build API stream and returns errors,
