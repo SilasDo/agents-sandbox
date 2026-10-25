@@ -36,7 +36,7 @@ func Walk(root string, filter func(rel string, isDir bool) bool, visit func(Entr
 			}
 			return nil
 		}
-		if d.IsDir() {
+		if d.IsDir() { // gomutants:disable BRANCH_IF reason="filter runs before the directory check and the directory branch above returns SkipDir, and WalkDir's root callback always yields isDir true, so the only directory reaching here is the pruned root"
 			return nil
 		}
 		data, mode, ok := readFile(path)
@@ -51,7 +51,7 @@ func Walk(root string, filter func(rel string, isDir bool) bool, visit func(Entr
 // the metadata or contents cannot be read, so a best-effort walk can skip it.
 func readFile(path string) ([]byte, fs.FileMode, bool) {
 	info, err := os.Stat(path)
-	if err != nil {
+	if err != nil { // gomutants:disable BRANCH_IF reason="err returning nil means the file was not read, so falling through to the read below, which must then fail too, yields the same return"
 		return nil, 0, false
 	}
 	data, err := os.ReadFile(path)
