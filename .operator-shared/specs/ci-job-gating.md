@@ -13,8 +13,9 @@ push to `main`, every `v*` tag, and every PR event — all four ungated. The
 paths:
 
 1. `github.ref == 'refs/heads/main'` — every push to `main`.
-2. `startsWith(github.ref, 'refs/tags/')` — every release tag. `release` declares `needs: [lint, test, integration]`, so
-   the integration job stays in this workflow; a second workflow would drop that gate.
+2. `startsWith(github.ref, 'refs/tags/')` — every release tag. `release` declares
+   `needs: [lint, test, integration, integration-podman]`, so both integration jobs stay in this workflow; a second
+   workflow would drop that gate.
 3. `github.event_name == 'workflow_dispatch'` — a manual run.
 4. `github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'run-integration')` — a
    maintainer opts a PR in by adding the label. This is the only path that exercises the suite on PR code before merge.
@@ -47,10 +48,11 @@ and never blocks a PR a maintainer ran Docker Engine for.
 
 ## Behavior
 
-- `release` gates on `lint`, `test`, and `integration` only. `race` and `vulncheck` run on a tag but do not block
-  publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote them into `release.needs`
-  deliberately if that trade-off changes. `integration-podman` is intentionally outside `release.needs`: podman is a
-  supported engine, not the release's reference engine, and a podman-only failure must not hold a release.
+- `release` gates on `lint`, `test`, `integration`, and `integration-podman`. Podman is a supported engine, so both the
+  reference engine (Docker Engine) and the alternative engine (rootless podman) must pass their build suite before a
+  release publishes — the alternative-engine claim is verified before shipping, not after. `race` and `vulncheck` run on
+  a tag but do not block publishing, so a new reachable vulnerability in a dependency cannot wedge a release. Promote
+  them into `release.needs` deliberately if that trade-off changes.
 - Adding either label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
   `fuzz-ci.md` for its triggers, budgets, and corpus handling.
