@@ -22,16 +22,19 @@ unfounded.
 
 ## Short-name resolution
 
-The runner image's distro base is registry-qualified (`distroBaseRef` in the image package) in both the rendered
-Dockerfile and the base-digest pull, so neither depends on the engine's `unqualified-search-registries`:
+The runner image's distro base is registry-qualified (`distroBaseRef` in the image package) where it is rendered, in both
+the managed-base tools block and the tool base, so neither depends on the engine's `unqualified-search-registries`:
 
 - empty list → podman refuses the name: `short-name "…" did not resolve to an alias and no unqualified search registries
   are defined`
 - one or more registries → podman resolves it, or tries each, rather than failing
 
-`short_name_mode = "permissive"` does not compensate for an empty list. The same failure still reaches a user's own
-project Dockerfile `FROM`, because that line is the user's; it is documented in the troubleshooting page's build-failure
-section, and `buildFailureError` appends that section's link to the build error.
+`short_name_mode = "permissive"` does not compensate for an empty list. Two rules keep this from overreaching:
+`baseImageRef` returns the rendered FROM token **unchanged**, because only the engine knows which registry a name without
+one maps to (search registries, a mirror, or a prefix rewrite) — the launcher's base-digest lookup and the build must
+resolve to the same image, so re-qualifying a user's own base would send it to Docker Hub and record the wrong provenance
+label. The same failure therefore still reaches a user's own project Dockerfile `FROM`; it is documented in the
+troubleshooting page's build-failure section, and `buildFailureError` appends that section's link to the build error.
 
 ## Why not in the dev VM
 
