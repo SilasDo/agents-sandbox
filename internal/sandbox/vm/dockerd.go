@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -14,11 +15,28 @@ import (
 const (
 	dockerdBinaryCheckCmd = "command -v dockerd >/dev/null 2>&1"
 	dockerdReadyCmd       = "docker info"
-	dockerdRestartCmd     = "pkill dockerd >/dev/null 2>&1 || true; " +
+
+	// dockerdDaemonConfigPath is dockerd's default configuration file. The
+	// launcher reads it (see guestStorageDriver) so it never forces
+	// storage-driver both in the file and on the command line, which dockerd
+	// rejects (inoio/agents-sandbox#287).
+	dockerdDaemonConfigPath = "/etc/docker/daemon.json"
+	vfsStorageDriver        = "vfs"
+
+	dockerdTeardownCmd = "pkill dockerd >/dev/null 2>&1 || true; " +
 		"pkill containerd >/dev/null 2>&1 || true; " +
 		"find /run /var/run -iname 'docker*.pid' -delete >/dev/null 2>&1 || true; " +
-		"find /run /var/run \\( -iname '*containerd*.sock' -o -iname '*containerd*.pid' \\) -delete >/dev/null 2>&1 || true; " +
-		"nohup dockerd -H unix:///var/run/docker.sock --storage-driver=vfs > /var/log/dockerd.log 2>&1 &"
+		"find /run /var/run \\( -iname '*containerd*.sock' -o -iname '*containerd*.pid' \\) -delete >/dev/null 2>&1 || true; "
+	dockerdStartPrefix = "nohup dockerd -H unix:///var/run/docker.sock"
+	dockerdVFSFlag     = " --storage-driver=" + vfsStorageDriver
+	dockerdLogSuffix   = " > /var/log/dockerd.log 2>&1 &"
+
+	// dockerdRestartCmd forces vfs with a flag, for images whose daemon.json
+	// sets no storage driver.
+	dockerdRestartCmd = dockerdTeardownCmd + dockerdStartPrefix + dockerdVFSFlag + dockerdLogSuffix
+	// dockerdRestartCmdConfigVFS relies on the image's daemon.json to force vfs:
+	// passing the flag too would make dockerd reject the duplicated directive.
+	dockerdRestartCmdConfigVFS = dockerdTeardownCmd + dockerdStartPrefix + dockerdLogSuffix
 )
 
 // The readiness window must exceed dockerd's 15s containerd start timeout, so a
@@ -27,6 +45,64 @@ const (
 	dockerdReadyTimeoutDefault = 30 * time.Second
 	dockerdPollIntervalDefault = time.Second
 )
+
+// dockerdStartCommand picks the dockerd start command for this VM. The
+// microsandbox filesystem does not support overlayfs, so vfs must win; it is
+// requested with --storage-driver=vfs unless the image's daemon.json already
+// sets it, in which case the flag is dropped because dockerd refuses a
+// directive set both as a flag and in the configuration file (#287). A
+// daemon.json requesting a different driver is a hard error rather than a
+// silent override or a flag/file conflict.
+func dockerdStartCommand(ctx context.Context, sb msb.Sandbox) (string, error) {
+	driver, err := guestStorageDriver(ctx, sb)
+	if err != nil {
+		return "", err
+	}
+	switch driver {
+	case "":
+		return dockerdRestartCmd, nil
+	case vfsStorageDriver:
+		return dockerdRestartCmdConfigVFS, nil
+	default:
+		return "", fmt.Errorf(
+			"%s sets storage-driver=%q, but the microsandbox filesystem requires %q; "+
+				"remove the storage-driver entry or set it to %q",
+			dockerdDaemonConfigPath, driver, vfsStorageDriver, vfsStorageDriver,
+		)
+	}
+}
+
+// guestStorageDriver returns the storage-driver requested by the image's
+// daemon.json. It returns "" when the file is absent, sets no storage-driver,
+// or is not parseable as JSON, in which case dockerd reports the parse error
+// itself.
+func guestStorageDriver(ctx context.Context, sb msb.Sandbox) (string, error) {
+	exists, err := sb.FS().Exists(ctx, dockerdDaemonConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("inspect %s: %w", dockerdDaemonConfigPath, err)
+	}
+	if !exists {
+		return "", nil
+	}
+	raw, err := sb.FS().Read(ctx, dockerdDaemonConfigPath)
+	if err != nil {
+		return "", fmt.Errorf("read %s: %w", dockerdDaemonConfigPath, err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &config); err != nil {
+		// Unparseable: dockerd reports the parse error itself.
+		return "", nil //nolint:nilerr // malformed daemon.json is left for dockerd to reject
+	}
+	rawDriver, ok := config["storage-driver"]
+	if !ok || string(rawDriver) == "null" {
+		return "", nil
+	}
+	var driver string
+	if err := json.Unmarshal(rawDriver, &driver); err != nil {
+		return "", fmt.Errorf("%s has a non-string storage-driver value", dockerdDaemonConfigPath)
+	}
+	return driver, nil
+}
 
 var (
 	dockerdReadyTimeout = dockerdReadyTimeoutDefault
@@ -59,10 +135,14 @@ func startDockerdIfPresent(ctx context.Context, sb msb.Sandbox, ui termio.UI) er
 	}
 
 	ui.Verbosef("starting dockerd with vfs storage driver")
+	startCmd, err := dockerdStartCommand(ctx, sb)
+	if err != nil {
+		return err
+	}
 	// The command background-launches dockerd, so the shell always exits 0; a
 	// startup failure surfaces through the readiness loop below, not the exit
 	// code. Only a hard exec failure is fatal here.
-	if _, restartErr := sb.Shell(ctx, dockerdRestartCmd, msbSdk.WithExecUser(RootUser)); restartErr != nil {
+	if _, restartErr := sb.Shell(ctx, startCmd, msbSdk.WithExecUser(RootUser)); restartErr != nil {
 		return fmt.Errorf("start dockerd: %w (no result)", restartErr)
 	}
 

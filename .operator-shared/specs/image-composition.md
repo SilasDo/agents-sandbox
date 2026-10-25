@@ -168,9 +168,20 @@ imply docker); `agents-sandbox/runner-base-docker` is also recognized as the new
 
 ## vfs storage driver
 
-`vfs` is forced by adding `--storage-driver=vfs` to the dockerd start command in `vm/dockerd.go`, **not** by writing
-`/etc/docker/daemon.json` in the image. A CLI flag overrides the config file, so a user's edited `daemon.json` is left
-intact. The old finalize-time `daemon.json` overwrite is removed.
+`vfs` is required because the microsandbox filesystem does not support overlayfs. The launcher forces it from
+`vm/dockerd.go` at VM start and never writes `/etc/docker/daemon.json`, so a user's edits to it are preserved. Before
+choosing a start command it reads the image's `/etc/docker/daemon.json` through the msb FS API (a read error is fatal;
+absent or unparseable JSON counts as no entry, and a malformed file is left for dockerd to reject):
+
+- no `storage-driver` entry → start with `--storage-driver=vfs`.
+- `storage-driver` already `vfs` → start **without** the flag, because dockerd rejects a directive set both as a flag
+  and in the configuration file even when the values agree (#287). This is the case that broke images carrying the
+  `daemon.json` the pre-0.6 runner wrote.
+- any other `storage-driver` → hard error naming the value, rather than silently overriding the user's file or letting
+  the conflict surface as the 30s readiness timeout.
+
+The old build-time `daemon.json` overwrite is removed; the build-time invariant still holds
+(`TestRenderDockerfileDockerStage` asserts no `daemon.json` is written).
 
 ## Invariants
 

@@ -246,11 +246,12 @@ one-time warning. A project Dockerfile still starting `FROM .../runner-base-dind
 warns on every run that ensures the runner image (including cached reuse); the newer `FROM .../runner-base-docker:latest`
 implies it silently.
 
-The Docker stage installs the engine from a docker static binary tarball. The `vfs` storage driver is always forced by
-adding `--storage-driver=vfs` to the dockerd start command **inside the VM** — the image no longer writes
-`/etc/docker/daemon.json`, so a user's edits to it are preserved. `buildx` and `docker compose` are **not** installed —
-install them in your project Dockerfile if you need them. The static tarball's platform is selected by `uname -m`
-(`x86_64`/`aarch64`).
+The Docker stage installs the engine from a docker static binary tarball. The `vfs` storage driver is forced **inside
+the VM** at start-up — the image never writes `/etc/docker/daemon.json`, so your edits to it are preserved. If your
+`daemon.json` already sets `"storage-driver": "vfs"`, agents-sandbox leaves the file alone and starts dockerd without
+the flag (passing both makes dockerd refuse to start); if it sets any other driver, start-up fails with an error, because
+the microsandbox filesystem requires `vfs`. `buildx` and `docker compose` are **not** installed — install them in your
+project Dockerfile if you need them. The static tarball's platform is selected by `uname -m` (`x86_64`/`aarch64`).
 
 With a custom base, a thin `COPY --from=agents-sandbox-docker` plus an adopt step is appended after your Dockerfile body
 by default, so steps after it see `docker` (the heavy download stays in the cacheable Docker stage). To run your own steps
