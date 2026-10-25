@@ -264,6 +264,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Client leases: a client that attached while the reaper was counting active clients could be missed, so a sandbox
+  could be reaped with a client still attached. A lease is created before it is flocked, and a count landing in that
+  window unlinked the fresh file, leaving the client holding a flock on a file no later count could see. A count now
+  treats an unlocked lease as live until it is older than a short grace window, so a mid-create lease is counted and
+  only a crashed client's leftover is cleaned up (#298).
 - Runner image: a custom Dockerfile that set `storage-driver` in `/etc/docker/daemon.json` (as the pre-0.6 runner wrote
   it) made dockerd refuse to start after vfs forcing moved to a `--storage-driver=vfs` flag: dockerd rejects a directive
   specified both as a flag and in the configuration file, even when both are `vfs`, so `run` failed with "dockerd did not

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/testutil"
@@ -137,9 +138,15 @@ func TestCountActiveClients_CleansStaleLockFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Create a stale lock file with no holder (just a file, no flock).
+	// Create a stale lock file with no holder (just a file, no flock) and age it
+	// past the mid-create grace window, so it reads as a crashed client's
+	// leftover rather than a lease being created right now.
 	stalePath := filepath.Join(clientsDir, "12345-1000000000.lock")
 	testutil.WritePath(t, stalePath, "stale")
+	aged := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(stalePath, aged, aged); err != nil {
+		t.Fatal(err)
+	}
 
 	// CountActiveClients should clean up the stale file.
 	count := CountActiveClients(k)
@@ -150,6 +157,82 @@ func TestCountActiveClients_CleansStaleLockFiles(t *testing.T) {
 	// The stale file should be removed.
 	if _, err := os.Stat(stalePath); !os.IsNotExist(err) {
 		t.Fatalf("stale lock file should be removed, but still exists: %v", err)
+	}
+}
+
+// TestCountActiveClients_CountsFreshUnlockedLockFile pins the mid-create window
+// of AcquireClientLease: the lock file exists but is not yet flocked. A counter
+// landing in that window sees an unlocked file whose mtime is fresh; it must
+// count it as a live client and keep it, not treat it as garbage. Removing it
+// would leave the acquirer holding a flock on an anonymous inode that no later
+// count can see (#298).
+func TestCountActiveClients_CountsFreshUnlockedLockFile(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	k := Key{Slug: "freshlease-proj", Agent: "opencode"}
+
+	clientsDir := filepath.Join(stateRoot(), k.Slug, k.Agent, "clients")
+	if err := os.MkdirAll(clientsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// A file created exactly the way AcquireClientLease creates it, but before
+	// its flock: present, unlocked, fresh mtime, still open.
+	leasePath := filepath.Join(clientsDir, "54321-2000000000.lock")
+	f, err := os.OpenFile(leasePath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+
+	if got := CountActiveClients(k); got != 1 {
+		t.Fatalf("CountActiveClients = %d, want 1 for a lease mid-create", got)
+	}
+	if _, err := os.Stat(leasePath); err != nil {
+		t.Fatalf("fresh lease file must be kept, but was removed: %v", err)
+	}
+}
+
+// TestCountActiveClients_AcquireVsCountRace exercises the real acquire-vs-count
+// race: a goroutine hammers CountActiveClients while the main goroutine
+// repeatedly acquires a lease and checks it is visible immediately after
+// acquisition. Before the grace window this failed probabilistically (the
+// hammer could unlink the file between AcquireClientLease's create and flock,
+// leaving the client invisible); with the grace window the fresh file is counted
+// and the invariant holds every iteration. Bounded so it stays fast in CI.
+func TestCountActiveClients_AcquireVsCountRace(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	k := Key{Slug: "acquirecountrace-proj", Agent: "opencode"}
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = CountActiveClients(k)
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-done
+	}()
+
+	for i := range 2000 {
+		release, err := AcquireClientLease(k)
+		if err != nil {
+			t.Fatalf("AcquireClientLease: %v", err)
+		}
+		if got := CountActiveClients(k); got == 0 {
+			release()
+			t.Fatalf("lease invisible right after acquisition, iteration %d", i)
+		}
+		release()
 	}
 }
 
