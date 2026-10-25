@@ -8,6 +8,8 @@ command reports the bare version (e.g. `0.1.0`).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-25
+
 ### Added
 
 - CI: a gated `integration-podman` job runs the runner-image build suite against a rootless podman endpoint (started
