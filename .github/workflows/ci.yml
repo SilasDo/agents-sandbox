@@ -155,7 +155,7 @@ jobs:
   release:
     name: release (${{ matrix.target }})
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [lint, test, integration]
+    needs: [lint, test, integration, integration-podman]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
