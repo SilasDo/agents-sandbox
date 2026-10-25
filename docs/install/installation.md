@@ -13,7 +13,13 @@ Install agents-sandbox via binary download or Homebrew.
 ## Prerequisites
 
 agents-sandbox verifies the host for you when you run it: before a sandbox starts, it checks the prerequisites and, if
-one is missing, prints a fix and links to the matching [troubleshooting]({% link troubleshooting.md %}) section.
+one is missing, prints information and links to the matching [troubleshooting]({% link troubleshooting.md %}) section.
+
+To run that check on its own, after installing agents-sandbox, run:
+
+```console
+agents-sandbox doctor
+```
 
 | Platform | Requirement                                                     |
 |----------|-----------------------------------------------------------------|
@@ -24,12 +30,6 @@ Both platforms also need a container engine that serves the Docker API to build 
 **Docker Desktop**, **colima**, and **podman** are the tested engines; others (Rancher Desktop, OrbStack, ...) are
 expected to work, but untested. [Troubleshooting]({% link troubleshooting.md %}) covers starting an engine and pointing
 agents-sandbox at its socket.
-
-To run that check on its own, after installing agents-sandbox, run:
-
-```console
-agents-sandbox doctor
-```
 
 ## Binary download
 
