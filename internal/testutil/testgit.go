@@ -15,7 +15,7 @@ import (
 
 // RunGit executes git with the given args in dir and returns combined output.
 func RunGit(tb testing.TB, dir string, args ...string) string {
-	tb.Helper()
+	tb.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only adjusts reported stack frames"
 	cmd := exec.CommandContext(context.Background(), "git", args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -27,7 +27,7 @@ func RunGit(tb testing.TB, dir string, args ...string) string {
 
 // ConfigureRepo sets up basic git config in dir.
 func ConfigureRepo(tb testing.TB, dir string) {
-	tb.Helper()
+	tb.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only adjusts reported stack frames"
 	RunGit(tb, dir, "config", "user.email", "test@example.com")
 	RunGit(tb, dir, "config", "user.name", "Test User")
 }
@@ -38,7 +38,7 @@ func ConfigureRepo(tb testing.TB, dir string) {
 // `git worktree add` work against it, but tests no longer pay for several `git`
 // subprocess spawns on every call.
 func InitRepo(tb testing.TB) string {
-	tb.Helper()
+	tb.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only adjusts reported stack frames"
 	dir := tb.TempDir()
 
 	// keyed by field so exhaustruct sees every PlainInitOptions field; the
@@ -56,20 +56,24 @@ func InitRepo(tb testing.TB) string {
 	}
 
 	cfg, err := repo.Config()
+	// gomutants:disable-next-line BRANCH_IF reason="mid-init failure needs a production seam"
 	if err != nil {
 		tb.Fatalf("read repo config in %s: %v", dir, err)
 	}
 	cfg.User.Name = "Test User"
 	cfg.User.Email = "test@example.com"
+	// gomutants:disable-next-line BRANCH_IF,STATEMENT_REMOVE reason="mid-init failure needs a production seam"
 	if err = repo.Storer.SetConfig(cfg); err != nil {
 		tb.Fatalf("write repo config in %s: %v", dir, err)
 	}
 
 	WriteFile(tb, dir, "README.md", "hello")
 	worktree, err := repo.Worktree()
+	// gomutants:disable-next-line BRANCH_IF reason="mid-init failure needs a production seam"
 	if err != nil {
 		tb.Fatalf("open worktree in %s: %v", dir, err)
 	}
+	// gomutants:disable-next-line BRANCH_IF reason="mid-init failure needs a production seam"
 	if _, err = worktree.Add("README.md"); err != nil {
 		tb.Fatalf("stage README.md in %s: %v", dir, err)
 	}
@@ -84,6 +88,7 @@ func InitRepo(tb testing.TB) string {
 		AllowEmptyCommits: false,
 		Amend:             false,
 	}
+	// gomutants:disable-next-line BRANCH_IF reason="mid-init failure needs a production seam"
 	if _, err = worktree.Commit("initial", &commitOptions); err != nil {
 		tb.Fatalf("commit initial in %s: %v", dir, err)
 	}
