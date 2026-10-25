@@ -492,11 +492,14 @@ func TestBuildImagePassesAgentVersionBuildArg(t *testing.T) {
 	}
 }
 
-// TestEnsureImageResolvesBaseDigestByQualifiedRef pins that the base image is
-// inspected and pulled under its registry-qualified reference, so resolving the
-// digest never depends on the engine's short-name resolution, while the recorded
-// BASE_IMAGE label keeps the familiar spelling the user configured.
-func TestEnsureImageResolvesBaseDigestByQualifiedRef(t *testing.T) {
+// TestEnsureImageResolvesBaseDigestByRenderedRef pins that the base image is
+// inspected and pulled by exactly the reference the rendered Dockerfile builds
+// from, so the lookup and the build agree on one image: the tool-owned base is
+// qualified (its rendered FROM is), while a user's own base keeps the name the
+// engine will resolve — qualifying that would send it to Docker Hub even when
+// the engine maps the name to a mirror or a private registry. The recorded
+// BASE_IMAGE label keeps the familiar spelling either way.
+func TestEnsureImageResolvesBaseDigestByRenderedRef(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	configpaths.WithMockConfigPaths(t)
 	orig := resolveAgentVersion
@@ -505,61 +508,74 @@ func TestEnsureImageResolvesBaseDigestByQualifiedRef(t *testing.T) {
 	}
 	t.Cleanup(func() { resolveAgentVersion = orig })
 
-	const familiar = "debian:trixie-slim"
-	const qualified = "docker.io/library/debian:trixie-slim"
+	for _, tc := range []struct {
+		name             string
+		project          []byte
+		wantLookup       string
+		wantBaseImageArg string
+	}{
+		{
+			name:             "managed base is looked up qualified",
+			project:          nil,
+			wantLookup:       distroBaseRef,
+			wantBaseImageArg: "debian:trixie-slim@sha256:base",
+		},
+		{
+			name:             "a user's base keeps the name the engine resolves",
+			project:          []byte("FROM company/base:latest\nRUN echo hi\n"),
+			wantLookup:       "company/base:latest",
+			wantBaseImageArg: "company/base:latest@sha256:base",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var inspected []string
+			var pulled string
+			var captured map[string]*string
+			m := &docker.MockDockerClient{}
+			m.ImageInspectFn = func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+				inspected = append(inspected, ref)
+				if ref == tc.wantLookup && pulled == "" {
+					return client.ImageInspectResult{}, errors.New("no such image")
+				}
+				return client.ImageInspectResult{ID: "sha256:base"}, nil
+			}
+			m.ImagePullFn = func(_ context.Context, ref string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+				pulled = ref
+				return io.NopCloser(strings.NewReader("")), nil
+			}
+			m.ImageBuildFn = func(_ context.Context, _ io.Reader, opts client.ImageBuildOptions) (client.ImageBuildResult, error) {
+				captured = opts.BuildArgs
+				return client.ImageBuildResult{Body: io.NopCloser(bytes.NewReader(nil))}, nil
+			}
+			docker.WithDockerMock(t, m)
 
-	var inspected []string
-	var pulled string
-	var captured map[string]*string
-	m := &docker.MockDockerClient{}
-	m.ImageInspectFn = func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
-		inspected = append(inspected, ref)
-		if ref == qualified && pulled == "" {
-			return client.ImageInspectResult{}, errors.New("no such image")
-		}
-		return client.ImageInspectResult{ID: "sha256:base"}, nil
-	}
-	m.ImagePullFn = func(_ context.Context, ref string, _ client.ImagePullOptions) (io.ReadCloser, error) {
-		pulled = ref
-		return io.NopCloser(strings.NewReader("")), nil
-	}
-	m.ImageBuildFn = func(_ context.Context, _ io.Reader, opts client.ImageBuildOptions) (client.ImageBuildResult, error) {
-		captured = opts.BuildArgs
-		return client.ImageBuildResult{Body: io.NopCloser(bytes.NewReader(nil))}, nil
-	}
-	docker.WithDockerMock(t, m)
+			if _, err := EnsureImageWithClient(
+				context.Background(),
+				a,
+				tc.project,
+				"test-project",
+				BuildOptions{Force: true, AgentVersion: "1.2.3"},
+				&termio.Mock{},
+			); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 
-	if _, err := EnsureImageWithClient(
-		context.Background(),
-		a,
-		[]byte("FROM "+familiar+"\nRUN echo hi\n"),
-		"test-project",
-		BuildOptions{Force: true, AgentVersion: "1.2.3"},
-		&termio.Mock{},
-	); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	qualifiedSeen, familiarSeen := false, false
-	for _, ref := range inspected {
-		switch ref {
-		case qualified:
-			qualifiedSeen = true
-		case familiar:
-			familiarSeen = true
-		}
-	}
-	if !qualifiedSeen {
-		t.Errorf("base image inspected as %q, want the qualified ref %q", inspected, qualified)
-	}
-	if familiarSeen {
-		t.Errorf("base image must not be resolved by short name; inspected %q", inspected)
-	}
-	if pulled != qualified {
-		t.Errorf("ImagePull ref = %q, want %q", pulled, qualified)
-	}
-	if base := captured["BASE_IMAGE"]; base == nil || *base != familiar+"@sha256:base" {
-		t.Errorf("BASE_IMAGE build arg = %v, want %q", base, familiar+"@sha256:base")
+			lookedUp := false
+			for _, ref := range inspected {
+				if ref == tc.wantLookup {
+					lookedUp = true
+				}
+			}
+			if !lookedUp {
+				t.Errorf("base image inspected as %q, want %q", inspected, tc.wantLookup)
+			}
+			if pulled != tc.wantLookup {
+				t.Errorf("ImagePull ref = %q, want %q", pulled, tc.wantLookup)
+			}
+			if base := captured["BASE_IMAGE"]; base == nil || *base != tc.wantBaseImageArg {
+				t.Errorf("BASE_IMAGE build arg = %v, want %q", base, tc.wantBaseImageArg)
+			}
+		})
 	}
 }
 

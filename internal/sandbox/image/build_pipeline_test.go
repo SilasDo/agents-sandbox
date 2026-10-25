@@ -361,13 +361,32 @@ func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 	}
 }
 
+// TestResolveBaseDigestKeepsUnparseableRef covers a project Dockerfile FROM that
+// is not a valid image reference: the recorded label carries it through
+// unchanged rather than dropping the base it could not parse.
+func TestResolveBaseDigestKeepsUnparseableRef(t *testing.T) {
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{ID: "sha256:odd"}, nil
+		},
+	})
+	const unparseable = "Not A Valid Ref"
+	got, err := resolveBaseDigest(context.Background(), unparseable, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("resolveBaseDigest: %v", err)
+	}
+	if got != unparseable+"@sha256:odd" {
+		t.Errorf("resolveBaseDigest = %q, want the ref carried through unchanged", got)
+	}
+}
+
 func TestBaseImageRef(t *testing.T) {
 	a := agentOpencode(t)
 	if got := baseImageRef(renderBytes(t, a, nil, false)); got != distroBaseRef {
 		t.Errorf("default baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "docker.io/library/ubuntu:24.04" {
+	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {
 		t.Errorf("custom baseImageRef = %q", got)
 	}
 }

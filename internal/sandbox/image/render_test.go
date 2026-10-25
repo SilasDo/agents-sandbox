@@ -857,8 +857,11 @@ func TestJoinBlocksSkipsEmpty(t *testing.T) {
 	}
 }
 
-// TestBaseImageRefComposition pins the registry-qualified reference the tool
-// inspects and pulls for the base, resolved through any stage aliases. The
+// TestBaseImageRefComposition pins that baseImageRef resolves the final stage's
+// FROM through any stage aliases and returns it unchanged: the tool-owned base
+// (qualified where it is rendered) and a user's own base alike. Re-qualifying a
+// user's base would redirect the lookup to Docker Hub even when the engine
+// resolves that name through a mirror, a search registry, or a rewrite. The
 // label's familiar spelling is applied by resolveBaseDigest, covered separately.
 func TestBaseImageRefComposition(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
@@ -866,12 +869,16 @@ func TestBaseImageRefComposition(t *testing.T) {
 		t.Errorf("managed baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "docker.io/library/ubuntu:24.04" {
-		t.Errorf("custom baseImageRef = %q, want docker.io/library/ubuntu:24.04", got)
+	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {
+		t.Errorf("custom baseImageRef = %q, want ubuntu:24.04", got)
 	}
 	aliased := []byte("FROM fedora:latest AS base\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, aliased, false)); got != "docker.io/library/fedora:latest" {
-		t.Errorf("aliased baseImageRef = %q, want docker.io/library/fedora:latest", got)
+	if got := baseImageRef(renderBytes(t, a, aliased, false)); got != "fedora:latest" {
+		t.Errorf("aliased baseImageRef = %q, want fedora:latest", got)
+	}
+	private := []byte("FROM company/base:latest\nRUN echo hi\n")
+	if got := baseImageRef(renderBytes(t, a, private, false)); got != "company/base:latest" {
+		t.Errorf("private baseImageRef = %q, want the token the engine resolves, company/base:latest", got)
 	}
 }
 

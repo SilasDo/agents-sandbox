@@ -669,17 +669,16 @@ func Build(
 	return err
 }
 
-// baseImageRef returns the registry-qualified image reference that backs the
-// rendered Dockerfile's final stage, i.e., the FROM the tool must inspect/pull
-// for the base label. Qualifying the registry keeps that pull independent of the
-// engine's short-name resolution, while the recorded label stays the familiar
-// spelling (see resolveBaseDigest).
+// baseImageRef returns the image reference the rendered Dockerfile's final stage
+// builds from — the token the engine resolves for that FROM, through any stage
+// aliases. It is deliberately returned unchanged: the launcher's base-digest
+// lookup and the build must name the same image, and only the engine knows which
+// registry a name without one maps to (podman's unqualified-search-registries,
+// a registry mirror, or a prefix rewrite). Qualifying it here would send a user's
+// own base to Docker Hub even when the engine resolves that name elsewhere. The
+// tool-owned distro base is qualified where it is rendered (distroBaseRef).
 func baseImageRef(rendered []byte) string {
-	token := finalStageToken(rendered)
-	if ref, err := reference.ParseNormalizedNamed(token); err == nil {
-		return ref.String()
-	}
-	return token
+	return finalStageToken(rendered)
 }
 
 // finalStageToken resolves the rendered Dockerfile's final stage FROM through
@@ -692,8 +691,9 @@ func finalStageToken(rendered []byte) string {
 // resolveBaseDigest returns "<ref>@sha256:<digest>" for the base image, pulling
 // it first when not present locally. The FROM itself stays a tag so it floats;
 // the digest only records what the image was built from. The reference is pulled
-// as given (registry-qualified), but the returned label uses the familiar
-// spelling, so the provenance label reads the way the user wrote the base.
+// as given (the rendered FROM token, so the engine resolves build and lookup
+// alike), but the returned label uses the familiar spelling, so the provenance
+// label reads the way the user wrote the base.
 func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (string, error) {
 	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
 	if err != nil {
