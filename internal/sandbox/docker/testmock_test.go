@@ -15,11 +15,13 @@ func TestMockDockerClientDefaults(t *testing.T) {
 	m := &MockDockerClient{}
 	ctx := context.Background()
 
-	if _, err := m.ImageBuild(ctx, io.NopCloser(nil), client.ImageBuildOptions{}); err != nil {
-		t.Errorf("ImageBuild default error = %v, want nil", err)
+	build, err := m.ImageBuild(ctx, io.NopCloser(nil), client.ImageBuildOptions{})
+	if err != nil || build.Body == nil {
+		t.Errorf("ImageBuild default = %+v, %v, want non-nil Body, nil", build, err)
 	}
-	if _, err := m.ImageInspect(ctx, "ref"); err != nil {
-		t.Errorf("ImageInspect default error = %v, want nil", err)
+	inspect, err := m.ImageInspect(ctx, "ref")
+	if err != nil || inspect.Config == nil {
+		t.Errorf("ImageInspect default = %+v, %v, want non-nil Config, nil", inspect, err)
 	}
 	save, err := m.ImageSave(ctx, []string{"ref"})
 	if err != nil || save == nil {
@@ -28,8 +30,9 @@ func TestMockDockerClientDefaults(t *testing.T) {
 	if _, err := m.ImageRemove(ctx, "ref", client.ImageRemoveOptions{}); err != nil {
 		t.Errorf("ImageRemove default error = %v, want nil", err)
 	}
-	if _, err := m.ImagePull(ctx, "ref", client.ImagePullOptions{}); err != nil {
-		t.Errorf("ImagePull default error = %v, want nil", err)
+	pull, err := m.ImagePull(ctx, "ref", client.ImagePullOptions{})
+	if err != nil || pull == nil {
+		t.Errorf("ImagePull default = %v, %v, want non-nil, nil", pull, err)
 	}
 	if _, err := m.ImageTag(ctx, client.ImageTagOptions{}); err != nil {
 		t.Errorf("ImageTag default error = %v, want nil", err)
@@ -197,6 +200,18 @@ func TestWithDefaultErrorDockerMockInstalls(t *testing.T) {
 	WithDefaultErrorDockerMock(t)
 	if Get() == orig() {
 		t.Error("Get should return the error mock after WithDefaultErrorDockerMock")
+	}
+}
+
+// TestWithDockerMockRestoresGet verifies WithDockerMock's cleanup restores the
+// previously installed factory, so a later test does not inherit a leaked mock.
+func TestWithDockerMockRestoresGet(t *testing.T) {
+	t.Run("install", func(t *testing.T) {
+		WithDockerMock(t, &MockDockerClient{})
+	})
+
+	if _, ok := Get().(*failFastDockerClient); !ok {
+		t.Errorf("Get() = %T after the installing test, want the restored *failFastDockerClient", Get())
 	}
 }
 
