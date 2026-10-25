@@ -243,6 +243,12 @@ command reports the bare version (e.g. `0.1.0`).
 - The Get started flow no longer opens with a separate prerequisites page. The system requirements (platforms and
   Docker) and the `doctor` verification now live in Installation, whose last section points either to switching an
   existing agent or to a first sandbox; the tutorial starts directly at running an agent.
+- Installation and [Troubleshooting](https://inoio.github.io/agents-sandbox/troubleshooting.html) now state the
+  container-engine requirement as any engine that serves the Docker API, name the tested engines (Docker Engine, Docker
+  Desktop, colima, podman), list other engines (Rancher Desktop, ...) as expected to work but untested, and cover the
+  engines that have no Docker API and therefore do not work.
+- Troubleshooting documents the one engine setting that can stop a build — podman refusing an unqualified image name
+  when it has no `unqualified-search-registries` — with its two remedies (qualify the `FROM`, or configure the registry).
 
 ### Fixed
 

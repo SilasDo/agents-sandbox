@@ -93,7 +93,7 @@
   - Description: Design contract for first-run onboarding: credential kinds (static vs login; never placeholder-migrate refreshable OAuth), host determination, derived onboarding state, always-explicit `Guide` outcomes, the tiered setup wizard, and `config harden`.
   - Read If: Working on config migration, first-run guidance, credential/auth handling, network egress derivation, the setup wizard, or `config harden`.
 - `first-run-guidance.md`
-  - Description: Contract for guiding a fresh install to a working sandbox: the Get started flow keeps system requirements and the `doctor` verification in Installation and `doctor` off the running pages, and a failing prerequisite check prints a copy-pasteable, platform-specific fix plus a link to its matching troubleshooting anchor.
+  - Description: Contract for guiding a fresh install to a working sandbox: the Get started flow keeps the prerequisites and the `doctor` verification in one Installation section and `doctor` off the running pages, and a failing prerequisite check prints a copy-pasteable, platform-specific fix plus a link to its matching troubleshooting anchor.
   - Read If: Changing the Get started docs, `installation.md`, `tutorial.md`, or the README quick start; changing `internal/sandbox/doctor` output, the prerequisite checks, or the `troubleshooting.html` anchors doctor links to.
 - `termio-ui-backends.md`
   - Description: Contract for termio's UI backends: huh confined to modal prompts (spinners/tables/log output stay hand-rolled), the `termio.UI` mockability seam, the prompt switch, and the accessibility/non-TTY invariant.

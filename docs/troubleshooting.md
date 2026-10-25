@@ -18,9 +18,27 @@ If the doctor command reports missing prerequisites:
 
 ### Docker not running
 
-Start the Docker daemon. How to start it depends on your environment. When using Docker Desktop, start it. With Docker installed as system wide package on Linux, the normal startup procedure is to execute `sudo systemctl start docker`
+Start your container engine. agents-sandbox talks to it over the Docker API, so what matters is that the engine serves
+that API, not which vendor provides it:
+
+- **Tested** — **Docker Engine**, **Docker Desktop**, **colima**, **podman**.
+- **Expected to work, but untested** — Podman Desktop and macOS podman machines, Rancher Desktop, OrbStack, Lima, and
+  any other engine that exposes a Docker-compatible socket.
+- **Not supported** — an engine with no Docker API, such as bare containerd with `nerdctl`, or colima started with its
+  `containerd` runtime.
+
+podman only: one podman setting can stop a build that works everywhere else, see
+[The base image cannot be found](#the-base-image-cannot-be-found).
+
+How you start the engine depends on which one you use: Docker Desktop starts from Applications, and a Docker Engine
+installed as a system-wide package on Linux starts with `sudo systemctl start docker`.
 
 You can verify afterwards by running `docker info`. It should show a healthy daemon.
+
+The launcher finds the Docker endpoint the same way the `docker` CLI does: `DOCKER_HOST` first, then the active docker
+context (`docker context ls`), then the default `/var/run/docker.sock`. An engine that publishes its socket through a
+docker context, such as colima or Docker Desktop, needs no extra configuration; point `DOCKER_HOST` at an engine that
+publishes none.
 
 ### Microsandbox runtime
 
@@ -91,7 +109,7 @@ Expected output on supported hardware: `arm64`.
 
 ### Docker socket not found
 
-On macOS, the Docker socket is managed by Docker Desktop or colima. Verify it is running:
+On macOS the engine runs inside a VM, so the socket comes from whichever engine you started. Verify it is running:
 
 ```console
 docker info
@@ -273,3 +291,24 @@ If an older image or updater state reports `Release vuser-provided not found`, u
 runner image. `user-provided` identifies an agent that was previously found in a custom base; it is not a valid release
 version. A rebuilt image will keep an agent supplied by the base, or install a real resolved release if that binary is
 no longer present.
+
+### The base image cannot be found
+
+If the build fails before it runs any of your steps because the engine could not find an image named in a `FROM`, the
+engine is being asked to resolve a name with no registry in it. agents-sandbox pulls its own base under its full name
+(`docker.io/library/debian:trixie-slim`), so that name comes from your project Dockerfile or from a base it starts from.
+Docker Engine assumes Docker Hub and never fails this way; podman does when it has no search registries:
+
+```console
+Error: short-name "debian:trixie-slim" did not resolve to an alias and no unqualified search
+registries are defined in "/etc/containers/registries.conf"
+```
+
+Either fix works: name the registry in the `FROM`, such as `FROM docker.io/library/debian:trixie-slim`, or tell podman
+which registry to search by adding it to `registries.conf`:
+
+```toml
+unqualified-search-registries = ["docker.io"]
+```
+
+`short_name_mode = "permissive"` on its own does not help while that list is empty.

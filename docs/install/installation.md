@@ -10,47 +10,47 @@ nav_order: 20
 
 Install agents-sandbox via binary download or Homebrew.
 
-## System requirements
+## Prerequisites
 
-agents-sandbox runs the agent inside a virtual machine, so the host must provide virtualization and a Docker daemon that
-builds the sandbox image:
+agents-sandbox verifies the host for you when you run it: before a sandbox starts, it checks the prerequisites and, if
+one is missing, prints a fix and links to the matching [troubleshooting]({% link troubleshooting.md %}) section.
 
 | Platform | Requirement                                                     |
 |----------|-----------------------------------------------------------------|
-| Linux    | KVM — `/dev/kvm` must exist, and your user must be in the `kvm` group |
+| Linux    | KVM — `/dev/kvm` exists, and your user is in the `kvm` group     |
 | macOS    | Apple Silicon (arm64)                                           |
 
-Both platforms need **Docker**, **Docker Desktop**, or **colima**. The launcher finds the Docker endpoint the same way
-the `docker` CLI does: `DOCKER_HOST` first, then the active docker context (`docker context ls`), then the default
-`/var/run/docker.sock`. A colima or Docker Desktop install that publishes its socket through a docker context needs no
-extra configuration.
+Both platforms also need a container engine that serves the Docker API to build the sandbox image. **Docker Engine**,
+**Docker Desktop**, **colima**, and **podman** are the tested engines; others (Rancher Desktop, OrbStack, ...) are
+expected to work, but untested. [Troubleshooting]({% link troubleshooting.md %}) covers starting an engine and pointing
+agents-sandbox at its socket.
+
+To run that check on its own, after installing agents-sandbox, run:
+
+```console
+agents-sandbox doctor
+```
 
 ## Binary download
 
-  **Linux (x86_64):**
+Download and install the release for your platform:
 
-  ```console
-  curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-linux-amd64
-  ```
+```console
+case "$(uname -s)/$(uname -m)" in
+  Linux/x86_64)   platform=linux-amd64 ;;
+  Linux/aarch64)  platform=linux-arm64 ;;
+  Darwin/*)       platform=darwin-arm64 ;; # only Apple Silicon is supported
+  *) echo "unsupported platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+curl -L -o agents-sandbox "https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-${platform}"
+```
 
-  **macOS (Apple Silicon):**
+To install, set permissions and move it onto your path:
 
-  ```console
-  curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-darwin-arm64
-  ```
-
-  **Linux (arm64):**
-
-  ```console
-  curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/latest/download/agents-sandbox-linux-arm64
-  ```
-
-  To install, set permissions and move it onto your path:
-
-  ```console
-  chmod u+x agents-sandbox
-  mv agents-sandbox ~/.local/bin # or any other directory in your PATH 
-  ```
+```console
+chmod u+x agents-sandbox
+mv agents-sandbox ~/.local/bin # or any other directory in your PATH
+```
 
 ## Via Homebrew (macOS and Linux)
 
@@ -74,28 +74,17 @@ Homebrew installs are detected automatically: the launcher disables its
 Canaries are not available via Homebrew, only as binary downloads.
 
 Canary builds are GitHub prereleases, so they are not served by `/latest`. Download the asset from that prerelease's
-tag URL instead, replacing `CANARY_VERSION` and the `<os>-<arch>` suffix with your values (`linux-amd64`, `darwin-arm64`,
-or `linux-arm64`):
-
-**Linux (x86_64):**
+tag URL instead, replacing `CANARY_VERSION` with the canary you want:
 
 ```console
 CANARY_VERSION=v0.6.0-canary.1
-curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/download/${CANARY_VERSION}/agents-sandbox-linux-amd64
-```
-
-**Linux (arm64):**
-
-```console
-CANARY_VERSION=v0.6.0-canary.1
-curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/download/${CANARY_VERSION}/agents-sandbox-linux-arm64
-```
-
-**macOS (Apple Silicon):**
-
-```console
-CANARY_VERSION=v0.6.0-canary.1
-curl -L -o agents-sandbox https://github.com/inoio/agents-sandbox/releases/download/${CANARY_VERSION}/agents-sandbox-darwin-arm64
+case "$(uname -s)/$(uname -m)" in
+  Linux/x86_64)   platform=linux-amd64 ;;
+  Linux/aarch64)  platform=linux-arm64 ;;
+  Darwin/*)       platform=darwin-arm64 ;; # only Apple Silicon is supported
+  *) echo "unsupported platform: $(uname -s) $(uname -m)" >&2; exit 1 ;;
+esac
+curl -L -o agents-sandbox "https://github.com/inoio/agents-sandbox/releases/download/${CANARY_VERSION}/agents-sandbox-${platform}"
 ```
 
 To install, set permissions and move it onto your path:
@@ -106,18 +95,6 @@ mv agents-sandbox ~/.local/bin # or any other directory in your PATH
 ```
 
 Then set `upgrade.channel: canary` (or `AGENTS_SANDBOX_UPGRADE_CHANNEL=canary`) so later upgrades follow the canary line — see [self-upgrade]({% link configuration/self-upgrade.md %}).
-
-## Verify your setup
-
-`run` and `shell` check the host automatically before they start a sandbox. A failing check prints the
-command that fixes it and links to the matching [troubleshooting]({% link troubleshooting.md %}) section, so you do not
-have to check the host by hand.
-
-To check it on its own, run:
-
-```console
-agents-sandbox doctor
-```
 
 Once installed, continue with one of the two onboarding paths:
 
