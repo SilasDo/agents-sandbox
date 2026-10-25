@@ -28,8 +28,8 @@ func TestBuildEnvMap(t *testing.T) {
 
 func TestReadSandboxEnvMissing(t *testing.T) {
 	env := BuildEnvMap("missing")
-	if len(env) != 0 {
-		t.Errorf("expected 0 env vars when .agents-sandbox/env missing, got %d", len(env))
+	if env != nil {
+		t.Errorf("expected nil env map when .agents-sandbox/env missing, got %#v", env)
 	}
 }
 
@@ -80,6 +80,24 @@ func TestParseKeyValueLinesSkipsNoEqualsLine(t *testing.T) {
 		if seen[i] != want[i] {
 			t.Errorf("seen[%d] = %q, want %q", i, seen[i], want[i])
 		}
+	}
+}
+
+// TestParseKeyValueLinesSkipsCommentContainingEquals verifies that a comment
+// line is skipped even when it contains an '=' separator (which would
+// otherwise split into a key/value pair).
+func TestParseKeyValueLinesSkipsCommentContainingEquals(t *testing.T) {
+	var seen []string
+	err := parseKeyValueLines("# foo=bar\nA=1\n", func(key, value string) error {
+		seen = append(seen, key+"="+value)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := []string{"A=1"}
+	if len(seen) != len(want) || seen[0] != want[0] {
+		t.Fatalf("seen = %v, want %v", seen, want)
 	}
 }
 

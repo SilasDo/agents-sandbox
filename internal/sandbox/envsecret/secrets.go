@@ -39,7 +39,7 @@ func BuildSecretsFromSpecs(specs map[string]SecretSpec, ui termio.UI) []msbSdk.S
 		if spec.Host != "" {
 			hosts = append(hosts, spec.Host)
 		}
-		if spec.AllowAnyHostDangerous && len(hosts) == 0 {
+		if len(hosts) == 0 {
 			hosts = []string{"*"}
 		}
 		secrets = append(secrets, msbSdk.Secret.Env(
@@ -81,7 +81,7 @@ func ParseSecretSpecYAML(filename string, ui termio.UI) map[string]SecretSpec {
 	if err != nil {
 		return nil
 	}
-	var specs map[string]SecretSpec
+	specs := make(map[string]SecretSpec)
 	if err := yaml.Unmarshal(data, &specs); err != nil {
 		ui.Warnf("Parsing secret file '%s' as YAML: %v", filename, err)
 		return nil
