@@ -124,8 +124,10 @@ handle_target() {
     root)
       case "$target" in
         "$SITE_BASE"/*)
-          # Rendered docs HTML link: map back to the source page.
+          # Rendered docs HTML link: map back to the source page, dropping any
+          # in-page anchor (the fragment names a heading, not a file).
           path="${target#"$SITE_BASE"/}"
+          path="${path%%#*}"
           if [[ -z "$path" ]]; then
             [[ -f "$DOCS/index.md" ]] ||
               report "$rel:$lineno: docs html link '$target' has no source index page"
