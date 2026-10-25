@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 )
 
 // Seams over the lock's I/O so tests can exercise failures a real file cannot
@@ -18,9 +20,9 @@ var (
 // false. It is a seam so tests can exercise the flock failure path.
 var flockRootLock = func(f *os.File, blocking bool) error {
 	if blocking {
-		return FlockExclusive(f)
+		return hostlock.Exclusive(f)
 	}
-	return FlockExclusiveNB(f)
+	return hostlock.ExclusiveNonBlocking(f)
 }
 
 // rootLockPath returns the host-only root-state lock file path, under the
@@ -60,7 +62,7 @@ func lockRootState(blocking bool) (release func(), ok bool, err error) {
 		if blocking {
 			releaseLockPath(path)
 		}
-		if !blocking && isLockContention(err) {
+		if !blocking && hostlock.IsContention(err) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("flock root lock: %w", err)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
-// TestEnsureProjectVMFlockDirError covers the os.MkdirAll failure branch in
+// TestEnsureProjectVMFlockDirError covers the project-flock failure in
 // ensureProjectVM (the flock directory cannot be created).
 func TestEnsureProjectVMFlockDirError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
@@ -53,6 +54,9 @@ func TestEnsureProjectVMFlockDirError(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("expected error when the flock directory cannot be created")
+	}
+	if !strings.Contains(err.Error(), "create lock dir") {
+		t.Errorf("expected a lock-dir error, got %v", err)
 	}
 }
 

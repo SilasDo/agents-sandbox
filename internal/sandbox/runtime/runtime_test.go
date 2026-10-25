@@ -311,55 +311,23 @@ func TestAcquireRuntimeLockBlocksSecondHolder(t *testing.T) {
 	}
 }
 
-// TestAcquireRuntimeLockMkdirError covers the MkdirAll failure: a file
-// occupying the lock directory path makes the mkdir fail.
-func TestAcquireRuntimeLockMkdirError(t *testing.T) {
+// TestAcquireRuntimeLockError covers the error wrapping: a directory occupying
+// the lock file path makes the acquisition fail.
+func TestAcquireRuntimeLockError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	if err := os.MkdirAll(PrivateHome(), 0o700); err != nil {
-		t.Fatalf("mkdir private home: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(PrivateHome(), ".agents-sandbox"), []byte("x"), 0o600); err != nil {
-		t.Fatalf("write file at lock dir path: %v", err)
-	}
-	if _, err := acquireRuntimeLock(); err == nil {
-		t.Fatal("acquireRuntimeLock() error = nil, want a mkdir failure")
+	blockRuntimeLock(t)
+	_, err := acquireRuntimeLock()
+	if err == nil || !strings.Contains(err.Error(), "acquire runtime lock") {
+		t.Fatalf("acquireRuntimeLock() error = %v, want a wrapped lock failure", err)
 	}
 }
 
-// TestAcquireRuntimeLockOpenError covers the OpenFile failure: a directory
-// occupying the lock file path makes the open fail with EISDIR.
-func TestAcquireRuntimeLockOpenError(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	lockPath := filepath.Join(PrivateHome(), ".agents-sandbox", "runtime.lock")
-	if err := os.MkdirAll(lockPath, 0o700); err != nil {
+// blockRuntimeLock makes the runtime lock unacquirable by occupying its file
+// path with a directory.
+func blockRuntimeLock(t *testing.T) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(runtimeLockDir(), runtimeLockName), 0o700); err != nil {
 		t.Fatalf("mkdir at lock path: %v", err)
-	}
-	if _, err := acquireRuntimeLock(); err == nil {
-		t.Fatal("acquireRuntimeLock() error = nil, want an open failure")
-	}
-}
-
-// TestAcquireRuntimeLockFlockError covers the FlockExclusive failure via the
-// seam, which a real file cannot trigger.
-func TestAcquireRuntimeLockFlockError(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	wantErr := errors.New("flock boom")
-	orig := flockExclusive
-	flockExclusive = func(*os.File) error { return wantErr }
-	t.Cleanup(func() { flockExclusive = orig })
-	if _, err := acquireRuntimeLock(); !errors.Is(err, wantErr) {
-		t.Fatalf("acquireRuntimeLock() error = %v, want %v", err, wantErr)
-	}
-}
-
-func TestDefaultFlockExclusiveLocksFile(t *testing.T) {
-	f, err := os.CreateTemp(t.TempDir(), "lock")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	if err := flockExclusive(f); err != nil {
-		t.Fatalf("flockExclusive() error = %v", err)
 	}
 }
 
@@ -572,13 +540,11 @@ func TestPrepareRuntimeRepairLockFails(t *testing.T) {
 	unsetEnv(t, "MSB_HOME")
 	unsetEnv(t, "MSB_PATH")
 
-	wantErr := errors.New("flock boom")
-	orig := flockExclusive
-	flockExclusive = func(*os.File) error { return wantErr }
-	t.Cleanup(func() { flockExclusive = orig })
+	blockRuntimeLock(t)
 
-	if err := prepareRuntime(context.Background(), &termio.Mock{}, "0.2.0"); !errors.Is(err, wantErr) {
-		t.Fatalf("prepareRuntime() error = %v, want %v", err, wantErr)
+	err := prepareRuntime(context.Background(), &termio.Mock{}, "0.2.0")
+	if err == nil || !strings.Contains(err.Error(), "acquire runtime lock") {
+		t.Fatalf("prepareRuntime() error = %v, want a runtime lock failure", err)
 	}
 }
 

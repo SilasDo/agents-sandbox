@@ -1,11 +1,11 @@
 package state
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 )
 
 // claimOpened is a test seam invoked right after a claim file is opened and
@@ -37,9 +37,9 @@ func AcquireClaim(slug, key string) (func(), bool, error) {
 		if claimOpened != nil {
 			claimOpened(f, path)
 		}
-		if err := FlockExclusiveNB(f); err != nil {
+		if err := hostlock.ExclusiveNonBlocking(f); err != nil {
 			_ = f.Close()
-			if isLockContention(err) {
+			if hostlock.IsContention(err) {
 				return nil, false, nil
 			}
 			return nil, false, fmt.Errorf("flock claim %s: %w", path, err)
@@ -71,10 +71,4 @@ func sameFile(f *os.File, path string) bool {
 		return false
 	}
 	return os.SameFile(onDisk, open)
-}
-
-// isLockContention reports whether a flock error means the lock is held by
-// another process (as opposed to a real failure).
-func isLockContention(err error) bool {
-	return errors.Is(err, syscall.EWOULDBLOCK) || errors.Is(err, syscall.EAGAIN)
 }

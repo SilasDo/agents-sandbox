@@ -3,9 +3,9 @@ package vm
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
@@ -105,11 +105,6 @@ func ensureProjectVM(
 
 	name := projectVMName(k)
 
-	flockPath := filepath.Join(state.KeyDir(k), "ensure-vm.lock")
-	if err := os.MkdirAll(filepath.Dir(flockPath), 0o750); err != nil {
-		return nil, vmBootConnected, fmt.Errorf("create flock dir: %w", err)
-	}
-
 	spin := ui.Spinner("Checking project VM")
 
 	handle, found, err := findProjectVM(ctx, client, k)
@@ -148,7 +143,7 @@ func ensureProjectVM(
 
 	// Slow path: VM doesn't exist → create. Hold a flock so concurrent
 	// invocations don't both create (and clobber via WithReplace).
-	release, lockErr := acquireProjectFlock(flockPath)
+	release, lockErr := hostlock.AcquireExclusive(state.KeyDir(k), "ensure-vm.lock")
 	if lockErr != nil {
 		return nil, vmBootConnected, fmt.Errorf("acquire project flock: %w", lockErr)
 	}
@@ -601,21 +596,4 @@ func buildMounts(
 		built[target] = msbSdk.Mount.Bind(mount.Source, msbSdk.MountOptions{Readonly: mount.Readonly})
 	}
 	return built
-}
-
-// acquireProjectFlock takes an exclusive flock on the given path. It returns a
-// release function. The flock prevents two concurrent invocations from both
-// creating a project VM (which would clobber via WithReplace).
-func acquireProjectFlock(path string) (func(), error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("open flock %s: %w", path, err)
-	}
-	if err := state.FlockExclusive(f); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("flock %s: %w", path, err)
-	}
-	return func() {
-		_ = f.Close()
-	}, nil
 }

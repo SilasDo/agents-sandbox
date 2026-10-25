@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 )
 
 // clientLeaseGraceWindow is how long an unlocked client lease is still treated
@@ -48,7 +50,7 @@ func AcquireClientLease(k Key) (func(), error) {
 		if clientLeaseOpened != nil {
 			clientLeaseOpened(f, path)
 		}
-		if err := FlockExclusive(f); err != nil {
+		if err := hostlock.Exclusive(f); err != nil {
 			_ = f.Close()
 			_ = os.Remove(path)
 			return nil, fmt.Errorf("flock client lock %s: %w", path, err)
@@ -90,7 +92,7 @@ func CountActiveClients(k Key) int {
 		if err != nil {
 			continue
 		}
-		if err := FlockExclusiveNB(f); err != nil {
+		if err := hostlock.ExclusiveNonBlocking(f); err != nil {
 			// Held by a live client.
 			_ = f.Close()
 			active++
