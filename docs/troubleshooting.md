@@ -273,3 +273,24 @@ If an older image or updater state reports `Release vuser-provided not found`, u
 runner image. `user-provided` identifies an agent that was previously found in a custom base; it is not a valid release
 version. A rebuilt image will keep an agent supplied by the base, or install a real resolved release if that binary is
 no longer present.
+
+### The base image cannot be found
+
+If the build fails before it runs any of your steps because the engine could not find an image named in a `FROM`, the
+engine is being asked to resolve a name with no registry in it. agents-sandbox pulls its own base under its full name
+(`docker.io/library/debian:trixie-slim`), so that name comes from your project Dockerfile or from a base it starts from.
+Docker Engine assumes Docker Hub and never fails this way; podman does when it has no search registries:
+
+```console
+Error: short-name "debian:trixie-slim" did not resolve to an alias and no unqualified search
+registries are defined in "/etc/containers/registries.conf"
+```
+
+Either fix works: name the registry in the `FROM`, such as `FROM docker.io/library/debian:trixie-slim`, or tell podman
+which registry to search by adding it to `registries.conf`:
+
+```toml
+unqualified-search-registries = ["docker.io"]
+```
+
+`short_name_mode = "permissive"` on its own does not help while that list is empty.

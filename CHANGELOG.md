@@ -98,15 +98,16 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
-- Runner image: the distro base is pulled by its registry-qualified reference (`docker.io/library/debian:trixie-slim`)
-  in both the rendered Dockerfile and the base-digest lookup, so building and resolving the base no longer depend on the
-  engine's short-name resolution (a podman with an empty `unqualified-search-registries` rejected the bare name). The
-  recorded `org.agents-sandbox.base` label keeps the familiar spelling (`debian:trixie-slim@sha256:…`). The content
-  identity changes, so the runner image rebuilds once.
+- Runner image: the tool-owned distro base is registry-qualified (`docker.io/library/debian:trixie-slim`) where the
+  Dockerfile is rendered, so the build no longer depends on the engine's short-name resolution (a podman with an empty
+  `unqualified-search-registries` rejected the bare name). The base-digest lookup resolves the same reference the
+  rendered `FROM` declares, so the lookup and the build always name one image — a user's own base keeps the name the
+  engine resolves. The recorded `org.agents-sandbox.base` label keeps the familiar spelling
+  (`debian:trixie-slim@sha256:…`). The content identity changes, so the runner image rebuilds once.
 - Runner image: a build that fails because the engine could not resolve an image name with no registry (podman without
   `unqualified-search-registries`) now says so and links to the
-  [troubleshooting](https://inoio.github.io/agents-sandbox/troubleshooting.html) section naming both remedies, instead of
-  reporting only the engine's error.
+  [troubleshooting](https://inoio.github.io/agents-sandbox/troubleshooting.html#the-base-image-cannot-be-found) section
+  naming both remedies, instead of reporting only the engine's error.
 - The default agent is now `opencode2`. A bare `agents-sandbox` and every command whose `--agent` flag is left unset
   (`run`/`shell`, `build`, `build dockerfile`, `stop`, `kill`, `config agent`, and `volume` migrate/reset/edit) select
   `opencode2` instead of `opencode`; pass `--agent opencode` to keep using the v1 agent.
