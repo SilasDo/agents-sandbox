@@ -7,9 +7,19 @@ import (
 	"os"
 )
 
+// kvmDevice is the host device the sandbox VM needs.
+const kvmDevice = "/dev/kvm"
+
 // checkPlatform verifies Linux KVM availability.
 func checkPlatform() error {
-	if _, err := os.Stat("/dev/kvm"); err != nil {
+	return checkKVMDevice(kvmDevice)
+}
+
+// checkKVMDevice reports whether the KVM device is present. The path is a
+// parameter so both outcomes are testable wherever the tests run, whether or
+// not the host has /dev/kvm.
+func checkKVMDevice(path string) error {
+	if _, err := os.Stat(path); err != nil {
 		return kvmUnavailableError()
 	}
 	return nil
