@@ -31,8 +31,9 @@ func snippetFileMatches(pattern, name string) bool {
 func matchesGlob(pattern, name string) bool {
 	base := path.Base(name)
 	for _, concrete := range expandBraces(pattern) {
-		ok, err := path.Match(concrete, base)
-		if err == nil && ok {
+		// path.Match reports ok=false for a malformed pattern, so its error
+		// cannot change the result: only the match outcome matters.
+		if ok, _ := path.Match(concrete, base); ok {
 			return true
 		}
 	}
@@ -47,6 +48,7 @@ func expandBraces(pattern string) []string {
 		return []string{pattern}
 	}
 	closeIdx := strings.Index(pattern[open:], "}")
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY,INTEGER_INCREMENT reason="the searched substring starts with '{', so the '}' index is -1 or at least 1, never 0"
 	if closeIdx < 0 {
 		return []string{pattern}
 	}
@@ -67,9 +69,11 @@ func deepMerge(base, override map[string]any) map[string]any {
 	maps.Copy(result, base)
 	for k, v := range override {
 		if existing, ok := result[k]; ok {
-			existingMap, ok1 := existing.(map[string]any)
 			overrideMap, ok2 := v.(map[string]any)
-			if ok1 && ok2 {
+			// deepMerge(nil, overrideMap) copies the override, so a non-map
+			// base value needs no special case: only the override decides.
+			if ok2 {
+				existingMap, _ := existing.(map[string]any)
 				result[k] = deepMerge(existingMap, overrideMap)
 				continue
 			}
@@ -88,17 +92,22 @@ func scanSnippets(dirs []string, pattern string) (map[string]any, []string) {
 	var merged map[string]any
 	var sources []string
 	for _, dir := range dirs {
+		// gomutants:disable-next-line BRANCH_IF reason="os.ReadDir of an empty path errors and the next guard continues, so skipping it agrees with falling through"
 		if dir == "" {
 			continue
 		}
 		entries, err := os.ReadDir(dir)
+		// gomutants:disable-next-line BRANCH_IF reason="os.ReadDir returns nil entries on error, so the sort and the range below are no-ops either way"
 		if err != nil {
 			continue
 		}
+		// gomutants:disable-next-line STATEMENT_REMOVE reason="os.ReadDir already returns entries sorted by filename, so the explicit sort is order-preserving"
 		sort.Slice(entries, func(i, j int) bool {
+			// gomutants:disable-next-line CONDITIONALS_BOUNDARY,RETURN_FALSE reason="filenames within a directory are unique and ReadDir already sorted them, so < and <= agree and always-false leaves the order unchanged"
 			return entries[i].Name() < entries[j].Name()
 		})
 		for _, entry := range entries {
+			// gomutants:disable-next-line EXPRESSION_REMOVE reason="a directory that slips past reaches os.ReadFile, which errors and the guard below continues, so IsDir is redundant"
 			if entry.IsDir() || !snippetFileMatches(pattern, entry.Name()) {
 				continue
 			}
@@ -167,9 +176,11 @@ type MirrorEntry struct {
 func ScanMirror(pattern string, family []string, userDir, projectDir, destDir string) ([]MirrorEntry, error) {
 	byDest := make(map[string]MirrorEntry)
 	for _, dir := range []string{userDir, projectDir} {
+		// gomutants:disable-next-line BRANCH_IF reason="filewalk.Walk of an empty path swallows its Lstat error and visits nothing, so skipping it agrees with walking it"
 		if dir == "" {
 			continue
 		}
+		// gomutants:disable-next-line BRANCH_IF reason="filewalk.Walk never returns a non-nil error, so this guard is unreachable"
 		if err := scanMirrorDir(pattern, family, dir, destDir, byDest); err != nil {
 			return nil, err
 		}

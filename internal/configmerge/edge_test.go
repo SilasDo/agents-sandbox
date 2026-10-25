@@ -65,6 +65,41 @@ func TestBuildMergedSkipsMissingDirectory(t *testing.T) {
 	}
 }
 
+func TestBuildMergedScansDirectoryAfterMissingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	writeSnippet(t, dir, "opencode-a.json", `{"a": 1}`)
+	missing := filepath.Join(t.TempDir(), "missing")
+
+	// The missing dir is first: a broken skip must not abandon the dirs loop.
+	data, sources, has, err := BuildMerged("opencode*.json*", missing, dir)
+	if err != nil || !has {
+		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
+	}
+	if len(sources) != 1 || sources[0] != filepath.Join(dir, "opencode-a.json") {
+		t.Fatalf("sources = %v, want only the file from the second dir", sources)
+	}
+	var m map[string]int
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["a"] != 1 {
+		t.Errorf("merged = %v, want a=1", m)
+	}
+}
+
+func TestScanSnippetsReturnsNonNilEmptyMap(t *testing.T) {
+	merged, sources := scanSnippets([]string{t.TempDir()}, "opencode*.json*")
+	if len(sources) != 0 {
+		t.Errorf("sources = %v, want none", sources)
+	}
+	if merged == nil {
+		t.Error("merged = nil, want a non-nil empty map")
+	}
+	if len(merged) != 0 {
+		t.Errorf("merged = %v, want empty", merged)
+	}
+}
+
 func TestBuildMergedSkipsUnreadableSnippet(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "opencode-good.json", `{"ok": true}`)
@@ -85,6 +120,26 @@ func TestBuildMergedSkipsUnreadableSnippet(t *testing.T) {
 	}
 	if !m["ok"] {
 		t.Errorf("merged = %v, want ok=true", m)
+	}
+}
+
+func TestBuildMergedSkipsUnreadableYAMLSnippet(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(dir, "does-not-exist"), filepath.Join(dir, "pi-broken.yaml")); err != nil {
+		t.Fatal(err)
+	}
+
+	// The only match is unreadable; an empty YAML document would otherwise
+	// parse to a nil config and falsely report a merge.
+	data, sources, has, err := BuildMerged("pi-*.{json,yaml}", dir, "")
+	if err != nil {
+		t.Fatalf("BuildMerged: %v", err)
+	}
+	if has {
+		t.Errorf("expected has=false for an unreadable YAML snippet, got data=%q", data)
+	}
+	if len(sources) != 0 {
+		t.Errorf("sources = %v, want none", sources)
 	}
 }
 
