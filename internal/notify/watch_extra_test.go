@@ -238,12 +238,16 @@ func (failHandle) Recv(context.Context) (msb.StreamEvent, error) {
 func (failHandle) Close() error { return nil }
 
 func TestWatchBackoffResetsAfterLongLived(t *testing.T) {
+	// longLived must sit well above a failing call's latency and well below the
+	// time the long-lived connection is held: a failing call that takes longer
+	// than longLived looks long-lived and would wrongly reset the backoff,
+	// skipping the wait this test measures.
 	orig := watchReconnectPolicy
 	watchReconnectPolicy = reconnectPolicy{
 		fastRetries:  2,
-		backoffStart: 100 * time.Millisecond,
-		backoffMax:   400 * time.Millisecond,
-		longLived:    5 * time.Millisecond,
+		backoffStart: time.Second,
+		backoffMax:   4 * time.Second,
+		longLived:    100 * time.Millisecond,
 		jitter:       func(d time.Duration) time.Duration { return d },
 	}
 	defer func() { watchReconnectPolicy = orig }()
@@ -285,8 +289,8 @@ func TestWatchBackoffResetsAfterLongLived(t *testing.T) {
 	record("call 1")
 	record("call 2")
 	record("call 3")
-	record("call 4")                  // long-lived connection now being held
-	time.Sleep(10 * time.Millisecond) // exceed longLived (5ms)
+	record("call 4")                   // long-lived connection now being held
+	time.Sleep(250 * time.Millisecond) // exceed longLived (100ms)
 	close(release)
 	record("call 5") // reconnect after the long-lived drop
 	cancel()
