@@ -17,8 +17,9 @@ import (
 
 // Mount point constants used by volume operations (prefill, copy, edit).
 const (
-	srcMount = "/src"
-	dstMount = "/dst"
+	homeMount = "/mnt/home"
+	srcMount  = "/src"
+	dstMount  = "/dst"
 )
 
 // HomeVolumeName generates a prefix-free volume name for the given
@@ -48,48 +49,19 @@ func (vm *Manager) PrefillVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	info, err := image.EnsureLoaded(ctx, client, info, ui)
-	if err != nil {
-		return fmt.Errorf("load runner image: %w", err)
-	}
-	prefillName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
-	mountConfig := msbSdk.Mount.Named(volumeName, msbSdk.MountOptions{})
-
-	spin := ui.Spinner("Preparing home volume")
-	sb, err := client.CreateSandbox(ctx, prefillName,
-		msbSdk.WithImage(info.Ref),
-		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
-		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
-			"/mnt/home": mountConfig,
-		}),
-		msbSdk.WithReplace(),
-	)
-	if err != nil {
-		spin.StopError(err)
-		return fmt.Errorf("create prefill sandbox: %w", err)
-	}
-	defer func() {
-		destroyCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
-		defer cancel()
-		if destroyErr := sb.Destroy(destroyCtx); destroyErr != nil &&
-			!msb.IsReplaced(destroyErr) && !msb.IsNotFound(destroyErr) {
-			ui.Warnf("failed to destroy prefill sandbox %s: %v", prefillName, destroyErr)
-		}
-		_ = sb.Close()
-	}()
-
-	out, err := sb.Exec(ctx, "sh", []string{"-c", "cp -a /home/dev/. /mnt/home/ && chown -R dev:dev /mnt/home"})
-	if err != nil {
-		spin.StopError(err)
-		return fmt.Errorf("prefill cp: %w", err)
-	}
-	if !out.Success() {
-		err := fmt.Errorf("prefill cp failed (exit %d): %s", out.ExitCode(), out.Stderr())
-		spin.StopError(err)
-		return err
-	}
-	spin.Stop()
-	return nil
+	return withThrowawaySandbox(ctx, client, k, info, throwawaySandbox{
+		purpose: "prefill",
+		mounts: map[string]msbSdk.MountConfig{
+			homeMount: msbSdk.Mount.Named(volumeName, msbSdk.MountOptions{}),
+		},
+		spinnerLabel: "Preparing home volume",
+	}, ui, func(sb msb.Sandbox, spin termio.Spinner) error {
+		return runShell(ctx, sb, spin, shellStep{
+			execErrPrefix: "prefill cp",
+			failurePrefix: "prefill cp failed",
+			script:        "cp -a /home/dev/. " + homeMount + "/ && chown -R dev:dev " + homeMount,
+		})
+	})
 }
 
 // ApplyHomeAction executes the migrate/reset action the user chose, always
@@ -195,44 +167,20 @@ func (vm *Manager) CopyVolume(
 	info image.ImageInfo,
 	ui termio.UI,
 ) error {
-	info, err := image.EnsureLoaded(ctx, client, info, ui)
-	if err != nil {
-		return fmt.Errorf("load runner image: %w", err)
-	}
-	copySbName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
-	copySb, err := client.CreateSandbox(ctx, copySbName,
-		msbSdk.WithImage(info.Ref),
-		msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
-		msbSdk.WithMounts(map[string]msbSdk.MountConfig{
+	return withThrowawaySandbox(ctx, client, k, info, throwawaySandbox{
+		purpose: "copy",
+		mounts: map[string]msbSdk.MountConfig{
 			srcMount: msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{}),
 			dstMount: msbSdk.Mount.Named(newVolume, msbSdk.MountOptions{}),
-		}),
-		msbSdk.WithReplace(),
-	)
-	if err != nil {
-		return fmt.Errorf("create copy sandbox: %w", err)
-	}
-	defer func() {
-		destroyCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
-		defer cancel()
-		if destroyErr := copySb.Destroy(destroyCtx); destroyErr != nil &&
-			!msb.IsReplaced(destroyErr) && !msb.IsNotFound(destroyErr) {
-			ui.Warnf("failed to destroy copy sandbox %s: %v", copySbName, destroyErr)
-		}
-		_ = copySb.Close()
-	}()
-
-	spin := ui.Spinner("Copying files from existing home volume")
-	out, err := copySb.Exec(ctx, "sh", []string{"-c", "cp -a /src/. /dst/ && chown -R dev:dev /dst"})
-	if err != nil {
-		spin.StopError(err)
-		return fmt.Errorf("copy files: %w", err)
-	}
-	if !out.Success() {
-		err := fmt.Errorf("copy failed (exit %d): %s", out.ExitCode(), out.Stderr())
-		spin.StopError(err)
-		return err
-	}
-	spin.Stop()
-	return nil
+		},
+		// The copy spinner starts only once the sandbox is up.
+		spinnerLabel: "",
+	}, ui, func(sb msb.Sandbox, _ termio.Spinner) error {
+		spin := ui.Spinner("Copying files from existing home volume")
+		return runShell(ctx, sb, spin, shellStep{
+			execErrPrefix: "copy files",
+			failurePrefix: "copy failed",
+			script:        "cp -a " + srcMount + "/. " + dstMount + "/ && chown -R dev:dev " + dstMount,
+		})
+	})
 }
