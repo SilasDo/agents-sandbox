@@ -261,8 +261,6 @@ command reports the bare version (e.g. `0.1.0`).
   container-engine requirement as any engine that serves the Docker API, name the tested engines (Docker Engine, Docker
   Desktop, colima, podman), list other engines (Rancher Desktop, ...) as expected to work but untested, and cover the
   engines that have no Docker API and therefore do not work.
-- Troubleshooting documents the one engine setting that can stop a build — podman refusing an unqualified image name
-  when it has no `unqualified-search-registries` — with its two remedies (qualify the `FROM`, or configure the registry).
 
 ### Fixed
 
