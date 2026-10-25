@@ -197,6 +197,10 @@ func TestResolveWorkspaceQuotaMiB_DelegatesToParseMemoryOK(t *testing.T) {
 	if got := ResolveWorkspaceQuotaMiB("16G"); got != 16*1024 {
 		t.Errorf("expected 16384 for 16G, got %d", got)
 	}
+	// 1G differs from the default, so a parsed value must win over the fallback.
+	if got := ResolveWorkspaceQuotaMiB("1G"); got != 1024 {
+		t.Errorf("expected 1024 for 1G, got %d", got)
+	}
 }
 
 func TestParseMemoryGiB(t *testing.T) {
@@ -205,5 +209,23 @@ func TestParseMemoryGiB(t *testing.T) {
 	}
 	if got := ParseMemoryGiB(1); got != 1024 {
 		t.Errorf("ParseMemoryGiB(1) = %d, want 1024", got)
+	}
+}
+
+func TestDocumentedSizeDefaults(t *testing.T) {
+	if DefaultMemoryMiB != 4096 {
+		t.Errorf("DefaultMemoryMiB = %d, want 4096", DefaultMemoryMiB)
+	}
+	if DefaultTmpSizeMiB != 2048 {
+		t.Errorf("DefaultTmpSizeMiB = %d, want 2048", DefaultTmpSizeMiB)
+	}
+	if DefaultWorkspaceQuotaMiB != 16384 {
+		t.Errorf("DefaultWorkspaceQuotaMiB = %d, want 16384", DefaultWorkspaceQuotaMiB)
+	}
+	if MaxSandboxNameLen != 128 {
+		t.Errorf("MaxSandboxNameLen = %d, want 128", MaxSandboxNameLen)
+	}
+	if mibPerGib != 1024 {
+		t.Errorf("mibPerGib = %d, want 1024", mibPerGib)
 	}
 }
