@@ -63,8 +63,8 @@
   - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
 - `test-isolation.md`
-  - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `realMsbClient` SDK seams that keep unit tests off the native library, the `WithMockConfigPaths` home redirect, and the enforcement tests that derive each package's required set from the import graph.
-  - Read If: Adding a test package or a `TestMain`, adding a real-SDK test, or debugging a test that reads or writes real host state (config, home, docker, msb, doctor, notify).
+  - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `realMsbClient` SDK seams that keep unit tests off the native library, the `WithMockConfigPaths` home redirect, the enforcement tests that derive each package's required set from the import graph, and the rule that seam overrides must be restored so the suite stays idempotent under `-count>1`.
+  - Read If: Adding a test package or a `TestMain`, adding a real-SDK test, debugging a test that reads or writes real host state (config, home, docker, msb, doctor, notify), or a test that fails only under repeated runs (`-count>1`).
 - `opencode2-config-fork.md`
   - Description: Design for forking opencode2's launcher config namespace (`opencode2` for user/project dirs, while the guest VM path and host drop-in stay `opencode`), the `ConfigDirAliaser` capability, `configpaths` candidate dirs, and `ResolveConfigSource`.
   - Read If: Working on opencode2 config provisioning, snippet merge or mirror, agent config-dir resolution, or the opencode2 config-namespace fork.

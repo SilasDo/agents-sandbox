@@ -1,6 +1,6 @@
 ---
-description: Contract for keeping tests off real host state - the fail-fast seam mocks installed by every test package's TestMain, the host-home redirect in WithMockConfigPaths, and the seam import-chain exceptions.
-read_if: Adding a test package or a TestMain, or debugging a test that reads or writes real host state (config, home, docker, msb, doctor).
+description: Contract for keeping tests off real host state - the fail-fast seam mocks installed by every test package's TestMain, the host-home redirect in WithMockConfigPaths, the seam import-chain exceptions, and the rule that seam overrides must be restored so the suite stays idempotent under -count>1.
+read_if: Adding a test package or a TestMain, debugging a test that reads or writes real host state (config, home, docker, msb, doctor), or a test that passes at -count=1 but fails under -count>1.
 ---
 
 # Test isolation
@@ -96,6 +96,18 @@ on where the suite runs. The helper fails fast if the pinned temp dir still reso
 sits inside a bare checkout). A test that needs a specific layout chdirs into its own fixture after the call, as the
 bare-checkout tests do. This is why `configpaths`' project-path accessor tests assert the relative base without
 pinning the CWD themselves, and it closes the incident below.
+
+## Seam overrides and suite idempotence
+
+A test that overrides a package-level seam var — the fail-fast seams above, the SDK `realMsbClient` vars, or behavior
+seams such as `agentLatestVersion`, `probeHostPort`, `watchReconnectPolicy`, `spinnerInterval` — must restore it with
+`t.Cleanup`/`defer`. A leaked override survives into later tests in the same binary, and under `-count>1` (or any run
+that repeats a package) into the next iteration. The suite must be idempotent: `go test -count=2 ./...` must agree with
+`-count=1`.
+
+The incident: `TestResolveBuildVersionPromptNamesThisProjectsVersion` replaced `agentLatestVersion` without restoring
+it, so the coverage tests asserting the real default closure passed at `-count=1` (alphabetical file order runs them
+first) but failed 19/20 at `-count=20`.
 
 ## Audit status (2026-10-16)
 
