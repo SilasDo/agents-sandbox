@@ -187,7 +187,7 @@ func TestBuildDockerfileCommand(t *testing.T) {
 
 				out := ui.StdOutBuffer.String()
 				for _, want := range []string{
-					"FROM debian:trixie-slim",
+					"FROM docker.io/library/debian:trixie-slim",
 					"LABEL org.agents-sandbox.agent=opencode2",
 					"USER dev",
 					"WORKDIR /workspace",

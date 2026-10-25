@@ -24,6 +24,12 @@ const (
 	managedBaseDockerRef = "agents-sandbox/runner-base-docker"
 )
 
+// distroBaseRef is the distro image the managed base builds on, rendered into
+// both the embedded managed-base tools block (data/Dockerfile) and the tool base
+// the node/agent/docker stages build on. It is registry-qualified so a build
+// never depends on the engine's short-name resolution configuration.
+const distroBaseRef = "docker.io/library/debian:trixie-slim"
+
 // Fixed, reserved stage aliases the renderer emits. They are deterministic
 // (never uuid/hash-suffixed) because dockerfile-id is a content hash of the
 // rendered Dockerfile. A project Dockerfile declaring one is a hard error.
@@ -352,15 +358,15 @@ func customBaseStage(fromLine string) (string, string) {
 // toolbaseStage renders the tool-owned stage the node/agent/docker stages build
 // on. It carries only what the tool downloads need (curl, ca-certificates, tar)
 // and is never part of the runner's lineage, so a custom base needs neither
-// binary and the tool layers cache across bases. It shares the debian:trixie-slim
+// binary and the tool layers cache across bases. It shares the distroBaseRef
 // layer with the managed base block.
 func toolbaseStage() string {
-	return fmt.Sprintf(`FROM debian:trixie-slim AS %s
+	return fmt.Sprintf(`FROM %s AS %s
 USER root
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl tar && \
     rm -rf /var/lib/apt/lists/*
-`, toolbaseStageAlias)
+`, distroBaseRef, toolbaseStageAlias)
 }
 
 // nodeStage renders the Node.js tool stage on the tool base. It installs Node

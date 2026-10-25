@@ -35,6 +35,9 @@
 - `agent-link-opening.md`
   - Description: What each agent shells out to when it opens a link on Linux (opencode `xdg-open`, opencode2's `open` package, pi's `openBrowser`, claude-code's scheme allowlist), the OSC 8 wrinkle, and the network-free VM→host transport for a host-side opener (#273).
   - Read If: Working on opening links/URLs on the host from inside the VM (#273), an in-VM `xdg-open` shim, agent opener behavior, or any VM→host action channel.
+- `podman-engine-testing.md`
+  - Description: How the alternative-engine claim is verified: the `integration-podman` CI job runs the docker-build suite against a rootless podman socket, podman's unqualified-image-name refusal is the hazard the runner image avoids by qualifying its base, and the dev VM cannot run an engine build at all.
+  - Read If: Verifying podman (or another Docker-API engine) against the integration suite, changing the `integration-podman` job or `distroBaseRef`/`baseImageRef`/`resolveBaseDigest`/`buildFailureError`, or investigating a build failure naming an unqualified image.
 - `operator-brain-maintenance.md`
   - Description: Conventions for keeping this brain small and findable: one-line catalog Descriptions, anchor-first `Read If` lines, and retiring a plan (fold into the owning spec, then delete) once its work lands.
   - Read If: Adding or editing a catalog entry, spec, plan, or guide; writing a new freeform document; or curating/retiring the brain.
@@ -45,8 +48,8 @@
   - Description: Contract for the prefix-free artifact naming strategy: project VMs, task sandboxes, home volumes and microsandbox image refs drop the `agents-sandbox-` prefix while Docker images keep it (the `ImageInfo` Docker-tag/msb-ref split), new artifacts follow the new scheme while legacy ones stay discoverable without reimport or rebuild, ownership is positional in the private runtime home, and project-vs-task classification is label-based.
   - Read If: Changing `internal/sandbox/naming`, the VM/home-volume/runner-image name or reference constructors or parsers, artifact discovery (list/remove/prune/reference scans), the sandbox or volume labels, or the Docker-vs-msb image reference split.
 - `self-upgrade-channels.md`
-  - Description: Design for the launcher's self-upgrade release channels: `upgrade.channel` (`stable` default, `canary`), canary = newest channel-eligible release, a tag-addressed download, no downgrade path, the undocumented `AGENTS_SANDBOX_UPGRADE_ANY` dev lever, and the release CI's prerelease classification / Homebrew skip.
-  - Read If: Changing `upgrade.channel`, canary resolution/eligibility, the tag-pinned release download, `AGENTS_SANDBOX_UPGRADE_ANY`, or the `publish` job's prerelease/Homebrew handling.
+  - Description: Design for the launcher's self-upgrade release channels: `upgrade.channel` (`stable` default, `canary`), canary = newest channel-eligible release, a tag-addressed download, no downgrade path, the undocumented `AGENTS_SANDBOX_UPGRADE_ANY` dev lever, the release CI's prerelease classification / Homebrew skip, and the docs workflow's prerelease guard.
+  - Read If: Changing `upgrade.channel`, canary resolution/eligibility, the tag-pinned release download, `AGENTS_SANDBOX_UPGRADE_ANY`, the `publish` job's prerelease/Homebrew handling, or the Pages prerelease guard.
 - `test-coverage.md`
   - Description: Contract for coverage on added and changed lines: every added line must be executed by a test (error/transport/status branches included); an unreachable-by-construction branch must be removed, not left uncovered; match the sibling you mirror.
   - Read If: Adding or changing production code and deciding what to test, reviewing a diff for coverage gaps, or triaging a failing `codecov/patch` or `codecov/project` check on a PR.
@@ -147,8 +150,8 @@
   - Description: Contract for #228: `--dry-run` is a true make-no-changes preview of a run/shell (build plan, image build decision, read-only home-volume probe) that returns before any build/volume/state/VM/network side effect; `--dry-run-vm` stays the KVM-less "prepare everything, skip the VM" flag.
   - Read If: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision / `resolveAgentVersion` / `resolveBaseDigest`, or the `vm.agentLatestVersion` test seam.
 - `ci-job-gating.md`
-  - Description: Contract for gating the costly `integration` job: it runs on `main`, release tags, manual dispatch, and on a PR a maintainer opted into with the `run-integration` label, plus the invariants keeping those conditions live.
-  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the integration job's gating, or the `run-integration` label.
+  - Description: Contract for gating the costly integration jobs: `integration` (Docker Engine) and `integration-podman` (rootless podman) both run on `main`, release tags, manual dispatch, and on a PR a maintainer opted into with the matching `run-integration` / `run-integration-podman` label, plus the invariants keeping those conditions live and why podman stays out of `release.needs`.
+  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `integration` or `integration-podman` gating, or the `run-integration`/`run-integration-podman` labels.
 - `fuzz-ci.md`
   - Description: Contract for the `fuzz` workflow: it discovers targets from sources the same way `make fuzz` does (a `discover` job feeding the matrix), is never a PR gate, and caches a per-target corpus keyed by the flattened package name.
   - Read If: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.
