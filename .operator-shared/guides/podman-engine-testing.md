@@ -34,7 +34,9 @@ the managed-base tools block and the tool base, so neither depends on the engine
 one maps to (search registries, a mirror, or a prefix rewrite) — the launcher's base-digest lookup and the build must
 resolve to the same image, so re-qualifying a user's own base would send it to Docker Hub and record the wrong provenance
 label. The same failure therefore still reaches a user's own project Dockerfile `FROM`; it is documented in the
-troubleshooting page's build-failure section, and `buildFailureError` appends that section's link to the build error.
+troubleshooting page's build-failure section, and `buildFailureError` appends that section's link to the build error. That
+link's fragment is the heading `### The base image cannot be found` in `docs/troubleshooting.md`; nothing tests the
+coupling, so renaming the heading silently breaks the link the error prints.
 
 ## Why not in the dev VM
 
