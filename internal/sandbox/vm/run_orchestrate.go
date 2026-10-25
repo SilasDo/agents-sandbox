@@ -463,14 +463,8 @@ func desiredFingerprints(opts options.RunOptions, ui termio.UI) state.Fingerprin
 // subsequent runs can detect changes. It persists the fingerprints computed by
 // desiredFingerprints, so the seeded and persisted sets cannot diverge.
 func persistConfigHashes(k state.Key, fingerprints state.Fingerprints, ui termio.UI) {
-	if err := persistEnvSecrets(k, fingerprints.Env, fingerprints.Secret); err != nil {
-		ui.Warnf("persisting env/secret fingerprints on VM creation: %v (continuing)", err)
-	}
-	if err := persistNetworkState(k, fingerprints.Network); err != nil {
-		ui.Warnf("persisting network fingerprint on VM creation: %v (continuing)", err)
-	}
-	if err := persistMountState(k, fingerprints.Mount); err != nil {
-		ui.Warnf("persisting mount fingerprint on VM creation: %v (continuing)", err)
+	if err := persistFingerprints(k, fingerprints); err != nil {
+		ui.Warnf("persisting config fingerprints on VM creation: %v (continuing)", err)
 	}
 }
 

@@ -38,44 +38,24 @@ func TestHomeWritersPreserveUnrelatedFields(t *testing.T) {
 		want func() state.HomeState
 	}{
 		{
-			name: "persistEnvSecrets",
+			name: "persistFingerprints",
 			run: func(t *testing.T, k state.Key) {
 				t.Helper()
-				if err := persistEnvSecrets(k, state.EnvState{Hash: "e2"}, state.SecretState{Hash: "s2"}); err != nil {
-					t.Fatalf("persistEnvSecrets: %v", err)
+				fingerprints := state.Fingerprints{
+					Env:     state.EnvState{Hash: "e2"},
+					Secret:  state.SecretState{Hash: "s2"},
+					Network: state.NetworkState{Hash: "n2"},
+					Mount:   state.MountState{Hash: "m2"},
+				}
+				if err := persistFingerprints(k, fingerprints); err != nil {
+					t.Fatalf("persistFingerprints: %v", err)
 				}
 			},
 			want: func() state.HomeState {
 				w := seed()
 				w.EnvState = state.EnvState{Hash: "e2"}
 				w.SecretState = state.SecretState{Hash: "s2"}
-				return w
-			},
-		},
-		{
-			name: "persistNetworkState",
-			run: func(t *testing.T, k state.Key) {
-				t.Helper()
-				if err := persistNetworkState(k, state.NetworkState{Hash: "n2"}); err != nil {
-					t.Fatalf("persistNetworkState: %v", err)
-				}
-			},
-			want: func() state.HomeState {
-				w := seed()
 				w.NetworkState = state.NetworkState{Hash: "n2"}
-				return w
-			},
-		},
-		{
-			name: "persistMountState",
-			run: func(t *testing.T, k state.Key) {
-				t.Helper()
-				if err := persistMountState(k, state.MountState{Hash: "m2"}); err != nil {
-					t.Fatalf("persistMountState: %v", err)
-				}
-			},
-			want: func() state.HomeState {
-				w := seed()
 				w.MountState = state.MountState{Hash: "m2"}
 				return w
 			},
