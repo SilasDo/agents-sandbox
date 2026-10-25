@@ -492,6 +492,77 @@ func TestBuildImagePassesAgentVersionBuildArg(t *testing.T) {
 	}
 }
 
+// TestEnsureImageResolvesBaseDigestByQualifiedRef pins that the base image is
+// inspected and pulled under its registry-qualified reference, so resolving the
+// digest never depends on the engine's short-name resolution, while the recorded
+// BASE_IMAGE label keeps the familiar spelling the user configured.
+func TestEnsureImageResolvesBaseDigestByQualifiedRef(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	configpaths.WithMockConfigPaths(t)
+	orig := resolveAgentVersion
+	resolveAgentVersion = func(_ context.Context, _ agent.Agent, requested string) (string, error) {
+		return requested, nil
+	}
+	t.Cleanup(func() { resolveAgentVersion = orig })
+
+	const familiar = "debian:trixie-slim"
+	const qualified = "docker.io/library/debian:trixie-slim"
+
+	var inspected []string
+	var pulled string
+	var captured map[string]*string
+	m := &docker.MockDockerClient{}
+	m.ImageInspectFn = func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+		inspected = append(inspected, ref)
+		if ref == qualified && pulled == "" {
+			return client.ImageInspectResult{}, errors.New("no such image")
+		}
+		return client.ImageInspectResult{ID: "sha256:base"}, nil
+	}
+	m.ImagePullFn = func(_ context.Context, ref string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+		pulled = ref
+		return io.NopCloser(strings.NewReader("")), nil
+	}
+	m.ImageBuildFn = func(_ context.Context, _ io.Reader, opts client.ImageBuildOptions) (client.ImageBuildResult, error) {
+		captured = opts.BuildArgs
+		return client.ImageBuildResult{Body: io.NopCloser(bytes.NewReader(nil))}, nil
+	}
+	docker.WithDockerMock(t, m)
+
+	if _, err := EnsureImageWithClient(
+		context.Background(),
+		a,
+		[]byte("FROM "+familiar+"\nRUN echo hi\n"),
+		"test-project",
+		BuildOptions{Force: true, AgentVersion: "1.2.3"},
+		&termio.Mock{},
+	); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	qualifiedSeen, familiarSeen := false, false
+	for _, ref := range inspected {
+		switch ref {
+		case qualified:
+			qualifiedSeen = true
+		case familiar:
+			familiarSeen = true
+		}
+	}
+	if !qualifiedSeen {
+		t.Errorf("base image inspected as %q, want the qualified ref %q", inspected, qualified)
+	}
+	if familiarSeen {
+		t.Errorf("base image must not be resolved by short name; inspected %q", inspected)
+	}
+	if pulled != qualified {
+		t.Errorf("ImagePull ref = %q, want %q", pulled, qualified)
+	}
+	if base := captured["BASE_IMAGE"]; base == nil || *base != familiar+"@sha256:base" {
+		t.Errorf("BASE_IMAGE build arg = %v, want %q", base, familiar+"@sha256:base")
+	}
+}
+
 func TestEnsureImageReadsVersionAndEnvFromDocker(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	configpaths.WithMockConfigPaths(t)

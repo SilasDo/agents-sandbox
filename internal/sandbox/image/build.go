@@ -640,13 +640,15 @@ func Build(
 	return err
 }
 
-// baseImageRef returns the normalized image reference that backs the rendered
-// Dockerfile's final stage, i.e., the FROM the tool must inspect/pull for the
-// base label.
+// baseImageRef returns the registry-qualified image reference that backs the
+// rendered Dockerfile's final stage, i.e., the FROM the tool must inspect/pull
+// for the base label. Qualifying the registry keeps that pull independent of the
+// engine's short-name resolution, while the recorded label stays the familiar
+// spelling (see resolveBaseDigest).
 func baseImageRef(rendered []byte) string {
 	token := finalStageToken(rendered)
 	if ref, err := reference.ParseNormalizedNamed(token); err == nil {
-		return reference.FamiliarString(ref)
+		return ref.String()
 	}
 	return token
 }
@@ -660,7 +662,9 @@ func finalStageToken(rendered []byte) string {
 
 // resolveBaseDigest returns "<ref>@sha256:<digest>" for the base image, pulling
 // it first when not present locally. The FROM itself stays a tag so it floats;
-// the digest only records what the image was built from.
+// the digest only records what the image was built from. The reference is pulled
+// as given (registry-qualified), but the returned label uses the familiar
+// spelling, so the provenance label reads the way the user wrote the base.
 func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (string, error) {
 	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
 	if err != nil {
@@ -679,5 +683,16 @@ func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (strin
 			return "", fmt.Errorf("inspect pulled base image %s: %w", baseRef, err)
 		}
 	}
-	return baseRef + "@" + inspect.ID, nil
+	return familiarImageRef(baseRef) + "@" + inspect.ID, nil
+}
+
+// familiarImageRef strips the registry from a normalized image reference so the
+// recorded base label keeps the spelling a user knows (debian:trixie-slim rather
+// than docker.io/library/debian:trixie-slim).
+func familiarImageRef(ref string) string {
+	parsed, err := reference.ParseNormalizedNamed(ref)
+	if err != nil {
+		return ref
+	}
+	return reference.FamiliarString(parsed)
 }

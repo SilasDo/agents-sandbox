@@ -56,8 +56,8 @@ func TestRenderDockerfileManagedComposition(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	s := mustRender(t, a, nil, false)
 	for _, want := range []string{
-		"FROM debian:trixie-slim AS agents-sandbox-base",
-		"FROM debian:trixie-slim AS agents-sandbox-toolbase",
+		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base",
+		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase",
 		"FROM agents-sandbox-toolbase AS agents-sandbox-agent",
 		"FROM agents-sandbox-base AS agents-sandbox-runner",
 		"ARG OPENCODE_VERSION",
@@ -82,6 +82,26 @@ func TestRenderDockerfileManagedComposition(t *testing.T) {
 	}
 	if strings.Contains(s, "agents-sandbox-docker") {
 		t.Error("docker stage must be absent when docker is disabled")
+	}
+}
+
+// TestRenderDockerfileQualifiesDistroBase pins that the embedded managed-base
+// tools block and the tool base pull the distro image by its fully qualified
+// reference, so the build never depends on the engine's short-name resolution
+// configuration.
+func TestRenderDockerfileQualifiesDistroBase(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	s := mustRender(t, a, nil, false)
+	for _, want := range []string{
+		"FROM " + distroBaseRef + " AS " + baseStageAlias,
+		"FROM " + distroBaseRef + " AS " + toolbaseStageAlias,
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("rendered Dockerfile missing %q; got:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "FROM debian:trixie-slim") {
+		t.Error("the distro base must be pulled by its qualified reference")
 	}
 }
 
@@ -233,10 +253,10 @@ func TestRenderDockerfileStageOrder(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	s := mustRender(t, a, nil, true)
 	order := []string{
-		"FROM debian:trixie-slim AS agents-sandbox-toolbase",
+		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase",
 		"FROM agents-sandbox-toolbase AS agents-sandbox-agent",
 		"FROM agents-sandbox-toolbase AS agents-sandbox-docker",
-		"FROM debian:trixie-slim AS agents-sandbox-base",
+		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base",
 		"FROM agents-sandbox-base AS agents-sandbox-runner",
 	}
 	prev := -1
@@ -497,7 +517,7 @@ func TestRenderDockerfileToolStagesBuildOnToolbase(t *testing.T) {
 	project := []byte("FROM ubuntu:24.04\n")
 	s := mustRender(t, a, project, true)
 
-	if !strings.Contains(s, "FROM debian:trixie-slim AS agents-sandbox-toolbase") {
+	if !strings.Contains(s, "FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase") {
 		t.Errorf("render must emit the tool-owned tool base; got:\n%s", s)
 	}
 	if !strings.Contains(s, "apt-get install -y --no-install-recommends ca-certificates curl tar") {
@@ -588,7 +608,7 @@ func TestRenderDockerfileManagedBaseFrom(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM agents-sandbox/runner-base:latest\nRUN apt-get install -y tree\n")
 	s := mustRender(t, a, project, false)
-	if !strings.Contains(s, "FROM debian:trixie-slim AS agents-sandbox-base") {
+	if !strings.Contains(s, "FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base") {
 		t.Error("managed FROM must be replaced with the embedded base tools block")
 	}
 	if strings.Contains(s, "agents-sandbox/runner-base") {
@@ -837,18 +857,21 @@ func TestJoinBlocksSkipsEmpty(t *testing.T) {
 	}
 }
 
+// TestBaseImageRefComposition pins the registry-qualified reference the tool
+// inspects and pulls for the base, resolved through any stage aliases. The
+// label's familiar spelling is applied by resolveBaseDigest, covered separately.
 func TestBaseImageRefComposition(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	if got := baseImageRef(renderBytes(t, a, nil, false)); got != "debian:trixie-slim" {
-		t.Errorf("managed baseImageRef = %q, want debian:trixie-slim", got)
+	if got := baseImageRef(renderBytes(t, a, nil, false)); got != distroBaseRef {
+		t.Errorf("managed baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {
-		t.Errorf("custom baseImageRef = %q, want ubuntu:24.04", got)
+	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "docker.io/library/ubuntu:24.04" {
+		t.Errorf("custom baseImageRef = %q, want docker.io/library/ubuntu:24.04", got)
 	}
 	aliased := []byte("FROM fedora:latest AS base\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, aliased, false)); got != "fedora:latest" {
-		t.Errorf("aliased baseImageRef = %q, want fedora:latest", got)
+	if got := baseImageRef(renderBytes(t, a, aliased, false)); got != "docker.io/library/fedora:latest" {
+		t.Errorf("aliased baseImageRef = %q, want docker.io/library/fedora:latest", got)
 	}
 }
 
@@ -926,7 +949,7 @@ func TestRenderProjectDockerfileNoProjectFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderProjectDockerfile: %v", err)
 	}
-	if !strings.Contains(string(out), "FROM debian:trixie-slim AS agents-sandbox-base") {
+	if !strings.Contains(string(out), "FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base") {
 		t.Errorf("without a project Dockerfile the embedded debian base is used; got:\n%s", out)
 	}
 }
