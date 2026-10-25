@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/humanize"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
@@ -22,13 +23,13 @@ const (
 // under quiet, a structured value under --format json, or the default human
 // key/value block. Callers pass the identifier printed by quiet mode, the
 // human renderer, and the JSON DTO.
-func printInspect(ui termio.UI, mode listOutput, identifier string, human func(), jsonValue any) error {
+func printInspect(ui termio.UI, mode cliout.Mode, identifier string, human func(), jsonValue any) error {
 	switch mode {
-	case listOutputIdentifiers:
+	case cliout.ModeIdentifiers:
 		ui.Print(identifier)
-	case listOutputJSON:
-		return writeJSON(ui, jsonValue)
-	case listOutputTable:
+	case cliout.ModeJSON:
+		return cliout.WriteJSON(ui, jsonValue)
+	case cliout.ModeTable:
 		human()
 	}
 	return nil

@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/sandbox/storage"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -25,23 +26,23 @@ func buildDFCmd(ui termio.UI) *cobra.Command {
 			annotationAlsoAs: cmdStorage + " " + cmdDF,
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			mode, err := resolveListOutput(format, ui.Quiet())
+			mode, err := cliout.ResolveMode(format, ui.Quiet())
 			if err != nil {
 				return err
 			}
-			includeObjects := verbose || mode == listOutputJSON
+			includeObjects := verbose || mode == cliout.ModeJSON
 			report, err := storage.Observe(cmd.Context(), storage.Options{IncludeObjects: includeObjects})
 			if err != nil {
 				return fmt.Errorf("observe storage: %w", err)
 			}
 			switch mode {
-			case listOutputJSON:
-				return writeJSON(ui, newStorageReportJSON(report))
-			case listOutputIdentifiers:
+			case cliout.ModeJSON:
+				return cliout.WriteJSON(ui, newStorageReportJSON(report))
+			case cliout.ModeIdentifiers:
 				for _, category := range report.Categories {
 					ui.Print(storageDisplayName(category.Name))
 				}
-			case listOutputTable:
+			case cliout.ModeTable:
 				printStorageReport(ui, report, verbose)
 			}
 			return nil

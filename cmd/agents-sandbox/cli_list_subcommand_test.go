@@ -778,42 +778,4 @@ func TestListVolumesFormatUnknown(t *testing.T) {
 		func(_ *sandboxmsb.MockMsbClient) {}, nil, nil, true, "unsupported format")
 }
 
-func TestTruncateDigest(t *testing.T) {
-	full := "sha256:c9b7a85bcbd83f0eab313d091efe933c1608e952a082def11eb038841cb66375"
-	got := truncateDigest(full)
-	want := "sha256:c9b7a85bcbd8"
-	if got != want {
-		t.Errorf("truncateDigest() = %q, want %q", got, want)
-	}
-	if got := truncateDigest("sha256:abc"); got != "sha256:abc" {
-		t.Errorf("truncateDigest(short) = %q, want unchanged", got)
-	}
-}
-
-func TestSandboxListHeadersOrder(t *testing.T) {
-	want := []string{"NAME", "IMAGE", "STATUS", "CREATED"}
-	got := sandboxListHeaders()
-	if len(got) != len(want) {
-		t.Fatalf("sandboxListHeaders() = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("sandboxListHeaders()[%d] = %q, want %q (order must match msb)", i, got[i], want[i])
-		}
-	}
-}
-
 func int64PtrCLI(n int64) *int64 { return new(n) }
-
-func TestImageListHeadersOrder(t *testing.T) {
-	want := []string{"REFERENCE", "DIGEST", "SIZE", "CREATED"}
-	got := imageListHeaders()
-	if len(got) != len(want) {
-		t.Fatalf("imageListHeaders() = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("imageListHeaders()[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-}
