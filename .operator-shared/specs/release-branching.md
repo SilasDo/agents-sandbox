@@ -19,7 +19,23 @@ read_if: Deciding where a release tag or a fix lands, cutting a patch release fo
 
 ## Cutting a release
 
-The mechanics live in the release runbook (`AGENTS.md` points at it): the person cutting the
-release creates the branch and the tag — by pushing from the host or, when the maintainer asks,
-through `gh` — and then monitors CI through the published GitHub Release, the Homebrew bump PR,
-and the docs deploy.
+At a minor release the branch and the tag are created at the same commit — the merged `main` tip
+that carries the release commit. Through `gh`:
+
+```
+repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+sha=$(gh api "repos/$repo/commits/main" --jq .sha)
+gh api "repos/$repo/git/refs" -f ref="refs/heads/release/<major>.<minor>" -f sha="$sha"
+gh api "repos/$repo/git/refs" -f ref="refs/tags/vX.Y.Z" -f sha="$sha"
+```
+
+A patch release tags the tip of the existing `release/<major>.<minor>` branch instead:
+
+```
+sha=$(gh api "repos/$repo/commits/release/<major>.<minor>" --jq .sha)
+gh api "repos/$repo/git/refs" -f ref="refs/tags/vX.Y.Z" -f sha="$sha"
+```
+
+Either can be pushed from the host rather than through `gh`. CI then cross-compiles the targets,
+publishes the GitHub Release, and opens the Homebrew bump PR; verify the release artifacts, the
+bump PR, and the docs deploy.
