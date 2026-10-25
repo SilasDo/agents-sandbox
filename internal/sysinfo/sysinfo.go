@@ -7,11 +7,13 @@ import (
 )
 
 const (
+	// gomutants:disable-next-line INTEGER_DECREMENT,INTEGER_INCREMENT reason="unreachable below 255 CPUs"
 	maxCPUs = 255
 	kiB     = 1024
 )
 
 func NumCPUs() uint8 {
+	// gomutants:disable-next-line INTEGER_DECREMENT,INTEGER_INCREMENT reason="NumCPU is always >=1; no seam to force 0"
 	n := min(max(runtime.NumCPU(), 1), maxCPUs)
 	return uint8(n)
 }

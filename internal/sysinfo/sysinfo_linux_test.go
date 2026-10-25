@@ -23,6 +23,26 @@ func TestTotalMemoryGiB(t *testing.T) {
 		}
 	})
 
+	t.Run("divisor 1023-sensitive", func(t *testing.T) {
+		// 2093058 kB = 1 GiB (floor); a 1023*1023 divisor would report 2.
+		if err := os.WriteFile(procMeminfoPath, []byte("MemTotal: 2093058 kB\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := TotalMemoryGiB(); got != 1 {
+			t.Errorf("TotalMemoryGiB() = %d, want 1 (2093058 kB / 1024 / 1024)", got)
+		}
+	})
+
+	t.Run("divisor 1025-sensitive", func(t *testing.T) {
+		// 2097152 kB = 2 GiB; a 1025*1025 divisor would report 1.
+		if err := os.WriteFile(procMeminfoPath, []byte("MemTotal: 2097152 kB\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := TotalMemoryGiB(); got != 2 {
+			t.Errorf("TotalMemoryGiB() = %d, want 2 (2097152 kB / 1024 / 1024)", got)
+		}
+	})
+
 	t.Run("read error", func(t *testing.T) {
 		procMeminfoPath = filepath.Join(dir, "does-not-exist")
 		if got := TotalMemoryGiB(); got != 0 {
