@@ -29,7 +29,7 @@ jobs:
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.14
+          version: v2.15
           args: ./...
       # Compile every package including build-tagged files (`integration`) so a
       # tagged-only compile regression fails on PRs, not just on main/releases.

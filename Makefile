@@ -8,11 +8,11 @@ ZIG_TARGET ?=
 PLANTUML ?= plantuml
 # keep in sync with versions in .agents-sandbox/Dockerfile
 GO_VERSION = $(shell cat .go-version)
-GOLANGCI_LINT_VERSION = 2.14.0
+GOLANGCI_LINT_VERSION = 2.15.0
 ZIG_VERSION ?= 0.17.0
 GOTESTSUM_VERSION = 1.13.0
 GOVULNCHECK_VERSION = v1.9.0
-GOMUTANTS_VERSION = v0.7.1
+GOMUTANTS_VERSION = v0.7.2
 DEADCODE_VERSION = v0.52.0
 # Per-binary cap for the unit suite: a wedged test panics with a stack dump
 # instead of blocking for go test's default 10m. Override for a slow machine.

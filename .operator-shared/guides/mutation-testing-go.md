@@ -14,7 +14,7 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 | | gomutants | gremlins | go-mutesting (avito) | go-mutesting (zimmski) | ooze | gomu |
 |---|---|---|---|---|---|---|
 | `go run <root>@<ver>` | ✅ root `main.go` — **works** | ❌ root is a library; must use `/cmd/gremlins` | ❌ `/cmd/go-mutesting` | ❌ `/cmd/go-mutesting` | ❌ library only | ❌ `/cmd/gomu` |
-| Latest tag / module path | `v0.7.1`, root pkg | `v0.6.0`, `cmd/gremlins` | `v2.3.1` — **unusable** (no `/v2`), pin pseudo-version | no tags (pseudo `v0.0.0-2021…`) | `v0.2.0` | `v0.3.0`, `cmd/gomu` |
+| Latest tag / module path | `v0.7.2`, root pkg | `v0.6.0`, `cmd/gremlins` | `v2.3.1` — **unusable** (no `/v2`), pin pseudo-version | no tags (pseudo `v0.0.0-2021…`) | `v0.2.0` | `v0.3.0`, `cmd/gomu` |
 | Per-package scope | package patterns (`./internal/foo`) | one path arg (subtree) | targets (dirs/pkg) | targets (dirs/pkg) | package of the test file | one path arg |
 | Go supported (go.mod) | `go 1.26.10` | `go 1.25.0` | `go 1.27` | `go 1.10` | `go 1.25` | `go 1.26.0` |
 | Maintenance (as of 2026-10-21) | pushed 2026-10-21, 13★, 3 open | pushed 2026-06-26, 448★, 64 open | pushed 2026-10-02, 279★, 25 open | pushed 2024-07-04, 43 open | pushed 2026-10-13, 290★ | pushed 2026-10-18, 46★ |
@@ -27,9 +27,9 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 ## gomutants
 
 - Repo `github.com/gomutants/gomutants`; module root package is `main`. `go install github.com/gomutants/gomutants@<ver>` is the documented install, and the Claude plugin "falls back to `go run github.com/gomutants/gomutants@latest`" ([README](https://github.com/gomutants/gomutants)).
-- **`go run github.com/gomutants/gomutants@v0.7.1 --help` works** here on go1.27.1 (downloaded and printed usage). `go.mod` requires only `gopkg.in/yaml.v3`, `go 1.26.10` ([go.mod](https://raw.githubusercontent.com/gomutants/gomutants/main/go.mod)); "The minimum supported version of Go for gomutants is **1.26**" ([README](https://github.com/gomutants/gomutants)).
+- **`go run github.com/gomutants/gomutants@v0.7.2 --help` works** here on go1.27.1 (downloaded and printed usage). `go.mod` requires only `gopkg.in/yaml.v3`, `go 1.26.10` ([go.mod](https://raw.githubusercontent.com/gomutants/gomutants/main/go.mod)); "The minimum supported version of Go for gomutants is **1.26**" ([README](https://github.com/gomutants/gomutants)).
 - Per-package: usage is `gomutants [flags] <package patterns>`, e.g. `gomutants ./internal/mypackage` or `gomutants -v ./internal/foo` ([README](https://github.com/gomutants/gomutants)); package patterns are positional.
-- Scope to changed lines: `--changed-since <ref>` keeps only mutants on lines added/modified vs `git diff --unified=0 --merge-base <ref>`, includes uncommitted edits to tracked files, and requires a **new** file to be `git add`ed to be visible. On a shallow clone (no reachable merge base) it fails with a hint rather than silently widening. **The flag is `--changed-since` in the pinned v0.7.1** — verified by running `go run github.com/gomutants/gomutants@v0.7.1 --changed-since v0.5.0 --dry-run ./internal/humanize` (works) and `-n v0.5.0` (`flag provided but not defined: -n`, exit 2). An earlier verbal summary said `-n`; it is wrong for this pin ([README](https://github.com/gomutants/gomutants), [flags.go](https://github.com/gomutants/gomutants/blob/main/flags.go)).
+- Scope to changed lines: `--changed-since <ref>` keeps only mutants on lines added/modified vs `git diff --unified=0 --merge-base <ref>`, includes uncommitted edits to tracked files, and requires a **new** file to be `git add`ed to be visible. On a shallow clone (no reachable merge base) it fails with a hint rather than silently widening. **The flag is `--changed-since` in the pinned v0.7.2** — verified by running `go run github.com/gomutants/gomutants@v0.7.2 --changed-since v0.5.0 --dry-run ./internal/humanize` (works) and `-n v0.5.0` (`flag provided but not defined: -n`, exit 2). An earlier verbal summary said `-n`; it is wrong for this pin ([README](https://github.com/gomutants/gomutants), [flags.go](https://github.com/gomutants/gomutants/blob/main/flags.go)).
 - Output/triage: JSON report by default (`--output`/`-o`, default `mutation-report.json`), plus `--stryker-output`, `--html-output`, `--annotations github`; statuses `KILLED`, `LIVED`, `NOT COVERED`, `NOT VIABLE`, `TIMED OUT`, `INFRA ERROR`, `EQUIVALENT`; `--list-mutators`. Equivalent/uninteresting mutants are recorded via inline `// gomutants:disable`, `disable-next-line`, `disable-func`, `disable-regexp` and call-site `--exclude-calls` globs ([README](https://github.com/gomutants/gomutants)).
 - Applied by `go test -overlay` — "the source tree is never rewritten" ([README](https://github.com/gomutants/gomutants)). Speed features: content-addressed cache, per-test coverage routing, adaptive per-mutant timeouts. The README's own benchmarks put it ~1.5–1.8× faster than gremlins on medium single-package targets (self-reported; treat as a claim).
 - `-race`: forwarded through `--test-flags` (build flags such as `-race` go to the compile). `-overlay`, `-c` and `-args` are gomutants-managed and not forwarded; `-o`/`--output` is gomutants' own JSON report path (default `mutation-report.json`), not a pass-through to the inner `go test` ([README](https://github.com/gomutants/gomutants), `--help`).
@@ -84,7 +84,7 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 The canonical target lives in `.operator-shared/specs/mutation-testing.md`; its shape is:
 
 ```make
-GOMUTANTS_VERSION = v0.7.1
+GOMUTANTS_VERSION = v0.7.2
 
 # On-demand mutation testing. Never part of check/verify/CI.
 #   make mutation                        # whole module, lines changed since the last release tag

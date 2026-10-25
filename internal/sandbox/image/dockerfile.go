@@ -167,7 +167,7 @@ func computeDockerfileID(rendered []byte, agentVersion string) string {
 // not provide, while v24 (no libatomic on x86_64/arm64) satisfies every npm
 // agent (#132).
 const (
-	nodeVersion   = "v24.21.0"
+	nodeVersion   = "v24.22.1"
 	dockerVersion = "29.7.2"
 )
 
