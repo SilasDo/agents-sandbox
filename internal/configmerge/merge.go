@@ -83,6 +83,10 @@ func deepMerge(base, override map[string]any) map[string]any {
 	return result
 }
 
+// readDir is overridable so tests can exercise the partial-read error path
+// without provoking a real directory-read fault.
+var readDir = os.ReadDir
+
 // scanSnippets reads every file whose basename matches pattern across dirs and
 // returns a single deep-merged map plus the ordered list of source files that
 // produced it. Directory order is user first then project; within a directory
@@ -96,8 +100,9 @@ func scanSnippets(dirs []string, pattern string) (map[string]any, []string) {
 		if dir == "" {
 			continue
 		}
-		entries, err := os.ReadDir(dir)
-		// gomutants:disable-next-line BRANCH_IF reason="os.ReadDir returns nil entries on error, so the sort and the range below are no-ops either way"
+		entries, err := readDir(dir)
+		// readDir (os.ReadDir) can return the entries it read before an
+		// error; those partial entries must be discarded, not merged.
 		if err != nil {
 			continue
 		}

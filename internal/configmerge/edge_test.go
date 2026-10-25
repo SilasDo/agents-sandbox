@@ -2,6 +2,7 @@ package configmerge
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -94,6 +95,31 @@ func TestScanSnippetsReturnsNonNilEmptyMap(t *testing.T) {
 	}
 	if merged == nil {
 		t.Error("merged = nil, want a non-nil empty map")
+	}
+	if len(merged) != 0 {
+		t.Errorf("merged = %v, want empty", merged)
+	}
+}
+
+func TestScanSnippetsSkipsDirectoryOnPartialReadError(t *testing.T) {
+	dir := t.TempDir()
+	writeSnippet(t, dir, "opencode-a.json", `{"a": 1}`)
+
+	// os.ReadDir can return the entries it read before an error. Removing the
+	// guard would merge that partial entry instead of skipping the directory.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restore := readDir
+	readDir = func(string) ([]os.DirEntry, error) {
+		return entries, errors.New("partial read")
+	}
+	t.Cleanup(func() { readDir = restore })
+
+	merged, sources := scanSnippets([]string{dir}, "opencode*.json*")
+	if len(sources) != 0 {
+		t.Errorf("sources = %v, want none", sources)
 	}
 	if len(merged) != 0 {
 		t.Errorf("merged = %v, want empty", merged)
