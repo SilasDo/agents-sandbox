@@ -447,6 +447,7 @@ The review also surfaced an unrelated **latent race in `internal/sandbox/state.A
 `CountActiveClients` removed any file it could lock, so a poll landing between create and flock deleted the
 lease and the live client became invisible. This made
 `internal/sandbox/session.TestReapOnLastClient_ClientReattachesDuringWait` hang to its 10-minute timeout on
-CI. Fixed separately in #298: `CountActiveClients` counts an unlocked lease whose mtime is younger than a
-grace window (1s) as live and keeps it, and removes an unlocked lease only once it is older than the window
-(a crashed client's leftover), so a client mid-create can never be unlinked.
+CI. Fixed separately in #298: `CountActiveClients` counts an unlocked lease younger than a grace window
+(1s) as live, and removes an older one only while holding its own probe lock; `AcquireClientLease`
+re-checks with `sameFile` after locking and retries on a fresh name when a poll unlinked the file first,
+so a lease is never left locked on an anonymous inode.

@@ -196,10 +196,9 @@ func TestCountActiveClients_CountsFreshUnlockedLockFile(t *testing.T) {
 // TestCountActiveClients_AcquireVsCountRace exercises the real acquire-vs-count
 // race: a goroutine hammers CountActiveClients while the main goroutine
 // repeatedly acquires a lease and checks it is visible immediately after
-// acquisition. Before the grace window this failed probabilistically (the
-// hammer could unlink the file between AcquireClientLease's create and flock,
-// leaving the client invisible); with the grace window the fresh file is counted
-// and the invariant holds every iteration. Bounded so it stays fast in CI.
+// acquisition. The hammer never unlinks a fresh lease (counted as mid-create),
+// and even a lease it did unlink is re-created by AcquireClientLease's sameFile
+// retry, so the invariant holds every iteration. Bounded so it stays fast in CI.
 func TestCountActiveClients_AcquireVsCountRace(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -310,6 +309,65 @@ func TestAcquireClientLease_OpenFileFailure(t *testing.T) {
 
 	if _, err := AcquireClientLease(k); err == nil {
 		t.Fatal("expected error when the lock file cannot be opened")
+	}
+}
+
+func TestAcquireClientLease_FlockErrorSurfaces(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	clientLeaseOpened = func(f *os.File, _ string) { _ = f.Close() }
+	t.Cleanup(func() { clientLeaseOpened = nil })
+
+	if _, err := AcquireClientLease(Key{Slug: "leaseflockproj", Agent: "opencode"}); err == nil {
+		t.Fatal("expected a flock error to surface")
+	}
+}
+
+// TestAcquireClientLease_RetriesThenSucceeds pins the Greptile P1 on #299: a
+// CountActiveClients poll can unlink the lease in the create-to-lock window, and
+// the acquirer must not keep the lock on the now-anonymous inode. It re-checks
+// the directory entry with sameFile and retries on a fresh name.
+func TestAcquireClientLease_RetriesThenSucceeds(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := Key{Slug: "leaseretryproj", Agent: "opencode"}
+
+	attempts := 0
+	clientLeaseOpened = func(_ *os.File, path string) {
+		attempts++
+		if attempts == 1 {
+			_ = os.Remove(path)
+		}
+	}
+	t.Cleanup(func() { clientLeaseOpened = nil })
+
+	release, err := AcquireClientLease(k)
+	if err != nil {
+		t.Fatalf("AcquireClientLease: %v", err)
+	}
+	defer release()
+
+	if attempts != 2 {
+		t.Fatalf("expected 2 attempts (one removal, then success), got %d", attempts)
+	}
+	if got := CountActiveClients(k); got != 1 {
+		t.Fatalf("CountActiveClients = %d, want 1 after the retry", got)
+	}
+}
+
+func TestAcquireClientLease_ErrorsWhenUnlinkedEveryAttempt(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	attempts := 0
+	clientLeaseOpened = func(_ *os.File, path string) {
+		attempts++
+		_ = os.Remove(path)
+	}
+	t.Cleanup(func() { clientLeaseOpened = nil })
+
+	if _, err := AcquireClientLease(Key{Slug: "leaseraceproj", Agent: "opencode"}); err == nil {
+		t.Fatal("a lease file removed under every attempt must not be handed out")
+	}
+	if attempts != 5 {
+		t.Fatalf("expected 5 attempts before giving up, got %d", attempts)
 	}
 }
 
