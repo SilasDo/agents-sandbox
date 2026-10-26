@@ -213,6 +213,33 @@ func TestBuildPruneState_AgeZero(t *testing.T) {
 	}
 }
 
+func TestBuildPruneStateRecordsAge(t *testing.T) {
+	msb.WithMsbMock(t, &msb.MockMsbClient{})
+
+	pruneState, err := buildPruneState(context.Background(), 24*time.Hour)
+	if err != nil {
+		t.Fatalf("buildPruneState: %v", err)
+	}
+	if pruneState.Age != 24*time.Hour {
+		t.Errorf("Age = %v, want the prune threshold carried for image retention", pruneState.Age)
+	}
+
+	// The threshold is carried even when the snapshot fails, so a caller that
+	// reports the error still sees the age it asked for.
+	msb.WithMsbMock(t, &msb.MockMsbClient{
+		ListSandboxesFn: func(_ context.Context, _ map[string]string) ([]msb.SandboxHandle, error) {
+			return nil, errBoom
+		},
+	})
+	pruneState, err = buildPruneState(context.Background(), 7*24*time.Hour)
+	if !errors.Is(err, errBoom) {
+		t.Fatalf("buildPruneState error = %v, want %v", err, errBoom)
+	}
+	if pruneState.Age != 7*24*time.Hour {
+		t.Errorf("Age on the error return = %v, want the prune threshold", pruneState.Age)
+	}
+}
+
 func TestBuildPruneState_SkipsUnparseableName(t *testing.T) {
 	client := &msb.MockMsbClient{
 		Sandboxes: []msb.SandboxHandle{

@@ -42,10 +42,12 @@ checkout and the worktrees *inside* it share everything, while a worktree *outsi
 
 The artifacts a project owns — its project VM (`<checkout-slug>-<agent>`), transient task sandboxes
 (`<checkout-slug>-<agent>-<nanos>`), home volume (`<checkout-slug>-<agent>-<timestamp>`) and microsandbox image reference
-(`<checkout-slug>:<agent>-latest`) — carry no vendor prefix. (The Docker image tag keeps the
+(`<checkout-slug>:<agent>.<contentid>`, keyed by the image content so a project's variants coexist) — carry no vendor
+prefix. (The Docker image tag keeps the
 `agents-sandbox/runner-` prefix so it stays distinguishable in the system Docker daemon; see
 [Runner Image]({% link runner-image.md %}).) Artifacts created by an earlier version keep their `agents-sandbox-…`
-prefix and are still found and reused, never rebuilt or reimported; only newly created artifacts use the prefix-free
+prefix — including a 0.6.0 microsandbox image cached under the prefix-free name form `<checkout-slug>:<agent>-latest` —
+and are still found and reused, never rebuilt or reimported; only newly created artifacts use the prefix-free
 names, so a reused legacy VM is renamed to the new scheme the next time it is recreated.
 
 The first run after upgrading from a version that keyed everything by the origin slug migrates automatically, with a

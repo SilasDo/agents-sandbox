@@ -7,11 +7,14 @@ import (
 
 // ArtifactInfo is the result of an artifact name parse operation. Task is true
 // for a transient task sandbox, whose name ends in an all-digit nanos segment.
+// ContentID carries the content id of a content-addressed runner image
+// reference; it is empty for every other artifact.
 type ArtifactInfo struct {
-	Slug   string
-	Digest string
-	Agent  string
-	Task   bool
+	Slug      string
+	Digest    string
+	Agent     string
+	ContentID string
+	Task      bool
 }
 
 // TaskSandboxName returns the prefix-free task sandbox name for a slug, agent
@@ -31,6 +34,16 @@ func HomeVolumeName(slug, agent, timestamp string) string {
 // It is the builder counterpart to ParseImageTag.
 func RunnerImageRef(slug, agent string) string {
 	return slug + ":" + agent + "-latest"
+}
+
+// ContentImageRef returns the content-addressed microsandbox runner image
+// reference for a project slug, agent and content id, e.g.
+// "myproject-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31". The content id keys the
+// image to its content so a project's variants coexist in the microsandbox
+// cache; RunnerImageRef stays the name form. It is the builder counterpart to
+// ParseImageTag.
+func ContentImageRef(slug, agent, contentID string) string {
+	return slug + ":" + agent + "." + contentID
 }
 
 // DockerImageRef returns the Docker tag for a project slug and agent. It is also
@@ -101,24 +114,25 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// gomutants:disable-next-line BRANCH_IF reason="without a ':' CutLast returns before==remainder and after=='', so falling through yields the same slug-only (or foreign-zero) result this branch computes"
 	if !ok {
 		if !prefixed && !looksLikeProjectSlug(remainder) {
-			// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
-			return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+			return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 		}
-		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	tag := after
 	slug := before
 	if !prefixed && !looksLikeProjectSlug(slug) {
-		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
-		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	if agent, ok := strings.CutSuffix(tag, "-latest"); ok {
-		return ArtifactInfo{Slug: slug, Agent: agent, Digest: "", Task: false}
+		return ArtifactInfo{Slug: slug, Agent: agent, Digest: "", ContentID: "", Task: false}
+	}
+	if agent, contentID, ok := strings.Cut(tag, "."); ok && contentID != "" {
+		return ArtifactInfo{Slug: slug, Agent: agent, ContentID: contentID, Digest: "", Task: false}
 	}
 	if tag != "latest" {
-		return ArtifactInfo{Slug: slug, Digest: tag, Agent: "", Task: false}
+		return ArtifactInfo{Slug: slug, Digest: tag, Agent: "", ContentID: "", Task: false}
 	}
-	return ArtifactInfo{Slug: slug, Digest: "", Agent: "", Task: false}
+	return ArtifactInfo{Slug: slug, Digest: "", Agent: "", ContentID: "", Task: false}
 }
 
 // looksLikeProjectSlug reports whether s could be a project slug. A slug is a
@@ -214,24 +228,25 @@ func parseLegacyOrFullSandbox(name string, prefixLen int, task bool) ArtifactInf
 func parseSandboxBody(remainder string, task bool) (ArtifactInfo, bool) {
 	hashStart := findHashSuffix(remainder)
 	if hashStart == -1 {
-		return ArtifactInfo{Slug: remainder, Task: task, Digest: "", Agent: ""}, false
+		return ArtifactInfo{Slug: remainder, Task: task, Digest: "", Agent: "", ContentID: ""}, false
 	}
 	folderName := remainder[:hashStart-1]
 	hash := remainder[hashStart : hashStart+14]
 	slug := folderName + "-" + hash
 	rest := remainder[hashStart+14:]
 	// The hash is hyphen-delimited, so rest is empty or begins with '-'; a bare
-	// "-" carries no agent.
 	// gomutants:disable-next-line INTEGER_DECREMENT reason="the only one-character rest is \"-\", which falls through to the same slug-only result this early return produces"
 	if len(rest) < 2 {
-		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}, true
+		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: "", ContentID: ""}, true
 	}
 	rest = rest[1:]
 	parts := strings.Split(rest, "-")
 	if len(parts) > 1 && allDigits(parts[len(parts)-1]) {
-		return ArtifactInfo{Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Task: true, Digest: ""}, true
+		return ArtifactInfo{
+			Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Task: true, Digest: "", ContentID: "",
+		}, true
 	}
-	return ArtifactInfo{Slug: slug, Agent: rest, Task: task, Digest: ""}, true
+	return ArtifactInfo{Slug: slug, Agent: rest, Task: task, Digest: "", ContentID: ""}, true
 }
 
 // ParseHomeVolumeName extracts the slug, optional digest, and agent from a home
@@ -253,8 +268,7 @@ func ParseHomeVolumeName(name string) ArtifactInfo {
 		if info, anchored := parseHomeVolumeBody(name, false); anchored {
 			return info
 		}
-		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
-		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	default:
 		return parseHomeVolumeRemainder(name, false)
 	}
@@ -281,12 +295,11 @@ func parseHomeVolumeBody(remainder string, prefixed bool) (ArtifactInfo, bool) {
 func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// gomutants:disable-next-line BRANCH_IF reason="an empty remainder finds no hash and, prefixed or not, the fall-through returns the same zero ArtifactInfo this branch returns"
 	if remainder == "" {
-		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
-		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	if hashStart := findHashSuffix(remainder); hashStart != -1 {
 		if slug, digest, ok := legacyDigestName(remainder, hashStart); ok {
-			return ArtifactInfo{Slug: slug, Digest: digest, Agent: "", Task: false}
+			return ArtifactInfo{Slug: slug, Digest: digest, Agent: "", ContentID: "", Task: false}
 		}
 		folderName := remainder[:hashStart-1]
 		hash := remainder[hashStart : hashStart+14]
@@ -295,21 +308,22 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 		parts := strings.Split(tail, "-")
 		last := parts[len(parts)-1]
 		if isHomeTimestamp(last) {
-			return ArtifactInfo{Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Digest: "", Task: false}
+			return ArtifactInfo{
+				Slug: slug, Agent: strings.Join(parts[:len(parts)-1], "-"), Digest: "", ContentID: "", Task: false,
+			}
 		}
-		return ArtifactInfo{Slug: slug, Digest: last, Agent: "", Task: false}
+		return ArtifactInfo{Slug: slug, Digest: last, Agent: "", ContentID: "", Task: false}
 	}
 	// A prefix-free home volume always embeds the project-slug hash; without it
 	// the name is not ours.
 	if !prefixed {
-		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
-		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	// No embedded hash: the positional split still recognises the legacy digest
 	// names.
 	parts := strings.Split(remainder, "-")
 	if len(parts) < 2 {
-		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", Task: false}
+		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	last := parts[len(parts)-1]
 	if isHomeTimestamp(last) {
@@ -322,13 +336,14 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 				slugParts = parts[:len(parts)-2]
 			}
 		}
-		return ArtifactInfo{Slug: strings.Join(slugParts, "-"), Agent: agent, Digest: "", Task: false}
+		return ArtifactInfo{Slug: strings.Join(slugParts, "-"), Agent: agent, Digest: "", ContentID: "", Task: false}
 	}
 	return ArtifactInfo{
-		Slug:   strings.Join(parts[:len(parts)-1], "-"),
-		Digest: last,
-		Agent:  "",
-		Task:   false,
+		Slug:      strings.Join(parts[:len(parts)-1], "-"),
+		Digest:    last,
+		Agent:     "",
+		ContentID: "",
+		Task:      false,
 	}
 }
 

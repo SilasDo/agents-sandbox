@@ -274,8 +274,8 @@ The full per-group contract, as the slices deliver it.
 - `image inspect <ref>` — Slice 3.
 - `image remove <ref>...` (`rm`) — Slice 4; hard-refuses non-runner references,
   in-use guard overridable by `-f/--force`.
-- `image prune` **exists** (extended) — keeps per-agent `-latest` tags and
-  in-use images. Gains `--yes`, `--format json`, and `-q`.
+- `image prune` **exists** (extended) — keeps a live project's variants used
+  within the prune age and in-use images. Gains `--yes`, `--format json`, and `-q`.
 - `image pull`/`load`/`save` **excluded** — runner images are built, not moved.
 
 `sandbox`:

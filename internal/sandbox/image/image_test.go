@@ -748,11 +748,12 @@ func TestEnsureLoadedDecision(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			configpaths.WithMockConfigPaths(t)
+			hostInspected := false
 			docker.WithDockerMock(t, &docker.MockDockerClient{
 				ImageInspectFn: func(
 					_ context.Context, _ string, _ ...client.ImageInspectOption,
 				) (client.ImageInspectResult, error) {
-					t.Error("EnsureLoaded must not inspect host Docker")
+					hostInspected = true
 					return client.ImageInspectResult{}, nil
 				},
 				ImageSaveFn: func(
@@ -774,6 +775,9 @@ func TestEnsureLoadedDecision(t *testing.T) {
 			}
 			if _, err := EnsureLoaded(context.Background(), msbClient, tc.info, &termio.Mock{}); err != nil {
 				t.Fatalf("EnsureLoaded: %v", err)
+			}
+			if hostInspected {
+				t.Error("EnsureLoaded must decide from the microsandbox cache alone, never inspecting host Docker")
 			}
 			if len(msbClient.LoadedImages) != tc.wantLoadCount {
 				t.Errorf(

@@ -2,6 +2,7 @@ package pruning
 
 import (
 	"context"
+	"time"
 
 	"github.com/moby/moby/client"
 
@@ -19,12 +20,12 @@ type ImageReport struct {
 	Details            []StaleEntry
 }
 
-// PruneImages prunes MSB runner-image references that are no longer referenced
-// by a live slug, then asks microsandbox to reclaim unreferenced image data.
-// Kept are per-agent "-latest" tags and any image a kept sandbox still
-// references, plus host-side dangling Docker images. Ownership is positional
-// (see ListImages), so a reference is a runner image when ParseImageTag resolves
-// it to a single-segment slug.
+// PruneImages prunes MSB runner-image references that a live project no longer
+// needs, then asks microsandbox to reclaim unreferenced image data. Retained are
+// the refs a kept sandbox still holds and a live project's cached variants used
+// within the prune age, plus host-side dangling Docker images. Ownership is
+// positional (see ListImages), so a reference is a runner image when
+// ParseImageTag resolves it to a single-segment slug.
 func PruneImages(
 	ctx context.Context,
 	pruneState PruneState,
@@ -54,12 +55,17 @@ func PruneImages(
 			}
 		}
 		report.MSBImagesPruned++
+		digest := imageArtifact.Digest
+		if digest == "" {
+			// A content ref has no legacy digest; report which variant went.
+			digest = imageArtifact.ContentID
+		}
 		report.Details = append(report.Details, StaleEntry{
 			Type:     StaleTypeMsbImage,
 			Name:     ref,
 			StaleFor: 0,
 			Slug:     imageArtifact.Slug,
-			Digest:   imageArtifact.Digest,
+			Digest:   digest,
 		})
 	}
 	if !dryRun {
@@ -72,9 +78,11 @@ func PruneImages(
 }
 
 // keepImage reports whether an msb image reference of a live slug should be
-// retained: images referenced by a kept sandbox are always retained, per-agent
-// "-latest" tags are the current image for that agent; every other ref is
-// surplus (orphaned content or pre-redesign digest refs).
+// retained. A ref a kept sandbox still holds is always retained. Otherwise the
+// ref is a cached variant of the project's runner image: it survives while its
+// (slug, agent) key is live and it was used within the prune age. Everything
+// else — a dead key's refs, an aged-out variant, an agent-less digest ref — is
+// surplus.
 func keepImage(imageHandle msb.ImageHandle, pruneState PruneState, keptImageRefs map[string]struct{}) bool {
 	ref := imageHandle.Reference()
 	if _, used := keptImageRefs[ref]; used {
@@ -88,9 +96,21 @@ func keepImage(imageHandle msb.ImageHandle, pruneState PruneState, keptImageRefs
 	if _, pruned := pruneState.ToPrune[key]; pruned {
 		return false
 	}
-	// A parsed agent implies a per-agent "-latest" tag, so the suffix test is
-	// implied by the agent check and would be an unkillable redundant operand.
-	return artifact.Agent != ""
+	return artifact.Agent != "" && imageWithinAge(imageHandle, pruneState.Age)
+}
+
+// imageWithinAge reports whether an image was used within the prune age, falling
+// back to its creation time when it was never used. A zero age disables the
+// recency rule and a zero timestamp counts as not-within-age.
+func imageWithinAge(imageHandle msb.ImageHandle, age time.Duration) bool {
+	if age <= 0 {
+		return false
+	}
+	used := imageHandle.LastUsedAt()
+	if used.IsZero() {
+		used = imageHandle.CreatedAt()
+	}
+	return time.Since(used) < age
 }
 
 // referencedImages collects the image references that kept sandboxes currently
