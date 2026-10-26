@@ -1,0 +1,138 @@
+---
+description: Contract for keying the microsandbox runner-image cache by image content instead of a constant name/reference, so a project's image variants (docker on/off, agent bumps, body edits) coexist in msb and toggling reimports nothing; the Docker tag stays stable, ParseImageTag round-trips the content suffix, and prune retains a live project's variants by age and reclaims a pruned project's.
+read_if: Changing the msb runner-image reference (`naming.RunnerImageRef`, `ParseImageTag`), `image.EnsureImageWithClient`/`EnsureLoaded` and the load decision, `state.ImageReferences`, `pruning.PruneImages`/`keepImage` image retention, or diagnosing an unexpected `loading image ... into microsandbox` on a `run`/`shell`.
+---
+
+# Content-addressed runner-image references
+
+Tracking issue: [inoio/agents-sandbox#322](https://github.com/inoio/agents-sandbox/issues/322).
+
+## Problem
+
+The microsandbox runner-image cache holds **one manifest per reference**, and the reference is a constant derived from the
+project and agent: `naming.RunnerImageRef(slug, agent)` → `<slug>:<agent>-latest`. The Docker tag is a different constant
+string (`<DockerImagePrefix>` + the same). So the cache key is a *name*, not the content.
+
+Any input change that is not the Docker tag — `--docker` on/off, an agent-version bump, a project-Dockerfile edit, a base
+tag move — rebuilds the image under the same name. `EnsureLoaded` then sees the msb-cached digest differ from the freshly
+built Docker image ID and reimports (`ImageSave` from Docker, `ImageLoad` into msb). Alternating `--docker` reimports the
+whole image on every run, which is the reported symptom; the same happens for any other content change.
+
+## Contract
+
+The msb reference becomes a deterministic function of the image **content**; the Docker tag stays a stable name.
+
+### Reference shape
+
+- **msb reference (content-addressed):** `<slug>:<agent>.<contentid>`, e.g.
+  `myproject-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31`. `<contentid>` is a short, lowercase, filesystem-safe encoding of
+  the image content identity: the Docker image ID (the `sha256:` config digest, which equals the msb config digest) with
+  the `sha256:` prefix stripped, truncated to a fixed-length prefix (16 hex chars is the working choice; collision risk
+  within one project is negligible). The `:` and any `sha256:` prefix must not appear, because the reference is
+  `<slug>:<tag>` and the tag charset is `[A-Za-z0-9._-]`.
+- The `.` separates the agent from the content id. Agent names are `[a-z0-9-]` (`opencode`, `opencode2`, `pi`,
+  `claude-code`), so `.` is unambiguous and round-trips.
+- **Docker tag (unchanged, stable):** `naming.DockerImageRef(slug, agent)` → `<DockerImagePrefix><slug>:<agent>-latest`.
+  Only the msb reference is content-addressed; the Docker tag keeps holding the latest build for the project/agent (Docker
+  retags cheaply, and `buildDecision`/`docker.ImageInspect`/`ImageSave`/`readImageInfoFromDocker` keep working unchanged).
+
+`image.EnsureImageWithClient` sets `ImageInfo.Ref` from the inspected Docker image ID (it already inspects the built image
+for `Digest`), not from `naming.RunnerImageRef`. `ImageInfo.DockerTag` stays the Docker tag. A preview (`--dry-run`) keeps
+reporting the Docker tag, which is known before the build; the content ref is not knowable pre-build and is not previewed.
+
+### Load decision and migration
+
+`EnsureLoaded` keeps its rule — load only when neither cached reference already holds `info.Digest` — but the set of
+candidate references expands so an upgrade reimports nothing:
+
+1. The content ref `info.Ref`.
+2. The prefix-free name ref `naming.RunnerImageRef(slug, agent)` (`<slug>:<agent>-latest`): the reference a 0.6.0 install
+   cached under.
+3. The legacy prefixed Docker-tag ref `info.DockerTag` (`<DockerImagePrefix><slug>:<agent>-latest`): the reference a
+   pre-0.6 install cached under.
+
+A candidate is reused only when its cached content matches (`cachedImageMatches`, digest-first with the `dockerfile-id`
+label fallback for a legacy image with no digest), never overridden by a label match alone. `EnsureLoaded` derives the
+name ref by parsing `info.DockerTag` for its `(slug, agent)` (the Docker tag still names them), since it cannot derive it
+from `Ref` once that is content-addressed; no new `ImageInfo` field is needed.
+
+### Parse and ownership
+
+`naming.ParseImageTag` gains the content shape and `ArtifactInfo` gains a `ContentID` field:
+
+- `<slug>:<agent>.<contentid>` → `Slug`, `Agent`, `ContentID` set.
+- `<slug>:<agent>-latest` (and the legacy prefixed form) → `Slug`, `Agent` set, `ContentID` empty, as today.
+- any other tag → legacy `Digest`, as today.
+
+The parsed `Slug`/`Agent` are what ownership and liveness key on, so `image.ListImages` (foreign-image exclusion),
+`image.RemoveImages`/`refuseNonRunnerRefs`, `naming.SandboxIdentity`, and `pruning` keep resolving content refs to the
+same `state.Key{Slug, Agent}` without a `ContentID` term. Ownership stays positional in the private runtime home; a
+content ref is a runner image exactly when it parses to a single-segment slug.
+
+`state.ImageReferences` keeps protecting the project's legacy refs (the prefix-free name ref and the prefixed Docker-tag
+ref). It need not enumerate every content ref: the in-use guard unions it with the live-sandbox scan
+(`image.InUseImageReferences`), which already protects the content ref any kept sandbox holds via its `config.Image`.
+
+### Retention
+
+`pruning.keepImage` retains an msb image reference when **any** holds:
+
+- A kept sandbox references it (`keptImageRefs`, the in-use content) — always, regardless of age.
+- Its parsed `(slug, agent)` key is in `pruneState.ToKeep` (the project is live) **and** the image was used within the
+  prune age. Use the image handle's `LastUsedAt()` (fall back to `CreatedAt()` when it is the zero time). The age is the
+  same threshold the prune invocation already resolves; carry it into `PruneImages` (add an `Age` field to `PruneState`,
+  which `buildPruneState` already receives).
+
+A pruned/dead key's references (in `ToPrune`, or in neither set) are removed as today. This bounds a live project's cached
+variants to those used within the window while keeping the ones a toggling user actually reuses, and reclaims a retired
+project's images outright. The current build's ref is fresh by construction, and a live VM's ref is protected by the first
+rule, so neither ages out from under a running VM.
+
+The `-latest` suffix test in the current `keepImage` must be dropped (keeping on the parsed agent alone): a content ref
+does not end in `-latest`, and ownership already implies the per-agent tag. This clause is already the shape on `main`
+(forward-port note).
+
+## Invariants
+
+- The msb reference is a pure, deterministic function of `(slug, agent, docker image ID)`; no random uuid/hash — a repeat
+  run for identical content resolves to the same reference and reimports nothing.
+- The content id is the **content** identity (Docker image ID / msb config digest), never the `dockerfile-id` source
+  signature. The source signature excludes the resolved base digest and the dev user's uid/gid, so it can match while the
+  bytes differ (base tag move + `--rebuild`); keying the cache on it would silently reuse the wrong content.
+- `ImageInfo.DockerTag` remains the stable Docker tag; only `ImageInfo.Ref` is content-addressed.
+- Ownership/liveness resolve from `(slug, agent)` alone; `ContentID` never participates in a `state.Key`.
+- No legacy msb image is reimported by this change: the name ref and the prefixed ref are still reused when their content
+  matches.
+
+## Non-goals / limitations
+
+- **The Docker rebuild and the VM recreate are not avoided.** Switching variants still rebuilds the Docker image (Docker
+  layer cache makes it cheap) and changes the image digest, so `decideReconfig` still recreates the VM and still asks the
+  image-change home-volume question. This change removes the *reimport* only; removing the rebuild/recreate would require
+  the docker capability to stop being an image axis (always-baked or runtime-installed), which is a separate decision.
+- No GC of a live project's variants by count, and no pinning; only the age window above.
+- No change to the Docker tag or its prefix, and no rename/rewrite of existing msb images (write-new, read-all-both).
+- The content id length and encoding are the builder's call within the shape above; a change to it is not a contract
+  change as long as it stays deterministic and content-derived.
+
+## Spec amendments
+
+- `artifact-naming.md`: the msb image ref is no longer `<slug>:<agent>-latest` as the produced form — that becomes the
+  legacy/name form only; the produced msb ref is content-addressed. The "resolve by content" clause already established
+  for the Docker/msb split extends to the content suffix.
+- `runner-image-build.md`: the "Load decision" section gains the candidate-reference set (content, name, prefixed) and the
+  name-ref derivation from the Docker tag; the retained-reference rule changes from "per-agent `-latest`" to "all variants
+  of a live key within the prune age".
+
+## Acceptance
+
+- `asb run` (no `--docker`), then `asb run --docker`, then `asb run` again: each variant is imported into msb at most
+  once; the second and third runs import nothing (`--verbose` shows no `loading image ... into microsandbox`).
+- Same for an agent-version bump and back, and for a project-Dockerfile edit and back.
+- An existing 0.6.0 install (cached under `<slug>:<agent>-latest`) and a pre-0.6 install (cached under the prefixed ref)
+  each keep their cache when the content matches — no reimport on upgrade.
+- `image list` shows every content ref; `image remove <content-ref>` refuses while a kept sandbox holds it and otherwise
+  removes it; `image prune` keeps a live project's recent variants and removes a retired project's refs and aged-out
+  variants (dry-run reports the same).
+- `ParseImageTag`/`SandboxIdentity` round-trip a content ref to the same `(slug, agent)` `state.Key` (fuzz coverage).
+- `make check` green; `CHANGELOG.md` Unreleased line; docs updated where they describe the runner-image cache.
