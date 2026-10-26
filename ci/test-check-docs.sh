@@ -43,6 +43,19 @@ EOF
 # Launcher
 EOF
   printf '@startuml\n@enduml\n' >"$dir/docs/diagrams/arch.puml"
+  mkdir -p "$dir/internal/fixture"
+  cat >"$dir/internal/fixture/fixture.go" <<'EOF'
+package fixture
+
+import "github.com/inoio/agents-sandbox/internal/docslink"
+
+var _ = docslink.SectionURL("troubleshooting", "docker-not-running")
+EOF
+  cat >"$dir/docs/troubleshooting.md" <<'EOF'
+# Troubleshooting
+
+## Docker not running
+EOF
   echo "$dir"
 }
 
@@ -311,6 +324,41 @@ rm -rf "$d"
 d="$(new_fixture)"
 printf '\n[Rendered](https://inoio.github.io/agents-sandbox/install.html#install)\n' >>"$d/docs/introduction.md"
 expect "docs rendered html link resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Go sources: a docslink.SectionURL / literal site URL whose anchor names no
+# heading on its page, or whose page has no source markdown, is a dead link.
+d="$(new_fixture)"
+sed -i 's/docker-not-running/dead-anchor/' "$d/internal/fixture/fixture.go"
+expect "go docslink dead fragment" 1 "fragment 'dead-anchor' matches no heading in docs/troubleshooting.md" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+var _ = docslink.SectionURL("nope", "whatever")
+EOF
+expect "go docslink missing page" 1 "doc link points at missing page docs/nope.md" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+const literal = "https://inoio.github.io/agents-sandbox/troubleshooting.html#dead-anchor"
+EOF
+expect "go literal url dead fragment" 1 "fragment 'dead-anchor' matches no heading in docs/troubleshooting.md" "$d"
+rm -rf "$d"
+
+# The checker honours the page argument rather than assuming the doctor page.
+d="$(new_fixture)"
+cat >"$d/internal/fixture/fixture.go" <<'EOF'
+package fixture
+
+import "github.com/inoio/agents-sandbox/internal/docslink"
+
+var _ = docslink.SectionURL("install", "install")
+EOF
+expect "go docslink non-troubleshooting page" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

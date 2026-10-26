@@ -305,6 +305,48 @@ check_files() {
   done < <(find "$dir" "$@" -name '*.md' | sort)
 }
 
+# find_go_files: every Go source under cmd/ and internal/, tests included.
+find_go_files() {
+  local dir
+  for dir in "$ROOT/cmd" "$ROOT/internal"; do
+    [[ -d "$dir" ]] && find "$dir" -name '*.go'
+  done | sort
+}
+
+# go_doc_targets FILE: emit "lineno<TAB>page<TAB>anchor" for each documentation
+# link the launcher can print: a docslink.SectionURL call, or a literal site URL.
+go_doc_targets() {
+  local file="$1" line lineno
+  local re_section='docslink\.SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
+  local re_literal='https://inoio\.github\.io/agents-sandbox/([A-Za-z0-9/._-]+)\.html#([A-Za-z0-9._-]+)'
+  lineno=0
+  while IFS= read -r line; do
+    lineno=$((lineno + 1))
+    if [[ "$line" =~ $re_section ]]; then
+      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    fi
+    if [[ "$line" =~ $re_literal ]]; then
+      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    fi
+  done <"$file"
+}
+
+# check_go_files: resolve every doc link in a Go source against its docs page.
+check_go_files() {
+  local file rel lineno page anchor page_file
+  while IFS= read -r file; do
+    rel="${file#"$ROOT"/}"
+    while IFS=$'\t' read -r lineno page anchor; do
+      page_file="$DOCS/$page.md"
+      if [[ ! -f "$page_file" ]]; then
+        report "$rel:$lineno: doc link points at missing page docs/$page.md"
+      else
+        check_fragment "$rel" "$lineno" "$page_file" "$anchor" "docs/$page.md"
+      fi
+    done < <(go_doc_targets "$file")
+  done < <(find_go_files)
+}
+
 # Root-level markdown files (README.md, ...): docs links must be rendered HTML.
 check_files root "$ROOT" -maxdepth 1
 
@@ -317,6 +359,9 @@ check_files docs "$DOCS" \
   -not -path "$DOCS/superpowers/*" \
   -not -path "$DOCS/_site/*" \
   -not -path "$DOCS/vendor/*"
+
+# Go sources: the documentation links the launcher prints must resolve too.
+check_go_files
 
 # Terminology vocabulary checks over the same docs tree.
 check_terminology
