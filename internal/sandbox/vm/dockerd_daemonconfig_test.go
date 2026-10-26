@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -22,51 +23,53 @@ func daemonJSONSandbox(content string) *msb.MockSandbox {
 	return &msb.MockSandbox{FSValue_: msb.NewTestFS(files, nil)}
 }
 
-func TestDockerdStartCommandDefaultsToVFSFlag(t *testing.T) {
-	cmd, err := dockerdStartCommand(context.Background(), daemonJSONSandbox(""))
+func TestDockerdArgsDefaultsToVFSFlag(t *testing.T) {
+	args, err := dockerdArgs(context.Background(), daemonJSONSandbox(""))
 	if err != nil {
-		t.Fatalf("dockerdStartCommand: %v", err)
+		t.Fatalf("dockerdArgs: %v", err)
 	}
-	if !strings.Contains(cmd, dockerdVFSFlag) {
-		t.Errorf("expected the vfs flag when daemon.json is absent; got:\n%s", cmd)
+	if !slices.Contains(args, "--storage-driver="+vfsStorageDriver) {
+		t.Errorf("expected the vfs flag when daemon.json is absent; got %v", args)
 	}
 }
 
-func TestDockerdStartCommandKeepsFlagForUnrelatedKeys(t *testing.T) {
-	cmd, err := dockerdStartCommand(
+func TestDockerdArgsKeepsFlagForUnrelatedKeys(t *testing.T) {
+	args, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"registry-mirrors":["https://mirror.example"]}`),
 	)
 	if err != nil {
-		t.Fatalf("dockerdStartCommand: %v", err)
+		t.Fatalf("dockerdArgs: %v", err)
 	}
-	if !strings.Contains(cmd, dockerdVFSFlag) {
-		t.Errorf("expected the vfs flag when daemon.json sets no storage driver; got:\n%s", cmd)
+	if !slices.Contains(args, "--storage-driver="+vfsStorageDriver) {
+		t.Errorf("expected the vfs flag when daemon.json sets no storage driver; got %v", args)
 	}
 }
 
-// TestDockerdStartCommandDropsFlagWhenDaemonJSONSetsVFS guards #287: when the
-// image already forces vfs in daemon.json, passing --storage-driver=vfs as well
-// makes dockerd refuse to start ("specified both as a flag and in the
-// configuration file").
-func TestDockerdStartCommandDropsFlagWhenDaemonJSONSetsVFS(t *testing.T) {
-	cmd, err := dockerdStartCommand(
+// TestDockerdArgsDropsFlagWhenDaemonJSONSetsVFS guards #287: when the image
+// already forces vfs in daemon.json, passing --storage-driver=vfs as well makes
+// dockerd refuse to start ("specified both as a flag and in the configuration
+// file").
+func TestDockerdArgsDropsFlagWhenDaemonJSONSetsVFS(t *testing.T) {
+	args, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"storage-driver":"vfs"}`),
 	)
 	if err != nil {
-		t.Fatalf("dockerdStartCommand: %v", err)
+		t.Fatalf("dockerdArgs: %v", err)
 	}
-	if strings.Contains(cmd, "--storage-driver") {
-		t.Errorf("must not pass the flag when daemon.json already sets vfs; got:\n%s", cmd)
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "--storage-driver") {
+			t.Errorf("must not pass the flag when daemon.json already sets vfs; got %v", args)
+		}
 	}
-	if !strings.Contains(cmd, dockerdStartPrefix) {
-		t.Errorf("expected dockerd to still be started; got:\n%s", cmd)
+	if !slices.Contains(args, dockerdSocket) {
+		t.Errorf("expected dockerd to still be started on its socket; got %v", args)
 	}
 }
 
-func TestDockerdStartCommandFailsOnOtherStorageDriver(t *testing.T) {
-	_, err := dockerdStartCommand(
+func TestDockerdArgsFailsOnOtherStorageDriver(t *testing.T) {
+	_, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"storage-driver":"overlay2"}`),
 	)
@@ -78,34 +81,34 @@ func TestDockerdStartCommandFailsOnOtherStorageDriver(t *testing.T) {
 	}
 }
 
-func TestDockerdStartCommandMalformedDaemonJSONFallsBackToFlag(t *testing.T) {
-	cmd, err := dockerdStartCommand(
+func TestDockerdArgsMalformedDaemonJSONFallsBackToFlag(t *testing.T) {
+	args, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"storage-driver":`),
 	)
 	if err != nil {
-		t.Fatalf("dockerdStartCommand: %v", err)
+		t.Fatalf("dockerdArgs: %v", err)
 	}
-	if !strings.Contains(cmd, dockerdVFSFlag) {
-		t.Errorf("expected the vfs flag when daemon.json cannot be parsed; got:\n%s", cmd)
+	if !slices.Contains(args, "--storage-driver="+vfsStorageDriver) {
+		t.Errorf("expected the vfs flag when daemon.json cannot be parsed; got %v", args)
 	}
 }
 
-func TestDockerdStartCommandNullStorageDriverFallsBackToFlag(t *testing.T) {
-	cmd, err := dockerdStartCommand(
+func TestDockerdArgsNullStorageDriverFallsBackToFlag(t *testing.T) {
+	args, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"storage-driver":null}`),
 	)
 	if err != nil {
-		t.Fatalf("dockerdStartCommand: %v", err)
+		t.Fatalf("dockerdArgs: %v", err)
 	}
-	if !strings.Contains(cmd, dockerdVFSFlag) {
-		t.Errorf("expected the vfs flag when storage-driver is null; got:\n%s", cmd)
+	if !slices.Contains(args, "--storage-driver="+vfsStorageDriver) {
+		t.Errorf("expected the vfs flag when storage-driver is null; got %v", args)
 	}
 }
 
-func TestDockerdStartCommandNonStringStorageDriverFails(t *testing.T) {
-	_, err := dockerdStartCommand(
+func TestDockerdArgsNonStringStorageDriverFails(t *testing.T) {
+	_, err := dockerdArgs(
 		context.Background(),
 		daemonJSONSandbox(`{"storage-driver":42}`),
 	)
@@ -114,18 +117,19 @@ func TestDockerdStartCommandNonStringStorageDriverFails(t *testing.T) {
 	}
 }
 
-func TestDockerdStartCommandReadErrorFails(t *testing.T) {
+func TestDockerdArgsReadErrorFails(t *testing.T) {
 	fs := msb.NewTestFS(map[string][]byte{dockerdDaemonConfigPath: []byte(`{}`)}, nil)
 	fs.ReadErr = errors.New("read boom")
 	sb := &msb.MockSandbox{FSValue_: fs}
-	if _, err := dockerdStartCommand(context.Background(), sb); err == nil {
+	if _, err := dockerdArgs(context.Background(), sb); err == nil {
 		t.Fatal("expected an error when daemon.json cannot be read")
 	}
 }
 
 // dockerdStartSandbox drives startDockerdIfPresent down its start path (the
 // pre-restart readiness probe fails, the post-restart probe succeeds) and
-// records every shell command.
+// records every shell command. ExecDetached is delegated to the embedded
+// MockSandbox.
 type dockerdStartSandbox struct {
 	msb.Sandbox
 
@@ -149,44 +153,48 @@ func (s *dockerdStartSandbox) Shell(
 	return msb.NewTestResult(true, 0, "", "", nil), nil
 }
 
-func newDockerdStartSandbox(content string) *dockerdStartSandbox {
+func newDockerdStartSandbox(content string) (*dockerdStartSandbox, *[]msb.MockDetachedCall) {
 	files := map[string][]byte{}
 	if content != "" {
 		files[dockerdDaemonConfigPath] = []byte(content)
 	}
-	return &dockerdStartSandbox{
-		Sandbox: msb.NewMockSandbox(msb.SandboxOpts{FSValue: msb.NewTestFS(files, nil)}),
+	detachedCalls := &[]msb.MockDetachedCall{}
+	mock := &msb.MockSandbox{
+		FSValue_:          msb.NewTestFS(files, nil),
+		ExecDetachedCalls: detachedCalls,
 	}
+	return &dockerdStartSandbox{Sandbox: mock}, detachedCalls
 }
 
-func TestStartDockerdUsesConfigDrivenCommandWhenDaemonJSONSetsVFS(t *testing.T) {
+func TestStartDockerdUsesConfigDrivenArgsWhenDaemonJSONSetsVFS(t *testing.T) {
 	ui := termio.NewTestMock(t)
-	sb := newDockerdStartSandbox(`{"storage-driver":"vfs"}`)
+	sb, detached := newDockerdStartSandbox(`{"storage-driver":"vfs"}`)
 
 	if err := startDockerdIfPresent(context.Background(), sb, &ui); err != nil {
 		t.Fatalf("startDockerdIfPresent: %v", err)
 	}
-	if !contains(joinStrings(sb.calls), dockerdRestartCmdConfigVFS) {
-		t.Errorf("expected the config-driven start command, got calls:\n%s", joinStrings(sb.calls))
+	if len(*detached) != 1 {
+		t.Fatalf("ExecDetached calls = %+v, want one dockerd launch", *detached)
 	}
-	if contains(joinStrings(sb.calls), dockerdRestartCmd) {
-		t.Errorf("must not pass --storage-driver when daemon.json sets vfs, got calls:\n%s", joinStrings(sb.calls))
+	for _, arg := range (*detached)[0].Args {
+		if strings.HasPrefix(arg, "--storage-driver") {
+			t.Errorf("must not pass --storage-driver when daemon.json sets vfs; got %v", (*detached)[0].Args)
+		}
 	}
 }
 
 func TestStartDockerdFailsOnOtherStorageDriver(t *testing.T) {
 	ui := termio.NewTestMock(t)
-	sb := newDockerdStartSandbox(`{"storage-driver":"overlay2"}`)
+	sb, detached := newDockerdStartSandbox(`{"storage-driver":"overlay2"}`)
 
 	err := startDockerdIfPresent(context.Background(), sb, &ui)
 	if err == nil {
 		t.Fatal("expected startDockerdIfPresent to fail for a non-vfs driver")
 	}
-	if !contains(err.Error(), "overlay2") {
+	if !strings.Contains(err.Error(), "overlay2") {
 		t.Errorf("error should name the offending driver, got: %v", err)
 	}
-	if contains(joinStrings(sb.calls), dockerdRestartCmd) ||
-		contains(joinStrings(sb.calls), dockerdRestartCmdConfigVFS) {
-		t.Errorf("dockerd must not be started when the driver conflicts, got calls:\n%s", joinStrings(sb.calls))
+	if len(*detached) != 0 {
+		t.Errorf("dockerd must not be started when the driver conflicts, got %+v", *detached)
 	}
 }

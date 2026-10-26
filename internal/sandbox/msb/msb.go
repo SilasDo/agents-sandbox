@@ -128,11 +128,25 @@ type Sandbox interface {
 	Shell(ctx context.Context, command string, opts ...msbSdk.ExecOption) (ShellResult, error)
 	Exec(ctx context.Context, command string, args []string, opts ...msbSdk.ExecOption) (ShellResult, error)
 	ShellStream(ctx context.Context, command string, opts ...msbSdk.ExecOption) (StreamHandle, error)
+	ExecDetached(ctx context.Context, cmd string, args []string, opts ...msbSdk.JobExecOption) (Job, error)
+	GetJob(ctx context.Context, id string) (Job, error)
+	ListJobs(ctx context.Context, opts ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error)
 	AttachWith(ctx context.Context, command string, args []string, opts ...msbSdk.AttachOption) (int, error)
 	Attach(ctx context.Context, command string, args ...string) (int, error)
 	Detach(ctx context.Context) error
 	Stop(ctx context.Context, opts ...msbSdk.StopOption) error
 	Destroy(ctx context.Context, opts ...msbSdk.DestroyOption) error
+	Close() error
+}
+
+// Job is the subset of *msb.Job used by the launcher for runtime-owned
+// detached processes (dockerd, the agent serve daemon). Closing a job detaches
+// the handle; it never terminates the process.
+type Job interface {
+	ID() string
+	Inspect(ctx context.Context) (*msbSdk.JobInfo, error)
+	Kill(ctx context.Context) error
+	Logs(ctx context.Context, options msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error)
 	Close() error
 }
 
@@ -674,6 +688,83 @@ func (s realSandbox) ShellStream(
 	}
 	return &realStreamHandle{handle: handle}, nil
 }
+
+func (s realSandbox) ExecDetached(
+	ctx context.Context,
+	cmd string,
+	args []string,
+	opts ...msbSdk.JobExecOption,
+) (Job, error) {
+	job, err := realSandboxExecDetached(s.sandbox, ctx, cmd, args, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return realJob{job: job}, nil
+}
+
+func (s realSandbox) GetJob(ctx context.Context, id string) (Job, error) {
+	job, err := realSandboxGetJob(s.sandbox, ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return realJob{job: job}, nil
+}
+
+// ListJobs returns every job known to the sandbox, following pagination.
+func (s realSandbox) ListJobs(ctx context.Context, opts ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error) {
+	var result []msbSdk.JobInfo
+	var cursor *string
+	for {
+		pageOpts := opts
+		if cursor != nil {
+			pageOpts = append(append([]msbSdk.JobListOption{}, opts...), msbSdk.WithJobCursor(*cursor))
+		}
+		page, err := realSandboxListJobs(s.sandbox, ctx, pageOpts...)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page.Items...)
+		cursor = page.NextCursor
+		// The SDK drops an empty cursor (its listJobs only sends "cursor" when
+		// non-empty), so a pointer to "" means no more pages; treating it as a
+		// live cursor would re-request the first page forever.
+		if cursor == nil || *cursor == "" {
+			return result, nil
+		}
+	}
+}
+
+// realJob adapts *msbSdk.Job to Job. Each delegation target is a package-level
+// seam (a method expression) so the thin wrapper is unit-testable without a
+// live VM.
+type realJob struct {
+	job *msbSdk.Job
+}
+
+var (
+	realSandboxExecDetached = (*msbSdk.Sandbox).ExecDetached
+	realSandboxGetJob       = (*msbSdk.Sandbox).GetJob
+	realSandboxListJobs     = (*msbSdk.Sandbox).ListJobs
+	realJobID               = (*msbSdk.Job).ID
+	realJobInspect          = (*msbSdk.Job).Inspect
+	realJobKill             = (*msbSdk.Job).Kill
+	realJobLogs             = (*msbSdk.Job).Logs
+	realJobClose            = (*msbSdk.Job).Close
+)
+
+func (j realJob) ID() string { return realJobID(j.job) }
+
+func (j realJob) Inspect(ctx context.Context) (*msbSdk.JobInfo, error) {
+	return realJobInspect(j.job, ctx)
+}
+
+func (j realJob) Kill(ctx context.Context) error { return realJobKill(j.job, ctx) }
+
+func (j realJob) Logs(ctx context.Context, options msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {
+	return realJobLogs(j.job, ctx, options)
+}
+
+func (j realJob) Close() error { return realJobClose(j.job) }
 
 // realStreamHandle adapts *msbSdk.ExecHandle to StreamHandle.
 type realStreamHandle struct {

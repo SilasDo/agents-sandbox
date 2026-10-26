@@ -160,7 +160,7 @@ both before the list, each naming the resolve failure (mirroring the list's abor
   repro command is `--worktree feature-x`.
 - **`curl` remains an in-guest prerequisite for opencode/opencode2** (health probe, event stream,
   session list, and these worktree calls). It is now an enforced custom-base requirement: the daemon
-  profiles declare it (with `nohup` and `pkill`) via `agent.GuestToolRequirer`, and the image build
+  profiles declare it via `agent.GuestToolRequirer`, and the image build
   checks it, so a base without it fails the build naming the tool. #257 removed `jq` specifically;
   removing `curl` would mean moving the daemon HTTP calls host-side, tracked as #263.
 

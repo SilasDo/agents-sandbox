@@ -80,24 +80,19 @@ func (opencode2Profile) ImageSpec() ImageSpec {
 	}
 }
 
-// opencode2ServeLog is where the start command redirects the opencode2 daemon's
-// output, tailed for diagnostics when the daemon never becomes healthy.
-const opencode2ServeLog = "/tmp/opencode2-serve.log"
-
-func (opencode2Profile) DaemonStartCmd(serveOnly bool) string {
-	hostname := "127.0.0.1"
+// DaemonCommand launches the v2 serve daemon as a runtime-owned detached job,
+// binding loopback for a co-located client or the external interface for a
+// forwarded port.
+func (opencode2Profile) DaemonCommand(serveOnly bool) DaemonCommand {
+	hostname := daemonLoopbackHostname
 	if serveOnly {
-		hostname = "0.0.0.0"
+		hostname = daemonExternalHostname
 	}
-	return fmt.Sprintf(
-		"nohup opencode2 serve --hostname %s --port %s > %s 2>&1 &",
-		hostname,
-		opencode2Port,
-		opencode2ServeLog,
-	)
+	return DaemonCommand{
+		Binary: "opencode2",
+		Args:   []string{"serve", "--hostname", hostname, "--port", opencode2Port},
+	}
 }
-
-func (opencode2Profile) DaemonKillCmd() string { return "pkill -f 'opencode2 serve' || true" }
 
 func (opencode2Profile) DaemonHealthCmd() string {
 	// v2's health endpoint is /api/info. There is no /api/health route: once
@@ -124,8 +119,6 @@ func parseOpencode2Health(stdout string) (bool, error) {
 func (opencode2Profile) DaemonHealthParse(stdout string) (bool, error) {
 	return parseOpencode2Health(stdout)
 }
-
-func (opencode2Profile) DaemonLogPath() string { return opencode2ServeLog }
 
 // DaemonAuthHint: v2's basic auth is mandatory with a baked credential, so an
 // external client must use it rather than setting its own.

@@ -6,15 +6,25 @@ import "context"
 // agents, whose merged snippet config is written to <config dir>/settings.json.
 const settingsFileName = "settings.json"
 
+// Daemon bind hostnames: loopback for a co-located client, the external
+// interface when the host forwards a published port into the VM.
+const (
+	daemonLoopbackHostname = "127.0.0.1"
+	daemonExternalHostname = "0.0.0.0"
+)
+
+// DaemonCommand is the executable and arguments that launch an agent's serve
+// daemon as a runtime-owned detached job.
+type DaemonCommand struct {
+	Binary string
+	Args   []string
+}
+
 // DaemonProvider runs a long-lived server that clients attach to (opencode).
 type DaemonProvider interface {
-	DaemonStartCmd(serveOnly bool) string
-	DaemonKillCmd() string
+	DaemonCommand(serveOnly bool) DaemonCommand
 	DaemonHealthCmd() string
 	DaemonHealthParse(stdout string) (bool, error)
-	// DaemonLogPath is the in-VM file the start command redirects the daemon's
-	// output to, tailed for diagnostics when the daemon never becomes healthy.
-	DaemonLogPath() string
 	// DaemonAuthHint is the one-line basic-auth note shown in serve-only
 	// guidance, telling an external client how to authenticate (or that auth is
 	// optional). It is empty when the daemon needs no credentials.
@@ -23,8 +33,9 @@ type DaemonProvider interface {
 
 // GuestToolRequirer declares the shell tools the launcher invokes inside the
 // running VM for this agent's runtime: curl for the daemon health probe,
-// session and worktree calls, and the notify event stream; nohup and pkill for
-// daemon start and stop. The renderer verifies each with command -v in the
+// session and worktree calls, and the notify event stream. The daemon itself is
+// launched and stopped as a runtime-owned job, so no guest process control tool
+// is needed. The renderer verifies each with command -v in the
 // final runner stage, so a custom base missing one fails the image build naming
 // the tool instead of failing at runtime. Agents that run no daemon in the VM
 // (pi, claude-code) do not implement it.

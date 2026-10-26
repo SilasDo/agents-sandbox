@@ -1,56 +1,68 @@
 ---
-description: Reverted design for running dockerd/the agent serve daemon as runtime-owned detached jobs. Kept as the re-merge plan: microsandbox counts a detached job as a guest exec session, so any job permanently suppresses the sandbox idle timeout; re-land once microsandbox offers an idle-exempt/service job marker. Records the idle mechanism, the evidence, and the re-merge/revert steps.
-read_if: Working on VM idle shutdown, dockerd/agent-serve startup, detached jobs (ExecDetached/Job), issues #146/#147/#148, or deciding whether to re-land the detached-job runtime.
+description: Contract for running dockerd and the agent serve daemon as microsandbox runtime-owned detached jobs (ExecDetached/Job) instead of shell-backgrounded nohup processes; health-probe readiness with Job.Inspect crash detection and Job.Logs on failure, no shell fallback, kill-by-command rediscovery, and the v0.7.11 idle fix that made re-landing safe.
+read_if: Working on the VM's dockerd/agent-serve startup, readiness, or restart in internal/sandbox/vm, the msb detached-job seam, the agent DaemonProvider daemon command, or the VM idle timeout.
 ---
 
-# Detached jobs for dockerd and the agent serve daemon (REVERTED)
+# Detached jobs for dockerd and the agent serve daemon
 
-## Status
+## Contract
 
-**Reverted.** Issue #146 / PR #191 introduced runtime-owned detached jobs for `dockerd` and the agent `serve`
-daemon. It was reverted (this branch) because it makes the VM never idle-stop: microsandbox counts a detached
-job as an ordinary guest exec session, and its idle monitor treats any active exec session as "not idle", so
-the configured `idle_timeout` never fires while a job runs. `dockerd`/`serve` are back on the pre-#146
-`nohup … &` shell path.
+- `dockerd` and the agent `serve` daemon are launched as microsandbox **runtime-owned detached jobs** through the
+  `internal/sandbox/msb` seam (`Sandbox.ExecDetached` plus a minimal `Job` of `ID/Inspect/Kill/Logs/Close`). The
+  runtime owns the process: it survives client disconnect and is inspectable/killable by any later client.
+- **No shell fallback.** The previous `nohup … &` backgrounding, `/var/log/dockerd.log` (and agent `*-serve.log`)
+  redirects, `pkill -f '… serve'`, and `pkill dockerd` plumbing are removed. The jobs ABI is an optional native symbol
+  (`has_msb_jobs`); an unsupported runtime surfaces the SDK's `JobError{Code:"unsupported_feature"}`, and the launcher
+  trusts the pinned SDK plus the force-reinstalled private runtime rather than degrading to a shell path.
+- **Readiness is health-probe based**, not `Job.Wait`: `docker info` for dockerd, the agent health endpoint for the
+  daemon. Each poll iteration consults `Job.Inspect` and fails fast (structured failure naming the exit code) when the
+  process has exited (`JobInfo.ExitCode != nil`). On timeout it embeds a `Job.Logs` tail (`tail=100`, as the runtime
+  interprets the unit) and the last health-probe detail instead of a logfile read.
+- **No live log streaming.** `Job.FollowLogs` is deliberately unused; verbose behaviour is unchanged (the daemon's
+  per-poll detail is still logged) and job logs are read only on failure/timeout.
+- **Idempotency is health-probe based.** A healthy dockerd/daemon is left running; before (re)starting, any live job
+  matching the command is killed first. Jobs carry no labels, so rediscovery matches `JobInfo.Command` against the
+  expected binary+args prefix (`ListJobs(WithAllJobs)` → `GetJob(id)` → `Kill`).
+- **No persisted job state.** Jobs die with the VM, so a stopped/restarted VM re-launches both on the next boot. There
+  are no job IDs in `state.yaml` and no cross-boot rediscovery.
+- **Rollout from a pre-jobs runtime.** A VM still running from before this change holds `nohup`-started processes the
+  job matcher cannot see; a config-change restart against such a live VM cannot kill them, so the fresh job fails to bind
+  (`:4096`/the socket) and surfaces a structured failure or timeout. This is accepted rather than mitigated with legacy
+  `pkill` cleanup (the no-fallback rule): VMs are ephemeral, and a stop/start relaunches both as jobs.
+- **dockerd teardown keeps residue cleanup.** Killing the dockerd job does not necessarily reap its `containerd` child,
+  so a minimal shell cleanup (`pkill containerd` plus `/run`,`/var/run` pid/socket deletion) still runs before a
+  restart. The job kill replaces `pkill dockerd`.
+- **dockerd's storage driver.** The vfs request is built as arguments (`dockerdArgs`) and passed to `ExecDetached`, not
+  as a shell string. It keeps the #287 rule: request `--storage-driver=vfs` unless the image's `daemon.json` already
+  sets vfs (then the flag is dropped), and fail when it sets any other driver.
+- **Agent command shape.** `agent.DaemonProvider` exposes a structured `DaemonCommand{Binary, Args}` for the detached
+  launch (health command/parse unchanged); it no longer exposes shell start/kill strings or a log path. Serve-only binds
+  `0.0.0.0` (loopback `127.0.0.1` otherwise) so the host's published-port forwarder reaches the guest.
+- **Guest tools.** The daemon agents declare only `curl` (health/session/worktree/notify); `nohup`/`pkill` are no longer
+  daemon runtime prerequisites, since the job owns start/stop.
+- `restartDaemons` (config change) forces a restart via `ensureDaemon(…, force=true)` even when the current daemon is
+  healthy, because a config change must be picked up by a fresh process.
 
-- Affected / tracking: #146 (reopened), #147 (supervised service hooks), #148 (`jobs` command) — both depend on
-  the reverted `internal/sandbox/msb` jobs seam.
-- Re-merge condition: an upstream microsandbox idle-exempt/service marker for jobs (drafted proposal to
-  `superradcompany/microsandbox`). Until then, do not re-land the job-based runtime.
+## Idle timeout (why re-landing is safe)
 
-## Why reverted (idle incompatibility)
+- **Reverted at microsandbox v0.7.8** because a detached job was counted in the aggregate the heartbeat exposed
+  (`active_exec_sessions = sessions + detached_sessions`) and the idle monitor treated `active_exec_sessions > 0` as
+  never-idle, so a quiet dockerd/serve job permanently suppressed `idle_timeout`.
+- **Fixed in microsandbox v0.7.11 (#1923, "allow detached jobs to idle", fixes #1866).** The idle monitor no longer
+  short-circuits on `active_exec_sessions > 0`; attached and detached exec sessions are counted separately host-side
+  (`RelayIdleState`). A detached job's *existence* does not reset the idle timer, while new job output still does. The
+  launcher therefore needs no idle-exempt marker or flag: it just launches the jobs.
+- Verify on a KVM host: a quiet dockerd job lets the VM idle-stop; a busy job keeps it alive.
+- **Open risk in the sibling keepalive paths, verify in the same pass.** `keepVMAlive` (session reaper), `runServeOnly`,
+  and `waitQuiescent` start a *silent* attached `sleep` exec session to hold the VM, on the stated assumption that
+  `active_exec_sessions > 0` suppresses the idle timer. v0.7.11 changed exactly that aggregate, so if the monitor now
+  resets the timer on attached *output* rather than on session existence, a silent keeper no longer holds the VM. Confirm
+  a `--serve-only`/reaper keeper still keeps the VM alive; if it does not, those paths need a different keepalive.
 
-- A detached job is an ordinary guest `ExecRequest` stream held by the host runner (the microsandbox jobs
-  protocol "deliberately does not change guest exec messages"). agentd's exec handler inserts it into
-  `state.sessions`, and the heartbeat reports
-  `active_exec_sessions = state.sessions.len() + state.detached_sessions.len()`.
-- microsandbox's idle monitor returns `Active` whenever `active_exec_sessions > 0` — it can only go idle at
-  zero (`crates/runtime/lib/runner/heartbeat.rs`, consumed in `crates/runtime/lib/runner/vm.rs`). A quiet
-  daemon still counts.
-- Upstream exposes no job/service/idle-exempt field on `ExecRequest`, no per-session identity in the heartbeat,
-  and no SDK exec/job option (repo-wide search for `idle_exempt`/`exclude_from_idle`/`job_session`/`no_idle` is
-  empty). The launcher therefore cannot separate job sessions from user activity. Confirmed identical at
-  microsandbox `v0.7.8` and `main`.
-- Pre-#146, `nohup dockerd … &` was launched via `Shell`, whose exec returns immediately; no session persisted,
-  so the idle timer worked.
+## Verification
 
-## Re-merge plan
-
-1. Upstream must accept a way to exclude a job's session from `active_exec_sessions` while still letting its
-   output advance `activity_seq` (an opt-in `service`/`idle_exempt` flag). See the drafted microsandbox issue.
-2. Then re-land: revert this revert (`git revert <this-branch's-revert-commit>` restores PR #191), or re-apply
-   #146 on top, and mark the `dockerd`/`serve` launches as idle-exempt.
-3. Verify: a quiet `dockerd` job must let the VM idle-stop; a busy job must keep it alive.
-
-## Reverted design (for the re-merge)
-
-When re-landed, the contract was: `dockerd` and the agent `serve` daemon run as microsandbox runtime-owned
-detached jobs through the `internal/sandbox/msb` seam (`Sandbox.ExecDetached` + a minimal `Job` of
-`ID/Inspect/Kill/Signal/Logs/Close`), replacing `nohup … &`, logfile polling, and `pkill` plumbing. No shell
-fallback (jobs ABI is an optional native symbol; unsupported runtimes surface `JobError{Code:"unsupported_feature"}`).
-Readiness is health-probe based (`docker info` / the agent health endpoint) with `Job.Inspect` crash detection
-and a `Job.Logs` tail on failure; no live `FollowLogs`. Idempotency is health-probe based, with stale jobs
-rediscovered by command match (`ListJobs(WithAllJobs)` → `GetJob` → `Kill`); no persisted job IDs. dockerd keeps
-a minimal `containerd`/pid/socket residue cleanup. `agent.DaemonProvider` exposes a structured
-`DaemonCommand{Binary,Args}`. Full detail is in git history (PR #191 / commit `a482e8f` and the
-reverted branch, where the plan document lived).
+- Unit tests drive the seam through the msb mocks (`MockSandbox`/`MockJob`) and assert the kill-by-command, crash, and
+  timeout branches.
+- `TestJobsRoundTrip` (`internal/sandbox/msb/jobs_msb_test.go`, `msb` tag) exercises the real adapters
+  against a live VM. Live dockerd/daemon and the idle behaviour above are manual: a KVM host with a runner image
+  containing dockerd and opencode.

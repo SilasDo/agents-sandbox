@@ -353,9 +353,9 @@ func TestRenderDockerfileDockerPrereqsExcludeDownloadTools(t *testing.T) {
 }
 
 // TestRenderDockerfileChecksGuestRuntimeTools guards the custom-base contract:
-// the in-VM tools the daemon agent's runtime needs (curl, nohup, pkill) must be
-// verified in the final stage after the user body, so a body that installs them
-// is accepted and a base missing one fails the build naming the tool.
+// the in-VM tools the daemon agent's runtime needs (curl) must be verified in
+// the final stage after the user body, so a body that installs them is accepted
+// and a base missing one fails the build naming the tool.
 func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM debian:trixie-slim\nRUN apt-get update && apt-get install -y curl procps\n")
@@ -365,8 +365,8 @@ func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
 	if checkIdx < 0 {
 		t.Fatalf("the final stage must verify the agent's runtime tools; got:\n%s", final)
 	}
-	if !strings.Contains(final, "for p in curl nohup pkill;") {
-		t.Errorf("the check must cover curl, nohup, and pkill; got:\n%s", final)
+	if !strings.Contains(final, "for p in curl;") {
+		t.Errorf("the check must cover curl; got:\n%s", final)
 	}
 	if !strings.Contains(final, "command -v") {
 		t.Errorf("the check must probe the tools with command -v; got:\n%s", final)

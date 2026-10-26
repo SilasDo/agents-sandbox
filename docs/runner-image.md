@@ -194,10 +194,11 @@ base must meet these requirements:
 - **For Docker only**: the runtime prerequisites `iptables`, `git`, `ps`, and `xz`. These are checked after your
   Dockerfile body runs, so they may be installed in the body or an earlier stage. If one is missing, the build fails and
   names the missing package. The engine download itself runs on the tool base, so your image needs no `curl` or `tar`.
-- **For the daemon agents (`opencode`, `opencode2`)**: the in-VM tools the launcher uses — `curl`, `nohup`, and `pkill`.
-  `curl` reaches the daemon (the health probe, session and worktree calls, and notifications), `nohup`/`pkill` start and
-  stop it. These are checked after your Dockerfile body runs, so they may be installed in the body or an earlier stage;
-  if one is missing, the build fails and names the tool. `pi` and `claude-code` run no daemon and need none.
+- **For the daemon agents (`opencode`, `opencode2`)**: the in-VM tool the launcher uses — `curl`. It reaches the daemon
+  (the health probe, session and worktree calls, and notifications); the daemon is launched and stopped as a
+  runtime-owned job, so no process-control tool is needed. `curl` is checked after your Dockerfile body runs, so it may
+  be installed in the body or an earlier stage; if it is missing, the build fails and names the tool. `pi` and
+  `claude-code` run no daemon and need none.
 - The recommended CLI tools listed here are documented for your convenience, not as requirements — as a custom base you install
   your own.
 - A base that already provides docker, node, or the agent is left alone (idempotency), and a pre-created `dev` user is
@@ -250,8 +251,11 @@ The Docker stage installs the engine from a docker static binary tarball. The `v
 the VM** at start-up — the image never writes `/etc/docker/daemon.json`, so your edits to it are preserved. If your
 `daemon.json` already sets `"storage-driver": "vfs"`, agents-sandbox leaves the file alone and starts dockerd without
 the flag (passing both makes dockerd refuse to start); if it sets any other driver, start-up fails with an error, because
-the microsandbox filesystem requires `vfs`. `buildx` and `docker compose` are **not** installed — install them in your
-project Dockerfile if you need them. The static tarball's platform is selected by `uname -m` (`x86_64`/`aarch64`).
+the microsandbox filesystem requires `vfs`. The launcher starts dockerd (and the agent's `serve` daemon) as a
+microsandbox runtime-owned detached job inside the VM: startup is confirmed by health probe, and if the job fails the
+launcher reports its exit code and a log tail (there is no `dockerd.log`). `buildx` and `docker compose` are **not**
+installed — install them in your project Dockerfile if you need them. The static tarball's platform is selected by
+`uname -m` (`x86_64`/`aarch64`).
 
 With a custom base, a thin `COPY --from=agents-sandbox-docker` plus an adopt step is appended after your Dockerfile body
 by default, so steps after it see `docker` (the heavy download stays in the cacheable Docker stage). To run your own steps

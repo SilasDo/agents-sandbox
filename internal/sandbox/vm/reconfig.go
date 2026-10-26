@@ -115,7 +115,7 @@ func setUpSandbox(
 		return "", fmt.Errorf("docker startup: %w", dockerErr)
 	}
 
-	if daemonErr := ensureDaemon(ctx, a, opts.ServeOnly, sb, ui); daemonErr != nil {
+	if daemonErr := ensureDaemon(ctx, a, opts.ServeOnly, false, sb, ui); daemonErr != nil {
 		return "", daemonErr
 	}
 
@@ -240,19 +240,13 @@ func applyLiveMounts(cfg *msbSdk.SandboxConfig, handle msb.SandboxHandle, ui ter
 	cfg.Volumes = liveMounts
 }
 
-// restartDaemons provisions config files and restarts the agent's daemon so an
+// restartDaemons restarts the agent's daemon so an already-provisioned
 // agent-config change is picked up. Env/secret changes are never routed
 // here: they require a VM rebuild and are handled by the recreate path instead.
 func restartDaemons(ctx context.Context, a agent.Agent, sb msb.Sandbox, serveOnly bool, ui termio.UI) {
 	ui.Infof("%s serve restarting…", a.Name())
-	provider, ok := agent.AsDaemonProvider(a)
-	if !ok {
-		return
-	}
-	if _, _, err := daemonShellFunc(ctx, sb, provider.DaemonKillCmd()); err != nil {
-		ui.Warnf("kill stale daemon failed (continuing): %v", err)
-	}
-	if err := ensureDaemon(ctx, a, serveOnly, sb, ui); err != nil {
+	// ensureDaemon no-ops for an agent without a DaemonProvider.
+	if err := ensureDaemon(ctx, a, serveOnly, true, sb, ui); err != nil {
 		ui.Warnf("daemon restart failed: %v (using existing)", err)
 	}
 }

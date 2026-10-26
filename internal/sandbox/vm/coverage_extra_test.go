@@ -195,13 +195,13 @@ func TestStopAndKillProjectVMUnknownAgent(t *testing.T) {
 // setUpSandbox: a provision failure is logged as a warning and the setup
 // continues (config provisioning is non-disruptive and never fatal).
 func TestSetUpSandboxProvisionError(t *testing.T) {
-	orig := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+	orig := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
 		if command == opencodeProvider(t).DaemonHealthCmd() {
 			return `{"healthy":true,"version":"test"}`, 0, nil
 		}
 		return "", 0, nil
 	})
-	t.Cleanup(func() { SetDaemonShellFunc(orig) })
+	t.Cleanup(func() { SetDaemonHealthFunc(orig) })
 
 	configpaths.WithMockConfigPaths(t)
 
@@ -237,28 +237,30 @@ func TestSetUpSandboxProvisionError(t *testing.T) {
 	}
 }
 
-// TestRestartDaemonsKillError covers the kill-stale-daemon failure branch of
-// restartDaemons: the function warns but continues to ensure the daemon.
+// TestRestartDaemonsKillError covers the kill-stale-job failure branch of
+// restartDaemons: the failure is reported as a verbose diagnostic and the
+// daemon is still (re)started.
 func TestRestartDaemonsKillError(t *testing.T) {
-	orig := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
-		if command == opencodeProvider(t).DaemonKillCmd() {
-			return "", 0, errors.New("kill failed")
-		}
-		if command == opencodeProvider(t).DaemonHealthCmd() {
-			return `{"healthy":true,"version":"test"}`, 0, nil
-		}
-		return "", 0, nil
+	orig := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, _ string) (string, int, error) {
+		return `{"healthy":true,"version":"test"}`, 0, nil
 	})
-	t.Cleanup(func() { SetDaemonShellFunc(orig) })
+	t.Cleanup(func() { SetDaemonHealthFunc(orig) })
 
 	ui := termio.NewTestMock(t)
-	fs := msb.NewTestFS(nil, nil)
-	sb := &msb.MockSandbox{Name_: "vm", FSValue_: fs}
+	stale := &msb.MockJob{ID_: "stale", KillErr: errors.New("kill failed")}
+	command := opencodeProvider(t).DaemonCommand(false)
+	sb := &msb.MockSandbox{
+		Name_: "vm",
+		Jobs: []msbSdk.JobInfo{
+			{ID: "stale", Command: append([]string{command.Binary}, command.Args...)},
+		},
+		GetJobFn: func(context.Context, string) (msb.Job, error) { return stale, nil },
+	}
 
 	restartDaemons(context.Background(), opencodeAgent(t), sb, false, &ui)
 
-	if !contains(joinStrings(ui.WarnCalls), "kill stale daemon failed") {
-		t.Errorf("expected a kill-failure warning, got %v", ui.WarnCalls)
+	if !contains(joinStrings(ui.VerboseCalls), "killing job") {
+		t.Errorf("expected a kill-failure verbose message, got %v", ui.VerboseCalls)
 	}
 }
 

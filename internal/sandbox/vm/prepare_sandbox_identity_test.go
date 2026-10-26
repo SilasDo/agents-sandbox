@@ -103,13 +103,13 @@ func installPrepareSandboxMSBMock(t *testing.T) *msb.MockMsbClient {
 // VM so PrepareSandbox does not wait for it.
 func installPrepareSandboxDaemonMock(t *testing.T) {
 	t.Helper()
-	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+	origDaemon := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
 		if command == opencodeProvider(t).DaemonHealthCmd() {
 			return `{"healthy":true,"version":"test"}`, 0, nil
 		}
 		return "", 0, nil
 	})
-	t.Cleanup(func() { SetDaemonShellFunc(origDaemon) })
+	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 }
 
 // seedMatchingHomeState seeds a home state whose image/agent version matches the

@@ -38,7 +38,7 @@ func setupRunMocks(t *testing.T, mock *sandboxmsb.MockMsbClient, sandboxToReturn
 	// so EnsureProjectVM treats it as "not found → create" rather than a real error.
 	sandboxmsb.WithMsbMock(t, mock.SetGetSandboxErr(&msb.Error{Kind: msb.ErrSandboxNotFound, Message: "not found"}))
 
-	origShell := sandbox.SetDaemonShellFunc(
+	origShell := sandbox.SetDaemonHealthFunc(
 		func(ctx context.Context, sb sandboxmsb.Sandbox, command string) (string, int, error) {
 			_ = ctx
 			_ = sb
@@ -48,7 +48,7 @@ func setupRunMocks(t *testing.T, mock *sandboxmsb.MockMsbClient, sandboxToReturn
 			return `{"healthy":true,"version":"0.0.0-test"}`, 0, nil
 		},
 	)
-	t.Cleanup(func() { sandbox.SetDaemonShellFunc(origShell) })
+	t.Cleanup(func() { sandbox.SetDaemonHealthFunc(origShell) })
 
 	return cmd, ui
 }

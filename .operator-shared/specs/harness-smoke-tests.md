@@ -16,7 +16,7 @@ instead of a TUI. See `opencode2-server-auth.md` for the fix.
 
 No existing test could catch it:
 
-- Every `ensureDaemon` test stubs the shell seam (`daemonShellFunc` plus fake `DaemonProvider`s), so they only
+- Every `ensureDaemon` test stubs the health seam (`daemonHealthFunc` plus fake `DaemonProvider`s), so they only
   assert the profile matches the fake the test installed — never the shipped harness binary.
 - The `integration` tests build real images and run `docker run … --version` probes
   (`internal/sandbox/image/render_integration_test.go`); they never start a daemon or attach a client.

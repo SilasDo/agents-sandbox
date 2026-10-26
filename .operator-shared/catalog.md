@@ -129,8 +129,8 @@
   - Description: Contract for where a bare checkout's `.agents-sandbox` is read from (#145): the bare root next to `.git`, selected by `core.bare`, with all project accessors routed through one pure base-dir resolver.
   - Read If: Changing the bare-layout project-config fix, the `core.bare` discriminator, the project config base-dir resolver, or the bare-worktrees recipe/Beta marking.
 - `detached-jobs.md`
-  - Description: Reverted design for running dockerd/agent-serve as runtime-owned detached jobs (#146/PR #191), kept as the re-merge plan: microsandbox counts a job as an active exec session, so it permanently suppresses the VM idle timeout.
-  - Read If: Working on VM idle shutdown, dockerd/agent-serve startup, detached jobs (`ExecDetached`/`Job`), issues #146/#147/#148, or deciding whether to re-land the detached-job runtime.
+  - Description: Contract for running dockerd and the agent serve daemon as microsandbox runtime-owned detached jobs (`ExecDetached`/`Job`) instead of shell-backgrounded `nohup` processes; health-probe readiness with `Job.Inspect` crash detection and `Job.Logs` on failure, no shell fallback, kill-by-command rediscovery, and the v0.7.11 idle fix that made re-landing safe.
+  - Read If: Working on the VM's dockerd/agent-serve startup, readiness, or restart in `internal/sandbox/vm`, the msb detached-job seam, the agent `DaemonProvider` daemon command, or the VM idle timeout.
 - `deprecation-policy.md`
   - Description: Durable deprecation policy (0.x, high UX bar): works-warns-hides, replacement precedence, a one-minor minimum lifetime, the clean-break-vs-shim rule, the current register with removal targets, and the regression-test enforcement.
   - Read If: Deprecating or removing a CLI flag, config key, env var, or command; deciding whether a change needs a shim or a clean break; or enforcing the deprecation register in tests (#202/#205/#206).
