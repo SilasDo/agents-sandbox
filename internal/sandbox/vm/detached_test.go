@@ -230,11 +230,54 @@ func TestAwaitJobReadyContextDone(t *testing.T) {
 
 func TestProbeHealthy(t *testing.T) {
 	failing := msb.NewMockSandbox(msb.SandboxOpts{ShellErr: errors.New("shell boom")})
-	if probeHealthy(context.Background(), failing, "docker info") {
+	if healthy, detail := probeHealthy(context.Background(), failing, "docker info"); healthy {
 		t.Error("shell error must be unhealthy")
+	} else if !strings.Contains(detail, "shell boom") {
+		t.Errorf("detail = %q, want the shell error", detail)
 	}
 	ok := msb.NewMockSandbox(msb.SandboxOpts{})
-	if !probeHealthy(context.Background(), ok, "other probe") {
+	if healthy, _ := probeHealthy(context.Background(), ok, "other probe"); !healthy {
 		t.Error("successful shell must be healthy")
+	}
+}
+
+// TestProbeHealthyReportsFailedCommandDetail covers the diagnostic detail a
+// failing (but executing) probe returns: stderr preferred, then stdout, then an
+// empty-body placeholder.
+func TestProbeHealthyReportsFailedCommandDetail(t *testing.T) {
+	cases := []struct {
+		name   string
+		result msb.ShellResult
+		want   string
+	}{
+		{
+			name:   "stderr",
+			result: msb.NewTestResult(false, 1, "", "cannot connect to the Docker daemon", nil),
+			want:   "probe exit 1: cannot connect to the Docker daemon",
+		},
+		{
+			name:   "stdout fallback",
+			result: msb.NewTestResult(false, 2, "from stdout", "", nil),
+			want:   "probe exit 2: from stdout",
+		},
+		{
+			name:   "no output",
+			result: msb.NewTestResult(false, 7, "", "", nil),
+			want:   "probe exit 7: (no output)",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sb := msb.NewMockSandbox(msb.SandboxOpts{
+				ShellOut: map[string]msb.ShellResult{"docker info": tc.result},
+			})
+			healthy, detail := probeHealthy(context.Background(), sb, "docker info")
+			if healthy {
+				t.Fatal("non-zero probe must be unhealthy")
+			}
+			if detail != tc.want {
+				t.Errorf("detail = %q, want %q", detail, tc.want)
+			}
+		})
 	}
 }

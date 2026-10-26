@@ -154,12 +154,27 @@ func inspectJob(ctx context.Context, job msb.Job) *msbSdk.JobInfo {
 	return info
 }
 
-// probeHealthy runs a health command inside the sandbox as user and reports
-// whether it succeeded.
-func probeHealthy(ctx context.Context, sb msb.Sandbox, command string) bool {
+// probeHealthy runs a health command inside the sandbox as the default user and
+// reports whether it succeeded. When it fails it returns a diagnostic detail
+// (the shell error, exit code, or output) so a readiness timeout is
+// diagnosable instead of opaque.
+func probeHealthy(ctx context.Context, sb msb.Sandbox, command string) (bool, string) {
 	out, err := sb.Shell(ctx, command, msbSdk.WithExecUser(DefaultSandboxUser))
-	if err != nil || out == nil {
-		return false
+	if err != nil {
+		return false, fmt.Sprintf("probe failed: %v", err)
 	}
-	return out.Success()
+	if out == nil {
+		return false, "probe returned no result"
+	}
+	if !out.Success() {
+		body := strings.TrimSpace(out.Stderr())
+		if body == "" {
+			body = strings.TrimSpace(out.Stdout())
+		}
+		if body == "" {
+			body = "(no output)"
+		}
+		return false, fmt.Sprintf("probe exit %d: %s", out.ExitCode(), body)
+	}
+	return true, ""
 }

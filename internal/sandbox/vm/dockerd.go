@@ -124,7 +124,7 @@ func startDockerdIfPresent(ctx context.Context, sb msb.Sandbox, ui termio.UI) er
 		return nil
 	}
 
-	if probeHealthy(ctx, sb, dockerdReadyCmd) {
+	if healthy, _ := probeHealthy(ctx, sb, dockerdReadyCmd); healthy {
 		ui.Verbose("using already running dockerd")
 		return nil
 	}
@@ -155,14 +155,17 @@ func startDockerdIfPresent(ctx context.Context, sb msb.Sandbox, ui termio.UI) er
 	}()
 
 	probe := func(probeCtx context.Context) (bool, string) {
-		return probeHealthy(probeCtx, sb, dockerdReadyCmd), ""
+		return probeHealthy(probeCtx, sb, dockerdReadyCmd)
+	}
+	onUnhealthy := func(detail string) {
+		ui.Verbosef("dockerd not ready: %s", detail)
 	}
 	if readyErr := awaitJobReady(
 		ctx,
 		job,
 		"dockerd",
 		probe,
-		nil,
+		onUnhealthy,
 		dockerdReadyTimeout,
 		dockerdPollInterval,
 	); readyErr != nil {
