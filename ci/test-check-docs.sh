@@ -301,5 +301,17 @@ printf '\n![diagram]({%% link diagrams/arch.svg %%}#whatever)\n' >>"$d/docs/intr
 expect "diagram fragment ignored" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# A rendered docs HTML link in a docs page is mapped back to its source page and
+# its anchor checked there.
+d="$(new_fixture)"
+printf '\n[Rendered](https://inoio.github.io/agents-sandbox/install.html#no-such-heading)\n' >>"$d/docs/introduction.md"
+expect "docs rendered html link dead fragment" 1 "fragment 'no-such-heading' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n[Rendered](https://inoio.github.io/agents-sandbox/install.html#install)\n' >>"$d/docs/introduction.md"
+expect "docs rendered html link resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

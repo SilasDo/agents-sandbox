@@ -139,13 +139,42 @@ check_fragment() {
   report "$rel:$lineno: fragment '$anchor' matches no heading in $label"
 }
 
+# check_rendered_site_link REL LINENO TARGET: map a rendered docs HTML link back
+# to its source page and resolve any fragment against that page's headings.
+check_rendered_site_link() {
+  local rel="$1" lineno="$2" target="$3" path fragment
+  path="${target#"$SITE_BASE"/}"
+  fragment=""
+  [[ "$path" == *"#"* ]] && { fragment="${path#*#}"; path="${path%%#*}"; }
+  if [[ -z "$path" ]]; then
+    if [[ -f "$DOCS/index.md" ]]; then
+      check_fragment "$rel" "$lineno" "$DOCS/index.md" "$fragment" "docs/index.md"
+    else
+      report "$rel:$lineno: docs html link '$target' has no source index page"
+    fi
+  elif [[ "$path" == */ ]]; then
+    if [[ -f "$DOCS/${path}index.md" ]]; then
+      check_fragment "$rel" "$lineno" "$DOCS/${path}index.md" "$fragment" "docs/${path}index.md"
+    else
+      report "$rel:$lineno: docs html link '$path' has no source index page"
+    fi
+  else
+    path="${path%.html}.md"
+    if [[ -f "$DOCS/$path" ]]; then
+      check_fragment "$rel" "$lineno" "$DOCS/$path" "$fragment" "docs/$path"
+    else
+      report "$rel:$lineno: docs html link '$path' does not exist"
+    fi
+  fi
+}
+
 # Emit a single link target unless it is external. Rendered docs HTML links,
 # Jekyll {% link %} tags, and in-page anchors are kept, each validated by the
 # handler for the file's role.
 emit_link() {
   local lineno="$1" target="$2"
   case "$target" in
-    "$SITE_BASE"/*) ;; # rendered docs html link - keep (validated by the root handler)
+    "$SITE_BASE"/*) ;; # rendered docs html link - keep (validated by both handlers)
     http://* | https://* | mailto:* | tel:* | ftp://*) return ;;
   esac
   printf '%s\t%s\n' "$lineno" "$target"
@@ -184,35 +213,12 @@ check_jekyll_link() {
 
 # Validate one link target found in a file, dispatching on the file's role.
 handle_target() {
-  local mode="$1" rel="$2" lineno="$3" target="$4" path fragment
+  local mode="$1" rel="$2" lineno="$3" target="$4" path
   case "$mode" in
     root)
       case "$target" in
         '#'*) ;; # same-file anchor in a root file: GitHub-rendered, not kramdown
-        "$SITE_BASE"/*)
-          # Rendered docs HTML link: map back to the source page and check any
-          # in-page anchor (the fragment names a heading in that page).
-          path="${target#"$SITE_BASE"/}"
-          fragment=""
-          [[ "$path" == *"#"* ]] && { fragment="${path#*#}"; path="${path%%#*}"; }
-          if [[ -z "$path" ]]; then
-            [[ -f "$DOCS/index.md" ]] || report "$rel:$lineno: docs html link '$target' has no source index page"
-            check_fragment "$rel" "$lineno" "$DOCS/index.md" "$fragment" "docs/index.md"
-          elif [[ "$path" == */ ]]; then
-            if [[ -f "$DOCS/${path}index.md" ]]; then
-              check_fragment "$rel" "$lineno" "$DOCS/${path}index.md" "$fragment" "docs/${path}index.md"
-            else
-              report "$rel:$lineno: docs html link '$path' has no source index page"
-            fi
-          else
-            path="${path%.html}.md"
-            if [[ -f "$DOCS/$path" ]]; then
-              check_fragment "$rel" "$lineno" "$DOCS/$path" "$fragment" "docs/$path"
-            else
-              report "$rel:$lineno: docs html link '$path' does not exist"
-            fi
-          fi
-          ;;
+        "$SITE_BASE"/*) check_rendered_site_link "$rel" "$lineno" "$target" ;;
         *'{% link'*) report "$rel:$lineno: {% link %} tags only work under docs/; use a rendered docs html link" ;;
         docs | docs/* | /docs | /docs/*)
           report "$rel:$lineno: docs link '$target' must be a rendered html link ($SITE_BASE/...)" ;;
@@ -225,7 +231,7 @@ handle_target() {
       ;;
     docs)
       case "$target" in
-        "$SITE_BASE"/*) ;; # rendered docs link (external) - not a Jekyll tag
+        "$SITE_BASE"/*) check_rendered_site_link "$rel" "$lineno" "$target" ;; # rendered docs html link
         *'{% link'*) check_jekyll_link "$rel" "$lineno" "$DOCS" "$target" ;;
         \#*) check_fragment "$rel" "$lineno" "$ROOT/$rel" "${target#\#}" "$rel" ;;
         *) report "$rel:$lineno: internal link '$target' must use a Jekyll {% link %} tag" ;;
