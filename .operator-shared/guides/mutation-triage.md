@@ -1,5 +1,5 @@
 ---
-description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps, and the record-with-a-reason fallback; observed on the first full sweep of internal/agent.
+description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims and unparameterized clamp bounds), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, and the turn-2 packages.
 read_if: Triaging LIVED mutants from a `make mutation` sweep, or deciding whether to strengthen a test or record a `// gomutants:disable` reason.
 ---
 
@@ -73,9 +73,27 @@ This is the field guide for doing it. It was distilled from the first full sweep
   kills it. The wrong record also masked the package's true state: `filewalk` read "0 LIVED" in the PR while two
   `readFile` success-return mutants survived untriaged, so re-sweep the whole package (`FULL=1 PKG=…`) after triage
   instead of trusting the count.
-- **Removing `tb.Fatalf` from a test-support helper can be tested in a child process.** Have the child call the helper
-  with a failing input and have the parent assert that the child failed (see `internal/upgrade/upgrade_extra_test.go`).
-  Record the mutant when that test costs more than it is worth, not because the behavior is impossible to observe.
+- **`os.ReadDir` and `os.ReadFile` return partial results *alongside* an error, so "returns nil on error" is a false
+  equivalence.** Both document returning what they read before the error (`os.ReadDir`: "the entries it was able to read
+  before the error"; `os.ReadFile`: the bytes read so far). Removing an `if err != nil { continue }` guard after either
+  is observable: the partial directory entries get merged, or the partial bytes get parsed (a truncated `MemTotal` line
+  yields a nonzero memory figure). Kill it with a function-variable seam (`var readDir = os.ReadDir` /
+  `var readMeminfo = os.ReadFile`), have the test return `(partial, err)`, and assert the partial result is discarded —
+  the directory is skipped, or the value is 0. Check any "returns nil on error" reason against the stdlib's documented
+  behaviour before recording it; the wrong claim is worse than an honest "untestable" record.
+- **A clamp's literal bounds are observable: parameterize the helper and table-test literal limits, never suppress the
+  constants.** `min(max(runtime.NumCPU(), 1), maxCPUs)` reads as unreachable, but `1`→`2` changes the result on a
+  one-CPU host and `maxCPUs` (255)→`254` changes it at 255 CPUs. Extract `clampNumCPUs(cpus int) uint8` and test the
+  boundaries. The table's values must be **literals** (0/1, 254/255/256), not `maxCPUs`-relative: a symbolic expectation
+  moves with the mutated constant, so the decrement compiles, passes, and LIVEs (`{maxCPUs, maxCPUs}` expected 254 once
+  the constant became 254). A literal table kills all four integer mutants on the bounds.
+- **Removing `tb.Fatalf` from a test-support helper can be killed with a recording `testing.TB`, or a child process.**
+  A test-package fake that embeds `testing.TB` (which satisfies its private method), overrides `Helper`/`TempDir`, and
+  makes `Fatalf` append the message then `panic` a sentinel lets the test `recover` and assert the report
+  deterministically — cheaper than the child-process form (see `internal/upgrade/upgrade_extra_test.go`). Only the
+  helper's input and `tb.TempDir()` are injectable: a failure mid-sequence (between `PlainInit` and `Commit`) still
+  needs a production seam, so record those when the test costs more than it is worth. `yaml.Marshal` rejects a `chan`
+  with a `panic`, not an error — reach a marshal-error branch with a value implementing `MarshalYAML() (any, error)`.
 - **`t.Helper()` changes stack-trace metadata, not the helper's result.** Record its removal when checking the reported
   location would add little value; do not invent a production seam just to make it killable.
 

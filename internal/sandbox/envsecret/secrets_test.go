@@ -43,8 +43,8 @@ func TestParseSecretSpecLegacySplitsOnLastAt(t *testing.T) {
 func TestParseSecretSpecLegacyMissingFile(t *testing.T) {
 	testUI := termio.NewTestMock(t)
 	specs := ParseSecretSpecLegacy(filepath.Join(t.TempDir(), "nope"), &testUI)
-	if len(specs) != 0 {
-		t.Errorf("expected empty map for missing file, got %#v", specs)
+	if specs != nil {
+		t.Errorf("expected nil map for missing file, got %#v", specs)
 	}
 }
 
@@ -70,6 +70,25 @@ func TestBuildSecretsFromSpecsNoHostsDropsEntry(t *testing.T) {
 	}
 	if len(testUI.WarnCalls) == 0 {
 		t.Error("expected a warning for no hosts defined")
+	}
+}
+
+// TestBuildSecretsFromSpecsDroppedEntryDoesNotStopLaterEntries pins that a
+// dropped entry is skipped, not treated as the end of the sorted spec list:
+// the lexicographically-earlier spec is dropped, and the later valid one must
+// still be built.
+func TestBuildSecretsFromSpecsDroppedEntryDoesNotStopLaterEntries(t *testing.T) {
+	testUI := termio.NewTestMock(t)
+	in := map[string]SecretSpec{
+		"AAA": {Value: "dropped"}, // no hosts → dropped by the guard
+		"ZZZ": {Value: "kept", Host: "h.example"},
+	}
+	secrets := BuildSecretsFromSpecs(in, &testUI)
+	if len(secrets) != 1 {
+		t.Fatalf("expected the valid entry after a dropped one, got %d secrets", len(secrets))
+	}
+	if secrets[0].EnvVar != "ZZZ" {
+		t.Errorf("EnvVar = %q, want ZZZ", secrets[0].EnvVar)
 	}
 }
 
@@ -144,8 +163,8 @@ func TestParseSecretSpecYAMLMultilineValue(t *testing.T) {
 func TestParseSecretSpecYAMLMissingFile(t *testing.T) {
 	testUI := termio.NewTestMock(t)
 	specs := ParseSecretSpecYAML(filepath.Join(t.TempDir(), "nope"), &testUI)
-	if len(specs) != 0 {
-		t.Errorf("expected empty map for missing file, got %#v", specs)
+	if specs != nil {
+		t.Errorf("expected nil map for missing file, got %#v", specs)
 	}
 }
 
@@ -156,6 +175,9 @@ func TestParseSecretSpecYAMLMalformedWarns(t *testing.T) {
 	specs := ParseSecretSpecYAML(path, &testUI)
 	if len(specs) != 0 {
 		t.Errorf("expected empty map for malformed yaml, got %#v", specs)
+	}
+	if len(testUI.WarnCalls) == 0 {
+		t.Error("expected a warning for malformed yaml")
 	}
 }
 
@@ -445,5 +467,18 @@ func TestBuildSecretsFromSpecsDeterministicOrder(t *testing.T) {
 		if !slices.IsSorted(names) {
 			t.Fatalf("secret entries must be emitted in a stable sorted order, got %v", names)
 		}
+	}
+}
+
+// TestParseSecretSpecLegacyTrimsKey pins that the legacy parser trims
+// surrounding whitespace from a key; the line is trimmed as a whole, but the
+// part before '=' can still carry trailing spaces.
+func TestParseSecretSpecLegacyTrimsKey(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "env.secret")
+	testutil.WritePath(t, path, "KEY =value@h.example\n")
+	testUI := termio.NewTestMock(t)
+	specs := ParseSecretSpecLegacy(path, &testUI)
+	if _, ok := specs["KEY"]; !ok {
+		t.Errorf("expected trimmed key \"KEY\", got %#v", specs)
 	}
 }

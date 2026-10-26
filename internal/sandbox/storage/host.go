@@ -59,9 +59,6 @@ func (a *runtimeAccumulator) scan(root string, includeObjects bool) error {
 // the walk starts, so an error here (a file that vanished mid-walk, an
 // unreadable directory) propagates rather than silently under-reporting.
 func (a *runtimeAccumulator) visit(path string, info fs.FileInfo, includeObjects bool) error {
-	if info.IsDir() {
-		return nil
-	}
 	if !info.Mode().IsRegular() {
 		return nil
 	}

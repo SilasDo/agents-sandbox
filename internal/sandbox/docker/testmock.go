@@ -13,7 +13,7 @@ import (
 )
 
 func WithDockerMock(t *testing.T, mock Client) {
-	t.Helper()
+	t.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only adjusts reported stack frames; it cannot change this helper's result"
 
 	orig := Get
 

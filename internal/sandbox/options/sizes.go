@@ -47,6 +47,7 @@ func ParseMemoryOK(spec string) (uint32, bool) {
 	if err != nil {
 		return 0, false
 	}
+	// gomutants:disable-next-line INTEGER_INCREMENT reason="multiplier is only ever the literal 1 or 1024"
 	if multiplier > 1 && count > maxGiBCount {
 		return 0, false
 	}

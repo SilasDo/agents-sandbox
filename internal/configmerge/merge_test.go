@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -209,6 +210,42 @@ func TestExpandBracesUnbalanced(t *testing.T) {
 	}
 }
 
+func TestExpandBracesStartingWithBrace(t *testing.T) {
+	// open == 0 is a real brace group, not "no brace".
+	cases := []struct {
+		pattern string
+		want    []string
+	}{
+		{"{a,b}", []string{"a", "b"}},
+		{"{a,b}x", []string{"ax", "bx"}},
+	}
+	for _, c := range cases {
+		if got := expandBraces(c.pattern); !slices.Equal(got, c.want) {
+			t.Errorf("expandBraces(%q) = %v, want %v", c.pattern, got, c.want)
+		}
+	}
+}
+
+func TestDeepMergeMergesEverySharedKey(t *testing.T) {
+	base := map[string]any{
+		"m": map[string]any{"a": 1},
+		"n": map[string]any{"c": 3},
+	}
+	override := map[string]any{
+		"m": map[string]any{"b": 2},
+		"n": map[string]any{"d": 4},
+	}
+	got := deepMerge(base, override)
+	m, _ := got["m"].(map[string]any)
+	n, _ := got["n"].(map[string]any)
+	if m["a"] != 1 || m["b"] != 2 {
+		t.Errorf("m = %v, want a=1 b=2", m)
+	}
+	if n["c"] != 3 || n["d"] != 4 {
+		t.Errorf("n = %v, want c=3 d=4", n)
+	}
+}
+
 func TestBuildMergedSkipsUnparsableSnippet(t *testing.T) {
 	dir := t.TempDir()
 	// A matching-but-invalid snippet must be skipped, not fail the build.
@@ -334,5 +371,96 @@ func TestScanMirrorEmptyDirs(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Errorf("entries = %+v, want none", entries)
+	}
+}
+
+func TestScanMirrorSkipsEmptyDirAndScansNext(t *testing.T) {
+	proj := t.TempDir()
+	dest := t.TempDir()
+	testutil.WriteFile(t, proj, "tui.json", `{"theme":"dark"}`)
+
+	entries, err := ScanMirror("opencode*.json*", nil, "", proj, dest)
+	if err != nil {
+		t.Fatalf("ScanMirror: %v", err)
+	}
+	if len(entries) != 1 || entries[0].HostPath != filepath.Join(proj, "tui.json") {
+		t.Fatalf("entries = %+v, want the project file", entries)
+	}
+}
+
+func TestScanMirrorSortsEntriesByVMPath(t *testing.T) {
+	user := t.TempDir()
+	dest := t.TempDir()
+	testutil.WriteFile(t, user, "b.json", `{}`)
+	testutil.WriteFile(t, user, "a.json", `{}`)
+	testutil.WriteFile(t, user, "c.json", `{}`)
+
+	// A removed sort leaves map-iteration order, so repeat to make the
+	// non-determinism observable rather than a coin flip.
+	for range 50 {
+		entries, err := ScanMirror("opencode*.json*", nil, user, "", dest)
+		if err != nil {
+			t.Fatalf("ScanMirror: %v", err)
+		}
+		if len(entries) != 3 {
+			t.Fatalf("entries = %d, want 3", len(entries))
+		}
+		for i := 1; i < len(entries); i++ {
+			if entries[i-1].VMPath > entries[i].VMPath {
+				t.Fatalf("entries not sorted by VMPath: %q > %q", entries[i-1].VMPath, entries[i].VMPath)
+			}
+		}
+	}
+}
+
+func TestScanMirrorDescendsIntoDirectoryMatchingPattern(t *testing.T) {
+	user := t.TempDir()
+	dest := t.TempDir()
+	matchingDir := filepath.Join(user, "opencode-dir.json")
+	if err := os.MkdirAll(matchingDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, matchingDir, "inner.txt", "inner")
+
+	entries, err := ScanMirror("opencode*.json*", nil, user, "", dest)
+	if err != nil {
+		t.Fatalf("ScanMirror: %v", err)
+	}
+	want := filepath.Join(dest, "opencode-dir.json", "inner.txt")
+	if len(entries) != 1 || entries[0].VMPath != want {
+		t.Fatalf("entries = %+v, want the nested file %q", entries, want)
+	}
+}
+
+func TestScanMirrorMirrorsNestedFileMatchingPattern(t *testing.T) {
+	user := t.TempDir()
+	dest := t.TempDir()
+	sub := filepath.Join(user, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, sub, "opencode-x.json", `{"x":1}`)
+
+	entries, err := ScanMirror("opencode*.json*", nil, user, "", dest)
+	if err != nil {
+		t.Fatalf("ScanMirror: %v", err)
+	}
+	want := filepath.Join(dest, "sub", "opencode-x.json")
+	if len(entries) != 1 || entries[0].VMPath != want {
+		t.Fatalf("entries = %+v, want the nested file %q", entries, want)
+	}
+}
+
+func TestScanMirrorSkipsFamilyFileWithoutPatternMatch(t *testing.T) {
+	user := t.TempDir()
+	dest := t.TempDir()
+	testutil.WriteFile(t, user, "tui.json", `{"theme":"dark"}`)
+
+	entries, err := ScanMirror("opencode*.json*", []string{"tui.json"}, user, "", dest)
+	if err != nil {
+		t.Fatalf("ScanMirror: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("entries = %+v, want none (tui.json is reserved by the family)", entries)
 	}
 }
