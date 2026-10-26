@@ -112,6 +112,10 @@ its `main_test.go` installs the wrapper's families minus `doctor` directly rathe
     to `docs/`; `extract_jekyll_path` currently discards the fragment after `%}`);
   - a Go source `.go` under `cmd/` and `internal/` → extract `docslink.SectionURL("<page>", "<anchor>")` and any
     literal `https://…/agents-sandbox/<page>.html#<anchor>` (kept as a safety net) and slug-check them;
+- the Go extractor scans the **whole file**, not one line at a time: a call the author broke across lines (gofmt
+  preserves the break) and two matches on one physical line are both resolved, each reported at its own line;
+- reference-style link definitions keep their trailing fragment (an angle-bracketed destination is unwrapped), so a
+  dead `[ref]: …/page.html#anchor` no longer escapes as a page-only link.
 - `report` messages naming the file, line, fragment and target page.
 
 ## Calibration

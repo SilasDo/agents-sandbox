@@ -136,6 +136,30 @@ printf '\n[Commands][ref]\n\n[ref]: https://inoio.github.io/agents-sandbox/nope.
 expect "root reference link" 1 "docs html link 'nope.md' does not exist" "$d"
 rm -rf "$d"
 
+# A reference definition keeps its fragment, so a dead one is caught rather than
+# passing as a page-only link.
+d="$(new_fixture)"
+printf '\n[Commands][ref]\n\n[ref]: https://inoio.github.io/agents-sandbox/install.html#no-such-heading\n' >>"$d/README.md"
+expect "root reference dead fragment" 1 "fragment 'no-such-heading' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# An angle-bracketed reference destination resolves, brackets stripped.
+d="$(new_fixture)"
+printf '\n[Commands][ref]\n\n[ref]: <https://inoio.github.io/agents-sandbox/install.html#install>\n' >>"$d/README.md"
+expect "root reference angle-bracket fragment resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# A same-page reference in a docs page names a heading in that page.
+d="$(new_fixture)"
+printf '\n[Top][here]\n\n[here]: #introduction\n' >>"$d/docs/introduction.md"
+expect "docs same-page reference fragment resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n[Top][here]\n\n[here]: #no-such-heading\n' >>"$d/docs/introduction.md"
+expect "docs same-page reference dead fragment" 1 "fragment 'no-such-heading' matches no heading in docs/introduction.md" "$d"
+rm -rf "$d"
+
 # Non-docs relative links in root files must still resolve.
 d="$(new_fixture)"
 printf '\n[Gone](MISSING.md)\n' >>"$d/README.md"
@@ -370,6 +394,20 @@ printf '\n[Hook](https://inoio.github.io/agents-sandbox/install.html#foo_bar-baz
 expect "intraword underscore heading slug" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# The heading detector counts one to six leading hashes without an interval
+# expression (older mawk cannot do {1,6}): six is a heading, seven is not.
+d="$(new_fixture)"
+printf '\n###### Six\n' >>"$d/docs/install.md"
+printf '\n[Six](https://inoio.github.io/agents-sandbox/install.html#six)\n' >>"$d/README.md"
+expect "six-hash heading recognized" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n####### Seven\n' >>"$d/docs/install.md"
+printf '\n[Seven](https://inoio.github.io/agents-sandbox/install.html#seven)\n' >>"$d/README.md"
+expect "seven-hash line not a heading" 1 "fragment 'seven' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
 # A same-file anchor in a docs page names a heading in that page.
 d="$(new_fixture)"
 printf '\n[Gone](#no-such-heading)\n' >>"$d/docs/introduction.md"
@@ -459,6 +497,50 @@ package fixture
 var _ = mySectionURL("troubleshooting", "dead-anchor")
 EOF
 expect "go mySectionURL not extracted" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# A SectionURL call the author broke across lines (gofmt preserves the break) is
+# still resolved, and the line reported is the call's first line, not the
+# preceding newline's.
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+var _ = docslink.SectionURL(
+	"troubleshooting",
+	"dead-anchor",
+)
+EOF
+expect "go multiline SectionURL dead fragment" 1 "internal/fixture/fixture.go:7: fragment 'dead-anchor'" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+var _ = docslink.SectionURL(
+	"troubleshooting",
+	"docker-not-running",
+)
+EOF
+expect "go multiline SectionURL resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# Two calls on one physical line are both checked: the extractor keeps scanning
+# after each match instead of taking only the first.
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+var _ = []string{docslink.SectionURL("troubleshooting", "docker-not-running"), docslink.SectionURL("troubleshooting", "dead-anchor")}
+EOF
+expect "go two SectionURLs on one line" 1 "internal/fixture/fixture.go:7: fragment 'dead-anchor'" "$d"
+rm -rf "$d"
+
+# Two literal site URLs on one physical line are both checked.
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+var _ = []string{"https://inoio.github.io/agents-sandbox/troubleshooting.html#docker-not-running", "https://inoio.github.io/agents-sandbox/troubleshooting.html#dead-anchor"}
+EOF
+expect "go two literal urls on one line" 1 "internal/fixture/fixture.go:7: fragment 'dead-anchor'" "$d"
 rm -rf "$d"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

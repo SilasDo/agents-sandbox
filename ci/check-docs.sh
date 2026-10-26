@@ -42,14 +42,18 @@ link_targets() {
   local file="$1" line lineno rest match target id
   local -A refs=()
   local re_def re_inline re_ref
-  re_def='^[[:space:]]*\[([^]]+)\]:[[:space:]]*([^#[:space:]]+)'
+  # The destination keeps its fragment (a trailing "#anchor" is validated like
+  # any other link). `<...>` permits spaces, mirroring inline links.
+  re_def='^[[:space:]]*\[([^]]+)\]:[[:space:]]*(<[^>]*>|[^[:space:]]+)'
   re_inline='\[[^]]*\]\(([^()]*\([^()]*\)[^()]*|[^()]*|<[^>]*>)\)'
   re_ref='\[([^]]*)\]\[([^]]*)\]|\[([^]]*)\]'
 
   # First pass: collect reference definitions "[id]: url".
   while IFS= read -r line; do
     if [[ "$line" =~ $re_def ]]; then
-      refs["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+      target="${BASH_REMATCH[2]}"
+      [[ "$target" == \<*\> ]] && { target="${target#<}"; target="${target%>}"; }
+      refs["${BASH_REMATCH[1]}"]="$target"
     fi
   done <"$file"
 
@@ -124,9 +128,14 @@ page_slugs() {
         if (trimmed ~ /^(`+|~+)$/ && substr(trimmed, 1, 1) == marker && length(trimmed) >= openlen) fence = 0
         next
       }
-      if (body ~ /^#{1,6}[ \t]/) {
-        t = body
-        sub(/^#{1,6}[ \t]+/, "", t)
+      # Count the leading hashes instead of matching a {1,6} interval: the
+      # default awk is mawk on some distributions, and its older builds treat an
+      # interval expression as literal braces, recognising no headings at all.
+      hashes = 0
+      while (substr(body, hashes + 1, 1) == "#") hashes++
+      if (hashes >= 1 && hashes <= 6 && substr(body, hashes + 1, 1) ~ /^[ \t]$/) {
+        t = substr(body, hashes + 1)
+        sub(/^[ \t]+/, "", t)
         sub(/[ \t]+#+[ \t]*$/, "", t)          # trailing ATX hashes
         if (t ~ /\{[ \t]*#[^}]*\}[ \t]*$/) {   # declared id: honoured verbatim
           id = t
@@ -333,25 +342,47 @@ find_go_files() {
   done | sort
 }
 
+# count_newlines STRING: print the number of newlines in STRING.
+count_newlines() {
+  local stripped="${1//$'\n'/}"
+  printf '%s' "$(( ${#1} - ${#stripped} ))"
+}
+
+# scan_go_targets TEXT RE BOUNDARY_GROUP PAGE_GROUP ANCHOR_GROUP: emit
+# "lineno<TAB>page<TAB>anchor" for every RE match in TEXT, reporting the line the
+# match's token starts on. Scanning the whole file (not one line at a time) finds
+# a call whose arguments are broken across lines and several matches on one line;
+# BOUNDARY_GROUP is the group that carries the leading non-word byte (0 if none),
+# so the reported line is the call's, not the preceding newline's.
+scan_go_targets() {
+  local text="$1" re="$2" boundary_group="$3" page_group="$4" anchor_group="$5"
+  local match prefix start_prefix lineno=1
+  while [[ "$text" =~ $re ]]; do
+    match="${BASH_REMATCH[0]}"
+    prefix="${text%%"$match"*}"
+    start_prefix="$prefix"
+    [[ "$boundary_group" -gt 0 ]] && start_prefix="$prefix${BASH_REMATCH[$boundary_group]}"
+    lineno=$((lineno + $(count_newlines "$start_prefix")))
+    printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[$page_group]}" "${BASH_REMATCH[$anchor_group]}"
+    text="${text#*"$match"}"
+    lineno=$((lineno + $(count_newlines "$match")))
+  done
+}
+
 # go_doc_targets FILE: emit "lineno<TAB>page<TAB>anchor" for each documentation
 # link the launcher can print: a SectionURL call (package-qualified or not), or
 # a literal site URL.
 go_doc_targets() {
-  local file="$1" line lineno
+  local text
+  text="$(<"$1")"
   # The leading boundary keeps `mySectionURL(...)` from matching while allowing
-  # both `docslink.SectionURL(...)` and an unqualified `SectionURL(...)`.
-  local re_section='(^|[^A-Za-z0-9_])SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
-  local re_literal='https://inoio\.github\.io/agents-sandbox/([A-Za-z0-9/._-]+)\.html#([A-Za-z0-9._-]+)'
-  lineno=0
-  while IFS= read -r line; do
-    lineno=$((lineno + 1))
-    if [[ "$line" =~ $re_section ]]; then
-      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
-    fi
-    if [[ "$line" =~ $re_literal ]]; then
-      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    fi
-  done <"$file"
+  # both `docslink.SectionURL(...)` and an unqualified `SectionURL(...)`. The
+  # whitespace around the arguments lets a call the author wrapped across lines
+  # (gofmt preserves such breaks) still resolve.
+  scan_go_targets "$text" \
+    '(^|[^A-Za-z0-9_])SectionURL\([[:space:]]*"([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)",?[[:space:]]*\)' 1 2 3
+  scan_go_targets "$text" \
+    'https://inoio\.github\.io/agents-sandbox/([A-Za-z0-9/._-]+)\.html#([A-Za-z0-9._-]+)' 0 1 2
 }
 
 # check_go_files: resolve every doc link in a Go source against its docs page.
