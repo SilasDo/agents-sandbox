@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
@@ -139,45 +138,9 @@ func CmdEdit(
 			)
 		},
 		main: func(oldVolume, newVolumeName string) error {
-			client := msb.Get()
-			loaded, loadErr := image.EnsureLoaded(ctx, client, info, ui)
-			if loadErr != nil {
-				return fmt.Errorf("load runner image: %w", loadErr)
+			if err := editVolumesInteractively(ctx, k, oldVolume, newVolumeName, info, ui); err != nil {
+				return err
 			}
-			spin := ui.Spinner("Starting interactive session with both volumes")
-			editSandboxName := naming.TaskSandboxName(k.Slug, k.Agent, time.Now().UnixNano())
-			editOldMount := msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{})
-			editNewMount := msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{})
-			editSb, editErr := client.CreateSandbox(ctx, editSandboxName,
-				msbSdk.WithImage(loaded.Ref),
-				msbSdk.WithLabels(naming.TaskSandboxLabels(k.Slug, k.Agent)),
-				msbSdk.WithMounts(map[string]msbSdk.MountConfig{
-					srcMount: editOldMount,
-					dstMount: editNewMount,
-				}),
-				msbSdk.WithReplace(),
-			)
-			if editErr != nil {
-				return fmt.Errorf("create edit sandbox: %w", editErr)
-			}
-			ui.Infof("Both volumes mounted in session:")
-			ui.Infof("  Old volume (source):  /src")
-			ui.Infof("  New volume (target):  /dst")
-			ui.Infof("Type 'exit' to finish and return to the host.")
-			spin.Stop()
-			_, shellErr := editSb.Attach(ctx, "/bin/bash", "-l")
-			if shellErr != nil {
-				ui.Warnf("shell exited with error: %v", shellErr)
-			}
-			// Best-effort cleanup: destroy through the live sandbox so a
-			// same-name replacement is never removed by mistake.
-			destroyCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
-			if destroyErr := editSb.Destroy(destroyCtx); destroyErr != nil &&
-				!msb.IsReplaced(destroyErr) && !msb.IsNotFound(destroyErr) {
-				ui.Warnf("failed to destroy edit sandbox %s: %v", editSandboxName, destroyErr)
-			}
-			cancel()
-			_ = editSb.Close()
 			ui.Infof("exited interactive session, new volume: %q", newVolumeName)
 			return nil
 		},
@@ -266,4 +229,33 @@ func volumeOp(
 	}
 
 	return nil
+}
+
+// editVolumesInteractively attaches a login shell to a throwaway sandbox that
+// mounts the old volume at /src and the new one at /dst. A failing shell is
+// only reported, since the user may have finished the transfer regardless.
+func editVolumesInteractively(
+	ctx context.Context,
+	k state.Key, oldVolume, newVolumeName string,
+	info image.ImageInfo,
+	ui termio.UI,
+) error {
+	return withThrowawaySandbox(ctx, msb.Get(), k, info, throwawaySandbox{
+		purpose: "edit",
+		mounts: map[string]msbSdk.MountConfig{
+			srcMount: msbSdk.Mount.Named(oldVolume, msbSdk.MountOptions{}),
+			dstMount: msbSdk.Mount.Named(newVolumeName, msbSdk.MountOptions{}),
+		},
+		spinnerLabel: "Starting interactive session with both volumes",
+	}, ui, func(sb msb.Sandbox, spin termio.Spinner) error {
+		ui.Infof("Both volumes mounted in session:")
+		ui.Infof("  Old volume (source):  /src")
+		ui.Infof("  New volume (target):  /dst")
+		ui.Infof("Type 'exit' to finish and return to the host.")
+		spin.Stop()
+		if _, err := sb.Attach(ctx, "/bin/bash", "-l"); err != nil {
+			ui.Warnf("shell exited with error: %v", err)
+		}
+		return nil
+	})
 }
