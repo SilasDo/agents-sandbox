@@ -45,13 +45,25 @@ agents-sandbox also lists the links it refused, so you can open them yourself.
 
 ## Logging in to an agent
 
-Some agent logins open a sign-in page and then wait for your browser to come back to a small server the agent runs
-inside the sandbox. Your browser runs on your computer and can't reach that server, so agents-sandbox refuses these
-sign-in links. The agent then falls back to its other login options: Claude Code and pi ask you to paste a code or the
-final URL, and opencode and opencode2 offer a device-code login for some providers. Logins without such a fallback,
-such as MCP server logins in opencode and opencode2, don't work in the sandbox.
+Agent logins and MCP server logins work through your browser on the host too. Many of them open a sign-in page and then
+wait for your browser to come back to a small server the agent runs inside the sandbox, at an address like
+`http://localhost:43117/callback`. Your browser can't reach the sandbox, so agents-sandbox listens on the same port on
+your computer while the login is open. When your browser arrives there, agents-sandbox passes the request on to the
+agent in the sandbox and shows you the agent's answer. Like the link hand-over, this doesn't use the sandbox's network.
 
-Sign-in pages that only show a code, such as device-code logins, open normally.
+agents-sandbox stops listening after the login completes, after five minutes, or when the session ends. It only passes
+on the one request to the address the agent named. It shows you the agent's answer with scripts, cookies and other
+resources blocked, and refuses an answer that would redirect your browser to a local address, so a page from the
+sandbox can neither read your cookies nor reach other services on your computer.
+
+If you build the runner image on a custom base, that base must provide `curl`: the launcher uses it to pass the callback
+into the sandbox. See the [base image contract]({% link runner-image.md %}#the-base-image-contract).
+
+If that port is already in use on your computer, agents-sandbox can't listen on it and refuses the sign-in link. The
+agent then falls back to its other login options: Claude Code and pi ask you to paste a code or the final URL, and
+opencode and opencode2 offer a device-code login for some providers.
+
+Sign-in pages that only show a code, such as device-code logins, open like any other link.
 
 ## Limits
 

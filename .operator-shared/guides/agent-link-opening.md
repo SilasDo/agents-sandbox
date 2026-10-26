@@ -54,6 +54,11 @@ from the volume's host path. No guest egress, no listening socket, no new mount;
 bind-mounted spool dir is the fallback if the volume path is not directly readable (one extra
 mount, a one-time VM recreate).
 
+The spool path is guest-writable, so every host-side access is hardened against what the guest can
+plant there: the directory is opened with `O_DIRECTORY|O_NONBLOCK` (a FIFO would otherwise block the
+open forever and hang the watcher, which session shutdown waits on) and each request is opened with
+`O_NONBLOCK|O_NOFOLLOW` plus a regular-file check before it is read.
+
 Direction note: the existing `internal/notify` watcher is the opposite direction — the host
 reads the in-VM daemon's SSE stream through the msb exec channel (`sb.ShellStream`,
 host→guest), which needs no guest egress. An opener is the launcher's first VM→host *action*
@@ -95,8 +100,32 @@ Consequences for a host opener:
 - **Loopback flows without a fallback** (opencode MCP/GitLab/ChatGPT browser, codex browser
   login) are broken today and stay broken unless the return leg is forwarded.
 
-Return-leg forwarding: the watcher detects a loopback `redirect_uri`, listens on the host's
+Implemented in `internal/opener` (#273): `ClassifyTarget` detects the loopback `redirect_uri`,
+`CallbackForwarder` forwards it, and a failed bind falls back to refusing the URL (exit 4), which
+keeps the agents' paste/device-code fallbacks. Return-leg forwarding: the watcher detects a loopback `redirect_uri`, listens on the host's
 `127.0.0.1` and `::1` at that port (browsers may resolve `localhost` to `::1`; the agents bind
 `127.0.0.1` in the VM), and replays the single callback GET inside the VM through the msb exec
 channel (`curl -i http://127.0.0.1:<port><path>?<query>`), relaying the response. It needs no
 guest egress or published port, and random ports are fine because the port comes from the URL.
+
+Host-browser boundary of the return leg: the guest's response is untrusted, so the forwarder drops
+`Set-Cookie`/`Clear-Site-Data` (host cookies are not port-separated) and serves the page with
+`Content-Security-Policy: sandbox; default-src 'none'` + `nosniff` — `sandbox` removes scripts and
+gives an opaque origin, `default-src 'none'` also blocks subresources, so guest HTML cannot make the
+host browser fetch a host-local address (an `<img src="http://127.0.0.1:…">`, say). It relays the
+guest's `Location` only when it is an absolute `http(s)` URL to a host other than the host's own
+loopback; a loopback, ambiguous-numeric, relative, or non-web target is replaced with a local notice,
+because following it would reach another service listening on the host — the same boundary the
+`redirect_uri` check guards; that check covers the `Location` header, not resource loads, which is
+why the CSP must block them. A second login on a port already being forwarded updates the served
+callback path and restarts the forward's lifetime instead of rebinding, so a new path is not 404'd
+by an unfinished earlier login and the new login gets the full window rather than the earlier
+login's nearly expired deadline. Reuse also hands ownership of the listener to the new login: an
+earlier callback still being answered in the guest does not close the listener when it returns, so
+it cannot cut off the browser callback the new login is still waiting for.
+
+The replay needs guest `curl`. The managed base provides it and the daemon agents already require
+it; because the opener is on by default, every runner image now verifies `curl` in the final stage
+(`launcherGuestTools` in `internal/sandbox/image/dockerfile.go`), so a custom base without `curl`
+fails the image build naming the tool instead of failing at login. Documented in
+`docs/runner-image.md` (base image contract) and `docs/configuration/opening-links.md`.

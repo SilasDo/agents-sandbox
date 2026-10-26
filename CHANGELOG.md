@@ -18,8 +18,12 @@ command reports the bare version (e.g. `0.1.0`).
 - Links that an agent opens inside the VM (`xdg-open`, `x-www-browser`, `sensible-browser`, `$BROWSER`) now open in
   the host's browser. A shim in the runner image hands each link to the attached launcher through the home volume, so
   it also works with `network.profile: none`; the launcher opens only allowlisted schemes (`http`, `https`, `mailto`,
-  editor/app links) and refuses `file:` and loopback URLs. On by default; turn it off with `open-links: false`,
-  `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim.
+  editor/app links) and refuses `file:` and loopback URLs. Browser logins that wait for a callback inside the VM
+  (Claude Code, pi, opencode/opencode2 provider and MCP server logins) complete on the host: while the login is open,
+  the launcher listens on the callback port on the host's loopback and replays the browser's callback inside the VM.
+  On by default; turn it off with `open-links: false`,
+  `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim; a
+  custom runner base must now provide `curl`, which the image build verifies.
 
 ### Changed
 

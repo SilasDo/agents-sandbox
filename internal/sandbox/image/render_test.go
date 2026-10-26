@@ -404,6 +404,26 @@ func TestGuestToolsBlockEmptyListEmitsNothing(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileChecksLauncherTools guards the host opener's custom-base
+// contract: the launcher replays a browser-login callback inside the VM with
+// curl, so every runner image must verify curl in the final stage, including
+// the daemonless agents (pi, claude-code) that declare no agent tools.
+func TestRenderDockerfileChecksLauncherTools(t *testing.T) {
+	for _, name := range []string{"opencode", "pi", "claude-code"} {
+		a, ok := agent.Lookup(name)
+		if !ok {
+			t.Fatalf("agent %q not registered", name)
+		}
+		final := finalStage(t, mustRender(t, a, nil, false))
+		if !strings.Contains(final, "for p in curl;") {
+			t.Errorf("%s: the final stage must verify the launcher's curl; got:\n%s", name, final)
+		}
+		if !strings.Contains(final, "launcher runtime tool missing") {
+			t.Errorf("%s: the missing-tool error must name the launcher; got:\n%s", name, final)
+		}
+	}
+}
+
 // TestRenderDockerfilePostBodyBlocksResetUserRoot guards I2: a user body ending
 // in a non-root USER must not leak into the tool-owned adoption RUN blocks.
 func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {

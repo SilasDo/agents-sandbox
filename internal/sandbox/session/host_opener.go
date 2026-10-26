@@ -2,7 +2,9 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -20,13 +22,50 @@ var resolveHomeVolumePath = func(ctx context.Context, volumeName string) (string
 }
 
 // watchHostOpener serves the in-VM xdg-open shim's spool until ctx is done. It
-// is a test seam; production runs an opener.Watcher with the host handler.
-var watchHostOpener = func(ctx context.Context, homeVolumePath string, _ msb.Sandbox) (opener.Report, error) {
+// is a test seam; production runs an opener.Watcher with the host handler,
+// forwarding OAuth login callbacks into sb.
+var watchHostOpener = func(ctx context.Context, homeVolumePath string, sb msb.Sandbox) (opener.Report, error) {
 	watcher := &opener.Watcher{
 		HomeVolumePath: homeVolumePath,
-		Handle:         opener.NewHostHandler(opener.OpenOnHost),
+		Handle:         opener.NewHostHandler(opener.OpenOnHost, opener.NewCallbackForwarder(guestFetcher(sb))),
 	}
 	return watcher.Watch(ctx)
+}
+
+// curlExitCouldNotConnect is curl's exit status when nothing accepts the
+// connection.
+const curlExitCouldNotConnect = 7
+
+// guestFetcher replays a login callback inside the VM with curl over the msb
+// exec channel, so it works without guest egress. Agents bind their callback
+// on 127.0.0.1 or, for some, on ::1, so a refused IPv4 connection is retried
+// on IPv6. Errors carry only the exit status: the URL holds the authorization
+// code and must not end up in a log.
+func guestFetcher(sb msb.Sandbox) opener.GuestFetcher {
+	return func(ctx context.Context, url string) ([]byte, error) {
+		result, err := fetchInGuest(ctx, sb, url)
+		if err == nil && result.ExitCode() == curlExitCouldNotConnect {
+			result, err = fetchInGuest(ctx, sb, strings.Replace(url, "://127.0.0.1:", "://[::1]:", 1))
+		}
+		if err != nil {
+			return nil, errors.New("replaying the login callback in the VM failed")
+		}
+		if !result.Success() {
+			return nil, fmt.Errorf("replaying the login callback in the VM failed: curl exit %d", result.ExitCode())
+		}
+		return result.StdoutBytes(), nil
+	}
+}
+
+// curlCallbackArguments makes curl print the response exactly as received:
+// --include adds the status line and headers, and --raw keeps transfer
+// encodings such as chunked framing intact, so the host decodes the body once.
+func curlCallbackArguments(url string) []string {
+	return []string{"--silent", "--include", "--raw", "--noproxy", "*", "--max-time", "110", "--", url}
+}
+
+func fetchInGuest(ctx context.Context, sb msb.Sandbox, url string) (msb.ShellResult, error) {
+	return sb.Exec(ctx, "curl", curlCallbackArguments(url))
 }
 
 // startHostOpener runs the host side of the in-VM xdg-open shim for the

@@ -110,7 +110,7 @@ func TestHostOpenerShimReportsRefusal(t *testing.T) {
 	code, stderr := runShim(t, opener.NewHostHandler(func(string) error {
 		t.Fatal("refused target must not be opened")
 		return nil
-	}), true, "file:///etc/passwd")
+	}, nil), true, "file:///etc/passwd")
 	if code != 4 || !strings.Contains(stderr, "scheme not allowed") || !strings.Contains(stderr, "file:///etc/passwd") {
 		t.Fatalf("code %d, stderr %s", code, stderr)
 	}

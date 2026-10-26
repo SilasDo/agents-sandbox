@@ -417,7 +417,7 @@ func TestHostHandler(t *testing.T) {
 	handler := NewHostHandler(func(target string) error {
 		opened = append(opened, target)
 		return nil
-	})
+	}, nil)
 	if err := handler(context.Background(), "https://example.com"); err != nil {
 		t.Fatalf("allowed: %v", err)
 	}

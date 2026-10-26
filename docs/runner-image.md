@@ -214,6 +214,10 @@ base must meet these requirements:
   runtime-owned job, so no process-control tool is needed. `curl` is checked after your Dockerfile body runs, so it may
   be installed in the body or an earlier stage; if it is missing, the build fails and names the tool. `pi` and
   `claude-code` run no daemon and need none.
+- **For the host opener**: `curl`. The launcher replays a browser-login callback inside the VM with it, so every custom
+  base needs `curl` even when the agent runs no daemon (the daemon agents' `curl` requirement covers the same tool). It
+  is checked after your Dockerfile body runs, and a missing `curl` fails the build naming the tool. See
+  [Opening links]({% link configuration/opening-links.md %}#logging-in-to-an-agent).
 - The recommended CLI tools listed here are documented for your convenience, not as requirements — as a custom base you install
   your own.
 - A base that already provides docker, node, or the agent is left alone (idempotency), and a pre-created `dev` user is

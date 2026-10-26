@@ -487,6 +487,7 @@ func runnerStage(a agent.Agent, baseAlias, body string, docker, dockerInjected b
 		agentImageConfigBlock(a),
 		finalizationBlock(),
 		guestToolsBlock(a),
+		launcherToolsBlock(),
 	)
 	return joinBlocks(parts...)
 }
@@ -554,6 +555,21 @@ RUN set -e; mkdir -p /etc/agents-sandbox; \
 `, agentBinary(a), toolDir)
 }
 
+// launcherGuestTools are in-VM tools the launcher invokes directly, independent
+// of the agent: curl replays a browser-login callback inside the VM for the
+// host opener. The opener is on by default, so every runner image verifies
+// these; the check makes a custom base that lacks one fail the image build
+// naming the tool instead of failing at login time. The managed base already
+// provides curl.
+var launcherGuestTools = []string{"curl"}
+
+// launcherToolsBlock verifies the in-VM tools the launcher's own features need,
+// on top of the agent's runtime tools. It runs last, with the same PATH as
+// guestToolsBlock, and fails the build naming the missing tool.
+func launcherToolsBlock() string {
+	return guestToolCheck(launcherGuestTools, "launcher runtime tool missing", "required by the host opener")
+}
+
 // guestToolsBlock verifies the in-VM tools this agent's runtime needs (daemon
 // health, session and worktree calls, notifications, and process control). It
 // runs last, as the runtime user and after finalizationBlock finalizes the
@@ -566,15 +582,20 @@ func guestToolsBlock(a agent.Agent) string {
 	if !ok {
 		return ""
 	}
-	tools := requirer.GuestTools()
+	return guestToolCheck(requirer.GuestTools(), "agent runtime tool missing", "required by "+a.Name())
+}
+
+// guestToolCheck renders the RUN loop that fails the build when any of tools is
+// absent from the image, naming the missing tool and why it is needed.
+func guestToolCheck(tools []string, missing, reason string) string {
 	if len(tools) == 0 {
 		return ""
 	}
 	return fmt.Sprintf(`RUN set -e; for p in %s; do \
       command -v "$p" >/dev/null 2>&1 || \
-        { echo "error: agent runtime tool missing: $p (required by %s)" >&2; exit 1; }; \
+        { echo "error: %s: $p (%s)" >&2; exit 1; }; \
     done
-`, strings.Join(tools, " "), a.Name())
+`, strings.Join(tools, " "), missing, reason)
 }
 
 // agentImageConfigBlock renders the sorted ENV lines for the agent's ImageSpec
