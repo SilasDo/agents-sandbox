@@ -296,6 +296,57 @@ printf '\n[Second](https://inoio.github.io/agents-sandbox/install.html#foo-1)\n'
 expect "duplicate heading suffix" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# A third occurrence gets -2; a -3 link names no heading, so the counter stays
+# pinned to the occurrence count.
+d="$(new_fixture)"
+printf '\n## Foo\n\n## Foo\n\n## Foo\n' >>"$d/docs/install.md"
+printf '\n[Third](https://inoio.github.io/agents-sandbox/install.html#foo-2)\n' >>"$d/README.md"
+expect "third duplicate heading suffix" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n## Foo\n\n## Foo\n\n## Foo\n' >>"$d/docs/install.md"
+printf '\n[Fourth](https://inoio.github.io/agents-sandbox/install.html#foo-3)\n' >>"$d/README.md"
+expect "over-counted duplicate heading suffix rejected" 1 "fragment 'foo-3' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# A heading's declared id is honoured verbatim: "{#bar}" makes id="bar", and the
+# derived "foo" is not generated for it.
+d="$(new_fixture)"
+printf '\n## Foo {#bar}\n' >>"$d/docs/install.md"
+printf '\n[Declared](https://inoio.github.io/agents-sandbox/install.html#bar)\n' >>"$d/README.md"
+expect "declared heading id resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n## Foo {#bar}\n' >>"$d/docs/install.md"
+printf '\n[Derived](https://inoio.github.io/agents-sandbox/install.html#foo)\n' >>"$d/README.md"
+expect "declared heading id suppresses derived slug" 1 "fragment 'foo' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# A '#' line inside YAML front matter is not a heading, even when it looks like
+# one: only the post-front-matter body contributes ids.
+d="$(new_fixture)"
+cat >"$d/docs/install.md" <<'EOF'
+---
+title: Install
+# install-fragment
+---
+
+# Install
+EOF
+printf '\n[Hidden](https://inoio.github.io/agents-sandbox/install.html#install-fragment)\n' >>"$d/README.md"
+expect "front-matter hash not a heading" 1 "fragment 'install-fragment' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# A GFM slug can begin with a dash; the checker must not read it as a grep
+# option (and must not SIGPIPE under pipefail).
+d="$(new_fixture)"
+printf '\n## -foo bar\n' >>"$d/docs/install.md"
+printf '\n[Dash](https://inoio.github.io/agents-sandbox/install.html#-foo-bar)\n' >>"$d/README.md"
+expect "dash-led heading slug resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
 # A heading that begins with a digit keeps it: the GFM parser slugs the raw
 # text without stripping leading non-letters (kramdown's core basic_generate_id
 # does strip them, so the two algorithms diverge here).
@@ -352,7 +403,9 @@ rm -rf "$d"
 # Go sources: a docslink.SectionURL / literal site URL whose anchor names no
 # heading on its page, or whose page has no source markdown, is a dead link.
 d="$(new_fixture)"
-sed -i 's/docker-not-running/dead-anchor/' "$d/internal/fixture/fixture.go"
+sed 's/docker-not-running/dead-anchor/' \
+  "$d/internal/fixture/fixture.go" >"$d/internal/fixture/fixture.go.tmp"
+mv "$d/internal/fixture/fixture.go.tmp" "$d/internal/fixture/fixture.go"
 expect "go docslink dead fragment" 1 "fragment 'dead-anchor' matches no heading in docs/troubleshooting.md" "$d"
 rm -rf "$d"
 
@@ -395,6 +448,17 @@ package docslink
 var _ = SectionURL("troubleshooting", "dead-anchor")
 EOF
 expect "go unqualified SectionURL extracted" 1 "fragment 'dead-anchor' matches no heading in docs/troubleshooting.md" "$d"
+rm -rf "$d"
+
+# The extractor needs a word boundary: a differently named function ending in
+# SectionURL is not a doc link.
+d="$(new_fixture)"
+cat >"$d/internal/fixture/fixture.go" <<'EOF'
+package fixture
+
+var _ = mySectionURL("troubleshooting", "dead-anchor")
+EOF
+expect "go mySectionURL not extracted" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

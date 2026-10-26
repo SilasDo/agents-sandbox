@@ -18,8 +18,10 @@ the script itself.
 ## Goals
 
 - Fail `ci/check-docs.sh` when a fragment landing on the published site matches no heading on the target page.
-- Cover all four fragment sources: rendered-HTML links (any file), `docs/` in-page `#anchor` links, `docs/`
-  cross-page `{% link page.md %}#anchor` links, and the launcher's printed doc links.
+- Cover all four fragment sources: rendered-HTML links (only in the files the checker scans — root `*.md`, `docs/**`
+  (minus `docs/superpowers/`, `docs/_site/`, `docs/vendor/`), and Go sources under `cmd/`/`internal/`), `docs/`
+  in-page `#anchor` links, `docs/` cross-page `{% link page.md %}#anchor` links, and the launcher's printed doc
+  links.
 - Keep the gate Ruby-free: `make check` must not need a Jekyll build.
 
 ## Non-goals
@@ -27,15 +29,16 @@ the script itself.
 - Rendered-HTML validation (needs Ruby + `bundle install`); rejected in #296.
 - Root-file same-file in-page anchors (`README.md`, `CHANGELOG.md`): those files render on GitHub, whose slugger is a
   different, server-side algorithm. Only one such link exists (`CHANGELOG.md` `#notifications`); it stays unchecked.
-- Declared ids (`### Heading {#anchor}`): kramdown supports them in core, but they were rejected in favour of the
-  derived slug — see Decisions.
+- Declared ids (`### Heading {#anchor}`): not required, and not used to *make* a link resolve — the gate keys off
+  the derived slug — see Decisions. When a heading carries one the mirror honours it verbatim.
 
 ## Decisions
 
 - **Derived slug, not declared ids.** kramdown generates heading ids itself; the checker mirrors that in a small
   function. Validated against the whole current corpus: every existing fragment resolves under the mirror.
   Declared ids would annotate every linked heading (30+), duplicating each anchor string into an attribute list and
-  adding a second place to drift, while the derived algorithm stays relevant to any heading linked later.
+  adding a second place to drift, while the derived algorithm stays relevant to any heading linked later. A heading
+  that *does* declare an id is still honoured verbatim, so the gate never false-fails one.
 - **Scope: anywhere the fragment lands on the published site** — rendered-HTML links, `docs/` in-page anchors, and
   the launcher's doc links. Also validated for every source file, tests included (a test asserting a dead anchor is a
   dead claim).
@@ -48,16 +51,18 @@ the script itself.
 
 The site builds with kramdown's **GFM input** (Jekyll's default; `_config.yml` leaves kramdown unconfigured, so a
 local build and GitHub Pages agree). GFM headings are slugged by `kramdown-parser-gfm`'s `generate_gfm_header_id`
-(kramdown-parser-gfm 1.1.0, kramdown 2.5.2) on the heading's raw source text — **not** kramdown core's
-`basic_generate_id`, which strips a leading `[^a-zA-Z]+` and diverges on a digit-led heading (the corpus has
-`manage-config.md`'s `## 1. …`–`## 4. …`):
+(kramdown-parser-gfm 1.1.0, kramdown 2.5.2) on the **post-inline** `raw_text` — the mirror approximates that with
+the heading's source-line text, see below — **not** kramdown core's `basic_generate_id`, which strips a leading
+`[^a-zA-Z]+` and diverges on a digit-led heading (the corpus has `manage-config.md`'s `## 1. …`–`## 4. …`):
 
 1. lowercase;
 2. keep only `[\p{Word}\- \t]` — the checker's ASCII form is `[A-Za-z0-9_-]` plus space and tab;
 3. spaces and tabs → `-`;
 4. no empty-string fallback: an all-punctuation heading gets no `id` at all (the empty attribute is dropped),
    while a second occurrence of it gets `id="-1"`;
-5. a repeated slug within a page gets `-1`, `-2`, … (`-1` is the first duplicate).
+5. a repeated slug within a page gets `-1`, `-2`, … (`-1` is the first duplicate);
+6. a heading whose text ends with a declared id (`## Foo {#bar}`) is given that id **verbatim** (`id="bar"`),
+   bypassing steps 1–5 — kramdown generates no derived slug and consumes no uniqueness counter for it.
 
 The mirror runs on the heading's **source-line text**; the published site slugs the **post-inline** `raw_text`
 `kramdown-parser-gfm` rebuilds from the parsed children, so a link becomes its link text, an entity is decoded, and
@@ -69,6 +74,7 @@ avoids:
 - link: `## [Guide](foo.md)` → site `guide`, mirror `guidefoomd`
 - entity: `## A &amp; B` → site `a--b`, mirror `a-amp-b`
 - non-ASCII letters: `\p{Word}` is Unicode-aware on the site, ASCII-only in the mirror
+- setext headings (`Foo` underlined with `===`/`---`): the site slugs them, the mirror recognises ATX (`#`) only
 
 Calibrated against a real `bundle exec jekyll build`: identical ids on every page.
 
@@ -97,7 +103,8 @@ its `main_test.go` installs the wrapper's families minus `doctor` directly rathe
 `ci/check-docs.sh` gains:
 
 - a heading-slug extractor: per `docs/<page>.md`, the slug set (with kramdown's uniqueness rule), skipping front
-  matter and fenced code, treating `#` only at line start outside a fence, and stripping a trailing run of `#`s;
+  matter and fenced code, treating `#` only at line start outside a fence, stripping a trailing run of `#`s, and
+  honouring a declared `{#id}` verbatim;
 - fragment resolution for the four sources:
   - rendered-HTML `<page>.html#<anchor>` (or a directory index) → slug-check `<anchor>` against `docs/<page>.md`;
   - a `docs/` in-page `#<anchor>` → slug-check against the same file;
@@ -120,4 +127,5 @@ gitignored and may need `bundle install`), since the published ids are what the 
 non-matching one (fail — note the existing `install.html#the-base-image` case currently asserts pass and must be
 rewritten); a `docs/` in-page anchor that resolves and one that does not; a `docs/` `{% link page.md %}#anchor`
 that resolves and one that does not; Go `docslink.SectionURL` and literal-URL extraction; and slug edge cases
-(backticked/punctuated heading, duplicate heading → `-1`).
+(backticked/punctuated heading, duplicate heading → `-1`/`-2`, a declared `{#id}`, a dash-led slug, and a `#` line
+inside YAML front matter that must not become an id).

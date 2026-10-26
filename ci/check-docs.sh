@@ -7,6 +7,13 @@
 # - Pages under docs/ link to each other with Jekyll {% link %} tags that must
 #   resolve relative to docs/ (generated diagrams/*.svg resolve to the .puml
 #   source, since the SVGs are built by PlantUML and gitignored).
+# - Every fragment that lands on the published site must resolve to a heading id
+#   on its target page: a rendered docs HTML link, a docs/ in-page anchor, a
+#   {% link page.md %}#anchor, or a doc link printed by the launcher. The ids
+#   are derived by mirroring kramdown's GFM heading slug (page_slugs); a
+#   declared `{#id}` is honoured verbatim.
+# - Go sources under cmd/ and internal/ are scanned for the doc links the
+#   launcher can print (docslink.SectionURL calls and literal site URLs).
 #
 # Exit status is non-zero when any violation is found.
 #
@@ -84,7 +91,10 @@ link_targets() {
 # page_slugs FILE: print the id kramdown generates for every heading in FILE, in
 # document order. The site builds with kramdown's GFM input, so this mirrors
 # kramdown-parser-gfm's generate_gfm_header_id on the heading's raw source text
-# (inline markdown included), with its -1/-2 uniqueness suffixes.
+# (inline markdown included), with its -1/-2 uniqueness suffixes. A heading that
+# declares its own id ("## Foo {#bar}") uses that id verbatim instead: kramdown
+# emits id="bar" and generates no derived slug, so the uniqueness counter is
+# skipped for it.
 page_slugs() {
   awk '
     function slug(s,    i, c, out) {
@@ -118,7 +128,13 @@ page_slugs() {
         t = body
         sub(/^#{1,6}[ \t]+/, "", t)
         sub(/[ \t]+#+[ \t]*$/, "", t)          # trailing ATX hashes
-        sub(/[ \t]*\{#[^}]*\}[ \t]*$/, "", t)  # declared id, if any
+        if (t ~ /\{[ \t]*#[^}]*\}[ \t]*$/) {   # declared id: honoured verbatim
+          id = t
+          sub(/^.*\{[ \t]*#/, "", id)
+          sub(/\}[ \t]*$/, "", id)
+          print id
+          next
+        }
         s = slug(t)
         if (s in used) { used[s]++; s = s "-" used[s] } else used[s] = 0
         print s
@@ -131,7 +147,13 @@ page_slugs() {
 check_fragment() {
   local rel="$1" lineno="$2" page_file="$3" anchor="$4" label="$5"
   [[ -z "$anchor" ]] && return 0
-  if page_slugs "$page_file" | grep -qxF "$anchor"; then
+  # Capture the slug list once: piping page_slugs into a short-circuiting grep
+  # can SIGPIPE under `set -o pipefail`, and `grep -qxF --` keeps a leading
+  # dash in an anchor (GFM slugs one: "## -foo bar" -> "-foo-bar") from being
+  # parsed as an option.
+  local slugs
+  slugs="$(page_slugs "$page_file")"
+  if grep -qxF -- "$anchor" <<<"$slugs"; then
     return 0
   fi
   report "$rel:$lineno: fragment '$anchor' matches no heading in $label"
@@ -316,13 +338,15 @@ find_go_files() {
 # a literal site URL.
 go_doc_targets() {
   local file="$1" line lineno
-  local re_section='SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
+  # The leading boundary keeps `mySectionURL(...)` from matching while allowing
+  # both `docslink.SectionURL(...)` and an unqualified `SectionURL(...)`.
+  local re_section='(^|[^A-Za-z0-9_])SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
   local re_literal='https://inoio\.github\.io/agents-sandbox/([A-Za-z0-9/._-]+)\.html#([A-Za-z0-9._-]+)'
   lineno=0
   while IFS= read -r line; do
     lineno=$((lineno + 1))
     if [[ "$line" =~ $re_section ]]; then
-      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+      printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}"
     fi
     if [[ "$line" =~ $re_literal ]]; then
       printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"

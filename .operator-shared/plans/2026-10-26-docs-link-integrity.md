@@ -4,7 +4,7 @@
 
 **Goal:** Make `ci/check-docs.sh` fail when a documentation fragment landing on the published site matches no heading, and route the launcher's doc links through a leaf package so the checker can extract them.
 
-**Architecture:** A dependency-free `internal/docslink` package composes the launcher's site links as `SectionURL(page, anchor)`. `ci/check-docs.sh` gains a kramdown `basic_generate_id` mirror plus fragment resolution for four sources: rendered-HTML links, `docs/` in-page anchors, `docs/` `{% link page.md %}#anchor` cross-page anchors, and Go source `docslink.SectionURL(...)` / literal-URL links. No Jekyll build in `make check`.
+**Architecture:** A dependency-free `internal/docslink` package composes the launcher's site links as `SectionURL(page, anchor)`. `ci/check-docs.sh` gains a mirror of the published site's GFM heading slug (`kramdown-parser-gfm`'s `generate_gfm_header_id`) plus fragment resolution for four sources: rendered-HTML links, `docs/` in-page anchors, `docs/` `{% link page.md %}#anchor` cross-page anchors, and Go source `docslink.SectionURL(...)` / literal-URL links. No Jekyll build in `make check`.
 
 **Tech Stack:** Bash (the checker + its fixture harness), Go (leaf package, doctor, image build), awk (the slug mirror).
 
@@ -14,7 +14,7 @@
 
 - Checker stays Ruby-free: `make check` must not run Jekyll.
 - The published anchors are unchanged: `microsandbox-runtime`, `kvm-unavailable`, `docker-not-running`, `not-apple-silicon`, `the-base-image-cannot-be-found`.
-- Slug mirror = kramdown 2.5.2 `basic_generate_id` on the heading's raw source text: strip leading `[^a-zA-Z]+`, delete everything outside `[A-Za-z0-9 -]`, spaces→`-`, lowercase, empty→`section`, repeated slug→`-1`/`-2`/… .
+- Slug mirror = kramdown's **GFM** input (Jekyll's default), i.e. `kramdown-parser-gfm`'s `generate_gfm_header_id` on the heading's raw source text: lowercase; keep only `[\p{Word}\- \t]` (checker's ASCII form `[A-Za-z0-9_-]`, plus space and tab); spaces/tabs→`-`; no empty fallback; repeated slug→`-1`/`-2`/… . (Not core `basic_generate_id`, which strips a leading `[^a-zA-Z]+` and diverges on digit-led headings.)
 - Go module path is `github.com/inoio/agents-sandbox`.
 - `make fmt` / `make lint` only — never `go fmt` / `go vet`. Run the linter after at most 3 edits.
 - The checker scans Go **test** sources too, so any `docslink.SectionURL(page, anchor)` written in a test must use a real page/anchor pair.
@@ -209,7 +209,8 @@ Add to `ci/check-docs.sh`:
 
 ```bash
 # page_slugs FILE: print the id kramdown generates for every heading in FILE, in
-# document order. Mirrors kramdown's basic_generate_id on the heading's raw
+# document order. Mirrors the published site's GFM heading slug (kramdown-parser-gfm's
+# generate_gfm_header_id) on the heading's raw
 # source text (inline markdown included), with its -1/-2 uniqueness suffixes.
 page_slugs() {
   awk '
@@ -679,6 +680,7 @@ git commit -m "test(docs): resolve the launcher's printed doc-link fragments"
 **Files:**
 - Modify: `.operator-shared/specs/first-run-guidance.md:22-27`
 - Modify: `CHANGELOG.md:9-26`
+- Modify (calibration fallout): `ci/check-docs.sh`, `ci/test-check-docs.sh`, `.operator-shared/specs/docs-link-integrity.md`
 
 - [ ] **Step 1: Update the doctor-link clause**
 
@@ -715,6 +717,8 @@ grep -oE '<h[1-6] id="[^"]+"' _site/troubleshooting/index.html 2>/dev/null || gr
 
 Compare the printed ids against `ci/check-docs.sh`-style `page_slugs docs/troubleshooting.md`. Expected: identical. If the environment cannot install the gems, record that the mirror was calibrated against every existing fragment instead.
 Clean up: remove `docs/_site` if the build created it.
+
+If the real build diverges, correct the mirror and the spec: the site uses kramdown's **GFM** input (`kramdown-parser-gfm`'s `generate_gfm_header_id`), not core `basic_generate_id`. The corpus's `manage-config.md` digit-led headings (`## 1. …`) are the divergence to watch — GFM keeps the leading digit; core strips it.
 
 - [ ] **Step 4: Run the full check**
 
