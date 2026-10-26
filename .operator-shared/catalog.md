@@ -95,6 +95,9 @@
 - `guided-onboarding.md`
   - Description: Design contract for first-run onboarding: credential kinds (static vs login; never placeholder-migrate refreshable OAuth), host determination, derived onboarding state, always-explicit `Guide` outcomes, the tiered setup wizard, and `config harden`.
   - Read If: Working on config migration, first-run guidance, credential/auth handling, network egress derivation, the setup wizard, or `config harden`.
+- `docs-link-integrity.md`
+  - Description: Design and contract for the documentation-fragment gate in `ci/check-docs.sh`: every anchor landing on the published site must resolve to a heading (kramdown's derived slug, mirrored), across rendered-HTML links, `docs/` in-page anchors and the launcher's doc links composed through the leaf package `internal/docslink`.
+  - Read If: Changing `ci/check-docs.sh`/`ci/test-check-docs.sh`, the doc-link fragment check, the kramdown slug mirror, `internal/docslink`, or the doctor/build-error `Docs:` links.
 - `first-run-guidance.md`
   - Description: Contract for guiding a fresh install to a working sandbox: the Get started flow keeps the prerequisites and the `doctor` verification in one Installation section and `doctor` off the running pages, and a failing prerequisite check prints a copy-pasteable, platform-specific fix plus a link to its matching troubleshooting anchor.
   - Read If: Changing the Get started docs, `installation.md`, `tutorial.md`, or the README quick start; changing `internal/sandbox/doctor` output, the prerequisite checks, or the `troubleshooting.html` anchors doctor links to.
@@ -173,6 +176,9 @@
 
 ### `plans/` - TDD implementation plans
 
+- `2026-10-26-docs-link-integrity.md`
+  - Description: 6-task TDD plan for `specs/docs-link-integrity.md`: the `internal/docslink` leaf package, the doctor/image rewiring, and the `ci/check-docs.sh` kramdown slug mirror plus fragment resolution for rendered-HTML, docs in-page, `{% link %}#anchor`, and Go-source links.
+  - Read If: Implementing the documentation fragment gate (#296).
 - `2026-10-22-artifact-naming.md`
   - Description: 7-task TDD plan for `specs/artifact-naming.md`: the prefix-free and legacy name/reference constructors, the dual-scheme parsers, project VMs, task sandboxes, home volumes, the `ImageInfo` Docker-tag/msb-ref split, image discovery/reference scans, and the legacy foreign scan.
   - Read If: Implementing the prefix-free artifact naming change.
