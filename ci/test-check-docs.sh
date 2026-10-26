@@ -361,5 +361,18 @@ EOF
 expect "go docslink non-troubleshooting page" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# The extractor matches SectionURL whether or not it is package-qualified, so an
+# in-package unqualified call (as in internal/docslink/docslink_test.go) is
+# checked too — otherwise the "test sources are checked" invariant is vacuous.
+d="$(new_fixture)"
+mkdir -p "$d/internal/docslink"
+cat >"$d/internal/docslink/fixture.go" <<'EOF'
+package docslink
+
+var _ = SectionURL("troubleshooting", "dead-anchor")
+EOF
+expect "go unqualified SectionURL extracted" 1 "fragment 'dead-anchor' matches no heading in docs/troubleshooting.md" "$d"
+rm -rf "$d"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

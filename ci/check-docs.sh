@@ -314,10 +314,11 @@ find_go_files() {
 }
 
 # go_doc_targets FILE: emit "lineno<TAB>page<TAB>anchor" for each documentation
-# link the launcher can print: a docslink.SectionURL call, or a literal site URL.
+# link the launcher can print: a SectionURL call (package-qualified or not), or
+# a literal site URL.
 go_doc_targets() {
   local file="$1" line lineno
-  local re_section='docslink\.SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
+  local re_section='SectionURL\("([A-Za-z0-9/._-]+)",[[:space:]]*"([A-Za-z0-9._-]+)"\)'
   local re_literal='https://inoio\.github\.io/agents-sandbox/([A-Za-z0-9/._-]+)\.html#([A-Za-z0-9._-]+)'
   lineno=0
   while IFS= read -r line; do
