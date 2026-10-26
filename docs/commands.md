@@ -211,9 +211,10 @@ agents-sandbox prune --format json         # machine-readable report on stdout
 ### image prune
 
 Prune cached runner images. Images of stale projects (older than the threshold) are removed entirely; for projects with a
-surviving VM, the per-agent `-latest` tags and any image a kept VM currently references are retained, while surplus
-digest refs are removed. Native microsandbox image pruning also reclaims unreferenced manifests and layers left behind by
-refreshing an image tag while an older VM still points at the previous manifest.
+surviving VM, the runner-image variants used within the threshold and any image a kept VM currently references are
+retained, while older variants and surplus digest refs are removed. Native microsandbox image pruning also reclaims
+unreferenced manifests and layers left behind by refreshing an image while an older VM still points at the previous
+manifest.
 
 ```console
 agents-sandbox image prune                      # use manual-prune-age from config (default: 7d)
@@ -499,7 +500,8 @@ agents-sandbox image inspect <ref> --quiet         # reference only
 #### image remove
 
 Remove one or more cached runner images by reference. Only runner images are
-accepted — the prefix-free microsandbox reference (`<slug>:<agent>-latest`) or a
+accepted — the content-addressed microsandbox reference (`<slug>:<agent>.<contentid>`), the
+prefix-free name reference (`<slug>:<agent>-latest`), or a
 reference created by an earlier version (`agents-sandbox/runner-<slug>:<agent>-latest`);
 any other reference is refused, and `--force` does not override that ownership
 boundary. Refuses when a runner

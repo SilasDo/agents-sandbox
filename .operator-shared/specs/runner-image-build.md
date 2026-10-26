@@ -34,21 +34,30 @@ same way (see `specs/image-composition.md`).
 
 ## Load decision
 
-`EnsureImageWithClient` returns an `ImageInfo{Tag, Digest, DockerfileID, Env}`. `Digest` is Docker's image ID, i.e. the
-same content identity microsandbox computes for an image it holds (`config.digest = sha256(config_bytes)`), and
-`DockerfileID` is the source signature above. Loading into microsandbox is deferred to a separate `EnsureLoaded` call,
-so reconnecting to a running VM never pays the import cost.
+`EnsureImageWithClient` returns an `ImageInfo{DockerTag, Ref, Digest, DockerfileID, Env}`. `DockerTag` is the stable
+Docker tag; `Ref` is the content-addressed microsandbox reference (`<slug>:<agent>.<contentid>`, derived from `Digest`);
+`Digest` is Docker's image ID, i.e. the same content identity microsandbox computes for an image it holds
+(`config.digest = sha256(config_bytes)`), and `DockerfileID` is the source signature above. Loading into microsandbox is
+deferred to a separate `EnsureLoaded` call, so reconnecting to a running VM never pays the import cost.
 
-`EnsureLoaded(ctx, client, info, ui)` decides from the msb cache only, never by inspecting host Docker:
+`EnsureLoaded(ctx, client, info, ui)` decides from the msb cache only, never by inspecting host Docker. It tries three
+candidate references in reuse-preference order and reuses the first that already holds the content:
 
-- msb image missing → load
-- msb image present with a digest → skip iff it equals `info.Digest`, otherwise load
-- msb image present with no digest (legacy) → fall back to comparing the `dockerfile-id` label against `info.DockerfileID`
+1. the content ref `info.Ref` (`<slug>:<agent>.<contentid>`);
+2. the prefix-free name ref `naming.RunnerImageRef(slug, agent)` (`<slug>:<agent>-latest`), derived by parsing
+   `info.DockerTag` for its `(slug, agent)` (a 0.6.0 install cached under it);
+3. the legacy prefixed Docker-tag ref `info.DockerTag` (`agents-sandbox/runner-<slug>:<agent>-latest`, a pre-0.6 cache).
 
-A digest mismatch is never overridden by a matching `dockerfile-id` label — the label is a source signature and can
-match while the bytes differ (base tag move + `--rebuild`). A load always reuses the same reference (it never removes
-the cached image first), because an existing VM may still reference it. The build/load split is deliberate: `run`/`shell`
-build eagerly via `EnsureImage` but load lazily, only when a VM is actually created or recreated.
+A candidate is reused only when its cached content matches: with a digest, the digest must equal `info.Digest`; a legacy
+image with no digest falls back to comparing the `dockerfile-id` label against `info.DockerfileID`. A digest mismatch is
+never overridden by a matching `dockerfile-id` label — the label is a source signature and can match while the bytes
+differ (base tag move + `--rebuild`). When no candidate matches, the Docker image is loaded under `info.Ref`; a load
+never removes a cached image first, because an existing VM may still reference it. The build/load split is deliberate:
+`run`/`shell` build eagerly via `EnsureImage` but load lazily, only when a VM is actually created or recreated.
+
+Pruning keeps a candidate reference while a kept VM holds it, or its `(slug, agent)` is a live project key and the image
+was used within the prune age; a retired project's refs and an aged-out variant are reclaimed. The full retention
+contract is `specs/image-ref-content-addressing.md`.
 
 ## Version selection
 
