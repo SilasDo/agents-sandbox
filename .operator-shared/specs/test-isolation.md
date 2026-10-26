@@ -53,6 +53,8 @@ reachable subset directly, mirroring that body:
   and doctor is unreachable from runtime)
 - `notify` (installs configpaths + docker + doctor + msb + notify; the wrapper installs notify, so importing it would
   cycle)
+- `docslink` (installs configpaths + docker + msb + notify; doctor imports docslink, so the wrapper, which installs
+  doctor, would cycle)
 - `atomicwrite`, `mounts`, `naming`, `network`, `state` (install configpaths + docker + doctor + msb; notify imports
   them, so they cannot import the wrapper, which installs notify)
 - `agent` and `filewalk` install docker only: `configpaths` imports `agent`, which imports `filewalk`, and `notify`
