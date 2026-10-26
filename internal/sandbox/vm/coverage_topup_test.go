@@ -47,7 +47,7 @@ func TestAgentLatestVersionCheckerAgent(t *testing.T) {
 }
 
 // configErrorHandle is a MockSandboxHandle whose Config call fails, exercising
-// the "reading existing VM config failed (continuing)" branch of decideReconfig.
+// the "reading existing VM config failed (continuing)" branch of resolveReconfigDecision.
 type configErrorHandle struct {
 	*msb.MockSandboxHandle
 
@@ -62,10 +62,10 @@ func (h *configErrorHandle) Connect(_ context.Context) (msb.Sandbox, error) {
 	return h.connect, nil
 }
 
-// TestDecideReconfigConfigError covers the branch where reading the existing
+// TestResolveReconfigDecisionConfigError covers the branch where reading the existing
 // VM config fails: it is logged as verbose (not fatal) and the reconfig
 // decision proceeds.
-func TestDecideReconfigConfigError(t *testing.T) {
+func TestResolveReconfigDecisionConfigError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	handle := &configErrorHandle{
@@ -87,7 +87,7 @@ func TestDecideReconfigConfigError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	_, _, _, _, err = decideReconfig(
+	_, err = resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -100,17 +100,17 @@ func TestDecideReconfigConfigError(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if !contains(joinStrings(ui.VerboseCalls), "reading existing VM config failed") {
 		t.Errorf("expected a verbose message about the failed config read, got %v", ui.VerboseCalls)
 	}
 }
 
-// TestDecideReconfigResolveReconfigError covers the branch where ResolveReconfig
+// TestResolveReconfigDecisionQuitAtRecreatePrompt covers the branch where ResolveReconfig
 // reports an error: with another client attached, an image change prompts the
 // user, and choosing "quit" aborts the reconfig with an error.
-func TestDecideReconfigResolveReconfigError(t *testing.T) {
+func TestResolveReconfigDecisionQuitAtRecreatePrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
@@ -139,7 +139,7 @@ func TestDecideReconfigResolveReconfigError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	_, _, _, _, err = decideReconfig(
+	_, err = resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -156,14 +156,15 @@ func TestDecideReconfigResolveReconfigError(t *testing.T) {
 	}
 }
 
-// TestDecideReconfigApplyHomeActionError covers the branch where applying the
+// TestApplyReconfigHomeActionError covers the branch where applying the
 // chosen home-volume action fails and the reconfig aborts with that error.
-func TestDecideReconfigApplyHomeActionError(t *testing.T) {
+func TestApplyReconfigHomeActionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
+	createErr := errors.New("create volume failed")
 	mock.CreateVolumeFn = func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
-		return nil, errors.New("create volume failed")
+		return nil, createErr
 	}
 	msb.WithMsbMock(t, mock)
 
@@ -184,7 +185,7 @@ func TestDecideReconfigApplyHomeActionError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	_, _, _, _, err = decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -196,10 +197,27 @@ func TestDecideReconfigApplyHomeActionError(t *testing.T) {
 		cfs,
 		ui,
 	)
+	if err != nil {
+		t.Fatalf("resolveReconfigDecision: %v", err)
+	}
+	_, err = applyReconfigHomeAction(
+		context.Background(),
+		mock,
+		vm,
+		state.Key{Slug: "testproj", Agent: "opencode"},
+		"vol",
+		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
+		options.RunOptions{Agent: "opencode"},
+		decision,
+		ui,
+	)
 	if err == nil {
 		t.Fatal("expected an error when applying the home-volume action fails")
 	}
 	if !contains(err.Error(), "apply home action") {
 		t.Errorf("error = %v, want it to mention the home action", err)
+	}
+	if !errors.Is(err, createErr) {
+		t.Errorf("error = %v, want it to wrap the create-volume failure", err)
 	}
 }

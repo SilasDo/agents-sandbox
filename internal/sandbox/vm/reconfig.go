@@ -122,16 +122,32 @@ func setUpSandbox(
 	return ResolveTarget(ctx, a, sb, opts.Worktree, guestCWD, ui)
 }
 
-// decideReconfig centralizes all reconfiguration decisions: the image-change
-// home-volume prompt, the VM recreate decision, the daemon-restart decision,
-// and cpu/memory staging. It re-fetches the existing sandbox handle to read
-// live VM files (no passed-in msb.Sandbox is available at the call site).
+// reconfigDecision is the resolved reconfiguration plan for a project VM. Named
+// fields replace the former positional (recreate, restart, homeVol,
+// serveHostPort) return, so a caller reads which decision it is holding.
 //
-// Note: the plan's literal signature included an sb msb.Sandbox parameter, but
-// this is never available to decideReconfig in prepareSandbox (it runs
-// before ensureProjectVM, before any sandbox exists). The function re-fetches
-// and Connect()s its own sandbox for file reads.
-func decideReconfig(
+//exhaustruct:ignore
+type reconfigDecision struct {
+	Recreate bool
+	Restart  bool
+	// HomeAction is the resolved home-volume disposition when the VM is
+	// recreated for a changed image digest; nil when no home action applies.
+	// applyReconfigHomeAction applies it.
+	HomeAction    *volume.VolumeAction
+	ServeHostPort int
+}
+
+// resolveReconfigDecision computes the reconfiguration decision: it reads the
+// live VM, compares the persisted fingerprints, resolves the recreate/restart
+// choice against any attached clients, and — when the VM will be recreated for
+// a changed image — resolves the home-volume action. It performs no
+// home-volume side effects; applyReconfigHomeAction applies the resolved
+// action.
+//
+// It re-fetches the existing sandbox handle to read live VM files: no
+// passed-in msb.Sandbox is available at the call site, which runs before
+// ensureProjectVM creates one.
+func resolveReconfigDecision(
 	ctx context.Context,
 	client msb.Client,
 	vm *volume.Manager,
@@ -140,7 +156,7 @@ func decideReconfig(
 	imageInfo image.ImageInfo, homeVol string, hs state.HomeState,
 	cfs *reprovision.ConfigFiles,
 	ui termio.UI,
-) (bool, bool, string, int, error) {
+) (reconfigDecision, error) {
 	handle, _, _ := findProjectVM(ctx, client, k)
 
 	var curCfg *msbSdk.SandboxConfig
@@ -199,28 +215,55 @@ func decideReconfig(
 	otherClients := state.CountActiveClients(k)
 	applyRecreate, applyRestart, err := reconfig.ResolveReconfig(ctx, ui, plan, otherClients, plan.Changes)
 	if err != nil {
-		return false, false, homeVol, plan.ServeHostPort, err
+		return reconfigDecision{}, err
 	}
-	recreate := applyRecreate
-	restart := applyRestart && !recreate && !plan.Recreate
+
+	// ResolveReconfig reports a daemon restart only when the plan does not
+	// recreate, so applyRestart already implies !applyRecreate && !plan.Recreate.
+	decision := reconfigDecision{
+		Recreate:      applyRecreate,
+		Restart:       applyRestart,
+		ServeHostPort: plan.ServeHostPort,
+	}
 
 	// The home-volume question only matters when we are actually switching to
 	// the new image, so it is asked after the rebuild decision instead of up
 	// front. When the rebuild is deferred (keep current VM) or no state exists
 	// yet (fresh home already created), the prompt is skipped.
-	if imageChanged && recreate {
+	if decision.Recreate && imageChanged {
 		action := vm.ResolveHomeAction(ui, hs.ImageDigest, imageInfo.Digest)
-		if action == volume.ActionQuit {
-			ui.Infof("exiting as requested by user")
-			return false, false, homeVol, plan.ServeHostPort, &ExitError{Code: 1}
-		}
-		newVol, err := vm.ApplyHomeAction(ctx, client, k, homeVol, imageInfo, action, opts, ui)
-		if err != nil {
-			return false, false, homeVol, plan.ServeHostPort, fmt.Errorf("apply home action: %w", err)
-		}
-		homeVol = newVol
+		decision.HomeAction = &action
 	}
-	return recreate, restart, homeVol, plan.ServeHostPort, nil
+	return decision, nil
+}
+
+// applyReconfigHomeAction applies the home-volume action the decision resolved
+// and returns the home volume to mount. A nil HomeAction means no home-volume
+// change applies, so the current volume is returned unchanged. A "quit" action
+// aborts the run with an ExitError.
+func applyReconfigHomeAction(
+	ctx context.Context,
+	client msb.Client,
+	vm *volume.Manager,
+	k state.Key,
+	homeVol string,
+	imageInfo image.ImageInfo,
+	opts options.RunOptions,
+	decision reconfigDecision,
+	ui termio.UI,
+) (string, error) {
+	if decision.HomeAction == nil {
+		return homeVol, nil
+	}
+	if *decision.HomeAction == volume.ActionQuit {
+		ui.Infof("exiting as requested by user")
+		return "", &ExitError{Code: 1}
+	}
+	newVol, err := vm.ApplyHomeAction(ctx, client, k, homeVol, imageInfo, *decision.HomeAction, opts, ui)
+	if err != nil {
+		return "", fmt.Errorf("apply home action: %w", err)
+	}
+	return newVol, nil
 }
 
 // applyLiveMounts fills cfg.Volumes with the mounts the persisted config

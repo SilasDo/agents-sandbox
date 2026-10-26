@@ -85,7 +85,7 @@
   - Read If: Changing image build/caching, `BuildOptions`, `--rebuild`, `--agent-version`, agent upgrade, volume subcommands' image handling, or the `EnsureLoaded`/`ImageInfo` load decision.
 - `reconfig-decision.md`
   - Description: Contract for the per-startup project-VM reconfiguration decision: fingerprint-backed detection of env/secret/network/mount changes, which changes recreate vs restart the daemon, the fingerprint-preservation invariant on state rewrites, order-stability of `ConfigFiles.Keys`, and the #183/#223 resolutions.
-  - Read If: Changing `decideReconfig`/`PlanReconfig`, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
+  - Read If: Changing `resolveReconfigDecision`/`applyReconfigHomeAction`/`PlanReconfig`, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
 - `network-profiles.md`
   - Description: Contract for composable network profiles: `public`/`private`/`host` union through one microsandbox policy, `none` is terminal and allowlist-only, the config/env/flag surface accepts a scalar/comma-string/list, and the fingerprint keeps one `profile=` line per profile so single-profile digests are stable.
   - Read If: Changing `network.Policy`, `ParseProfile`/`ParseProfiles`, viperconfig `profileEntries`/`stringToSliceDecodeHook`, the `network.profile`/`--network`/`AGENTS_SANDBOX_NETWORK_PROFILE` surface, or network fingerprinting and its VM-recreation trigger.

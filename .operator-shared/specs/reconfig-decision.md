@@ -1,13 +1,16 @@
 ---
 description: Contract for the per-startup project-VM reconfiguration decision: how changed settings are detected via persisted fingerprints, which changes recreate the VM vs restart the daemon, the fingerprint-preservation invariant, and the #183 seeding fix that closes the state-write race.
-read_if: Changing decideReconfig/PlanReconfig, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
+read_if: Changing resolveReconfigDecision/applyReconfigHomeAction/PlanReconfig, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
 ---
 
 # Project-VM reconfiguration decision
 
-`PrepareSandbox` calls `decideReconfig` (`internal/sandbox/vm/reconfig.go`) once per startup to choose between recreating
-the project VM, restarting the agent daemon, or doing nothing. The decision is computed by `reconfig.PlanReconfig` and
-applied by `reconfig.ResolveReconfig` (silent when alone, a keep/quit[/restart] prompt when other clients are attached).
+`PrepareSandbox` calls `resolveReconfigDecision` (`internal/sandbox/vm/reconfig.go`) once per startup to choose between
+recreating the project VM, restarting the agent daemon, or doing nothing. It returns a named `reconfigDecision`
+(`Recreate`/`Restart`/`HomeAction`/`ServeHostPort`) instead of a positional tuple; the home-volume action it resolves
+is applied separately by `applyReconfigHomeAction`, keeping plan resolution free of home-volume side effects. The
+decision is computed by `reconfig.PlanReconfig` and resolved by `reconfig.ResolveReconfig` (silent when alone, a
+keep/quit[/restart] prompt when other clients are attached).
 
 ## Fingerprint-backed change detection
 
@@ -75,7 +78,7 @@ state is never fingerprint-less on that path, so the change detected there is re
 `tmpSizeChange`, `workspaceQuotaChange`, and `homeVolumeChange` compare against the live VM's mounts. The launcher
 reads those from the persisted config JSON through `msb.SandboxHandle.ConfigMounts()`
 (`specs/live-mount-readback.md`), because the SDK's `Config()` leaves `cfg.Volumes` empty on every read-back.
-`decideReconfig` applies that read before calling `PlanReconfig`, so the three detectors see the VM's real `/tmp`
+`resolveReconfigDecision` applies that read before calling `PlanReconfig`, so the three detectors see the VM's real `/tmp`
 (`size_mib`), `/workspace` (`quota_mib`), and `/home/dev` (`Named.name`) mounts. `rootDiskChange` reads
 `cfg.RootDisk`, which does round-trip, and is unaffected.
 

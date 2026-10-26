@@ -209,7 +209,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 // TestPrepareSandboxLoadsHomeYamlOnce verifies that a full startup loads the
 // home manifests exactly once: a missing host source is warned about a
 // single time. This guards against the regression where config files were
-// loaded twice (once in decideReconfig and once in setUpSandbox), which made
+// loaded twice (once in resolveReconfigDecision and once in setUpSandbox), which made
 // the warning (and the underlying BuildHomeFilesWithModes computation) run twice.
 func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
@@ -814,7 +814,7 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 }
 
 // TestPrepareSandboxRecreatesVMOnLiveMountChange is the end-to-end counterpart of
-// the decideReconfig live-mount tests: a project VM whose persisted mounts no
+// the resolveReconfigDecision live-mount tests: a project VM whose persisted mounts no
 // longer match the requested tmp size is destroyed and recreated, proving the
 // mount read-back reaches the VM lifecycle and not only the decision.
 func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
@@ -917,5 +917,8 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 	}
 	if !contains(joinStrings(ui.VerboseCalls), "/tmp tmpfs size") {
 		t.Errorf("expected a tmp-size rebuild reason, got %v", ui.VerboseCalls)
+	}
+	if !contains(joinStrings(ui.VerboseCalls), "recreate: true") {
+		t.Errorf("expected the recreate decision to be logged, got %v", ui.VerboseCalls)
 	}
 }

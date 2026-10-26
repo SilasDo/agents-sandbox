@@ -70,10 +70,10 @@ func TestDefaultDaemonHealthFuncError(t *testing.T) {
 	}
 }
 
-// TestDecideReconfigDetachErrorVerbose covers the failed-detach verbose branch
-// in decideReconfig: a connected sandbox whose Detach fails is logged (not
+// TestResolveReconfigDecisionDetachErrorVerbose covers the failed-detach verbose branch
+// in resolveReconfigDecision: a connected sandbox whose Detach fails is logged (not
 // fatal).
-func TestDecideReconfigDetachErrorVerbose(t *testing.T) {
+func TestResolveReconfigDecisionDetachErrorVerbose(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	sh := &msb.MockSandboxHandle{
 		Cfg: &msbSdk.SandboxConfig{Image: "img:tag", CPUs: 4, MemoryMiB: 4096},
@@ -94,7 +94,7 @@ func TestDecideReconfigDetachErrorVerbose(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	_, _, _, _, err = decideReconfig(
+	_, err = resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -107,7 +107,7 @@ func TestDecideReconfigDetachErrorVerbose(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if !contains(joinStrings(ui.VerboseCalls), "failed to detach") {
 		t.Errorf("expected a verbose message about the failed detach, got %v", ui.VerboseCalls)
