@@ -130,9 +130,16 @@ jobs:
 
           {
             echo '<!-- mutation-sweep -->'
-            echo "## Mutation sweep — ${survivor_total} surviving mutant(s)"
+            if [ "$survivor_total" -eq 0 ]; then
+              echo "## Mutation sweep — no surviving mutants"
+            else
+              echo "## Mutation sweep — ${survivor_total} surviving mutant(s)"
+            fi
             echo
-            jq -r '"\(.mutants_lived) LIVED of \(.mutants_total) mutants on this PR'"'"'s changed lines (\(.mutants_killed) killed, \(.mutants_not_covered) not covered, \(.mutants_equivalent // 0) equivalent, \(.mutants_timed_out // 0) timed out, \(.mutants_infra_error // 0) infra error); test efficacy \(.test_efficacy)%."' mutation-report.json
+            jq -r 'if .mutants_total == 0
+                   then "No mutants on this PR'"'"'s changed lines — nothing to sweep."
+                   else "\(.mutants_lived) LIVED of \(.mutants_total) mutants on this PR'"'"'s changed lines (\(.mutants_killed) killed, \(.mutants_not_covered) not covered, \(.mutants_equivalent // 0) equivalent, \(.mutants_timed_out // 0) timed out, \(.mutants_infra_error // 0) infra error); test efficacy \(.test_efficacy)%."
+                   end' mutation-report.json
             echo
             if [ "$survivor_total" -gt 0 ]; then
               echo "Survivors need human triage: strengthen the test, delete the redundant construct, or record a reason."
