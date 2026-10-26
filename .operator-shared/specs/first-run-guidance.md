@@ -22,9 +22,9 @@ Each failing check reports, in order:
 3. a `Docs:` line linking `https://inoio.github.io/agents-sandbox/troubleshooting.html#<anchor>` for what a command
    cannot fix.
 
-`troubleshootingURL` builds the link. The anchors are the troubleshooting headings, and the coupling is silent:
-renaming a heading breaks the doctor link with no test failing. Current pairs: `kvm-unavailable`, `docker-not-running`,
-`microsandbox-runtime`, `not-apple-silicon`.
+`docslink.SectionURL("troubleshooting", …)` builds the link. The anchors are the troubleshooting headings, and
+`ci/check-docs.sh` fails when a printed fragment matches no heading (see `docs-link-integrity.md`). Current pairs:
+`kvm-unavailable`, `docker-not-running`, `microsandbox-runtime`, `not-apple-silicon`.
 
 ## Get-started flow
 
