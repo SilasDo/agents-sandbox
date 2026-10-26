@@ -50,6 +50,7 @@ func buildSandboxCompactCmd(ui termio.UI) *cobra.Command {
 	cmd.Flags().BoolP(flagDryRun, flagDryRunShort, false, "Show what would be compacted without changing disks")
 	cmd.Flags().String(flagDisk, "", "Compact only the disk mounted at this guest path (\"/\" is the root disk)")
 	cmd.Flags().Bool(flagRootOnly, false, "Compact only the root disk")
+	// gomutants:disable-next-line INTEGER_INCREMENT reason="the default is never read: Layers is only set when --layers was given explicitly"
 	cmd.Flags().Uint32(flagLayers, 0, "Merge only the oldest N sealed layers (at least 2; default: all)")
 	cmd.Flags().String(flagFormat, "", "Output format (json)")
 	cmd.MarkFlagsMutuallyExclusive(flagDisk, flagRootOnly)
@@ -65,7 +66,7 @@ func resolveCompactOptions(cmd *cobra.Command) (msbSdk.DiskCompactionOptions, er
 	if flags.Changed(flagLayers) {
 		layers, _ := flags.GetUint32(flagLayers)
 		if layers < minimumCompactionLayers {
-			return options, errors.New("--layers must be at least 2")
+			return msbSdk.DiskCompactionOptions{}, errors.New("--layers must be at least 2")
 		}
 		options.Layers = &layers
 	}

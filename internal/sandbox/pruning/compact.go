@@ -36,11 +36,11 @@ func CompactSandboxes(
 	options msbSdk.DiskCompactionOptions,
 	ui termio.UI,
 ) (CompactReport, error) {
-	report := CompactReport{DryRun: options.DryRun, Entries: nil}
 	handles, err := projectSandboxes(ctx, sandboxName)
 	if err != nil {
-		return report, err
+		return CompactReport{}, err
 	}
+	report := CompactReport{DryRun: options.DryRun, Entries: nil}
 	for _, handle := range handles {
 		name := handle.Name()
 		result, err := handle.Compact(ctx, options)

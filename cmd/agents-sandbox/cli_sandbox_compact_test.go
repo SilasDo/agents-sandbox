@@ -59,6 +59,16 @@ func TestSandboxCompactPassesFlags(t *testing.T) {
 	}
 }
 
+func TestSandboxCompactAcceptsMinimumLayers(t *testing.T) {
+	vm, _, err := runCompactCommand(t, "--layers", "2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := vm.CompactedOptions[0].Layers; got == nil || *got != 2 {
+		t.Fatalf("Layers = %v, want 2", got)
+	}
+}
+
 func TestSandboxCompactDiskFlag(t *testing.T) {
 	vm, _, err := runCompactCommand(t, "--disk", "/data")
 	if err != nil {

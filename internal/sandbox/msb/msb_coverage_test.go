@@ -453,6 +453,10 @@ func TestMockSandboxHandleCompact(t *testing.T) {
 	if len(h.CompactedOptions) != 1 || !h.CompactedOptions[0].DryRun {
 		t.Fatalf("CompactedOptions = %v", h.CompactedOptions)
 	}
+	h.CompactErr = errors.New("c")
+	if _, err := h.Compact(context.Background(), msbSdk.DiskCompactionOptions{}); err == nil {
+		t.Fatal("expected CompactErr")
+	}
 }
 
 func TestMockSandboxHandleConnectStart(t *testing.T) {

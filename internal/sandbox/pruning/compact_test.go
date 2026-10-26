@@ -42,7 +42,7 @@ func rootDiskResult(inputLayers, outputLayers uint32, materializedBytes uint64) 
 	}
 }
 
-func TestCompactSandboxesSkipsTaskSandboxes(t *testing.T) {
+func TestCompactSandboxesSkipsNonProjectSandboxes(t *testing.T) {
 	project := compactableHandle("myproj-abc12345", rootDiskResult(5, 1, 2048))
 	task := labelledHandle(
 		"myproj-task-1",
@@ -52,7 +52,8 @@ func TestCompactSandboxesSkipsTaskSandboxes(t *testing.T) {
 		},
 		rootDiskResult(3, 1, 1),
 	)
-	msb.WithMsbMock(t, &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{project, task}})
+	unidentified := labelledHandle(naming.LegacyHomePrefix+"x", nil, rootDiskResult(3, 1, 1))
+	msb.WithMsbMock(t, &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{task, unidentified, project}})
 
 	layers := uint32(3)
 	options := msbSdk.DiskCompactionOptions{DryRun: true, Layers: &layers, RootDiskOnly: true}
@@ -63,8 +64,8 @@ func TestCompactSandboxesSkipsTaskSandboxes(t *testing.T) {
 	if len(project.CompactedOptions) != 1 || project.CompactedOptions[0] != options {
 		t.Fatalf("project options = %+v, want %+v", project.CompactedOptions, options)
 	}
-	if len(task.CompactedOptions) != 0 {
-		t.Fatal("task sandboxes must not be compacted")
+	if len(task.CompactedOptions) != 0 || len(unidentified.CompactedOptions) != 0 {
+		t.Fatal("task and unidentified sandboxes must not be compacted")
 	}
 	if len(report.Entries) != 1 || report.Entries[0].Name != project.Name_ || report.Entries[0].Slug != "myproj" {
 		t.Fatalf("entries = %+v", report.Entries)
@@ -104,6 +105,15 @@ func TestCompactSandboxesUnknownNameFails(t *testing.T) {
 	}
 }
 
+func TestCompactSandboxesWithoutSandboxesIsEmpty(t *testing.T) {
+	msb.WithMsbMock(t, &msb.MockMsbClient{})
+
+	report, err := CompactSandboxes(context.Background(), "", msbSdk.DiskCompactionOptions{}, &termio.Mock{})
+	if err != nil || len(report.Entries) != 0 {
+		t.Fatalf("report = %+v, err = %v; want empty report", report, err)
+	}
+}
+
 func TestCompactSandboxesListError(t *testing.T) {
 	msb.WithMsbMock(t, &msb.MockMsbClient{ListSandboxesErr: errors.New("boom")})
 
@@ -122,10 +132,12 @@ func TestCompactSandboxesSkipsFailures(t *testing.T) {
 	failing.CompactErr = errors.New("disk busy")
 	gone := compactableHandle("gone-abc12345", nil)
 	gone.CompactErr = &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+	replaced := compactableHandle("replaced-abc12345", nil)
+	replaced.CompactErr = &msbSdk.Error{Kind: msbSdk.ErrSandboxReplaced, Message: "replaced"}
 	remote := compactableHandle("remote-abc12345", nil)
 	remote.CompactErr = &msbSdk.Error{Kind: msbSdk.ErrUnsupportedOperation, Message: "remote"}
 	ok := compactableHandle("ok-abc12345", rootDiskResult(2, 1, 1))
-	msb.WithMsbMock(t, &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{failing, gone, remote, ok}})
+	msb.WithMsbMock(t, &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{failing, gone, replaced, remote, ok}})
 
 	ui := &termio.Mock{}
 	report, err := CompactSandboxes(context.Background(), "", msbSdk.DiskCompactionOptions{}, ui)
@@ -139,8 +151,10 @@ func TestCompactSandboxesSkipsFailures(t *testing.T) {
 		t.Fatalf("WarnCalls = %v, want one warning for the failing sandbox", ui.WarnCalls)
 	}
 	verbose := strings.Join(ui.VerboseCalls, "\n")
-	if !strings.Contains(verbose, "gone-abc12345") || !strings.Contains(verbose, "remote-abc12345") {
-		t.Fatalf("VerboseCalls = %v, want skip notes for gone and remote", ui.VerboseCalls)
+	for _, name := range []string{"gone-abc12345", "replaced-abc12345", "remote-abc12345"} {
+		if !strings.Contains(verbose, name) {
+			t.Errorf("VerboseCalls = %v, want a skip note for %s", ui.VerboseCalls, name)
+		}
 	}
 }
 
@@ -152,19 +166,21 @@ func TestRenderCompactReport(t *testing.T) {
 		Entries: []CompactEntry{
 			{Name: "a-abc12345", Slug: "a", Result: first},
 			{Name: "b-abc12345", Slug: "b", Result: *rootDiskResult(3, 2, 1024)},
+			{Name: "c-abc12345", Slug: "c", Result: msbSdk.DiskCompactionResult{PauseUs: 1}},
 		},
 	}
 	ui := &termio.Mock{}
 	RenderCompactReport(ui, report)
 
-	if len(ui.OutCalls) != 1 || ui.OutCalls[0] != "Compacted 2 sandbox(es): 8 -> 3 layers, 3 KiB materialized" {
+	if len(ui.OutCalls) != 1 || ui.OutCalls[0] != "Compacted 3 sandbox(es): 8 -> 3 layers, 3 KiB materialized" {
 		t.Fatalf("OutCalls = %q", ui.OutCalls)
 	}
 	verbose := strings.Join(ui.VerboseCalls, "\n")
 	for _, want := range []string{
 		"  a-abc12345 (a): 5 -> 1 layers, 2 KiB materialized, paused 1.5ms",
 		"    /: 5 -> 1 layers, 2 KiB materialized",
-		"  b-abc12345 (b): 3 -> 2 layers, 1 KiB materialized",
+		"  b-abc12345 (b): 3 -> 2 layers, 1 KiB materialized\n",
+		"  c-abc12345 (c): 0 -> 0 layers, 0 B materialized, paused 0.001ms",
 	} {
 		if !strings.Contains(verbose, want) {
 			t.Errorf("VerboseCalls missing %q:\n%s", want, verbose)
