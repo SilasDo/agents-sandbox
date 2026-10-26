@@ -1,0 +1,104 @@
+name: mutation
+
+# Mutation testing mutates the code and checks whether the suite notices. It is
+# deliberately not a gate: gomutants has no pass/fail threshold (a LIVED mutant
+# is either a missing assertion or a genuinely equivalent mutation), so closing
+# one is human judgement, not a check. This workflow is a signal on a PR a
+# maintainer opted into with the `run-mutation` label, or a manual run; it is
+# never a required check and never a release prerequisite (see
+# `.operator-shared/specs/mutation-testing.md`).
+on:
+  pull_request:
+    # `labeled` opts a PR into this workflow via the `run-mutation` label; the
+    # other three are the default pull_request types.
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+# The job only checks out and runs Go, so the token needs no write scope.
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    name: mutation (changed lines)
+    # Costly (minutes per package) and advisory: the opt-in label, or a manual
+    # dispatch, is the only path that runs it.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' &&
+      contains(github.event.pull_request.labels.*.name, 'run-mutation'))
+    runs-on: ubuntu-latest
+    # A sweep over a large changeset can run long; cap it so a runaway cannot
+    # tie up a runner. A timeout is not a gate, only a wasted run.
+    timeout-minutes: 90
+    concurrency:
+      # A PR that pushes again supersedes its own sweep; the newest commit is
+      # the one worth signalling on.
+      group: mutation-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # gomutants' `--changed-since` needs a real merge base with the base
+          # branch, which the shallow default checkout does not provide.
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: .go-version
+          cache: true
+      - name: Resolve the sweep range
+        id: range
+        env:
+          # A PR is scoped to its own changeset: lines changed since the merge
+          # base with the base branch. A manual run leaves SINCE unset, so `make
+          # mutation` falls back to its local default, the last release tag.
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags origin "refs/heads/${BASE_REF}:refs/remotes/origin/${BASE_REF}"
+            echo "since=origin/${BASE_REF}" >> "$GITHUB_OUTPUT"
+          else
+            echo "since=" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Sweep mutants
+        # Named MUTATION_SINCE, not SINCE: an empty SINCE in make's environment
+        # would defeat `SINCE ?= $(shell git describe ...)`, so a manual run would
+        # fail to resolve the release tag instead of falling back to it.
+        env:
+          MUTATION_SINCE: ${{ steps.range.outputs.since }}
+        # `make mutation` exits 0 on survivors (no threshold), so a red step here
+        # means the sweep itself failed, not that mutants survived.
+        run: |
+          if [ -n "$MUTATION_SINCE" ]; then
+            make mutation SINCE="$MUTATION_SINCE"
+          else
+            make mutation
+          fi
+      - name: Summarize survivors
+        # The value of a non-gating run is the report, not the exit code, so
+        # surface it even if the sweep step failed.
+        if: ${{ always() }}
+        run: |
+          if [ ! -f mutation-report.json ]; then
+            echo "No mutation report was produced." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "## Mutation sweep"
+            echo
+            jq -r '[.files[]?.mutations[]?] as $m | "\($m | length) mutants: \([$m[] | select(.status == "KILLED")] | length) killed, \([$m[] | select(.status == "LIVED")] | length) lived"' mutation-report.json
+            echo
+            echo "| lived | file |"
+            echo "| ---: | --- |"
+            jq -r '[.files[]? | { f: .file_name, n: ([.mutations[]? | select(.status == "LIVED")] | length) } | select(.n > 0)] | sort_by(-.n)[] | "| \(.n) | `\(.f)` |"' mutation-report.json
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload the mutation report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: mutation-report
+          path: mutation-report.json
+          if-no-files-found: ignore
+          retention-days: 30

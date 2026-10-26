@@ -163,10 +163,12 @@ deadcode-test:
 	ci/test-check-deadcode.sh
 
 # Mutation testing: mutate the code and check whether the tests notice. Run on
-# demand (at release time), never as a gate — a full run takes minutes per
-# package, so it stays out of check/verify/CI. By default it mutates only lines
-# changed since the last release tag; FULL=1 runs every mutant and PKG picks
-# the package(s).
+# demand (at release time) and as an advisory CI signal, never as a gate — a
+# full run takes minutes per package and a survivor needs human triage, so it
+# stays out of check/verify and is never a required CI check (the `mutation`
+# workflow runs it only on a PR a maintainer opted into). By default it mutates
+# only lines changed since the last release tag; FULL=1 runs every mutant and
+# PKG picks the package(s).
 #   make mutation                        # whole module, lines changed since the last tag
 #   make mutation PKG=./internal/foo     # one package, changed lines
 #   make mutation FULL=1                 # whole module, all lines (slow)

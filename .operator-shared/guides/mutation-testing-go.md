@@ -5,7 +5,7 @@ read_if: Adding or changing the on-demand mutation-testing Makefile target, or e
 
 # Mutation testing for Go — tool survey
 
-Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify`/CI. Whole-module runs take hours, so single-package scoping is required.
+Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify` or made a required CI check (the advisory `mutation` workflow is opt-in only). Whole-module runs take hours, so single-package scoping is required.
 
 All invocations below were executed in this sandbox with `go version go1.27.1 linux/amd64`; failures and successes are quoted from that output.
 
@@ -79,7 +79,7 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 4. **go-mutesting (avito)** — viable only with a pseudo-version pin (v2 tags are not Go-module-legal) and no overlay.
 5. **go-mutesting (zimmski)**, **ooze** — reject: stale/`go 1.10`, and library-only respectively.
 
-### Makefile (mirrors the `vulncheck` target; deliberately excluded from `check`/`verify`/CI)
+### Makefile (mirrors the `vulncheck` target; deliberately excluded from `check`/`verify`, never a required CI check)
 
 The canonical target lives in `.operator-shared/specs/mutation-testing.md`; its shape is:
 

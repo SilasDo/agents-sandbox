@@ -1,6 +1,6 @@
 ---
-description: Contract for the on-demand, per-package mutation-testing practice (issue #253) — a version-pinned `make mutation` target over gomutants, scoped by default to mutants on lines changed since the last release tag, never a CI or `make check` gate; plus the triage rule that every surviving mutant is killed by a strengthened test, rid by deleting a redundant construct, or recorded in source with a reason, and the release-skill/CONTRIBUTING homes for the recurring practice.
-read_if: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, or the release-skill verify step; or evaluating a Go mutation-testing tool.
+description: Contract for the on-demand, per-package mutation-testing practice (issue #253) — a version-pinned `make mutation` target over gomutants, scoped by default to mutants on lines changed since the last release tag, never a required CI or `make check` gate (an opt-in `mutation` workflow is an advisory signal only); plus the triage rule that every surviving mutant is killed by a strengthened test, rid by deleting a redundant construct, or recorded in source with a reason, and the release-skill/CONTRIBUTING homes for the recurring practice.
+read_if: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, the advisory `mutation` CI workflow, or the release-skill verify step; or evaluating a Go mutation-testing tool.
 ---
 
 # Mutation testing
@@ -17,9 +17,10 @@ carries, so tests that guard behaviour are strengthened as they land rather than
 
 ## Contract
 
-- **On-demand only.** A `make mutation` target, invoked by a person, at release time or on demand. It is **never** wired
-  into `make check`, `make verify`, `make all`, or any CI workflow. Runtime is minutes-to-hours; a gate would be wrong
-  and the issue forbids it.
+- **Never a gate.** A `make mutation` target, invoked by a person at release time or on demand, plus an advisory,
+  opt-in CI workflow. It is **never** wired into `make check`, `make verify`, `make all`, or as a required CI check:
+  runtime is minutes-to-hours and a LIVED mutant needs human triage, so a gate would be wrong and the issue's non-goal
+  forbids it.
 - **Pinned, no global install.** `GOMUTANTS_VERSION` is a `Makefile` constant, invoked as
   `go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION)`, exactly like `GOVULNCHECK_VERSION`/`vulncheck`.
   Dependabot watches only `gomod` and `github-actions`, so this pin drifts silently and is bumped by hand (see
@@ -77,7 +78,7 @@ Facts the design leans on:
 ```make
 GOMUTANTS_VERSION = v0.7.2
 
-# On-demand mutation testing. Never part of check/verify/CI.
+# On-demand mutation testing. Never a gate; the `mutation` workflow is advisory.
 #   make mutation                        # whole module, lines changed since the last release tag
 #   make mutation PKG=./internal/foo     # one package, changed lines
 #   make mutation FULL=1                 # whole module, all lines (slow)
@@ -106,17 +107,38 @@ mutation:
     writes. The rule's actual protection is that nothing reaches a remote before the step-5 gate, which still holds.
     The fixes are local commits on the current branch; the step-6 PR that promotes the changelog carries them, and the
     tag lands on the merged result. The wording changes; the guarantee does not.
-- **`CONTRIBUTING.md`** gains a short subsection under Testing: how to run `make mutation`, that it is on-demand, and
-  that it is never a gate.
+- **`CONTRIBUTING.md`** gains a short subsection under Testing: how to run `make mutation`, that it is on-demand, that
+  it is never a gate, and that the advisory `mutation` workflow is opted into with the `run-mutation` label.
 - **`.gitignore`** gains `mutation-report.json` and `.gomutants-cache.json`.
 - **`.agents/skills/release/NON-GO-DEPS.md`** gains a `gomutants` row. Its existing gap — `GOVULNCHECK_VERSION` is
   absent though the pin exists — is fixed in the same edit.
+
+## CI signal (advisory)
+
+`.github/workflows/mutation.yml` runs `make mutation` only when a maintainer adds the `run-mutation` label to a PR, or on
+manual dispatch; it is dormant otherwise. It is a **signal, not a check**: nothing depends on it, and because it lives in
+its own workflow file it can never join `ci.yml`'s `release.needs`. See `specs/ci-job-gating.md` for the label pattern it
+shares with `integration`.
+
+- **A PR scopes to its own changeset.** `SINCE=origin/<base_ref>`, fetched at full depth so gomutants has a merge base;
+  the sweep then covers only lines the PR changed, not every unreleased line.
+- **A dispatch leaves `SINCE` unset**, so it falls back to the last release tag — the release sweep. Dispatch is only
+  available once this workflow is on the default branch (`ci-job-gating.md`).
+- **The job stays green on survivors** (no threshold). A red step means the *sweep* failed, not that mutants survived.
+  Survivors reach the maintainer as a step summary (lived count per file) and a `mutation-report` artifact.
+- **Even a zero-mutant sweep is not free.** gomutants collects module-wide coverage before it discovers mutants on the
+  changed lines, so a docs-only changeset still costs ~2 minutes.
+- **A timeout is a wasted run, not a gate.** The job is capped (90 min) so a large changeset cannot tie up a runner, and
+  a cancelled or superseded run signals nothing.
+- **Not required by construction.** Required checks are a branch-protection setting, not this workflow; the design keeps
+  the sweep out of `ci.yml` precisely so no `release.needs` edge can ever depend on it.
 
 ## Goals
 
 - A documented, repeatable command that mutation-tests one package, or the release's changed lines, on demand.
 - The recurring practice has a durable home in the release flow, so it is not skipped.
-- The mechanism is enforced where it can be: the target is never wired into `check`/`verify`/`all`/CI.
+- The mechanism is enforced where it can be: the target is never wired into `check`/`verify`/`all`, and CI runs it only
+  as an advisory workflow that gates nothing.
 
 ## Who does what
 
@@ -128,7 +150,7 @@ criteria are the maintainer's execution, not this change's deliverable.
 
 ## Non-goals
 
-- Mutation testing in CI (runtime in hours; Go tooling immature).
+- Mutation testing as a required CI check, or a merge/release gate (runtime in hours; a survivor needs human triage).
 - Chasing a mutation score or adding a threshold gate.
 - Triaging `NOT COVERED` mutants.
 - Making mutation testing part of `make check`/`make verify`/`make test`.
