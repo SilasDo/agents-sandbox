@@ -29,6 +29,9 @@ EOF
 # Introduction
 
 See [Install]({% link install.md %}) and [Launcher]({% link configuration/launcher.md %}).
+
+- [top](#introduction)
+- [Install section]({% link install.md %}#install)
 EOF
   cat >"$dir/docs/install.md" <<'EOF'
 # Install
@@ -278,6 +281,24 @@ d="$(new_fixture)"
 printf '\n## Foo\n\n## Foo\n' >>"$d/docs/install.md"
 printf '\n[Second](https://inoio.github.io/agents-sandbox/install.html#foo-1)\n' >>"$d/README.md"
 expect "duplicate heading suffix" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# A same-file anchor in a docs page names a heading in that page.
+d="$(new_fixture)"
+printf '\n[Gone](#no-such-heading)\n' >>"$d/docs/introduction.md"
+expect "docs in-page dead fragment" 1 "fragment 'no-such-heading' matches no heading in docs/introduction.md" "$d"
+rm -rf "$d"
+
+# A Jekyll tag's trailing fragment names a heading in the target page.
+d="$(new_fixture)"
+printf '\n[Gone]({%% link install.md %%}#no-such-heading)\n' >>"$d/docs/introduction.md"
+expect "docs cross-page dead fragment" 1 "fragment 'no-such-heading' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# A fragment on a non-.md Jekyll target (a generated diagram) is not checked.
+d="$(new_fixture)"
+printf '\n![diagram]({%% link diagrams/arch.svg %%}#whatever)\n' >>"$d/docs/introduction.md"
+expect "diagram fragment ignored" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

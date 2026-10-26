@@ -29,8 +29,8 @@ report() {
 # Emit "lineno<TAB>target" for every markdown link in a file, resolving
 # reference-style links ([text][id], [id], and definitions "[id]: url") and
 # stripping titles and angle-bracket wrappers from inline links. Rendered docs
-# HTML links are kept (validated by the root handler); other external links and
-# bare in-page anchors are skipped.
+# HTML links and in-page anchors are kept (validated per file role); other
+# external links are skipped.
 link_targets() {
   local file="$1" line lineno rest match target id
   local -A refs=()
@@ -139,13 +139,14 @@ check_fragment() {
   report "$rel:$lineno: fragment '$anchor' matches no heading in $label"
 }
 
-# Emit a single link target unless it is external or a bare in-page anchor.
-# Rendered docs HTML links are kept for the root handler to validate.
+# Emit a single link target unless it is external. Rendered docs HTML links,
+# Jekyll {% link %} tags, and in-page anchors are kept, each validated by the
+# handler for the file's role.
 emit_link() {
   local lineno="$1" target="$2"
   case "$target" in
     "$SITE_BASE"/*) ;; # rendered docs html link - keep (validated by the root handler)
-    http://* | https://* | mailto:* | tel:* | ftp://* | \#*) return ;;
+    http://* | https://* | mailto:* | tel:* | ftp://*) return ;;
   esac
   printf '%s\t%s\n' "$lineno" "$target"
 }
@@ -160,8 +161,10 @@ extract_jekyll_path() {
 
 # Validate a single Jekyll {% link %} tag against a base directory.
 check_jekyll_link() {
-  local rel="$1" lineno="$2" base="$3" target="$4" path
+  local rel="$1" lineno="$2" base="$3" target="$4" path fragment
   path="$(extract_jekyll_path "$target")"
+  fragment="${target#*%\}}"
+  fragment="${fragment#\#}"
   if [[ "$path" == /* ]]; then
     report "$rel:$lineno: {% link %} path '$path' must be relative (no leading slash)"
     return
@@ -172,6 +175,10 @@ check_jekyll_link() {
   fi
   if [[ ! -e "$base/$path" ]]; then
     report "$rel:$lineno: {% link %} target '$path' does not exist"
+    return
+  fi
+  if [[ "$path" == *.md ]]; then
+    check_fragment "$rel" "$lineno" "$base/$path" "$fragment" "docs/$path"
   fi
 }
 
@@ -181,6 +188,7 @@ handle_target() {
   case "$mode" in
     root)
       case "$target" in
+        '#'*) ;; # same-file anchor in a root file: GitHub-rendered, not kramdown
         "$SITE_BASE"/*)
           # Rendered docs HTML link: map back to the source page and check any
           # in-page anchor (the fragment names a heading in that page).
@@ -219,6 +227,7 @@ handle_target() {
       case "$target" in
         "$SITE_BASE"/*) ;; # rendered docs link (external) - not a Jekyll tag
         *'{% link'*) check_jekyll_link "$rel" "$lineno" "$DOCS" "$target" ;;
+        \#*) check_fragment "$rel" "$lineno" "$ROOT/$rel" "${target#\#}" "$rel" ;;
         *) report "$rel:$lineno: internal link '$target' must use a Jekyll {% link %} tag" ;;
       esac
       ;;
