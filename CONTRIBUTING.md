@@ -106,9 +106,14 @@ This project defaults to **test-driven development**:
   mutants the tests do not notice. A surviving ("LIVED") mutant is either a missing assertion or a mutation that cannot
   change behaviour. By default it covers the whole module but only lines changed since the last release tag
   (`PKG=./internal/foo` narrows it to one package; `FULL=1` runs every line). It is **never** a gate — not in
-  `make check`, `make verify`, or CI — and a package takes minutes. Close every survivor: strengthen the test so the
-  mutant now fails, or record the reason in the source next to the mutant with `// gomutants:disable <TYPE>
-  reason="..."`.
+  `make check`, `make verify`, or as a required CI check — and a package takes minutes. Close every survivor: strengthen
+  the test so the mutant now fails, or record the reason in the source next to the mutant with `// gomutants:disable
+  <TYPE> reason="..."`. The `mutation` workflow is an advisory signal, not a check: it sweeps every PR that
+  touches code automatically (docs-only PRs are filtered out; the sweep covers just that PR's changeset — lines changed
+  since the merge base with its base branch), posting each survivor as an inline `::warning::` on the diff (GitHub shows
+  at most ten), a sticky PR comment with the totals and the complete survivor list, and a `mutation-report` artifact.
+  Because gomutants has no threshold, the job stays green on survivors; a red run means the sweep failed, and nothing is
+  ever gated on it.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
   there; it always runs on `main` and on releases. The same suite also runs against rootless podman under the

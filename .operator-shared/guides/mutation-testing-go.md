@@ -5,7 +5,7 @@ read_if: Adding or changing the on-demand mutation-testing Makefile target, or e
 
 # Mutation testing for Go — tool survey
 
-Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify`/CI. Whole-module runs take hours, so single-package scoping is required.
+Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify` or made a required CI check (the advisory `mutation` workflow runs it on every code-changing PR and gates nothing). Whole-module runs take hours, so single-package scoping is required.
 
 All invocations below were executed in this sandbox with `go version go1.27.1 linux/amd64`; failures and successes are quoted from that output.
 
@@ -31,6 +31,7 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 - Per-package: usage is `gomutants [flags] <package patterns>`, e.g. `gomutants ./internal/mypackage` or `gomutants -v ./internal/foo` ([README](https://github.com/gomutants/gomutants)); package patterns are positional.
 - Scope to changed lines: `--changed-since <ref>` keeps only mutants on lines added/modified vs `git diff --unified=0 --merge-base <ref>`, includes uncommitted edits to tracked files, and requires a **new** file to be `git add`ed to be visible. On a shallow clone (no reachable merge base) it fails with a hint rather than silently widening. **The flag is `--changed-since` in the pinned v0.7.2** — verified by running `go run github.com/gomutants/gomutants@v0.7.2 --changed-since v0.5.0 --dry-run ./internal/humanize` (works) and `-n v0.5.0` (`flag provided but not defined: -n`, exit 2). An earlier verbal summary said `-n`; it is wrong for this pin ([README](https://github.com/gomutants/gomutants), [flags.go](https://github.com/gomutants/gomutants/blob/main/flags.go)).
 - Output/triage: JSON report by default (`--output`/`-o`, default `mutation-report.json`), plus `--stryker-output`, `--html-output`, `--annotations github`; statuses `KILLED`, `LIVED`, `NOT COVERED`, `NOT VIABLE`, `TIMED OUT`, `INFRA ERROR`, `EQUIVALENT`; `--list-mutators`. Equivalent/uninteresting mutants are recorded via inline `// gomutants:disable`, `disable-next-line`, `disable-func`, `disable-regexp` and call-site `--exclude-calls` globs ([README](https://github.com/gomutants/gomutants)).
+- GitHub annotations: `--annotations github` (the only accepted value) writes one `::warning file=<path>,line=<n>,col=<n>::Mutant LIVED — <TYPE> (<original> → <replacement>)` per LIVED mutant to stdout, with `%`/CR/LF escaped in the message and `%`/`:`/`,` in the path. It does **not** gate — a non-zero exit needs an explicit `--threshold-efficacy`/`--threshold-mcover` (both default `0`) — so annotations surface survivors without failing the job. GitHub caps the annotation channel at **10 warnings per step** (50 per job), so a larger survivor set needs an uncapped surface (a PR comment, the step summary, or the report artifact).
 - Applied by `go test -overlay` — "the source tree is never rewritten" ([README](https://github.com/gomutants/gomutants)). Speed features: content-addressed cache, per-test coverage routing, adaptive per-mutant timeouts. The README's own benchmarks put it ~1.5–1.8× faster than gremlins on medium single-package targets (self-reported; treat as a claim).
 - `-race`: forwarded through `--test-flags` (build flags such as `-race` go to the compile). `-overlay`, `-c` and `-args` are gomutants-managed and not forwarded; `-o`/`--output` is gomutants' own JSON report path (default `mutation-report.json`), not a pass-through to the inner `go test` ([README](https://github.com/gomutants/gomutants), `--help`).
 - Not a gate by default: `--threshold-efficacy`/`--threshold-mcover` default `0` (disabled), so exit is `0`; exit `10`/`11` only when thresholds are set ([README](https://github.com/gomutants/gomutants)).
@@ -79,7 +80,7 @@ All invocations below were executed in this sandbox with `go version go1.27.1 li
 4. **go-mutesting (avito)** — viable only with a pseudo-version pin (v2 tags are not Go-module-legal) and no overlay.
 5. **go-mutesting (zimmski)**, **ooze** — reject: stale/`go 1.10`, and library-only respectively.
 
-### Makefile (mirrors the `vulncheck` target; deliberately excluded from `check`/`verify`/CI)
+### Makefile (mirrors the `vulncheck` target; deliberately excluded from `check`/`verify`, never a required CI check)
 
 The canonical target lives in `.operator-shared/specs/mutation-testing.md`; its shape is:
 
