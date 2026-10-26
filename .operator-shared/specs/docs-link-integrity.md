@@ -29,8 +29,8 @@ the script itself.
 - Rendered-HTML validation (needs Ruby + `bundle install`); rejected in #296.
 - Root-file same-file in-page anchors (`README.md`, `CHANGELOG.md`): those files render on GitHub, whose slugger is a
   different, server-side algorithm. Only one such link exists (`CHANGELOG.md` `#notifications`); it stays unchecked.
-- Declared ids (`### Heading {#anchor}`): not required, and not used to *make* a link resolve — the gate keys off
-  the derived slug — see Decisions. When a heading carries one the mirror honours it verbatim.
+- Declared ids (`### Heading {#anchor}`): the docs do not need them — the gate keys off the derived slug — see
+  Decisions. When a heading does carry one, the mirror honours it verbatim.
 
 ## Decisions
 
@@ -39,9 +39,9 @@ the script itself.
   Declared ids would annotate every linked heading (30+), duplicating each anchor string into an attribute list and
   adding a second place to drift, while the derived algorithm stays relevant to any heading linked later. A heading
   that *does* declare an id is still honoured verbatim, so the gate never false-fails one.
-- **Scope: anywhere the fragment lands on the published site** — rendered-HTML links, `docs/` in-page anchors, and
-  the launcher's doc links. Also validated for every source file, tests included (a test asserting a dead anchor is a
-  dead claim).
+- **Scope: anywhere the fragment lands on the published site** — rendered-HTML links, `docs/` in-page and cross-page
+  (`{% link page.md %}#anchor`) anchors, and the launcher's doc links. Also validated for every scanned source file,
+  tests included (a test asserting a dead anchor is a dead claim).
 - **A leaf package `internal/docslink` composes the launcher's doc links.** It replaces the two duplicated
   `docsBaseURL` consts (`internal/sandbox/doctor`, `internal/sandbox/image`) and, more importantly, makes the
   checker's Go extraction uniform: a call carries both the page and the anchor as literals, so the script needs no
