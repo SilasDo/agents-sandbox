@@ -125,8 +125,8 @@ jobs:
           fi
 
           # One row per survivor, with `|`, CR/LF, and backticks neutralized so
-          # a mutant fragment cannot break the table. Truncated so a pathological
-          # changeset cannot blow the comment size limit.
+          # a mutant fragment cannot break the table. Bounded to 200 rows, and
+          # the assembled comment is size-checked below.
           survivor_rows=$(
             jq -r '
               def esc: tostring | gsub("\\|"; "\\|") | gsub("`"; "") | gsub("\\r?\\n"; " ");
@@ -155,7 +155,14 @@ jobs:
               echo "Survivors need human triage: strengthen the test, delete the redundant construct, or record a reason."
               echo
             fi
-            if [ -n "$survivor_table" ]; then
+          } > /tmp/mutation-comment.md
+
+          # GitHub rejects a comment past 65,536 characters, and a row can be long
+          # (a mutant's full replacement text), so gate on the assembled size and
+          # drop the table rather than let the PATCH fail: the artifact, not the
+          # comment, is the complete record.
+          if [ -n "$survivor_table" ]; then
+            {
               echo "<details><summary>All ${survivor_total} survivors</summary>"
               echo
               echo "| file | line | mutator | original → replacement |"
@@ -167,14 +174,27 @@ jobs:
               fi
               echo
               echo "</details>"
-              echo
+            } > /tmp/mutation-details.md
+            if [ $(( $(wc -c < /tmp/mutation-comment.md) + $(wc -c < /tmp/mutation-details.md) )) -le 60000 ]; then
+              cat /tmp/mutation-details.md >> /tmp/mutation-comment.md
+            else
+              {
+                echo
+                echo "_Survivor list omitted: it would exceed GitHub's comment size limit. See the \`mutation-report\` artifact._"
+              } >> /tmp/mutation-comment.md
             fi
-            echo "[Full report and log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) (artifact \`mutation-report\`)."
-          } > /tmp/mutation-comment.md
+            echo >> /tmp/mutation-comment.md
+          fi
 
+          echo "[Full report and log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) (artifact \`mutation-report\`)." >> /tmp/mutation-comment.md
+
+          # Update the workflow's own comment, matched by marker AND author: a
+          # human who pastes a report as a new comment must not be overwritten.
           marker='<!-- mutation-sweep -->'
           existing=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR}/comments" \
-            | jq -r --arg m "$marker" '.[] | select(.body | startswith($m)) | .id' | tail -n1)
+            | jq -r --arg m "$marker" \
+                '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith($m)) | .id' \
+            | tail -n1)
           payload=$(jq -n --rawfile body /tmp/mutation-comment.md '{body: $body}')
           if [ -n "$existing" ]; then
             printf '%s' "$payload" | gh api -X PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" --input -
