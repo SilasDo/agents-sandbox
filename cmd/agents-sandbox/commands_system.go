@@ -436,6 +436,7 @@ func buildSandboxCmd(ui termio.UI) *cobra.Command {
 	cmd.AddCommand(buildSandboxInspectCmd(ui))
 	cmd.AddCommand(buildSandboxRemoveCmd(ui))
 	cmd.AddCommand(buildSandboxPruneCmd(ui))
+	cmd.AddCommand(buildSandboxCompactCmd(ui))
 	return cmd
 }
 

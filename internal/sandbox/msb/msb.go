@@ -120,6 +120,7 @@ type SandboxHandle interface {
 	// (specs/live-mount-readback.md).
 	ConfigMounts() (map[string]msbSdk.MountConfig, error)
 	Modify(ctx context.Context, opts msbSdk.ModifyOptions) (*msbSdk.SandboxModificationPlan, error)
+	Compact(ctx context.Context, opts msbSdk.DiskCompactionOptions) (*msbSdk.DiskCompactionResult, error)
 }
 
 // Sandbox is the subset of *msb.Sandbox used by the launcher.
@@ -653,6 +654,13 @@ func (w realSandboxHandle) Modify(
 	opts msbSdk.ModifyOptions,
 ) (*msbSdk.SandboxModificationPlan, error) {
 	return w.handle.Modify(ctx, opts)
+}
+
+func (w realSandboxHandle) Compact(
+	ctx context.Context,
+	opts msbSdk.DiskCompactionOptions,
+) (*msbSdk.DiskCompactionResult, error) {
+	return w.handle.Compact(ctx, opts)
 }
 
 // realSandbox adapts *msbSdk.Sandbox to Sandbox.

@@ -302,3 +302,10 @@ func descriptionStartCol(line string) int {
 func isTreeChar(r rune) bool {
 	return r == '│' || r == '├' || r == '└' || r == '─' || r == ' '
 }
+
+func TestPrintTreeContainsSandboxCompact(t *testing.T) {
+	out := strings.Join(buildTree(t).InfoCalls, "\n")
+	if !strings.Contains(out, "Merge the copy-on-write disk layers of project sandbox VMs") {
+		t.Errorf("expected the sandbox compact row in tree output:\n%s", out)
+	}
+}

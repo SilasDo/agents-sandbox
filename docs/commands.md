@@ -14,7 +14,7 @@ The commands are grouped by area; jump to a group:
 
 - **Runtime:** [`run`](#run), [`shell`](#shell), [`stop`](#stop), [`kill`](#kill), [`list`](#list), [`tree`](#tree), [`doctor`](#doctor), [`version`](#version), [`upgrade`](#upgrade), [`completion`](#completion)
 - **Build and images:** [`build`](#build), [`image`](#image)
-- **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune)
+- **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune), [`sandbox compact`](#sandbox-compact)
 - **Storage:** [`df`](#df), [`storage`](#storage)
 - **Configuration:** [`config`](#config), [`config paths`](#config-paths)
 - **Agents:** [`config agent`](#config-agent-name), [`config home`](#config-home)
@@ -535,7 +535,7 @@ agents-sandbox image build
 
 ### sandbox
 
-Parent command that groups sandbox-related subcommands. Most (`run`, `shell`, `stop`, `kill`, `list`) are also available at the top level; `sandbox inspect` and `sandbox remove` live only under this group.
+Parent command that groups sandbox-related subcommands. Most (`run`, `shell`, `stop`, `kill`, `list`) are also available at the top level; `sandbox inspect`, `sandbox remove`, and `sandbox compact` live only under this group.
 
 ```console
 agents-sandbox sandbox run
@@ -586,6 +586,35 @@ agents-sandbox sandbox remove <name> --force   # stop a running VM first
   - `--yes` (global) — skip the confirmation prompt
 
 **Aliases:** `sandbox rm`
+
+#### sandbox compact
+
+Merge the oldest sealed copy-on-write layers of each project VM's disks into
+one, so long-lived VMs don't build up ever longer layer chains. Without a name
+it compacts every project VM; task workers are skipped. Compaction covers the
+root disk and the VM's own data disks. Named volumes, such as the home volume,
+are never compacted. A running VM is paused briefly while its layers are merged. Compaction
+never runs automatically; prune doesn't trigger it. Only the local microsandbox backend
+supports it; other VMs are skipped.
+
+The summary reports the layer count before and after, and the bytes
+materialized. That is the data the merge rewrote, not the disk space freed.
+`--verbose` adds one line per VM and per disk.
+
+```console
+agents-sandbox sandbox compact --dry-run             # preview every project VM
+agents-sandbox sandbox compact                       # compact every project VM
+agents-sandbox sandbox compact <name> --root-only    # root disk of one VM only
+agents-sandbox sandbox compact --layers 4            # merge only the oldest 4 layers
+```
+
+- **Args:** `name` (optional) — the sandbox name; compacts only that VM
+- **Flags:**
+  - `-n`/`--dry-run` — report what would be compacted without changing disks
+  - `--disk <path>` — compact only the disk mounted at this guest path (`/` is the root disk)
+  - `--root-only` — compact only the root disk; can't be combined with `--disk`
+  - `--layers <n>` — merge only the oldest `n` sealed layers (at least 2; default: all)
+  - `--format json` — structured output on stdout
 
 ---
 

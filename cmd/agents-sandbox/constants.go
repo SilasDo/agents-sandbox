@@ -39,6 +39,7 @@ const (
 	cmdEdit       = "edit"
 	cmdRemove     = "remove"
 	cmdInspect    = "inspect"
+	cmdCompact    = "compact"
 
 	flagRemove = "rm"
 
@@ -74,6 +75,9 @@ const (
 	flagStopped         = "stopped"
 	flagFormat          = "format"
 	flagVerbose         = "verbose"
+	flagDisk            = "disk"
+	flagRootOnly        = "root-only"
+	flagLayers          = "layers"
 
 	annotationAlsoAs = naming.Prefix + "/also-as"
 	annotationArgs   = naming.Prefix + "/args"

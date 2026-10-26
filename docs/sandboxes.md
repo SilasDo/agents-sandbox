@@ -20,6 +20,7 @@ where you do; the sections that follow carry the detail.
 | See all sandboxes | `agents-sandbox list` |
 | Stop the project sandbox | `agents-sandbox stop` |
 | Remove the project sandbox | `agents-sandbox sandbox remove <name>` |
+| Merge the disk layers of long-lived sandboxes | `agents-sandbox sandbox compact --dry-run`, then `agents-sandbox sandbox compact` |
 | Reclaim stale sandboxes, volumes, and images | `agents-sandbox prune --dry-run`, then `agents-sandbox prune --yes` |
 | See storage use | `agents-sandbox df` |
 

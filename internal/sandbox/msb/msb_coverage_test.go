@@ -442,6 +442,19 @@ func TestMockSandboxHandleMethods(t *testing.T) {
 	}
 }
 
+func TestMockSandboxHandleCompact(t *testing.T) {
+	h := &MockSandboxHandle{}
+	result := &msbSdk.DiskCompactionResult{}
+	h.CompactResult = result
+	got, err := h.Compact(context.Background(), msbSdk.DiskCompactionOptions{DryRun: true})
+	if err != nil || got != result {
+		t.Fatalf("Compact = %v, %v", got, err)
+	}
+	if len(h.CompactedOptions) != 1 || !h.CompactedOptions[0].DryRun {
+		t.Fatalf("CompactedOptions = %v", h.CompactedOptions)
+	}
+}
+
 func TestMockSandboxHandleConnectStart(t *testing.T) {
 	ctx := context.Background()
 	sb := &MockSandbox{Name_: "sb"}
