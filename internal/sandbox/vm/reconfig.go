@@ -245,9 +245,7 @@ func applyLiveMounts(cfg *msbSdk.SandboxConfig, handle msb.SandboxHandle, ui ter
 // here: they require a VM rebuild and are handled by the recreate path instead.
 func restartDaemons(ctx context.Context, a agent.Agent, sb msb.Sandbox, serveOnly bool, ui termio.UI) {
 	ui.Infof("%s serve restarting…", a.Name())
-	if _, ok := agent.AsDaemonProvider(a); !ok {
-		return
-	}
+	// ensureDaemon no-ops for an agent without a DaemonProvider.
 	if err := ensureDaemon(ctx, a, serveOnly, true, sb, ui); err != nil {
 		ui.Warnf("daemon restart failed: %v (using existing)", err)
 	}

@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +15,11 @@ import (
 )
 
 func TestJobExited(t *testing.T) {
-	if _, exited := jobExited(nil); exited {
-		t.Error("nil info must not be exited")
+	if got, exited := jobExited(nil); exited || got != 0 {
+		t.Errorf("jobExited(nil) = (%d, %v), want (0, false)", got, exited)
 	}
-	if _, exited := jobExited(&msbSdk.JobInfo{}); exited {
-		t.Error("nil exit code must not be exited")
+	if got, exited := jobExited(&msbSdk.JobInfo{}); exited || got != 0 {
+		t.Errorf("jobExited(no exit code) = (%d, %v), want (0, false)", got, exited)
 	}
 	code := 7
 	got, exited := jobExited(&msbSdk.JobInfo{ExitCode: &code})
@@ -35,6 +36,29 @@ func TestJobTailLogs(t *testing.T) {
 	failing := &msb.MockJob{LogsErr: errors.New("no logs")}
 	if got := jobTailLogs(context.Background(), failing); got != "" {
 		t.Errorf("jobTailLogs() on error = %q, want empty", got)
+	}
+	// A read can return partial entries alongside an error; the tail must be
+	// discarded then, not concatenated from the partial slice.
+	partial := &msb.MockJob{LogsFn: func(context.Context, msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {
+		return []msbSdk.JobLogEntry{{Data: []byte("partial")}}, errors.New("mid-read")
+	}}
+	if got := jobTailLogs(context.Background(), partial); got != "" {
+		t.Errorf("jobTailLogs() on partial-error = %q, want empty", got)
+	}
+}
+
+// TestJobTailLogsRequestsTail pins the requested tail length with a literal: the
+// runtime only returns the trailing bytes when Tail is set, and a symbolic
+// expectation would move with a mutated constant instead of killing it.
+func TestJobTailLogsRequestsTail(t *testing.T) {
+	var captured msbSdk.JobLogOptions
+	job := &msb.MockJob{LogsFn: func(_ context.Context, opts msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {
+		captured = opts
+		return nil, nil
+	}}
+	jobTailLogs(context.Background(), job)
+	if captured.Tail == nil || *captured.Tail != 100 {
+		t.Fatalf("JobLogOptions.Tail = %v, want 100", captured.Tail)
 	}
 }
 
@@ -62,12 +86,15 @@ func TestCommandMatches(t *testing.T) {
 }
 
 func TestKillJobsByCommandKillsMatches(t *testing.T) {
+	ui := termio.NewTestMock(t)
 	stale := &msb.MockJob{ID_: "stale"}
 	other := &msb.MockJob{ID_: "other"}
+	// The non-matching job comes first: a matcher that stopped at the first
+	// non-match (instead of continuing) would leave the matching job alive.
 	sb := &msb.MockSandbox{
 		Jobs: []msbSdk.JobInfo{
-			{ID: "stale", Command: []string{"dockerd", "-H", "x"}},
 			{ID: "other", Command: []string{"sleep", "1"}},
+			{ID: "stale", Command: []string{"dockerd", "-H", "x"}},
 		},
 		GetJobFn: func(_ context.Context, id string) (msb.Job, error) {
 			if id == "stale" {
@@ -76,7 +103,7 @@ func TestKillJobsByCommandKillsMatches(t *testing.T) {
 			return other, nil
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "dockerd", []string{"-H", "x"}, &termio.Mock{})
+	killJobsByCommand(context.Background(), sb, "dockerd", []string{"-H", "x"}, &ui)
 
 	if !stale.DidKill {
 		t.Error("matching stale job was not killed")
@@ -86,6 +113,33 @@ func TestKillJobsByCommandKillsMatches(t *testing.T) {
 	}
 	if other.DidKill {
 		t.Error("non-matching job was killed")
+	}
+	if !slices.Contains(ui.VerboseCalls, "killed stale job stale") {
+		t.Errorf("expected a verbose kill note, got %v", ui.VerboseCalls)
+	}
+}
+
+// TestKillJobsByCommandContinuesAfterKillFailure verifies a failed kill does not
+// abandon the remaining matching jobs.
+func TestKillJobsByCommandContinuesAfterKillFailure(t *testing.T) {
+	failing := &msb.MockJob{ID_: "a", KillErr: errors.New("kill boom")}
+	healthy := &msb.MockJob{ID_: "b"}
+	sb := &msb.MockSandbox{
+		Jobs: []msbSdk.JobInfo{
+			{ID: "a", Command: []string{"dockerd"}},
+			{ID: "b", Command: []string{"dockerd"}},
+		},
+		GetJobFn: func(_ context.Context, id string) (msb.Job, error) {
+			if id == "a" {
+				return failing, nil
+			}
+			return healthy, nil
+		},
+	}
+	killJobsByCommand(context.Background(), sb, "dockerd", nil, &termio.Mock{})
+
+	if !healthy.DidKill {
+		t.Error("a kill failure must not stop later matching jobs from being killed")
 	}
 }
 
@@ -156,6 +210,19 @@ func TestAwaitJobReadyInspectErrorKeepsPolling(t *testing.T) {
 		context.Background(), job, "dockerd", probe, nil, time.Second, time.Millisecond,
 	); err != nil {
 		t.Fatalf("awaitJobReady() = %v, want nil (inspect error must not be death)", err)
+	}
+}
+
+// TestInspectJobErrorReturnsNil verifies a transient Inspect error is reported
+// as no info, even when the runtime returns a non-nil info alongside the error,
+// so the readiness loop keeps polling rather than treating a stale result as
+// current.
+func TestInspectJobErrorReturnsNil(t *testing.T) {
+	job := &msb.MockJob{InspectFn: func(context.Context) (*msbSdk.JobInfo, error) {
+		return &msbSdk.JobInfo{ID: "x"}, errors.New("inspect boom")
+	}}
+	if got := inspectJob(context.Background(), job); got != nil {
+		t.Fatalf("inspectJob() = %v, want nil on error", got)
 	}
 }
 
@@ -238,6 +305,15 @@ func TestProbeHealthy(t *testing.T) {
 	ok := msb.NewMockSandbox(msb.SandboxOpts{})
 	if healthy, _ := probeHealthy(context.Background(), ok, "other probe"); !healthy {
 		t.Error("successful shell must be healthy")
+	}
+	noResult := msb.NewMockSandbox(msb.SandboxOpts{ShellOut: map[string]msb.ShellResult{"nil probe": nil}})
+	if healthy, detail := probeHealthy(
+		context.Background(),
+		noResult,
+		"nil probe",
+	); healthy ||
+		detail != "probe returned no result" {
+		t.Errorf("probeHealthy() = (%v, %q), want (false, %q)", healthy, detail, "probe returned no result")
 	}
 }
 

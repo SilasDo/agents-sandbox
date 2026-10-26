@@ -133,6 +133,30 @@ func TestMockJobInspectAndLogsCallbacks(t *testing.T) {
 	}
 }
 
+// TestMockJobErrorFields verifies each MockJob method returns its configured
+// error, so a caller can simulate a failing Inspect/Kill/Logs/Close.
+func TestMockJobErrorFields(t *testing.T) {
+	ctx := context.Background()
+	inspectErr := errors.New("inspect boom")
+	logsErr := errors.New("logs boom")
+	killErr := errors.New("kill boom")
+	closeErr := errors.New("close boom")
+	job := &MockJob{InfoErr: inspectErr, LogsErr: logsErr, KillErr: killErr, CloseErr: closeErr}
+
+	if _, err := job.Inspect(ctx); !errors.Is(err, inspectErr) {
+		t.Fatalf("Inspect() error = %v, want %v", err, inspectErr)
+	}
+	if _, err := job.Logs(ctx, msbSdk.JobLogOptions{}); !errors.Is(err, logsErr) {
+		t.Fatalf("Logs() error = %v, want %v", err, logsErr)
+	}
+	if err := job.Kill(ctx); !errors.Is(err, killErr) {
+		t.Fatalf("Kill() error = %v, want %v", err, killErr)
+	}
+	if err := job.Close(); !errors.Is(err, closeErr) {
+		t.Fatalf("Close() error = %v, want %v", err, closeErr)
+	}
+}
+
 func TestRealSandboxDetachedDelegates(t *testing.T) {
 	ctx := context.Background()
 
@@ -149,8 +173,12 @@ func TestRealSandboxDetachedDelegates(t *testing.T) {
 			}
 			return &msbSdk.Job{}, nil
 		}
-		if _, err := (realSandbox{}).ExecDetached(ctx, "dockerd", []string{"x"}); err != nil || !called {
+		got, err := (realSandbox{}).ExecDetached(ctx, "dockerd", []string{"x"})
+		if err != nil || !called {
 			t.Fatalf("ExecDetached() = %v, called=%v; want nil, true", err, called)
+		}
+		if got == nil {
+			t.Fatal("ExecDetached() returned a nil job")
 		}
 	})
 
@@ -179,8 +207,12 @@ func TestRealSandboxDetachedDelegates(t *testing.T) {
 			}
 			return &msbSdk.Job{}, nil
 		}
-		if _, err := (realSandbox{}).GetJob(ctx, "job-1"); err != nil || !called {
+		got, err := (realSandbox{}).GetJob(ctx, "job-1")
+		if err != nil || !called {
 			t.Fatalf("GetJob() = %v, called=%v; want nil, true", err, called)
+		}
+		if got == nil {
+			t.Fatal("GetJob() returned a nil job")
 		}
 	})
 

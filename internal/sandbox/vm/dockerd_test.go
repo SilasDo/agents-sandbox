@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -99,16 +100,26 @@ func TestStartDockerdIfPresentStartsAndBecomesReady(t *testing.T) {
 	if sb.execCalls != 1 {
 		t.Errorf("expected one detach attempt, got %d", sb.execCalls)
 	}
+	if !slices.Contains(ui.VerboseCalls, "starting dockerd with vfs storage driver") {
+		t.Errorf("expected a verbose start note, got %v", ui.VerboseCalls)
+	}
+	if !slices.Contains(ui.VerboseCalls, "dockerd is ready") {
+		t.Errorf("expected a verbose ready note, got %v", ui.VerboseCalls)
+	}
 }
 
 func TestStartDockerdIfPresentExecError(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	sb := newCountingSandbox(1 << 30)
-	sb.execErr = errors.New("connection lost")
+	wantErr := errors.New("connection lost")
+	sb.execErr = wantErr
 
 	err := startDockerdIfPresent(context.Background(), sb, &ui)
 	if err == nil {
 		t.Fatal("expected error when ExecDetached fails")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("startDockerdIfPresent() = %v, want it to wrap %v", err, wantErr)
 	}
 	if sb.execCalls != 1 {
 		t.Errorf("expected 1 detach attempt, got %d", sb.execCalls)
@@ -262,5 +273,8 @@ func TestTimeoutErrorIncludesJobLog(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), sentinel) {
 		t.Errorf("timeout error should embed the job log, got: %v", err)
+	}
+	if !strings.Contains(strings.Join(ui.VerboseCalls, "\n"), "dockerd not ready:") {
+		t.Errorf("expected a verbose not-ready probe detail, got %v", ui.VerboseCalls)
 	}
 }

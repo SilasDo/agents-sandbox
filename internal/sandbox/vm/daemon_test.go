@@ -3,6 +3,7 @@ package vm
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -88,6 +89,9 @@ func TestEnsureDaemonStartsWhenUnhealthy(t *testing.T) {
 	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
 		t.Fatalf("ExecDetached calls = %+v, want one opencode", *calls)
 	}
+	if !slices.Contains(testUI.VerboseCalls, "opencode daemon is healthy") {
+		t.Errorf("expected a verbose healthy note, got %v", testUI.VerboseCalls)
+	}
 }
 
 // TestEnsureDaemonStartsServeOnlyOnExternalInterface verifies that serve-only
@@ -133,6 +137,47 @@ func TestEnsureDaemonProbesBeforeWaiting(t *testing.T) {
 	}
 	if elapsed := time.Since(start); elapsed >= 500*time.Millisecond {
 		t.Fatalf("ensureDaemon waited %v before its first health probe, want immediate", elapsed)
+	}
+}
+
+// TestEnsureDaemonSkipsHealthyDaemon verifies the pre-check: a daemon that is
+// already healthy is left running (no restart) and reported as such, rather
+// than paying for a kill-and-relaunch.
+func TestEnsureDaemonSkipsHealthyDaemon(t *testing.T) {
+	testUI := termio.NewTestMock(t)
+	fastDaemonPoll(t)
+	healthQueue(t, healthy())
+
+	calls := &[]msb.MockDetachedCall{}
+	sb := &msb.MockSandbox{ExecDetachedCalls: calls}
+
+	if err := ensureDaemon(context.Background(), opencodeAgent(t), false, false, sb, &testUI); err != nil {
+		t.Fatalf("ensureDaemon: %v", err)
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("a healthy daemon must not be restarted, got %+v", *calls)
+	}
+	if !slices.Contains(testUI.VerboseCalls, "opencode daemon already healthy") {
+		t.Fatalf("verbose calls = %q, want an already-healthy note", testUI.VerboseCalls)
+	}
+}
+
+// TestEnsureDaemonLogsUnhealthyProbeDetail verifies an unhealthy pre-check
+// reports the probe's detail, so a restart is diagnosable rather than silent.
+func TestEnsureDaemonLogsUnhealthyProbeDetail(t *testing.T) {
+	testUI := termio.NewTestMock(t)
+	fastDaemonPoll(t)
+	healthQueue(t, unhealthy(), healthy())
+
+	calls := &[]msb.MockDetachedCall{}
+	sb := &msb.MockSandbox{ExecDetachedCalls: calls}
+
+	if err := ensureDaemon(context.Background(), opencodeAgent(t), false, false, sb, &testUI); err != nil {
+		t.Fatalf("ensureDaemon: %v", err)
+	}
+	want := "opencode daemon not healthy: health probe exit 1: (no output)"
+	if !slices.Contains(testUI.VerboseCalls, want) {
+		t.Fatalf("verbose calls = %q, want %q", testUI.VerboseCalls, want)
 	}
 }
 
@@ -213,17 +258,21 @@ func TestEnsureDaemonExecError(t *testing.T) {
 	fastDaemonPoll(t)
 	healthQueue(t, unhealthy())
 
+	wantErr := errors.New("connection lost")
 	sb := &msb.MockSandbox{
 		ExecDetachedFn: func(
 			context.Context, string, []string, ...msbSdk.JobExecOption,
 		) (msb.Job, error) {
-			return nil, errors.New("connection lost")
+			return nil, wantErr
 		},
 	}
 
 	err := ensureDaemon(context.Background(), opencodeAgent(t), false, false, sb, &testUI)
 	if err == nil || !strings.Contains(err.Error(), "start opencode serve") {
 		t.Fatalf("ensureDaemon() = %v, want start failure", err)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("ensureDaemon() = %v, want it to wrap %v", err, wantErr)
 	}
 }
 
