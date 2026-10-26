@@ -60,11 +60,19 @@ from `Ref` once that is content-addressed; no new `ImageInfo` field is needed.
 
 `decideReconfig`'s image comparison (`reconfig.sameImageIdentity`) treats the content, prefix-free-name and
 prefixed-Docker-tag spellings of one `(slug, agent)` as the same image, so a VM created under an older spelling is not
-recreated merely because the launcher now computes a content ref. A genuine content change is gated separately by the
-image digest (`hs.ImageDigest != imageInfo.Digest` sets the recreate flag in `vm.decideReconfig`), so `sameImageIdentity`
-compares `(Slug, Agent)` for non-digest runner refs and never keys on `ContentID`. A digest-pinned or non-runner ref
-remains equal only to itself. Without this, every existing install takes a pointless VM recreate on first run even though
-the digest is unchanged — the recreate the spec's migration clause forbids.
+recreated merely because the launcher now computes a content ref. A digest-pinned or non-runner ref remains equal only
+to itself. The rule is asymmetric on `ContentID`:
+
+- When **either** reference is a name/legacy spelling (no `ContentID`) — the upgrade from a 0.6.0 or pre-0.6 VM — same
+  `(Slug, Agent)` is the same image.
+- When **both** are content-addressed, the content ids must also match. A content-id difference is a genuine image
+  switch that the persisted digest may already reflect: the image-change home action records the new `ImageDigest`
+  *before* the VM is replaced (`volume.ApplyHomeAction`), so if the replacement fails or the process stops in between,
+  the next run sees matching digests and the content ref is the remaining signal that the live VM is still on the old
+  content. Comparing `(Slug, Agent)` alone would silently reconnect to the old VM instead of retrying the switch.
+
+Without the name/legacy tolerance, every existing install takes a pointless VM recreate on first run even though the
+digest is unchanged — the recreate the spec's migration clause forbids.
 
 ### Parse and ownership
 

@@ -200,8 +200,11 @@ func imageRecreate(cfg *msbSdk.SandboxConfig, imageRef string, flag bool) bool {
 // tolerating the legacy prefixed, prefix-free, and content-addressed spellings
 // of one slug+agent so a VM created under one spelling is not recreated merely
 // because the launcher now computes another. A digest-pinned or non-runner
-// reference only ever equals itself; a genuine content change is gated by the
-// image digest, not by the reference spelling.
+// reference only ever equals itself. Two content-addressed references are the
+// same image only when their content ids match: the persisted image digest that
+// normally gates a switch is recorded by the home action before the VM is
+// replaced, so after a failed replacement the content ref is the remaining
+// signal that the live VM is on the old content.
 func sameImageIdentity(a, b string) bool {
 	if a == b {
 		return true
@@ -212,9 +215,16 @@ func sameImageIdentity(a, b string) bool {
 	if parsedA.Slug == "" || parsedA.Agent == "" || parsedA.Digest != "" {
 		return false
 	}
-	// Same slug+agent in any runner spelling (legacy, prefix-free, or
-	// content-addressed) names the same image.
-	return parsedB.Slug == parsedA.Slug && parsedB.Agent == parsedA.Agent
+	if parsedB.Slug != parsedA.Slug || parsedB.Agent != parsedA.Agent {
+		return false
+	}
+	// Both content-addressed: the content id decides.
+	if parsedA.ContentID != "" && parsedB.ContentID != "" {
+		return parsedA.ContentID == parsedB.ContentID
+	}
+	// At least one is a name/legacy spelling (the upgrade from a 0.6.0 or
+	// pre-0.6 VM): same slug+agent is the same image.
+	return true
 }
 
 // tmpSizeChange reports the /tmp tmpfs size change, if any.

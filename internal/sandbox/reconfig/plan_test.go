@@ -118,8 +118,10 @@ func TestPlanReconfigToleratesLegacyImageRef(t *testing.T) {
 
 // TestPlanReconfigToleratesContentImageRef covers the upgrade from a VM that was
 // booted from a content ref: it is not recreated when the launcher resolves the
-// same slug+agent under any spelling (content, name, or legacy prefixed), and is
-// recreated for a different agent or a digest-pinned ref.
+// same slug+agent under the name or legacy prefixed spelling, but IS recreated
+// for a different content id (a genuine image switch whose persisted digest may
+// already match — the home action records the new digest before the VM is
+// replaced), a different agent, or a digest-pinned ref.
 func TestPlanReconfigToleratesContentImageRef(t *testing.T) {
 	const contentRef = "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31"
 	cfg := &msbSdk.SandboxConfig{Image: contentRef}
@@ -134,6 +136,10 @@ func TestPlanReconfigToleratesContentImageRef(t *testing.T) {
 		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest", false},
 		{"proj-1mjusbm3wikhb0:pi.9f2c1a7b4d6e0f31", true}, // different agent
 		{"proj-1mjusbm3wikhb0:4e8oeqohbmalok", true},      // digest-pinned ref
+		// different content id: a real image switch, not a spelling change
+		{"proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
+		// prefixed spelling of a different content id
+		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
 	}
 	for _, tc := range cases {
 		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
