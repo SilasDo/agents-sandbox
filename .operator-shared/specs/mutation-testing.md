@@ -138,9 +138,11 @@ a **signal, not a check**: nothing depends on it, and because it lives in its ow
     mutant on a changed line, rendered on the PR's "Files changed" view. The flag is passed through `make mutation
     ANNOTATIONS=github`; the Makefile variable is empty by default so a local run prints no workflow commands. A dispatch
     sweep skips it — its whole-tree mutants land on lines no diff contains, so the annotations would only clutter the run.
-  - **A sticky PR comment**: the uncapped record — the totals and the full survivor list (truncated at 200 rows). It is
-    found by an HTML marker and updated in place, so a new push rewrites one comment rather than stacking new ones. Needs
-    `pull-requests: write` on the job, and is skipped on a fork PR, whose token is read-only.
+  - **A sticky PR comment**: the uncapped record — the totals and the full survivor list. It is found by an HTML marker
+    *and* the bot author, so a human who pastes a report as a new comment is not overwritten; a new push rewrites the
+    one comment in place. The list is bounded two ways, because GitHub rejects a comment past 65,536 characters: rows
+    are capped at 200, and the assembled body is size-checked, the table dropped in favour of a pointer to the artifact
+    if it would not fit. Needs `pull-requests: write` on the job, and is skipped on a fork PR, whose token is read-only.
   - **The step summary and `mutation-report` artifact**: unchanged, the complete machine-readable record.
 - **Even a zero-mutant sweep is not free.** gomutants collects module-wide coverage before it discovers mutants on the
   changed lines, so a code PR whose changed lines carry no mutant still costs ~2 minutes. The `paths-ignore` filter is
