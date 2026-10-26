@@ -94,6 +94,12 @@ func msbImg(ref string) sandboxmsb.ImageHandle {
 	return sandboxmsb.MockImageHandle{Reference_: ref, LastUsedAt_: oldArtifactTime()}
 }
 
+// recentMsbImg is an image a live project used within every prune threshold
+// these tests exercise, so the age window retains it.
+func recentMsbImg(ref string) sandboxmsb.ImageHandle {
+	return sandboxmsb.MockImageHandle{Reference_: ref, LastUsedAt_: time.Now()}
+}
+
 // staleSummary returns the aggregate prune summary line for the given counts.
 func staleSummary(dryRun string, vms, vols, msbImgs int) string {
 	return fmt.Sprintf("%s %d VMs, %d home volumes, 0 docker images, %d msb images",
@@ -226,8 +232,10 @@ func TestPrune(t *testing.T) {
 					m.Sandboxes = append(m.Sandboxes, mkStaleTask(time.Now().Add(-15*24*time.Hour)))
 					m.Volumes = append(m.Volumes,
 						homeVol("agents-sandbox-home-activeproject-1mjusbm3wikhb0-abc123"))
+					// A live project keeps its cached variant only while it is
+					// recent or held by a kept sandbox, so this one is recent.
 					m.Images = append(m.Images,
-						msbImg("agents-sandbox/runner-activeproject-1mjusbm3wikhb0:opencode-latest"))
+						recentMsbImg("agents-sandbox/runner-activeproject-1mjusbm3wikhb0:opencode-latest"))
 					sandboxmsb.WithMsbMock(t, m)
 				}, staleSummary("Pruned", 1, 0, 0))
 			})

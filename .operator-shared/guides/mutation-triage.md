@@ -116,6 +116,29 @@ This is the field guide for doing it. It was distilled from the first full sweep
   with a `panic`, not an error — reach a marshal-error branch with a value implementing `MarshalYAML() (any, error)`.
 - **`t.Helper()` changes stack-trace metadata, not the helper's result.** Record its removal when checking the reported
   location would add little value; do not invent a production seam just to make it killable.
+- **In `make([]T, len, cap)` the length is observable and the capacity is not; delete the capacity hint.** The length
+  mutant (`0`→`1`) leaves a leading zero element, so an exact-contents assertion kills it, but the capacity mutants
+  (`cap`→`cap±1`) change nothing a caller can see. Replace `make([]T, 0, 3)` with `var xs []T` to remove the capacity
+  family outright, and assert the returned slice exactly to kill the length one.
+- **A guard whose fields are only *partly* redundant is best extracted and table-tested with synthetic values.**
+  `parsedA.Slug == "" || parsedA.Agent == "" || parsedA.Digest != ""` (`sameImageIdentity`): `ParseImageTag` never yields
+  a digest with an agent, so `Digest != ""` is fully redundant, and it yields an agent with an empty slug only for a
+  pathological `"agents-sandbox/runner-:agent"` ref, so `Slug == ""` is redundant for every real ref. Rather than craft
+  that ref, pull the guard into a predicate (`isNameImage`/`hasNameIdentity`) returning `Slug != "" && Agent != "" [&&
+  Digest == ""]` and table-test it directly: one row per field makes that field's removal change the result (`{Agent:
+  "opencode"}` with no slug fails the `Slug` row), and the `&&`→`||` inversion fails too. Asserting the *predicate*
+  keeps the caller's guard intact instead of deleting a check for good.
+- **`if len(x) > N { x = x[:N] }`: only one of the condition's integer mutants is observable.** `>N`↔`>=N` and `N`→`N-1`
+  differ only when `len==N`, where both branches leave the same `N` characters, so they are equivalent — record them
+  with `disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT`. Only `N`→`N+1` changes behaviour (an `N+1`-length
+  input stops truncating), so kill it with a boundary-length input. The `x[:N]` on the next line is a *separate* mutant
+  family (`INTEGER_*` on the slice constant) already killed by a long-enough input.
+- **A non-positive-age guard is killable with a *future* timestamp, so do not record it as equivalent.**
+  `if age <= 0 { return false }` (`imageWithinAge`) reads as always-true-equivalent because for a past timestamp the
+  fall-through `time.Since(used) < age` is also false. A hostile caller gets through: set `LastUsedAt` to
+  `now.Add(time.Hour)` so `time.Since` is negative, and the fall-through returns true — that single subtest kills the
+  `BRANCH_IF`, the `<=`→`<` boundary, and the `0`→`-1`/`0`→`1` decrement/increment. Only the downstream `<` vs `<=` on
+  the final comparison (nanosecond equality, no injectable clock) still needs a record.
 
 ## Operational
 

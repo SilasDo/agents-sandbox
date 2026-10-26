@@ -6,6 +6,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
@@ -103,6 +104,43 @@ func TestPlanReconfigToleratesLegacyImageRef(t *testing.T) {
 		{legacyRef, false},                                                 // identical
 		{"proj-1mjusbm3wikhb0:pi-latest", true},                            // different agent
 		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:4e8oeqohbmalok", true}, // pinned digest ref
+		{"proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31", false},           // content ref, same image
+		// prefixed content ref, same image
+		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31", false},
+		{"proj-1mjusbm3wikhb0:pi.9f2c1a7b4d6e0f31", true}, // content ref, different agent
+	}
+	for _, tc := range cases {
+		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
+		if plan.Recreate != tc.wantRecreate {
+			t.Errorf("PlanReconfig(%q) recreate = %v, want %v", tc.ref, plan.Recreate, tc.wantRecreate)
+		}
+	}
+}
+
+// TestPlanReconfigToleratesContentImageRef covers the upgrade from a VM that was
+// booted from a content ref: it is not recreated when the launcher resolves the
+// same slug+agent under the name or legacy prefixed spelling, but IS recreated
+// for a different content id (a genuine image switch whose persisted digest may
+// already match — the home action records the new digest before the VM is
+// replaced), a different agent, or a digest-pinned ref.
+func TestPlanReconfigToleratesContentImageRef(t *testing.T) {
+	const contentRef = "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31"
+	cfg := &msbSdk.SandboxConfig{Image: contentRef}
+
+	cases := []struct {
+		ref          string
+		wantRecreate bool
+	}{
+		{contentRef, false},                            // identical content ref
+		{"proj-1mjusbm3wikhb0:opencode-latest", false}, // its prefix-free name ref
+		// its legacy prefixed name ref
+		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest", false},
+		{"proj-1mjusbm3wikhb0:pi.9f2c1a7b4d6e0f31", true}, // different agent
+		{"proj-1mjusbm3wikhb0:4e8oeqohbmalok", true},      // digest-pinned ref
+		// different content id: a real image switch, not a spelling change
+		{"proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
+		// prefixed spelling of a different content id
+		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
 	}
 	for _, tc := range cases {
 		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
@@ -301,6 +339,56 @@ func TestImageRecreateForeignRefs(t *testing.T) {
 	}
 	if !imageRecreate(cfg, "docker.io/library/other:1", false) {
 		t.Error("two different foreign image references must trigger a recreate")
+	}
+}
+
+func TestIsNameImage(t *testing.T) {
+	const slug = "proj-1mjusbm3wikhb0"
+	cases := []struct {
+		name string
+		info naming.ArtifactInfo
+		want bool
+	}{
+		{"slug and agent", naming.ArtifactInfo{Slug: slug, Agent: "opencode"}, true},
+		{"content-addressed", naming.ArtifactInfo{Slug: slug, Agent: "opencode", ContentID: "abc"}, true},
+		{"no slug", naming.ArtifactInfo{Agent: "opencode"}, false},
+		{"no agent", naming.ArtifactInfo{Slug: slug}, false},
+		{"digest-pinned", naming.ArtifactInfo{Slug: slug, Agent: "opencode", Digest: "abc"}, false},
+	}
+	for _, tc := range cases {
+		if got := isNameImage(tc.info); got != tc.want {
+			t.Errorf("%s: isNameImage(%+v) = %v, want %v", tc.name, tc.info, got, tc.want)
+		}
+	}
+}
+
+// TestSameImageIdentitySlugAndAgent pins that two name refs are the same image
+// only when both their slug and agent match, and that a differing slug is not
+// masked by an equal agent.
+func TestSameImageIdentitySlugAndAgent(t *testing.T) {
+	const slug = "proj-1mjusbm3wikhb0"
+	if !sameImageIdentity(slug+":opencode-latest", naming.DockerImageRef(slug, "opencode")) {
+		t.Error("the prefix-free and prefixed spellings of one slug+agent must be the same image")
+	}
+	if sameImageIdentity(slug+":opencode-latest", "other-1mjusbm3wikhb0:opencode-latest") {
+		t.Error("a different slug with the same agent must not be the same image")
+	}
+}
+
+// TestSameImageIdentityContentID pins the content-addressed rule: two content
+// refs are the same image only when their content ids match, even across the
+// prefix-free and prefixed spellings.
+func TestSameImageIdentityContentID(t *testing.T) {
+	const slug = "proj-1mjusbm3wikhb0"
+	const contentID = "9f2c1a7b4d6e0f31"
+	prefixFree := slug + ":opencode." + contentID
+	prefixed := naming.DockerImagePrefix + slug + ":opencode." + contentID
+	if !sameImageIdentity(prefixFree, prefixed) {
+		t.Error("two content refs with the same content id must be the same image")
+	}
+	other := slug + ":opencode.0123456789abcdef"
+	if sameImageIdentity(prefixFree, other) {
+		t.Error("two content refs with different content ids must not be the same image")
 	}
 }
 

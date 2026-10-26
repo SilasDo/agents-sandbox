@@ -72,13 +72,23 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 	cmd, _ := setupCommandFixtures(t, cmdBuild)
 	mock := &msb.MockMsbClient{}
 	msb.WithMsbMock(t, mock)
+	// The default noop Docker mock reports no image ID, which would fall back to
+	// the name ref. Return a real ID so the build exercises the content ref.
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID:     "sha256:9f2c1a7b4d6e0f3199999999999999999999999999999999999999999999999999",
+				Config: &dockerspec.DockerOCIImageConfig{},
+			}, nil
+		},
+	})
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("build: %v", err)
 	}
-	want := naming.RunnerImageRef(secondIdentity.CheckoutSlug, defaultAgentName)
+	want := naming.ContentImageRef(secondIdentity.CheckoutSlug, defaultAgentName, "9f2c1a7b4d6e0f31")
 	if !slices.Contains(mock.LoadedImages, want) {
-		t.Errorf("build loaded images %v, want the second clone's checkout ref %q", mock.LoadedImages, want)
+		t.Errorf("build loaded images %v, want the second clone's checkout content ref %q", mock.LoadedImages, want)
 	}
 }
 
