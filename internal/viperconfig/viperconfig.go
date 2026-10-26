@@ -51,6 +51,9 @@ type Config struct {
 	// ProvisionHostConfig controls whether the agent's host config files are
 	// copied into the VM (drop-in provisioning). Default true.
 	ProvisionHostConfig bool `mapstructure:"provision-host-config"`
+	// OpenLinks lets processes in the VM open links on the host through the
+	// xdg-open shim. Default true; false is the kill switch.
+	OpenLinks bool `mapstructure:"open-links"`
 
 	AutoStopOnActiveSessions  bool          `mapstructure:"auto-stop-on-active-sessions"`
 	AutoStopTimeout           time.Duration `mapstructure:"auto-stop-timeout"`
@@ -97,6 +100,7 @@ const (
 	FlagNetwork      = "network"
 	FlagDNSServers   = "dns"
 	FlagNotify       = "notify"
+	FlagOpenLinks    = keyOpenLinks
 )
 
 const (
@@ -394,6 +398,7 @@ const (
 	keyUpgradeInterval     = "upgrade.interval"
 	keyUpgradeChannel      = "upgrade.channel"
 	keyProvisionHostConfig = "provision-host-config"
+	keyOpenLinks           = "open-links"
 	keyNotifyDesktop       = "notify.desktop"
 	keyNotifyAudio         = "notify.audio"
 	keyNotifyOnInput       = "notify.on-input"
@@ -407,7 +412,7 @@ var supportedExts = []string{".yaml", ".yml", ".json", extJSONC, extJSON5}
 // Their env vars use the AGENTS_SANDBOX_ prefix.
 var configFlagKeys = []string{
 	keyCPUs, "memory", "tmp-size", "disk-size", "workspace-quota",
-	keyYes, keyQuiet, "log-level", "agent", keyDocker,
+	keyYes, keyQuiet, "log-level", "agent", keyDocker, keyOpenLinks,
 }
 
 // configEnvKeys are all launcher config keys bound to env vars.
@@ -421,6 +426,7 @@ var configEnvKeys = []string{
 	keyDocker, keyDind,
 	keyUpgradeMode, keyUpgradeInterval, keyUpgradeChannel,
 	keyProvisionHostConfig,
+	keyOpenLinks,
 }
 
 // bindConfigFlags binds each config-backed flag found on cmd (local or
@@ -454,7 +460,7 @@ func flagTypedDefault(key string, flag *pflag.Flag) any {
 		return uint8(n)
 	case keyYes:
 		return flag.DefValue == strTrue
-	case keyQuiet:
+	case keyQuiet, keyOpenLinks:
 		return flag.DefValue == strTrue
 	default:
 		return flag.DefValue
@@ -905,6 +911,9 @@ func (r *Resolver) BuildRunOptions(cmd *cobra.Command, ui termio.UI) (options.Ru
 		}
 		provisionHostConfig := r.cfg.ProvisionHostConfig
 		opts.ProvisionHostConfig = &provisionHostConfig
+		opts.OpenLinks = r.cfg.OpenLinks
+	} else {
+		opts.OpenLinks, _ = cmd.Flags().GetBool(FlagOpenLinks)
 	}
 
 	applyDeprecatedDindFlag(cmd, &opts)

@@ -978,7 +978,10 @@ func TestReconcileResourceConfig_ConflictsError(t *testing.T) {
 
 func TestSessionAccessors(t *testing.T) {
 	sb := &msb.MockSandbox{}
-	s := &Session{sb: sb, name: "vm-name", target: "/tmp/target", cwd: "/workspace"}
+	s := &Session{sb: sb, name: "vm-name", target: "/tmp/target", cwd: "/workspace", homeVolume: "home-vol"}
+	if got := s.HomeVolume(); got != "home-vol" {
+		t.Errorf("HomeVolume() = %q, want home-vol", got)
+	}
 	if got := s.Sandbox(); got != sb {
 		t.Errorf("Sandbox() = %v, want the stored sandbox", got)
 	}

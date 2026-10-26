@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 )
 
@@ -19,5 +20,6 @@ func TestMain(m *testing.M) {
 	// cyclic dependency on msb
 	// doctor.InstallFailFast()
 	InstallFailFastGet()
+	opener.InstallFailFast()
 	m.Run()
 }

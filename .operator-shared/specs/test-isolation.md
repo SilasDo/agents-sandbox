@@ -13,15 +13,16 @@ resolution fails loudly instead of silently touching the host.
 
 Every test package installs the fail-fast defaults in `TestMain`, for every seam family its tests can import without a
 test import cycle. The normal call is
-`termio.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all five seam families:
+`termio.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all six seam families:
 
 - `configpaths.InstallFailFastConfigPaths()`
 - `docker.InstallFailFastGet()`
 - `doctor.InstallFailFast()`
 - `msb.InstallFailFastGet()`
 - `notify.InstallFailFast()`
+- `opener.InstallFailFast()` (the host opener's `xdg-open`/`open` spawn)
 
-A test that legitimately exercises a seam opts in with `WithMockConfigPaths(t)` (or the docker/msb/doctor/notify
+A test that legitimately exercises a seam opts in with `WithMockConfigPaths(t)` (or the docker/msb/doctor/notify/opener
 equivalent).
 
 The set is enforced, not hand-maintained. Three tests in `internal/testutil/isolation_contract_test.go` pin the chain:

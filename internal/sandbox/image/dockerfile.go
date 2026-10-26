@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,6 +80,35 @@ const (
 	trustHelperLicenseAsset = "msb-trust.LICENSE"
 	trustHelperLicenseDest  = "/usr/share/licenses/msb-trust/LICENSE"
 )
+
+// hostOpenerShimAsset is the build-context file carrying the in-VM xdg-open
+// shim. It is installed in /usr/local/bin, which precedes /usr/bin on PATH, so
+// it also shadows a real xdg-open from a custom base: the VM has no desktop,
+// and links must reach the host instead. hostOpenerShimAliases are the other
+// names agents and libraries invoke to open a browser.
+const (
+	hostOpenerShimAsset = "xdg-open.sh"
+	hostOpenerShimDest  = "/usr/local/bin/xdg-open"
+)
+
+var hostOpenerShimAliases = []string{"x-www-browser", "sensible-browser"}
+
+// hostOpenerBlock installs the xdg-open shim and points BROWSER at it.
+// claude-code consults BROWSER before its headless check, which otherwise
+// refuses to open anything when DISPLAY is unset; codex's opener also tries
+// BROWSER first. Setting BROWSER rather than DISPLAY keeps X clients in the VM
+// from trying to reach a display that does not exist.
+func hostOpenerBlock() string {
+	var block strings.Builder
+	fmt.Fprintf(&block, "COPY %s %s\n", hostOpenerShimAsset, hostOpenerShimDest)
+	links := make([]string, 0, len(hostOpenerShimAliases))
+	for _, alias := range hostOpenerShimAliases {
+		links = append(links, fmt.Sprintf("ln -sf xdg-open %s", path.Join(path.Dir(hostOpenerShimDest), alias)))
+	}
+	fmt.Fprintf(&block, "RUN %s\n", strings.Join(links, " && "))
+	block.WriteString("ENV BROWSER=\"xdg-open\"\n")
+	return block.String()
+}
 
 // agentLabelKey is the image label carrying the baked agent name.
 const agentLabelKey = "org.agents-sandbox.agent"
@@ -623,7 +653,7 @@ func finalizationBlock() string {
 COPY %s %s
 COPY %s %s
 COPY %s %s
-ARG BASE_IMAGE
+%sARG BASE_IMAGE
 ARG DOCKERFILE_ID
 ARG IDENTITY_PROJECT_DOCKERFILE_HASH
 ARG IDENTITY_AGENT_VERSION
@@ -640,7 +670,8 @@ LABEL org.agents-sandbox.dockerfile-id=$DOCKERFILE_ID
 LABEL org.agents-sandbox.identity.dockerfile-hash=$IDENTITY_PROJECT_DOCKERFILE_HASH
 LABEL org.agents-sandbox.identity.agent-version=$IDENTITY_AGENT_VERSION
 LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
-`, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest, trustHelperLicenseAsset, trustHelperLicenseDest)
+`, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest, trustHelperLicenseAsset, trustHelperLicenseDest,
+		hostOpenerBlock())
 }
 
 // RenderProjectDockerfile renders the runner Dockerfile exactly as it would be

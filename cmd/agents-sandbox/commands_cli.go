@@ -263,6 +263,8 @@ func registerSharedRunShellFlags(cmd *cobra.Command) {
 	cmd.Flags().
 		StringSlice(flagDNSServers, nil, "DNS upstream resolvers for the VM: IP (e.g. 1.1.1.1) or host:port (e.g. 1.1.1.1:53); comma-separated or repeated")
 	cmd.Flags().String(flagAgent, defaultAgentName, "Coding agent profile to run")
+	cmd.Flags().
+		Bool(flagOpenLinks, true, "Open links from the VM (xdg-open) on the host; --open-links=false disables it")
 	registerDockerFlags(cmd)
 }
 

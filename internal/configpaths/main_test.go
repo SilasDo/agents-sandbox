@@ -3,6 +3,7 @@ package configpaths
 import (
 	"testing"
 
+	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 )
 
@@ -16,5 +17,6 @@ func TestMain(m *testing.M) {
 	// configpaths never invokes msb, so the fail-fast mock is not needed.
 	InstallFailFastConfigPaths()
 	docker.InstallFailFastGet()
+	opener.InstallFailFast()
 	m.Run()
 }

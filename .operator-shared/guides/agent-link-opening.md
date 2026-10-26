@@ -1,5 +1,5 @@
 ---
-description: How the coding agents open links (what each shells out to on Linux, claude-code's own scheme allowlist and headless guard, the OSC 8 wrinkle), plus the network-free VM→host transport constraint for any host-side opener.
+description: How the coding agents open links (what each shells out to on Linux, claude-code's own scheme allowlist and headless guard, the OSC 8 wrinkle, codex), the OAuth return-leg problem per agent, plus the network-free VM→host transport constraint for any host-side opener.
 read_if: Working on opening links/URLs on the host from inside the VM (issue #273), an in-VM `xdg-open` shim, or any VM→host action channel.
 ---
 
@@ -25,9 +25,13 @@ the dev VM), claude-code `2.1.308`, pi `1.4.0`.
   `vscode:`, `vscode-insiders:`, `cursor:`, `windsurf:`, `zed:`, `jetbrains:`, `idea:`,
   `slack:`, `linear:`, `notion:`, `figma:`. `file:` is routed to the file manager (dbus
   `FileManager1.ShowItems`); other schemes are refused with a warning. Two behaviours matter for
-  any shim: on headless Linux (`!DISPLAY && !WAYLAND_DISPLAY`) it returns `no_display` *before*
-  calling the opener, and it honours `$BROWSER` (spawning that instead of `xdg-open`). It also
+  any shim: it honours `$BROWSER` (spawning that instead of `xdg-open`; a `browser` setting
+  overrides it), and the headless guard runs only when no browser is set —
+  `if(!browser && headless) return {reason:"no_display"}` (verified in `2.1.289`). So
+  `BROWSER=xdg-open` alone gets past the guard; `DISPLAY` is not needed. It also
   has an `openByHand` fallback that prints a `! xdg-open <url>` command for the user to run.
+- **codex** — Rust `webbrowser` crate (`1.2.4`): tries each `$BROWSER` entry first, then
+  `xdg-open`, no display check. Used for TUI link clicks, the ChatGPT login, and MCP OAuth.
 
 ## The OSC 8 wrinkle
 
@@ -51,5 +55,48 @@ bind-mounted spool dir is the fallback if the volume path is not directly readab
 mount, a one-time VM recreate).
 
 Direction note: the existing `internal/notify` watcher is the opposite direction — the host
-connects to the in-VM daemon's SSE stream over the published host port (host→guest), which also
-needs no guest egress. An opener is the launcher's first VM→host *action* channel.
+reads the in-VM daemon's SSE stream through the msb exec channel (`sb.ShellStream`,
+host→guest), which needs no guest egress. An opener is the launcher's first VM→host *action*
+channel.
+
+## OAuth login flows: the return leg
+
+Opening the auth URL on the host is only half a loopback OAuth flow (RFC 8252). The agent
+listens on `127.0.0.1:<port>` *inside the VM* and puts `redirect_uri=http://localhost:<port>/…`
+into the auth URL, so after a host-side login the browser redirects to the host's loopback,
+where nothing listens. Every loopback flow below carries its `redirect_uri` as a query
+parameter of the opened URL, so a host-side opener can detect it. Observed against
+claude-code `2.1.289`, opencode v1 `1.19.4`, opencode2 source `7b5b7a8`, pi `1.4.0`
+(`@earendil-works/pi-ai`), codex source (`openai/codex` main, Oct 2026).
+
+| Agent / flow | Callback port | Fallback without a working callback |
+|---|---|---|
+| claude-code login | random (`listen(0)`), `redirect_uri=localhost:<port>/callback` | Opens the loopback URL, *and* shows a second "manual" URL (`platform.claude.com/oauth/code/callback`) with a "Paste code here" prompt. The code from the loopback URL is not accepted there (`redirect_uri` mismatch at token exchange). |
+| claude-code MCP OAuth | random 49152–65535, fallback 3118, `MCP_OAUTH_CALLBACK_PORT` | Asks for the full redirect URL from the address bar. |
+| pi Anthropic | 53692, free port if taken | Races callback against a paste prompt that accepts the redirect URL; also a copy-code method. |
+| pi OpenAI Codex / ChatGPT | 1455 | Paste of the redirect URL; device-code method. |
+| pi GitHub Copilot, Radius | — | Device code (no callback). |
+| opencode v1 OpenAI/Codex | fixed `jr` (codex plugin) | None in the browser method; device-code method exists. |
+| opencode v1 MCP OAuth | 19876 (`oauth.callbackPort`) | None. |
+| opencode2 ChatGPT / OpenAI browser | random (`listen(0)`) | None (`mode: "auto"`); OpenAI has a legacy device-code method. |
+| opencode2 GitLab | 8080 (must match registration) | None. |
+| opencode2 MCP OAuth | `callback_port`, else `redirect_uri` port, else random | None. |
+| opencode2 opencode / Copilot / xAI | — | Device code. |
+| codex ChatGPT login | 1455, fallback 1457 | None in the browser flow; "Device code" sign-in option (`--device-auth`). |
+
+Consequences for a host opener:
+
+- **Device-code flows** work end to end with a plain opener (the verification page is a normal
+  `https` link).
+- **Loopback flows with a paste fallback** (claude-code, pi) work today by hand. A naive opener
+  that reports success makes claude-code worse: the opened tab ends on a dead
+  `localhost:<port>` page after a successful login, and its code is useless in the paste
+  prompt. Refusing loopback-redirect URLs (exit nonzero) keeps today's behaviour.
+- **Loopback flows without a fallback** (opencode MCP/GitLab/ChatGPT browser, codex browser
+  login) are broken today and stay broken unless the return leg is forwarded.
+
+Return-leg forwarding: the watcher detects a loopback `redirect_uri`, listens on the host's
+`127.0.0.1` and `::1` at that port (browsers may resolve `localhost` to `::1`; the agents bind
+`127.0.0.1` in the VM), and replays the single callback GET inside the VM through the msb exec
+channel (`curl -i http://127.0.0.1:<port><path>?<query>`), relaying the response. It needs no
+guest egress or published port, and random ports are fine because the port comes from the URL.

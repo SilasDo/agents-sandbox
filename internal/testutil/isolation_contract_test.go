@@ -43,6 +43,7 @@ var seamFamilies = []seamFamily{
 	{name: "doctor", dir: "internal/sandbox/doctor", packageName: "doctor", installer: "InstallFailFast"},
 	{name: "msb", dir: "internal/sandbox/msb", packageName: "msb", installer: "InstallFailFastGet"},
 	{name: "notify", dir: "internal/notify", packageName: "notify", installer: "InstallFailFast"},
+	{name: "opener", dir: "internal/opener", packageName: "opener", installer: "InstallFailFast"},
 }
 
 // installerPrefix names the exported declarations that install a seam family's

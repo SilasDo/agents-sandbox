@@ -18,6 +18,7 @@ agents-sandbox is configurable through configuration files and environment varia
 - [Home provisioning & startup hooks]({% link configuration/home-provisioning.md %})
 - [Agent configuration]({% link configuration/agent.md %})
 - [Notifications]({% link configuration/notifications.md %})
+- [Opening links]({% link configuration/opening-links.md %})
 - [Self-upgrade]({% link configuration/self-upgrade.md %})
 
 See also [Commands]({% link commands.md %}), [Sandboxes]({% link sandboxes.md %}),

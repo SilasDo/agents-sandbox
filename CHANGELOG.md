@@ -15,6 +15,11 @@ command reports the bare version (e.g. `0.1.0`).
   and the full survivor list, and a `mutation-report` artifact holds the complete report. It is never a required check or
   a release prerequisite, because gomutants has no pass/fail threshold and triaging a survivor is human judgement. See
   `CONTRIBUTING.md`.
+- Links that an agent opens inside the VM (`xdg-open`, `x-www-browser`, `sensible-browser`, `$BROWSER`) now open in
+  the host's browser. A shim in the runner image hands each link to the attached launcher through the home volume, so
+  it also works with `network.profile: none`; the launcher opens only allowlisted schemes (`http`, `https`, `mailto`,
+  editor/app links) and refuses `file:` and loopback URLs. On by default; turn it off with `open-links: false`,
+  `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim.
 
 ### Changed
 

@@ -5,6 +5,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/notify"
+	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 )
@@ -17,5 +18,6 @@ func TestMain(m *testing.M) {
 	InstallFailFast()
 	msb.InstallFailFastGet()
 	notify.InstallFailFast()
+	opener.InstallFailFast()
 	m.Run()
 }

@@ -62,6 +62,7 @@ const (
 	flagDNSServers = launcherconfig.FlagDNSServers
 	flagAgent      = launcherconfig.FlagAgent
 	flagNotify     = launcherconfig.FlagNotify
+	flagOpenLinks  = launcherconfig.FlagOpenLinks
 	flagDocker     = "docker"
 	// flagDind is the deprecated alias for --docker.
 	flagDind            = "dind"

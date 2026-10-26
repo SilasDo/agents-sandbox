@@ -184,6 +184,11 @@ installed at `/usr/share/licenses/msb-trust/LICENSE`. See
 [Secrets]({% link configuration/secrets.md %}#trusting-the-ca-in-applications) for which applications already work, and
 the [Java recipe]({% link recipes/java-ca-trust.md %}) for a worked example.
 
+The runner installs an `xdg-open` replacement at `/usr/local/bin/xdg-open`, links `x-www-browser` and
+`sensible-browser` to it, and sets `BROWSER=xdg-open`. It hands links to agents-sandbox on the host instead of opening
+them in the sandbox. `/usr/local/bin` comes before `/usr/bin` on `PATH`, so it also replaces an `xdg-open` your base
+image installs. See [Opening links]({% link configuration/opening-links.md %}).
+
 ## The base image contract
 
 By default the base tools block starts from `debian:trixie-slim` and installs the recommended CLI tools: `git`,

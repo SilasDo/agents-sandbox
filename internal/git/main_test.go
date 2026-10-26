@@ -3,6 +3,7 @@ package git
 import (
 	"testing"
 
+	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 )
 
@@ -11,5 +12,6 @@ import (
 // wrapper cannot be reached from here. Only docker is acyclic for git.
 func TestMain(m *testing.M) {
 	docker.InstallFailFastGet()
+	opener.InstallFailFast()
 	m.Run()
 }
