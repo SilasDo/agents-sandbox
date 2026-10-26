@@ -17,7 +17,12 @@ import (
 // are dangling and can be reclaimed. Tasks holds the transient task sandboxes to
 // reclaim; they are deliberately kept out of the key maps so a leftover task can
 // never mark its still-active project as stale.
+//
+// Age is the staleness threshold the snapshot was built with, reused by image
+// retention as the window in which a live project's cached image variant counts
+// as reusable.
 type PruneState struct {
+	Age     time.Duration
 	ToPrune map[state.Key]msb.SandboxHandle
 	ToKeep  map[state.Key]msb.SandboxHandle
 	Tasks   []msb.SandboxHandle
@@ -25,6 +30,7 @@ type PruneState struct {
 
 func buildPruneState(ctx context.Context, age time.Duration) (PruneState, error) {
 	result := PruneState{
+		Age:     age,
 		ToPrune: map[state.Key]msb.SandboxHandle{},
 		ToKeep:  map[state.Key]msb.SandboxHandle{},
 		Tasks:   nil,
