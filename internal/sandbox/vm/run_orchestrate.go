@@ -165,24 +165,17 @@ func PrepareSandbox(
 		return nil, err
 	}
 
-	recreate, restart, homeVol, serveHostPort, err := decideReconfig(
-		ctx,
-		client,
-		vm,
-		k,
-		opts,
-		imageInfo,
-		homeVol,
-		vs,
-		cfs,
-		ui,
-	)
+	decision, err := resolveReconfigDecision(ctx, client, vm, k, opts, imageInfo, homeVol, vs, cfs, ui)
 	if err != nil {
 		return nil, err
 	}
-	ui.Verbosef("recreate: %v, restart: %v", recreate, restart)
-	opts.Recreate = recreate
-	opts.ServeHostPort = resolveServeHostPort(opts, serveHostPort)
+	homeVol, err = applyReconfigHomeAction(ctx, client, vm, k, homeVol, imageInfo, opts, decision, ui)
+	if err != nil {
+		return nil, err
+	}
+	ui.Verbosef("recreate: %v, restart: %v", decision.Recreate, decision.Restart)
+	opts.Recreate = decision.Recreate
+	opts.ServeHostPort = resolveServeHostPort(opts, decision.ServeHostPort)
 
 	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, ui)
 	if err != nil {
@@ -198,7 +191,7 @@ func PrepareSandbox(
 		ui.Infof("VM lifecycle skipped (--dry-run-vm)")
 		sandboxTarget = guestCWD
 	} else {
-		sandboxTarget, sandboxErr = setUpSandbox(ctx, k, sb, opts, cfs, ui, restart, boot, guestCWD)
+		sandboxTarget, sandboxErr = setUpSandbox(ctx, k, sb, opts, cfs, ui, decision.Restart, boot, guestCWD)
 		if sandboxErr != nil {
 			return nil, sandboxErr
 		}
@@ -357,8 +350,8 @@ func prepareHomeVolume(
 
 	vm := volume.NewManager(ui)
 	recovered := liveHomeVolume(ctx, client, k, ui)
-	homeVol, vs, err := resolveHomeVolume(
-		ctx, vm, client, k, imageInfo, opts.DryRunVM, fingerprints, recovered, ui,
+	homeVol, vs, err := vm.ResolveHomeVolume(
+		ctx, client, k, imageInfo, opts.DryRunVM, fingerprints, recovered, ui,
 	)
 	if err != nil {
 		return nil, nil, "", state.HomeState{}, fmt.Errorf("volume setup failed: %w", err)
@@ -424,23 +417,6 @@ func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui term
 		return ""
 	}
 	return volume
-}
-
-// resolveHomeVolume resolves the project home volume, reusing the existing one
-// from state, recovering the live VM's volume when state was lost, or creating a
-// fresh prefill when none exists.
-func resolveHomeVolume(
-	ctx context.Context,
-	vm *volume.Manager,
-	client msb.Client,
-	k state.Key,
-	info image.ImageInfo,
-	dryRunVM bool,
-	fingerprints state.Fingerprints,
-	recoveredVolume string,
-	ui termio.UI,
-) (string, state.HomeState, error) {
-	return vm.ResolveHomeVolume(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
 }
 
 // desiredFingerprints builds the VM-config fingerprints for the current run:

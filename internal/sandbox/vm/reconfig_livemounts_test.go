@@ -20,7 +20,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
-// reconfigFixture wires the mocks decideReconfig reads its live VM from.
+// reconfigFixture wires the mocks resolveReconfigDecision reads its live VM from.
 type reconfigFixture struct {
 	client  *msb.MockMsbClient
 	vm      *volume.Manager
@@ -63,7 +63,7 @@ func newReconfigFixture(t *testing.T, liveMounts map[string]msbSdk.MountConfig, 
 
 func (f reconfigFixture) decide(t *testing.T, opts options.RunOptions, hs state.HomeState) (bool, error) {
 	t.Helper()
-	recreate, _, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		f.client,
 		f.vm,
@@ -75,7 +75,7 @@ func (f reconfigFixture) decide(t *testing.T, opts options.RunOptions, hs state.
 		f.cfs,
 		f.ui,
 	)
-	return recreate, err
+	return decision.Recreate, err
 }
 
 // launcherLiveMounts is the mount set buildMounts creates: a tmpfs /tmp, a
@@ -122,7 +122,7 @@ func assertVerbose(t *testing.T, ui *termio.Mock, want string) {
 	t.Errorf("verbose calls %v do not contain %q", ui.VerboseCalls, want)
 }
 
-func TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
+func TestResolveReconfigDecisionDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "4G"}
@@ -130,7 +130,7 @@ func TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if !recreate {
 		t.Error("expected a recreate for a tmp size change read from the live VM's mounts")
@@ -138,7 +138,7 @@ func TestDecideReconfigDetectsTmpSizeChangeFromLiveMounts(t *testing.T) {
 	assertRebuildReason(t, f.ui, "/tmp tmpfs size")
 }
 
-func TestDecideReconfigNoRecreateWhenLiveMountsMatch(t *testing.T) {
+func TestResolveReconfigDecisionNoRecreateWhenLiveMountsMatch(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "16G"}
@@ -146,7 +146,7 @@ func TestDecideReconfigNoRecreateWhenLiveMountsMatch(t *testing.T) {
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if recreate {
 		t.Error("expected no recreate when the live mounts already match the options")
@@ -158,7 +158,7 @@ func TestDecideReconfigNoRecreateWhenLiveMountsMatch(t *testing.T) {
 	}
 }
 
-func TestDecideReconfigRecreatesOnWorkspaceQuotaChange(t *testing.T) {
+func TestResolveReconfigDecisionRecreatesOnWorkspaceQuotaChange(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "32G"}
@@ -166,7 +166,7 @@ func TestDecideReconfigRecreatesOnWorkspaceQuotaChange(t *testing.T) {
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if !recreate {
 		t.Error("expected a recreate for a workspace quota change read from the live VM's mounts")
@@ -174,10 +174,10 @@ func TestDecideReconfigRecreatesOnWorkspaceQuotaChange(t *testing.T) {
 	assertRebuildReason(t, f.ui, "/workspace write quota")
 }
 
-// TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts covers the third
+// TestResolveReconfigDecisionRecreatesOnHomeVolumeChangeFromLiveMounts covers the third
 // detector the read-back restores: a live VM still mounting the previous home
 // volume must recreate when home resolution points at a different one.
-func TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts(t *testing.T) {
+func TestResolveReconfigDecisionRecreatesOnHomeVolumeChangeFromLiveMounts(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "16G"}
@@ -185,7 +185,7 @@ func TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts(t *testing.T) {
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
 	if !recreate {
 		t.Error("expected a recreate when the live home volume differs from the resolved one")
@@ -193,7 +193,7 @@ func TestDecideReconfigRecreatesOnHomeVolumeChangeFromLiveMounts(t *testing.T) {
 	assertRebuildReason(t, f.ui, "home volume")
 }
 
-func TestDecideReconfigMountsReadFailureDegrades(t *testing.T) {
+func TestResolveReconfigDecisionMountsReadFailureDegrades(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	opts := options.RunOptions{TmpSize: "2G", WorkspaceQuota: "16G"}
@@ -201,10 +201,44 @@ func TestDecideReconfigMountsReadFailureDegrades(t *testing.T) {
 
 	recreate, err := f.decide(t, opts, matchingHomeState(opts.Network))
 	if err != nil {
-		t.Fatalf("decideReconfig: %v, want a degraded decision instead of aborting the startup", err)
+		t.Fatalf("resolveReconfigDecision: %v, want a degraded decision instead of aborting the startup", err)
 	}
 	if recreate {
 		t.Error("expected no recreate when the mounts cannot be read")
 	}
 	assertVerbose(t, f.ui, "reading VM mounts failed")
+}
+
+// TestResolveReconfigDecisionNoHomeActionOnUnchangedDigest pins that the
+// home-volume action is resolved only when the image digest changed: a rebuild
+// driven by a non-image change must leave HomeAction nil, so no home-volume
+// prompt or state write happens for it.
+func TestResolveReconfigDecisionNoHomeActionOnUnchangedDigest(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	opts := options.RunOptions{TmpSize: "4G"} // the tmp-size change forces a recreate
+	f := newReconfigFixture(t, launcherLiveMounts(1024, 16384, "vol"), nil)
+	hs := matchingHomeState(opts.Network) // the seeded digest matches the run's image
+
+	decision, err := resolveReconfigDecision(
+		context.Background(),
+		f.client,
+		f.vm,
+		state.Key{Slug: "testproj", Agent: "opencode"},
+		opts,
+		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: hs.ImageDigest},
+		f.homeVol,
+		hs,
+		f.cfs,
+		f.ui,
+	)
+	if err != nil {
+		t.Fatalf("resolveReconfigDecision: %v", err)
+	}
+	if !decision.Recreate {
+		t.Fatal("expected a recreate for the tmp-size change")
+	}
+	if decision.HomeAction != nil {
+		t.Error("expected no home-volume action when the image digest is unchanged")
+	}
 }

@@ -43,7 +43,7 @@ lossless for everything the launcher sets.
   `config_json` is an error. A duplicated `guest` path resolves deterministically — the last entry wins — so a
   repeated mount cannot make the decision output order-dependent (see `reconfig-decision.md`).
 - Consumers and what they read:
-  - `reconfig.PlanReconfig` via `decideReconfig` — `tmpSizeChange` (`size_mib` at `/tmp`), `workspaceQuotaChange`
+  - `reconfig.PlanReconfig` via `resolveReconfigDecision` — `tmpSizeChange` (`size_mib` at `/tmp`), `workspaceQuotaChange`
     (`quota_mib` at `/workspace`), `homeVolumeChange` (the `name` of the `Named` mount at `/home/dev`). It degrades,
     never fails: a parse/lookup failure is logged and the run proceeds with no mounts.
   - `vm.projectVMHomeVolume` — the same `Named` mount for home-volume recovery (#219,
