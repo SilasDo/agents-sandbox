@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -41,7 +42,8 @@ func TestCodexLatestVersionNon200(t *testing.T) {
 	serveCodexRelease(t, func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "rate limited", http.StatusForbidden)
 	})
-	if _, err := latestCodexVersion(context.Background()); err == nil {
-		t.Fatal("expected error on non-200 response")
+	_, err := latestCodexVersion(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unexpected status 403") {
+		t.Fatalf("err = %v, want the fetch error reporting status 403", err)
 	}
 }

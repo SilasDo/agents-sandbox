@@ -50,11 +50,14 @@ func (codexProfile) ProvisionRules() []ProvisionRule {
 	}
 }
 
-// AttachCommand disables the startup update check: the sandbox pins the baked
-// version and offers upgrades itself.
+// AttachCommand disables the startup update check (the sandbox pins the baked
+// version and offers upgrades itself) and shell-quotes every forwarded
+// argument, because the command runs through `bash -c`.
 func (codexProfile) AttachCommand(_ string, args []string) string {
 	parts := []string{"codex", "-c", "check_for_update_on_startup=false"}
-	parts = append(parts, args...)
+	for _, arg := range args {
+		parts = append(parts, shellQuote(arg))
+	}
 	return strings.Join(parts, " ")
 }
 

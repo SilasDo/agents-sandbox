@@ -8,14 +8,14 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-func TestBuildMergedForTOMLDeepMergesTOMLSnippets(t *testing.T) {
+func TestBuildMergedTOMLDeepMergesTOMLSnippets(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "config-a.toml", "model = \"gpt-5\"\n[sandbox_workspace_write]\nnetwork_access = false\n")
 	writeSnippet(t, dir, "config-b.toml", "[sandbox_workspace_write]\nnetwork_access = true\nretries = 3\n")
 
-	data, sources, has, err := BuildMergedFor("/home/dev/.codex/config.toml", "config*.toml", dir, "")
+	data, sources, has, err := BuildMerged("/home/dev/.codex/config.toml", "config*.toml", dir, "")
 	if err != nil || !has {
-		t.Fatalf("BuildMergedFor: has=%v err=%v", has, err)
+		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
 	if len(sources) != 2 {
 		t.Errorf("sources = %v, want both snippets", sources)
@@ -38,27 +38,27 @@ func TestBuildMergedForTOMLDeepMergesTOMLSnippets(t *testing.T) {
 	}
 }
 
-func TestBuildMergedForJSONPathKeepsJSONOutput(t *testing.T) {
+func TestBuildMergedJSONPathKeepsJSONOutput(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "settings-a.json", `{"a": 1}`)
 
-	data, _, has, err := BuildMergedFor("/home/dev/.claude/settings.json", "settings*.json*", dir, "")
+	data, _, has, err := BuildMerged("/home/dev/.claude/settings.json", "settings*.json*", dir, "")
 	if err != nil || !has {
-		t.Fatalf("BuildMergedFor: has=%v err=%v", has, err)
+		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
 	if string(data) != "{\n  \"a\": 1\n}\n" {
 		t.Errorf("data = %q, want indented JSON", data)
 	}
 }
 
-func TestBuildMergedForSkipsInvalidTOMLSnippet(t *testing.T) {
+func TestBuildMergedSkipsInvalidTOMLSnippet(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "config-bad.toml", "not = = toml")
 	writeSnippet(t, dir, "config-good.toml", "ok = true\n")
 
-	data, sources, has, err := BuildMergedFor("config.toml", "config*.toml", dir, "")
+	data, sources, has, err := BuildMerged("config.toml", "config*.toml", dir, "")
 	if err != nil || !has {
-		t.Fatalf("BuildMergedFor: has=%v err=%v", has, err)
+		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
 	if len(sources) != 1 || filepath.Base(sources[0]) != "config-good.toml" {
 		t.Errorf("sources = %v, want only config-good.toml", sources)

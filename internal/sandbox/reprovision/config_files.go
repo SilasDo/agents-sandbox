@@ -448,7 +448,7 @@ func configFileFamilyPaths(mergedPath string, names []string) []string {
 func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (string, []byte, []string, bool, error) {
 	if cm, ok := agent.AsConfigMerger(a); ok {
 		vmConfigPath := cm.VMConfigPath(vmHome)
-		merged, sources, hasSnippets, err := config.BuildMergedFor(
+		merged, sources, hasSnippets, err := config.BuildMerged(
 			vmConfigPath,
 			cm.SnippetPattern(),
 			src.UserDir,

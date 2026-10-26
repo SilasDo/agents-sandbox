@@ -157,18 +157,12 @@ func isTOMLPath(configPath string) bool {
 }
 
 // BuildMerged merges all snippet files matching pattern under userDir and
-// projectDir into a single JSON config document. See BuildMergedFor.
-func BuildMerged(pattern string, userDir, projectDir string) ([]byte, []string, bool, error) {
-	return BuildMergedFor("", pattern, userDir, projectDir)
-}
-
-// BuildMergedFor merges all snippet files matching pattern under userDir and
 // projectDir into a single config document for configPath: TOML when
 // configPath ends in .toml, indented JSON otherwise. It returns the marshaled
 // bytes, the ordered list of snippet files that were merged, a boolean
 // reporting whether any snippet existed, and an error. When no snippet exists
 // the returned bytes and source list are nil and the boolean is false.
-func BuildMergedFor(configPath, pattern, userDir, projectDir string) ([]byte, []string, bool, error) {
+func BuildMerged(configPath, pattern, userDir, projectDir string) ([]byte, []string, bool, error) {
 	merged, sources := scanSnippets([]string{userDir, projectDir}, pattern)
 	if len(sources) == 0 {
 		return nil, nil, false, nil

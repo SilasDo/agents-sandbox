@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -56,7 +57,7 @@ func TestCodexAttachCommandDisablesUpdateCheck(t *testing.T) {
 		t.Fatal("codex should implement AttachRunner")
 	}
 	got := runner.AttachCommand("/workspace", []string{"--model", "gpt-5"})
-	want := "codex -c check_for_update_on_startup=false --model gpt-5"
+	want := "codex -c check_for_update_on_startup=false '--model' 'gpt-5'"
 	if got != want {
 		t.Errorf("AttachCommand = %q, want %q", got, want)
 	}
@@ -130,5 +131,22 @@ func TestCodexConfigMerger(t *testing.T) {
 	}
 	if names := merger.ConfigFileNames(); !slices.Equal(names, []string{"config.toml"}) {
 		t.Errorf("ConfigFileNames = %v, want [config.toml]", names)
+	}
+}
+
+func TestCodexAttachCommandPreservesShellSpecialPrompts(t *testing.T) {
+	a, _ := agent.Lookup("codex")
+	runner, _ := agent.AsAttachRunner(a)
+	prompts := []string{"Explain this project's tests", "cost in $HOME; `id` && echo hi", ""}
+	command := runner.AttachCommand("/workspace", prompts)
+	// printf stands in for codex so the shell's word splitting is observable.
+	script := "codex() { shift 2; printf '[%s]' \"$@\"; }; " + command
+	output, err := exec.Command("bash", "-c", script).Output()
+	if err != nil {
+		t.Fatalf("bash -c %q: %v", script, err)
+	}
+	want := "[Explain this project's tests][cost in $HOME; `id` && echo hi][]"
+	if string(output) != want {
+		t.Errorf("forwarded args = %s, want %s", output, want)
 	}
 }
