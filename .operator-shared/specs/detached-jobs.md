@@ -63,6 +63,6 @@ read_if: Working on the VM's dockerd/agent-serve startup, readiness, or restart 
 
 - Unit tests drive the seam through the msb mocks (`MockSandbox`/`MockJob`) and assert the kill-by-command, crash, and
   timeout branches.
-- `TestJobsRoundTrip` (`internal/sandbox/msb/jobs_integration_test.go`, `integration` tag) exercises the real adapters
+- `TestJobsRoundTrip` (`internal/sandbox/msb/jobs_msb_test.go`, `msb` tag) exercises the real adapters
   against a live VM. Live dockerd/daemon and the idle behaviour above are manual: a KVM host with a runner image
   containing dockerd and opencode.

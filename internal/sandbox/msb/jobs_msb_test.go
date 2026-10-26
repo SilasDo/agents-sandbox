@@ -1,4 +1,4 @@
-//go:build integration
+//go:build msb
 
 package msb
 
@@ -16,9 +16,10 @@ import (
 // microsandbox VM: it launches a runtime-owned job, then verifies Inspect,
 // ListJobs, Logs, GetJob, and Kill via the realSandbox/realJob adapters.
 //
-// It is excluded from the main suite via the `integration` build tag (run with
-// `make test-integration`) because it requires a working KVM host and network
-// access to pull the base image.
+// It is excluded from the unit and integration suites via the `msb` build tag
+// (run with `make test-msb`) because it loads the native SDK directly and needs
+// a working KVM host plus network access to pull the base image — the same
+// host-only tier as the other real-client tests in this package.
 func TestJobsRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
