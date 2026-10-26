@@ -57,8 +57,8 @@
   - Description: Contract for the CI gate that fails when production code is unreachable from any `main` package: a pinned x/tools `deadcode`, a reason-bearing `//deadcode:ignore` marker with file and declaration scope, `ci/check-deadcode.sh`, the 249-finding baseline, and the `verify`-not-`check` wiring.
   - Read If: Changing or debugging the dead-code CI gate, `make deadcode`, the `//deadcode:ignore` marker convention, `ci/check-deadcode.sh`, or the `DEADCODE_VERSION` pin.
 - `mutation-testing.md`
-  - Description: Contract for the on-demand mutation-testing practice (#253): a version-pinned `make mutation` over gomutants (`--changed-since` by default, `FULL=1` unscoped), never a required `make check`/CI gate (an opt-in `run-mutation` workflow is an advisory signal); each LIVED mutant is killed, deleted, or recorded in source with `// gomutants:disable`.
-  - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, the advisory `mutation` CI workflow, or the release-skill verify step.
+  - Description: Contract for the on-demand mutation-testing practice (#253): a version-pinned `make mutation` over gomutants (`--changed-since` by default, `FULL=1` unscoped, `ANNOTATIONS=github` for CI inline warnings), never a required `make check`/CI gate but swept by an advisory `mutation` workflow on every PR (inline annotations, a sticky survivor comment, and the report artifact); each LIVED mutant is killed, deleted, or recorded in source with `// gomutants:disable`.
+  - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, the advisory `mutation` CI workflow and its annotation/comment surfaces, or the release-skill verify step.
 - `config-paths-seam.md`
   - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
@@ -151,7 +151,7 @@
   - Read If: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision / `resolveAgentVersion` / `resolveBaseDigest`, or the `vm.agentLatestVersion` test seam.
 - `ci-job-gating.md`
   - Description: Contract for gating the costly integration jobs: `integration` (Docker Engine) and `integration-podman` (rootless podman) both run on `main`, release tags, manual dispatch, and on a PR a maintainer opted into with the matching `run-integration` / `run-integration-podman` label, plus the invariants keeping those conditions live, the release gate set (`lint`/`test`/`integration`/`integration-podman`, with `race`/`vulncheck` deliberately non-blocking), and the `fuzz`/`mutation` workflows kept outside this gating.
-  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `integration` or `integration-podman` gating, or the `run-integration`/`run-integration-podman`/`run-mutation` labels.
+  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `integration` or `integration-podman` gating, or the `run-integration`/`run-integration-podman` labels.
 - `fuzz-ci.md`
   - Description: Contract for the `fuzz` workflow: it discovers targets from sources the same way `make fuzz` does (a `discover` job feeding the matrix), is never a PR gate, and caches a per-target corpus keyed by the flattened package name.
   - Read If: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.

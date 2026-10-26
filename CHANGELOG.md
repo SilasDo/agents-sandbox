@@ -10,10 +10,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
-- CI: an advisory `mutation` workflow sweeps a PR's changeset with gomutants and posts the surviving mutants as a job
-  summary and a `mutation-report` artifact. It runs only when a maintainer adds the `run-mutation` label (or on manual
-  dispatch) and is never a required check or a release prerequisite, because gomutants has no pass/fail threshold and
-  triaging a survivor is human judgement. See `CONTRIBUTING.md`.
+- CI: an advisory `mutation` workflow sweeps every PR's changeset with gomutants: each surviving mutant lands as an
+  inline `::warning::` on the diff, a sticky comment carries the totals and the full survivor list, and a
+  `mutation-report` artifact holds the complete report. It is never a required check or a release prerequisite, because
+  gomutants has no pass/fail threshold and triaging a survivor is human judgement. See `CONTRIBUTING.md`.
 
 ### Changed
 

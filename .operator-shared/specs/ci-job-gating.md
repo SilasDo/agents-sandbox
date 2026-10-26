@@ -32,16 +32,17 @@ and never blocks a PR a maintainer ran Docker Engine for.
   `workflow_dispatch` while `on:` declared no dispatch trigger, so the documented manual path did not exist.
 - `on.pull_request.types` must list `labeled` **and** repeat the defaults (`opened`, `synchronize`, `reopened`):
   declaring `types:` replaces the default set rather than extending it.
-- Both workflows declare a workflow-level `permissions: contents: read`; the `publish` job raises its own (`contents:
-  write`, `pull-requests: write`) to publish the Release and open the Homebrew bump PR. CodeQL's
+- Both `ci.yml` and `fuzz.yml` declare a workflow-level `permissions: contents: read`; the `publish` job raises its own (`contents:
+  write`, `pull-requests: write`) to publish the Release and open the Homebrew bump PR. `mutation.yml` does the same
+  (`contents: read` workflow-level, `pull-requests: write` on its job) for its sticky survivor comment. CodeQL's
   `actions/missing-workflow-permissions` query reports one alert **per job** with no effective limitation, so removing the
   workflow-level block reopens one alert per job rather than one per workflow.
 - GitHub only offers dispatch for workflows whose file exists on the default branch. The `workflow_dispatch` trigger
   therefore becomes usable when it reaches `main`; `gh workflow run ci.yml --ref <branch>` can then dispatch any branch.
 - The label names have no single source of truth: each appears in its job condition, in the job's comment, and in
   CONTRIBUTING's Testing section. GitHub also needs a label to exist in the repository before anyone can add it:
-  `run-integration`, `run-integration-podman`, and `run-mutation` are created there (delete with `gh label delete
-  <name>`).
+  `run-integration` and `run-integration-podman` are created there (delete with `gh label delete <name>`). A
+  `run-mutation` label was created for an earlier opt-in design and is now unused — the mutation sweep runs on every PR.
 - Applying a label needs the repository's **triage** role or higher — read alone is not enough — so anyone with write
   access qualifies and a read-only collaborator or outside contributor cannot self-serve. That is why CONTRIBUTING says
   to ask a maintainer. A label a contributor sets in their own fork does nothing: the condition reads the base
@@ -57,8 +58,8 @@ and never blocks a PR a maintainer ran Docker Engine for.
 - Adding either label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
   `fuzz-ci.md` for its triggers, budgets, and corpus handling.
-- `make mutation` likewise runs from its own `mutation.yml`, opted into per PR with the `run-mutation` label (or manual
-  dispatch) and never a required check or a `release.needs` member. See `specs/mutation-testing.md`.
+- `make mutation` likewise runs from its own `mutation.yml`, on every PR (and manual dispatch), and is never a required
+  check or a `release.needs` member. See `specs/mutation-testing.md`.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.
 - The gate is not a privilege boundary: `lint`/`test` already execute PR code on the same runner, so labeling adds
