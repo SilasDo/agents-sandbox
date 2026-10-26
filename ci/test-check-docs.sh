@@ -89,12 +89,18 @@ printf '\n[Missing](https://inoio.github.io/agents-sandbox/nope/)\n' >>"$d/READM
 expect "root broken html dir link" 1 "no source index page" "$d"
 rm -rf "$d"
 
-# An in-page anchor names a heading, not a file: it must be dropped before the
-# link is mapped back to its source page, so an anchored link to a real page is
-# valid (and a broken one reports the page, not a path with the fragment).
+# An in-page anchor names a heading: the link is mapped back to its source page
+# and the fragment checked against that page's heading ids, so an anchored link
+# to a real page is valid only when the fragment resolves (a broken page still
+# reports the page, not a path with the fragment).
+d="$(new_fixture)"
+printf '\n[Install](https://inoio.github.io/agents-sandbox/install.html#install)\n' >>"$d/README.md"
+expect "root anchored html link resolves" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
 d="$(new_fixture)"
 printf '\n[Install](https://inoio.github.io/agents-sandbox/install.html#the-base-image)\n' >>"$d/README.md"
-expect "root anchored html link" 0 "all internal links are valid" "$d"
+expect "root anchored html link dead fragment" 1 "fragment 'the-base-image' matches no heading in docs/install.md" "$d"
 rm -rf "$d"
 
 d="$(new_fixture)"
@@ -246,6 +252,32 @@ rm -rf "$d"
 d="$(new_fixture)"
 printf '\nSee the note above.\n' >>"$d/docs/introduction.md"
 expect "terminology above/below" 1 'terminology: do not use positional' "$d"
+rm -rf "$d"
+
+# A '#' line inside a fenced code block is not a heading.
+d="$(new_fixture)"
+cat >>"$d/docs/install.md" <<'EOF'
+
+```console
+# not a heading
+```
+EOF
+printf '\n[Bad](https://inoio.github.io/agents-sandbox/install.html#not-a-heading)\n' >>"$d/README.md"
+expect "fenced-hash not a heading" 1 "fragment 'not-a-heading' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# A backticked heading slugs its raw source text.
+d="$(new_fixture)"
+printf '\n## `agents-sandbox doctor` fails\n' >>"$d/docs/install.md"
+printf '\n[Doctor](https://inoio.github.io/agents-sandbox/install.html#agents-sandbox-doctor-fails)\n' >>"$d/README.md"
+expect "backticked heading slug" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+# A repeated heading gets kramdown's -1 suffix.
+d="$(new_fixture)"
+printf '\n## Foo\n\n## Foo\n' >>"$d/docs/install.md"
+printf '\n[Second](https://inoio.github.io/agents-sandbox/install.html#foo-1)\n' >>"$d/README.md"
+expect "duplicate heading suffix" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

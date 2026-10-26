@@ -81,6 +81,64 @@ link_targets() {
   done <"$file"
 }
 
+# page_slugs FILE: print the id kramdown generates for every heading in FILE, in
+# document order. Mirrors kramdown's basic_generate_id on the heading's raw
+# source text (inline markdown included), with its -1/-2 uniqueness suffixes.
+page_slugs() {
+  awk '
+    function slug(s,    i, c, out) {
+      sub(/^[^a-zA-Z]+/, "", s)
+      out = ""
+      for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c ~ /[A-Za-z0-9 -]/) out = out c
+      }
+      gsub(/ /, "-", out)
+      out = tolower(out)
+      if (out == "") out = "section"
+      return out
+    }
+    BEGIN { fence = 0; frontmatter = 0; line = 0; delete used }
+    {
+      line++
+      body = $0
+      sub(/^[[:space:]]*(>[[:space:]]*)*/, "", body)
+      if (line == 1 && body ~ /^---[[:space:]]*$/) { frontmatter = 1; next }
+      if (frontmatter) { if (body ~ /^---[[:space:]]*$/) frontmatter = 0; next }
+      if (fence == 0) {
+        if (body ~ /^(```|~~~)/) {
+          marker = substr(body, 1, 1); openlen = 0
+          while (substr(body, openlen + 1, 1) == marker) openlen++
+          if (!(marker == "`" && index(substr(body, openlen + 1), "`") > 0)) { fence = 1; next }
+        }
+      } else {
+        trimmed = body; sub(/[[:space:]]+$/, "", trimmed)
+        if (trimmed ~ /^(`+|~+)$/ && substr(trimmed, 1, 1) == marker && length(trimmed) >= openlen) fence = 0
+        next
+      }
+      if (body ~ /^#{1,6}[ \t]/) {
+        t = body
+        sub(/^#{1,6}[ \t]+/, "", t)
+        sub(/[ \t]+#+[ \t]*$/, "", t)          # trailing ATX hashes
+        sub(/[ \t]*\{#[^}]*\}[ \t]*$/, "", t)  # declared id, if any
+        s = slug(t)
+        if (s in used) { used[s]++; s = s "-" used[s] } else used[s] = 0
+        print s
+      }
+    }' "$1"
+}
+
+# check_fragment REL LINENO PAGE_FILE ANCHOR LABEL: report unless ANCHOR (bare,
+# no leading #) is a heading id in PAGE_FILE.
+check_fragment() {
+  local rel="$1" lineno="$2" page_file="$3" anchor="$4" label="$5"
+  [[ -z "$anchor" ]] && return 0
+  if page_slugs "$page_file" | grep -qxF "$anchor"; then
+    return 0
+  fi
+  report "$rel:$lineno: fragment '$anchor' matches no heading in $label"
+}
+
 # Emit a single link target unless it is external or a bare in-page anchor.
 # Rendered docs HTML links are kept for the root handler to validate.
 emit_link() {
@@ -119,25 +177,32 @@ check_jekyll_link() {
 
 # Validate one link target found in a file, dispatching on the file's role.
 handle_target() {
-  local mode="$1" rel="$2" lineno="$3" target="$4" path
+  local mode="$1" rel="$2" lineno="$3" target="$4" path fragment
   case "$mode" in
     root)
       case "$target" in
         "$SITE_BASE"/*)
-          # Rendered docs HTML link: map back to the source page, dropping any
-          # in-page anchor (the fragment names a heading, not a file).
+          # Rendered docs HTML link: map back to the source page and check any
+          # in-page anchor (the fragment names a heading in that page).
           path="${target#"$SITE_BASE"/}"
-          path="${path%%#*}"
+          fragment=""
+          [[ "$path" == *"#"* ]] && { fragment="${path#*#}"; path="${path%%#*}"; }
           if [[ -z "$path" ]]; then
-            [[ -f "$DOCS/index.md" ]] ||
-              report "$rel:$lineno: docs html link '$target' has no source index page"
+            [[ -f "$DOCS/index.md" ]] || report "$rel:$lineno: docs html link '$target' has no source index page"
+            check_fragment "$rel" "$lineno" "$DOCS/index.md" "$fragment" "docs/index.md"
           elif [[ "$path" == */ ]]; then
-            [[ -f "$DOCS/${path}index.md" ]] ||
+            if [[ -f "$DOCS/${path}index.md" ]]; then
+              check_fragment "$rel" "$lineno" "$DOCS/${path}index.md" "$fragment" "docs/${path}index.md"
+            else
               report "$rel:$lineno: docs html link '$path' has no source index page"
+            fi
           else
             path="${path%.html}.md"
-            [[ -f "$DOCS/$path" ]] ||
+            if [[ -f "$DOCS/$path" ]]; then
+              check_fragment "$rel" "$lineno" "$DOCS/$path" "$fragment" "docs/$path"
+            else
               report "$rel:$lineno: docs html link '$path' does not exist"
+            fi
           fi
           ;;
         *'{% link'*) report "$rel:$lineno: {% link %} tags only work under docs/; use a rendered docs html link" ;;
