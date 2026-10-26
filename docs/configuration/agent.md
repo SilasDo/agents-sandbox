@@ -1,6 +1,6 @@
 ---
 title: Agent configuration
-description: "Select and configure the coding agent run by agents-sandbox: opencode, opencode2, pi or Claude Code."
+description: "Select and configure the coding agent run by agents-sandbox: opencode, opencode2, pi, Claude Code or Codex."
 layout: default
 parent: Configuration
 nav_order: 60
@@ -10,7 +10,7 @@ nav_order: 60
 
 agents-sandbox is agent-aware. A `--agent <name>` flag on `run`, `shell`, `build`, `volume`, `stop`, and `kill`
 selects the coding-agent profile to run, build, provision, or manage. The agent can also be selected via the `agent`
-config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship as built-in profiles:
+config key or the `AGENTS_SANDBOX_AGENT` environment variable. Five agents ship as built-in profiles:
 
 - **`opencode`** — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
 - **`opencode2`** (default) — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the
@@ -21,8 +21,10 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
   config path and host drop-in stay `~/.config/opencode/` (v2 reads the same files as v1).
 - **`pi`** — the pi coding agent, run interactively; upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
+- **`codex`** — OpenAI's Codex CLI, run interactively; upgrade checks via GitHub releases. Its startup update check is
+  turned off because agents-sandbox offers upgrades itself.
 
-`--worktree` and `--serve-only` are rejected for pi and claude-code (they have no daemon); they run through the
+`--worktree` and `--serve-only` are rejected for pi, claude-code, and codex (they have no daemon); they run through the
 interactive TUI instead. Passing an unsupported `--agent` name reports the valid names in its error message.
 
 > **Note:** opencode2 server auth — v2's `serve` requires HTTP basic auth on every `/api/*` route and would otherwise generate a
@@ -119,6 +121,7 @@ The drop-in copy is scoped to the agent's settings and, for opencode, its creden
 - **opencode2** — same drop-in copy as `opencode` (`~/.config/opencode/**` and `~/.local/share/opencode/auth.json`).
 - **pi** — `~/.pi/agent/settings.json`.
 - **claude-code** — `~/.claude/settings.json` (runtime state and the machine-managed `.credentials.json` are not copied).
+- **codex** — `~/.codex/config.toml` (sessions, logs, and the `auth.json` login cache are not copied).
 
 Precedence: the merged snippet config and any `home:` mappings override the drop-in copy for the same VM path.
 
@@ -153,12 +156,18 @@ To opt out, exclude `auth.json` from the drop-in copy by placing a `home:` entry
 host secrets in any other way; the env-secret mechanism is the supported channel for secrets you do not want on disk in
 the VM.
 
-For pi and claude-code, the drop-in copy does not include credential files; authenticate them with env secrets instead:
+For pi, claude-code, and codex, the drop-in copy does not include credential files; authenticate them with env secrets instead:
 
 - **pi** — per-provider env vars, e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (see pi's docs for the
   full list). Put them in an `env.secret` / `env.secret.yaml` file.
 - **claude-code** — `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN`. Claude's
   `.credentials.json` is machine-managed and not hand-provisioned, so env vars are the supported channel here.
+- **codex** — the interactive Codex CLI reads its login from `~/.codex/auth.json`, not from an env var, so log in once
+  inside the VM; the home volume keeps the login across runs. For an API key, declare `OPENAI_API_KEY` as an env secret
+  for `api.openai.com` and run `printenv OPENAI_API_KEY | codex login --with-api-key` in `agents-sandbox shell --agent
+  codex`; `auth.json` then holds only the secret placeholder, which microsandbox substitutes on egress. For a ChatGPT
+  plan, run `codex login --device-auth`. The host `auth.json` is not copied because a ChatGPT login rotates its refresh
+  token, and a second copy using it would sign the host out.
 - **opencode** — `OPENCODE_API_KEY`.
 
 ## Example: permissions

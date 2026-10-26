@@ -558,3 +558,40 @@ func TestRunDryRunServeOnlyIsPurePreview(t *testing.T) {
 
 	assertPreviewInfoLines(t, ui, false)
 }
+
+// TestRunDryRunAgentCodex verifies `run --agent codex` resolves the codex
+// profile and previews without starting a VM.
+func TestRunDryRunAgentCodex(t *testing.T) {
+	initTestProjectDir(t)
+
+	mock := &sandboxmsb.MockMsbClient{}
+	root, ui := setupRunMocks(t, mock, &sandboxmsb.MockSandbox{},
+		"run", "--dry-run", "--agent", "codex", "--agent-version", "0.164.0")
+	setupAbsentImagePreviewMocks(t, mock)
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ui.InfoCalls) == 0 || strings.TrimSpace(ui.InfoCalls[0]) != "dry-run: agent version 0.164.0" {
+		t.Errorf("expected pinned codex version line; got: %v", ui.InfoCalls)
+	}
+	if len(mock.CreatedSandboxCalls) != 0 {
+		t.Errorf("--dry-run created %d sandbox(es), want 0", len(mock.CreatedSandboxCalls))
+	}
+}
+
+// TestRunAgentCodexRejectsDaemonOnlyFlags verifies codex, which runs no
+// daemon, rejects --worktree and --serve-only.
+func TestRunAgentCodexRejectsDaemonOnlyFlags(t *testing.T) {
+	for _, flagArgs := range [][]string{{"--worktree", "feat"}, {"--serve-only"}} {
+		t.Run(flagArgs[0], func(t *testing.T) {
+			initTestProjectDir(t)
+			args := append([]string{"run", "--dry-run", "--agent", "codex"}, flagArgs...)
+			root, _ := setupRunMocks(t, &sandboxmsb.MockMsbClient{}, &sandboxmsb.MockSandbox{}, args...)
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), `not supported by agent "codex"`) {
+				t.Errorf("err = %v, want 'not supported by agent \"codex\"'", err)
+			}
+		})
+	}
+}

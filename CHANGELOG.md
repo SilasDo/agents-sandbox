@@ -13,6 +13,8 @@ command reports the bare version (e.g. `0.1.0`).
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
+- Agent: `codex` runs OpenAI's Codex CLI (`--agent codex`), installed from its GitHub release binary, with upgrade
+  checks via GitHub releases. `~/.codex/config.toml` is provisioned from the host; log in inside the VM (#107).
 - CI: an advisory `mutation` workflow sweeps every code-changing PR's changeset with gomutants (docs-only PRs are
   filtered out): each surviving mutant lands as an inline `::warning::` on the diff, a sticky comment carries the totals
   and the full survivor list, and a `mutation-report` artifact holds the complete report. It is never a required check or
