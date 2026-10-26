@@ -74,7 +74,6 @@ const (
 	flagStopped         = "stopped"
 	flagFormat          = "format"
 	flagVerbose         = "verbose"
-	formatJSON          = "json"
 
 	annotationAlsoAs = naming.Prefix + "/also-as"
 	annotationArgs   = naming.Prefix + "/args"

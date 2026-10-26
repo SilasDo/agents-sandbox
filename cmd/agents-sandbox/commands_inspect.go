@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
 	"github.com/inoio/agents-sandbox/internal/sandbox/volume"
@@ -28,7 +29,7 @@ func buildInspectCmd[T any](
 		Args:  cobra.ExactArgs(1),
 		Short: short,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := resolveListOutput(format, ui.Quiet())
+			mode, err := cliout.ResolveMode(format, ui.Quiet())
 			if err != nil {
 				return err
 			}

@@ -1,4 +1,4 @@
-package main
+package cliout
 
 import (
 	"encoding/json"
@@ -15,7 +15,8 @@ type pruneDetailJSON struct {
 	StaleForSeconds int64  `json:"stale_for_seconds"`
 }
 
-type pruneReportJSON struct {
+// PruneReportJSON is the --format json shape of a full prune report.
+type PruneReportJSON struct {
 	DryRun       bool              `json:"dry_run"`
 	Sandboxes    int               `json:"sandboxes"`
 	Volumes      int               `json:"volumes"`
@@ -24,27 +25,30 @@ type pruneReportJSON struct {
 	Details      []pruneDetailJSON `json:"details"`
 }
 
-type imageReportJSON struct {
+// ImageReportJSON is the --format json shape of an image prune report.
+type ImageReportJSON struct {
 	DryRun       bool              `json:"dry_run"`
 	Images       int               `json:"images"`
 	DockerImages int               `json:"docker_images"`
 	Details      []pruneDetailJSON `json:"details"`
 }
 
-type volumeReportJSON struct {
+// VolumeReportJSON is the --format json shape of a volume prune report.
+type VolumeReportJSON struct {
 	DryRun  bool              `json:"dry_run"`
 	Volumes int               `json:"volumes"`
 	Details []pruneDetailJSON `json:"details"`
 }
 
-type sandboxReportJSON struct {
+// SandboxReportJSON is the --format json shape of a sandbox prune report.
+type SandboxReportJSON struct {
 	DryRun    bool              `json:"dry_run"`
 	Sandboxes int               `json:"sandboxes"`
 	Details   []pruneDetailJSON `json:"details"`
 }
 
-func newPruneReportJSON(report *pruning.StaleReport, dryRun bool) pruneReportJSON {
-	return pruneReportJSON{
+func NewPruneReportJSON(report *pruning.StaleReport, dryRun bool) PruneReportJSON {
+	return PruneReportJSON{
 		DryRun:       dryRun,
 		Sandboxes:    report.PrunedSandboxes,
 		Volumes:      report.PrunedVolumes,
@@ -54,8 +58,8 @@ func newPruneReportJSON(report *pruning.StaleReport, dryRun bool) pruneReportJSO
 	}
 }
 
-func newImageReportJSON(report pruning.ImageReport, dryRun bool) imageReportJSON {
-	return imageReportJSON{
+func NewImageReportJSON(report pruning.ImageReport, dryRun bool) ImageReportJSON {
+	return ImageReportJSON{
 		DryRun:       dryRun,
 		Images:       report.MSBImagesPruned,
 		DockerImages: report.DockerImagesPruned,
@@ -63,16 +67,16 @@ func newImageReportJSON(report pruning.ImageReport, dryRun bool) imageReportJSON
 	}
 }
 
-func newVolumeReportJSON(report pruning.VolumeReport, dryRun bool) volumeReportJSON {
-	return volumeReportJSON{
+func NewVolumeReportJSON(report pruning.VolumeReport, dryRun bool) VolumeReportJSON {
+	return VolumeReportJSON{
 		DryRun:  dryRun,
 		Volumes: report.VolumesPruned,
 		Details: newPruneDetailsJSON(report.Details),
 	}
 }
 
-func newSandboxReportJSON(report pruning.SandboxReport, dryRun bool) sandboxReportJSON {
-	return sandboxReportJSON{
+func NewSandboxReportJSON(report pruning.SandboxReport, dryRun bool) SandboxReportJSON {
+	return SandboxReportJSON{
 		DryRun:    dryRun,
 		Sandboxes: report.VMsPruned,
 		Details:   newPruneDetailsJSON(report.Details),
@@ -93,17 +97,17 @@ func newPruneDetailsJSON(entries []pruning.StaleEntry) []pruneDetailJSON {
 	return details
 }
 
-// renderPruneReport writes the JSON value under --format json, or calls the
+// RenderPruneReport writes the JSON value under --format json, or calls the
 // human renderer by default. Quiet suppresses stdout entirely (prune has no
 // identifiers-only mode). The values passed by callers are concrete report
 // DTOs, so the JSON marshal cannot fail.
-func renderPruneReport(ui termio.UI, mode listOutput, human func(), jsonValue any) {
-	if mode == listOutputJSON {
+func RenderPruneReport(ui termio.UI, mode Mode, human func(), jsonValue any) {
+	if mode == ModeJSON {
 		data, _ := json.MarshalIndent(jsonValue, "", "  ")
 		ui.Out(string(data))
 		return
 	}
-	if mode == listOutputTable {
+	if mode == ModeTable {
 		human()
 	}
 }
