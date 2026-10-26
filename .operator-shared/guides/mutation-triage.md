@@ -44,6 +44,14 @@ This is the field guide for doing it. It was distilled from the first full sweep
   is exactly `if name == "" || strings.Contains(name, "/")`. A line-scoped `disable` for the `!found` operand would also
   suppress the killable `name == ""` and `Contains` siblings on the same line, so remove the `!found` operand (taking
   `CutLast`'s third result as `_`) instead.
+- **Splitting a guard to narrow a type-scoped exclusion can mint a new equivalent survivor.** `gitdirFile`'s `if err !=
+  nil || info.IsDir()` bundled a killable operand (`err != nil` removal leaves `info` nil, so `info.IsDir()` panics on a
+  missing `.git`) with a redundant one (`info.IsDir()`: a directory makes the following `os.ReadFile` fail identically).
+  Splitting into two `if`s exposes the killable operand but the added `return "", false` mints an unobservable
+  `RETURN_TRUE` — `("", true)` for a directory is invisible because `resolveGitDir` returns before `gitdirFile` for a
+  directory and `isLinkedWorktree`'s `worktreeRegistration(root, "")` rejects it. Delete the redundant operand instead
+  (drop the stat; let `os.ReadFile` reject the directory), which removes the mutant family rather than recording a new
+  one.
 - **A guard can be operationally equivalent to its fall-through.** `if err := json.Unmarshal(...); err != nil { return
   "", false }` is indistinguishable from falling through to `return resp.Directory, resp.Directory != ""` for every
   payload *except* one that sets the field and then errors — a duplicate JSON key
