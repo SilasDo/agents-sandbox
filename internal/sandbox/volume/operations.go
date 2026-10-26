@@ -247,33 +247,9 @@ func volumeOp(
 		return err
 	}
 
-	// Change only the home volume identity and digest, keeping every other field
-	// (env/secret/network/mount fingerprints and the upgrade state) that a volume
-	// operation does not affect: dropping them would trigger a false VM rebuild
-	// or re-fire the upgrade prompt on the next startup (see
-	// EnvChanged/SecretsChanged/NetworkChanged/MountsChanged treating empty
-	// state as "changed"). The write runs under the home lock but is guarded by a
-	// compare-and-set on the snapshot home volume, since the msb I/O above ran
-	// without the lock: if another writer changed home_volume in the meantime,
-	// abort rather than clobber it. A failed commit leaves the new volume
-	// uncommitted and unreferenced, so drop it rather than orphan it.
-	expectedVolume := st.HomeVolume
-	if err := state.WithHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
-		if cur.HomeVolume != expectedVolume {
-			return false, fmt.Errorf(
-				"home volume changed concurrently (want %q, have %q)",
-				expectedVolume,
-				cur.HomeVolume,
-			)
-		}
-		cur.HomeVolume = newVolumeName
-		cur.ImageDigest = info.Digest
-		// The pending recovered-volume marker is superseded by the new volume;
-		// leaving it set would make the next home resolution recover the old
-		// volume and undo this operation (#144).
-		cur.RecoveredHomeVolume = ""
-		return true, nil
-	}); err != nil {
+	// The operation replaced the volume a pending recovered-volume marker may
+	// still record (#144), so commitNewHomeVolume clears it.
+	if err := commitNewHomeVolume(k, st.HomeVolume, newVolumeName, info.Digest, true); err != nil {
 		vm.cleanupVolume(ctx, client, newVolumeName, ui)
 		return err
 	}

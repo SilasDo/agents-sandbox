@@ -33,9 +33,9 @@ func TestPersistEnvSecrets_RoundTrip(t *testing.T) {
 	envSt := state.EnvState{Hash: "env-hash-123", Names: []string{"FOO"}}
 	secSt := state.SecretState{Hash: "sec-hash-456", Names: []string{"PASS"}}
 
-	err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt)
+	err := persistFingerprints(state.Key{Slug: slug, Agent: "opencode"}, state.Fingerprints{Env: envSt, Secret: secSt})
 	if err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -58,8 +58,11 @@ func TestPersistEnvSecrets_CreatesMissingStateDir(t *testing.T) {
 	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
 	secSt := state.SecretState{Hash: "h2", Names: []string{"Y"}}
 
-	if err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Env: envSt, Secret: secSt},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -85,8 +88,11 @@ func TestPersistEnvSecrets_MergesExistingState(t *testing.T) {
 	envSt := state.EnvState{Hash: "new-env-hash", Names: []string{"NEW"}}
 	secSt := state.SecretState{Hash: "new-sec-hash", Names: []string{"SECRET"}}
 
-	if err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Env: envSt, Secret: secSt},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -123,8 +129,11 @@ func TestPersistEnvSecrets_OverwritesExistingState(t *testing.T) {
 	envSt := state.EnvState{Hash: "newhash", Names: []string{"K"}}
 	secSt := state.SecretState{Hash: "sh", Names: []string{"S"}}
 
-	if err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Env: envSt, Secret: secSt},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -145,11 +154,11 @@ func TestPersistNetworkState_RoundTrip(t *testing.T) {
 	slug := "netproj"
 	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}, EgressAllow: []string{"api.example.com"}}
 
-	if err := persistNetworkState(
+	if err := persistFingerprints(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.BuildNetworkState(policy),
+		state.Fingerprints{Network: state.BuildNetworkState(policy)},
 	); err != nil {
-		t.Fatalf("persistNetworkState: %v", err)
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -292,7 +301,7 @@ func TestPersistEnvSecrets_ReadFailsReturnsError(t *testing.T) {
 
 	envSt := state.EnvState{Hash: "h"}
 	secSt := state.SecretState{Hash: "h"}
-	err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt)
+	err := persistFingerprints(state.Key{Slug: slug, Agent: "opencode"}, state.Fingerprints{Env: envSt, Secret: secSt})
 
 	if err == nil {
 		t.Fatal("expected error for corrupted YAML, got nil")
@@ -550,7 +559,7 @@ func TestEnvContentHash_OrderIndependent(t *testing.T) {
 	}
 }
 
-// TestPersistEnvSecrets_NilStateOnNotFound tests persistEnvSecrets when no state file exists.
+// TestPersistEnvSecrets_NilStateOnNotFound tests persistFingerprints when no state file exists.
 func TestPersistEnvSecrets_NilStateOnNotFound(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -559,8 +568,11 @@ func TestPersistEnvSecrets_NilStateOnNotFound(t *testing.T) {
 	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
 	secSt := state.SecretState{Hash: "h2", Names: []string{"Y"}}
 
-	if err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Env: envSt, Secret: secSt},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -589,8 +601,11 @@ func TestPersistEnvSecrets_HomeStateOmitsZeroState(t *testing.T) {
 	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
 	secSt := state.SecretState{}
 
-	if err := persistEnvSecrets(state.Key{Slug: slug, Agent: "opencode"}, envSt, secSt); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Env: envSt, Secret: secSt},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	data, err := os.ReadFile(filepath.Join(configpaths.Get().UserStateDir(), slug, "opencode", "state.yaml"))
@@ -614,12 +629,11 @@ func TestPersistEnvSecrets_ZeroStateOverwritesOnlyFields(t *testing.T) {
 		EnvState:    state.EnvState{Hash: "old-env", Names: []string{"OLD"}},
 	})
 
-	if err := persistEnvSecrets(
+	if err := persistFingerprints(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.EnvState{},
-		state.SecretState{},
+		state.Fingerprints{Env: state.EnvState{}, Secret: state.SecretState{}},
 	); err != nil {
-		t.Fatalf("persistEnvSecrets: %v", err)
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -944,7 +958,7 @@ func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && contains(s, sub)
 }
 
-// TestPersistMountState_NilStateOnNotFound tests persistMountState when no
+// TestPersistMountState_NilStateOnNotFound tests persistFingerprints when no
 // state file exists yet, e.g. the very first run of a project.
 func TestPersistMountState_NilStateOnNotFound(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
@@ -954,8 +968,11 @@ func TestPersistMountState_NilStateOnNotFound(t *testing.T) {
 		"/home/dev/.m2": {Source: "/host/.m2"},
 	}
 
-	if err := persistMountState(state.Key{Slug: slug, Agent: "opencode"}, state.BuildMountState(mnts)); err != nil {
-		t.Fatalf("persistMountState: %v", err)
+	if err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Mount: state.BuildMountState(mnts)},
+	); err != nil {
+		t.Fatalf("persistFingerprints: %v", err)
 	}
 
 	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -982,7 +999,10 @@ func TestPersistMountStateCorruptState(t *testing.T) {
 	}
 	testutil.WriteFile(t, sdir, "state.yaml", "{ corrupted: yaml: [")
 
-	err := persistMountState(state.Key{Slug: slug, Agent: "opencode"}, state.BuildMountState(nil))
+	err := persistFingerprints(
+		state.Key{Slug: slug, Agent: "opencode"},
+		state.Fingerprints{Mount: state.BuildMountState(nil)},
+	)
 	if err == nil {
 		t.Fatal("expected an error for a corrupt state file")
 	}

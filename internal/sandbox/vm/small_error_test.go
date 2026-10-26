@@ -16,8 +16,8 @@ import (
 )
 
 // TestPersistNetworkStateReadError covers the non-not-found ReadState error
-// branch of persistNetworkState (a corrupt state file).
-func TestPersistNetworkStateReadError(t *testing.T) {
+// branch of persistFingerprints (a corrupt state file).
+func TestPersistFingerprintsReadError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "corruptnetproj"
@@ -27,9 +27,11 @@ func TestPersistNetworkStateReadError(t *testing.T) {
 	}
 	testutil.WriteFile(t, sdir, "state.yaml", "{ corrupted: yaml: [")
 
-	err := persistNetworkState(
+	err := persistFingerprints(
 		state.Key{Slug: slug, Agent: "opencode"},
-		state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
+		state.Fingerprints{
+			Network: state.BuildNetworkState(network.Policy{Profiles: []network.Profile{network.ProfileNone}}),
+		},
 	)
 	if err == nil {
 		t.Fatal("expected error for corrupted state YAML")
@@ -85,7 +87,7 @@ func TestValidateWorktreeBaseExecError(t *testing.T) {
 
 // TestPersistConfigHashesWarnsOnError covers the warning branches of
 // persistConfigHashes when the env/secret/network fingerprints cannot be
-// persisted (a corrupt state file makes both writes fail).
+// persisted (a corrupt state file makes the write fail).
 func TestPersistConfigHashesWarnsOnError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := termio.NewTestMock(t)
@@ -105,13 +107,7 @@ func TestPersistConfigHashesWarnsOnError(t *testing.T) {
 		&ui,
 	)
 
-	if !contains(joinStrings(ui.WarnCalls), "persisting env/secret fingerprints") {
-		t.Errorf("expected a warning about persisting env/secret fingerprints, got %v", ui.WarnCalls)
-	}
-	if !contains(joinStrings(ui.WarnCalls), "persisting network fingerprint") {
-		t.Errorf("expected a warning about persisting the network fingerprint, got %v", ui.WarnCalls)
-	}
-	if !contains(joinStrings(ui.WarnCalls), "persisting mount fingerprint") {
-		t.Errorf("expected a warning about persisting the mount fingerprint, got %v", ui.WarnCalls)
+	if len(ui.WarnCalls) != 1 || !contains(ui.WarnCalls[0], "persisting config fingerprints") {
+		t.Errorf("expected one warning about persisting config fingerprints, got %v", ui.WarnCalls)
 	}
 }
