@@ -197,16 +197,24 @@ func imageRecreate(cfg *msbSdk.SandboxConfig, imageRef string, flag bool) bool {
 }
 
 // sameImageIdentity reports whether two references name the same runner image,
-// tolerating the legacy and prefix-free spellings of one slug+agent so a VM
-// created under the legacy reference is not recreated merely because the
-// launcher now computes the prefix-free one.
+// tolerating the legacy prefixed, prefix-free, and content-addressed spellings
+// of one slug+agent so a VM created under one spelling is not recreated merely
+// because the launcher now computes another. A digest-pinned or non-runner
+// reference only ever equals itself; a genuine content change is gated by the
+// image digest, not by the reference spelling.
 func sameImageIdentity(a, b string) bool {
 	if a == b {
 		return true
 	}
 	parsedA := naming.ParseImageTag(a)
 	parsedB := naming.ParseImageTag(b)
-	return parsedA.Slug != "" && parsedA == parsedB
+	// A digest-pinned or non-runner reference only ever equals itself.
+	if parsedA.Slug == "" || parsedA.Agent == "" || parsedA.Digest != "" {
+		return false
+	}
+	// Same slug+agent in any runner spelling (legacy, prefix-free, or
+	// content-addressed) names the same image.
+	return parsedB.Slug == parsedA.Slug && parsedB.Agent == parsedA.Agent
 }
 
 // tmpSizeChange reports the /tmp tmpfs size change, if any.

@@ -29,6 +29,11 @@ func TestImageContentIDTrimsAndTruncates(t *testing.T) {
 	if got := imageContentID(""); got != "" {
 		t.Errorf("imageContentID(\"\") = %q, want empty", got)
 	}
+	if got := imageContentID(
+		"sha256:9F2C1A7B4D6E0F3199999999999999999999999999999999999999999999999999",
+	); got != "9f2c1a7b4d6e0f31" {
+		t.Errorf("imageContentID(uppercase id) = %q, want the lowercased 16-char prefix", got)
+	}
 }
 
 // TestEnsureImageWithClientSetsContentRef pins that the built image's content id

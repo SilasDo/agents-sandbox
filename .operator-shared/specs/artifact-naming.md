@@ -78,8 +78,8 @@ protects whatever ref a kept sandbox holds via its `config.Image`.
 Ownership **is not** a per-object property anymore. The private runtime home (`configpaths.MSBHome()`) is ours alone
 and the external-runtime escape hatch was removed (`runtime-home-decoupling.md`), so every object in it was written
 by us. The prefix-based "is this ours?" filters in `vm/list.go`, `volume/list.go`, `image/list.go` and
-`pruning/images.go` are dropped, and `image/remove.go`'s `refuseNonRunnerRefs` becomes a "does this ref resolve to a
-cached image" check rather than a prefix check.
+`pruning/images.go` are dropped, and `image/remove.go`'s `refuseNonRunnerRefs` refuses a ref that does not parse to a
+runner slug (`naming.ParseImageTag(ref).Slug == ""`) rather than a ref without the naming prefix.
 
 Classification and identity **are** still needed, and both come from labels on anything the launcher creates:
 

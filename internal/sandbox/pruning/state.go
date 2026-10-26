@@ -20,7 +20,8 @@ import (
 //
 // Age is the staleness threshold the snapshot was built with, reused by image
 // retention as the window in which a live project's cached image variant counts
-// as reusable.
+// as reusable. A zero Age disables recency retention, so callers must build the
+// state via buildPruneState rather than constructing a PruneState literal.
 type PruneState struct {
 	Age     time.Duration
 	ToPrune map[state.Key]msb.SandboxHandle

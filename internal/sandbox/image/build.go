@@ -476,7 +476,7 @@ func EnsureImageWithClient(
 // filesystem-safe hex prefix. It is empty when the image ID is, so the caller
 // falls back to the name reference rather than emitting a dangling suffix.
 func imageContentID(imageID string) string {
-	id := strings.TrimPrefix(imageID, "sha256:")
+	id := strings.ToLower(strings.TrimPrefix(imageID, "sha256:"))
 	if len(id) > 16 {
 		id = id[:16]
 	}
