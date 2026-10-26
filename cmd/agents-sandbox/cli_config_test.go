@@ -151,6 +151,22 @@ func TestConfigAgentFlag(t *testing.T) {
 	}
 }
 
+func TestConfigAgentCodexPrintsMergedTOML(t *testing.T) {
+	cmd, ui := setupCommandFixtures(t, "config", "agent", "codex")
+	a, _ := agent.Lookup("codex")
+	testutil.WriteFile(t, configpaths.Get().UserAgentConfigDir(a), "config-model.toml", "model = \"gpt-5\"\n")
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config agent codex: %v", err)
+	}
+	joined := strings.Join(ui.OutCalls, "\n")
+	for _, want := range []string{"config-model.toml", "model = 'gpt-5'", "merged agent config:"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("output missing %q, got:\n%s", want, joined)
+		}
+	}
+}
+
 func TestConfigAgentAmbiguousFlagAndPositional(t *testing.T) {
 	cmd, _ := setupCommandFixtures(t, "config", "agent", "--agent", "pi", "claude-code")
 	err := cmd.Execute()

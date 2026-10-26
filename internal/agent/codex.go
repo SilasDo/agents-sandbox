@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 )
 
@@ -33,6 +34,13 @@ func (codexProfile) LatestVersion(ctx context.Context) (string, error) {
 	return latestCodexVersion(ctx)
 }
 func (codexProfile) NewerThan(a, b string) (bool, error) { return newerVersionThan(a, b) }
+
+// SnippetPattern matches TOML snippets, which merge into config.toml as TOML.
+func (codexProfile) SnippetPattern() string { return "config*.toml" }
+func (codexProfile) VMConfigPath(home string) string {
+	return filepath.Join(home, ".codex", codexConfigFileName)
+}
+func (codexProfile) ConfigFileNames() []string { return []string{codexConfigFileName} }
 
 // ProvisionRules copies only config.toml. auth.json is left out: a ChatGPT
 // login holds rotating refresh tokens that a copy would invalidate on the host.

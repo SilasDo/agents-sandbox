@@ -632,6 +632,42 @@ func TestLoadConfigFilesPIMergedConfig(t *testing.T) {
 	}
 }
 
+// TestLoadConfigFilesCodexMergesTOMLSnippets verifies that codex config.toml
+// snippets merge into ~/.codex/config.toml as TOML and that the result counts
+// as equal to a reformatted copy of itself in the VM.
+func TestLoadConfigFilesCodexMergesTOMLSnippets(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	vmHome := t.TempDir()
+
+	a, _ := agent.Lookup("codex")
+	testutil.WriteFile(t, cp.ProjectAgentConfigDir(a), "config-model.toml", "model = \"gpt-5\"\n")
+	testutil.WriteFile(
+		t,
+		cp.ProjectAgentConfigDir(a),
+		"config-sandbox.toml",
+		"[sandbox_workspace_write]\nnetwork_access = true\n",
+	)
+
+	ui := termio.NewTestMock(t)
+	cf, err := LoadConfigFilesForHost(a, t.TempDir(), vmHome, &ui, true)
+	if err != nil {
+		t.Fatalf("LoadConfigFilesForHost: %v", err)
+	}
+	wantMerged := filepath.Join(vmHome, ".codex", "config.toml")
+	if !cf.HasSnippets || cf.MergedPath != wantMerged {
+		t.Fatalf("HasSnippets=%v MergedPath=%q, want true and %q", cf.HasSnippets, cf.MergedPath, wantMerged)
+	}
+	want := "model = 'gpt-5'\n\n[sandbox_workspace_write]\nnetwork_access = true\n"
+	if string(cf.Merged) != want {
+		t.Errorf("Merged = %q, want %q", cf.Merged, want)
+	}
+	reformatted := []byte("sandbox_workspace_write = { network_access = true }\nmodel = \"gpt-5\"\n")
+	if !AgentConfigEqual(cf, map[string][]byte{wantMerged: reformatted}) {
+		t.Error("AgentConfigEqual should compare the TOML config semantically")
+	}
+}
+
 // TestLoadConfigFilesRejectsReservedMergedPath verifies that a home target
 // colliding with the agent's merged-config path is rejected.
 func TestLoadConfigFilesRejectsReservedMergedPath(t *testing.T) {

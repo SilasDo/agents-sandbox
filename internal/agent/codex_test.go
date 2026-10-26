@@ -2,6 +2,7 @@ package agent_test
 
 import (
 	"context"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -112,5 +113,22 @@ func TestCodexHasNoDaemonOrWorktree(t *testing.T) {
 	}
 	if _, ok := agent.AsWorktreeProvider(a); ok {
 		t.Error("codex must not implement WorktreeProvider")
+	}
+}
+
+func TestCodexConfigMerger(t *testing.T) {
+	a, _ := agent.Lookup("codex")
+	merger, ok := agent.AsConfigMerger(a)
+	if !ok {
+		t.Fatal("codex should implement ConfigMerger")
+	}
+	if merger.SnippetPattern() != "config*.toml" {
+		t.Errorf("SnippetPattern = %q, want config*.toml", merger.SnippetPattern())
+	}
+	if got := merger.VMConfigPath("/home/dev"); got != filepath.Join("/home/dev", ".codex", "config.toml") {
+		t.Errorf("VMConfigPath = %q", got)
+	}
+	if names := merger.ConfigFileNames(); !slices.Equal(names, []string{"config.toml"}) {
+		t.Errorf("ConfigFileNames = %v, want [config.toml]", names)
 	}
 }

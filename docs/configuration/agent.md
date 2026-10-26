@@ -63,11 +63,14 @@ user and project directories, and written to the agent's VM config path:
   from its own `opencode2/` config dirs instead of the shared `opencode/` dirs.
 - **pi** — snippets match `settings*.json*` in the `pi/` subdir; merged to `/home/dev/.pi/agent/settings.json`.
 - **claude-code** — snippets match `settings*.json*` in the `claude/` subdir; merged to `/home/dev/.claude/settings.json`.
+- **codex** — snippets match `config*.toml` in the `codex/` subdir (e.g. `config-model.toml`); merged to
+  `/home/dev/.codex/config.toml`, written as TOML.
 
 Matching files are parsed and **deep-merged** into one config document. The user directory is merged first, then the
 project directory; within each directory files are merged in alphabetical order, so later files override earlier ones.
-Snippet parsing supports JSON, JSONC, JSON5, and YAML (agents whose pattern includes YAML extensions, e.g. a pattern
-like `pi-*.{json,yaml}`). The built-in patterns match JSON-family extensions.
+Snippet parsing supports JSON, JSONC, JSON5, YAML, and TOML, chosen by file extension (YAML only applies to agents whose
+pattern includes YAML extensions, e.g. a pattern like `pi-*.{json,yaml}`). The merged config is written as TOML when the
+agent's VM config path ends in `.toml` (codex) and as JSON otherwise.
 
 If no snippet files exist, no merged config is produced.
 
@@ -91,7 +94,7 @@ the VM without extra configuration. For `opencode2`, read from its own `opencode
 
 Two families of files are *not* mirrored:
 
-- Files matching the agent's snippet pattern (`opencode*.json*`, `settings*.json*`) are **deep-merged** (see [Config
+- Files matching the agent's snippet pattern (`opencode*.json*`, `settings*.json*`, `config*.toml`) are **deep-merged** (see [Config
   snippet merge](#config-snippet-merge)), never mirrored.
 - The agent's config-file family (for opencode: `config.json`, `opencode.json`, `opencode.jsonc`, …) is **reserved for
   the merged output** and never mirrored, so a mirror copy cannot shadow the merged snippet config.
