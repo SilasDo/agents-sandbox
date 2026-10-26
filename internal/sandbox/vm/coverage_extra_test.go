@@ -127,40 +127,6 @@ func TestPersistConfigHashesCoversEnvSecretAndNetwork(t *testing.T) {
 	}
 }
 
-// TestAcquireProjectFlockOpenError covers the open-file error branch of
-// acquireProjectFlock (path under a non-directory parent).
-func TestAcquireProjectFlockOpenError(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	// UserStateDir is a directory, so create a regular file as the parent of
-	// the lock path to force os.OpenFile to fail with ENOTDIR.
-	parent := filepath.Join(configpaths.Get().UserStateDir(), "notadir")
-	if err := os.WriteFile(parent, []byte("x"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	lockPath := filepath.Join(parent, "ensure-vm.lock")
-	if _, err := acquireProjectFlock(lockPath); err == nil {
-		t.Error("expected error when opening the flock fails")
-	}
-}
-
-// TestAcquireProjectFlockFlockError covers the flock-syscall error branch. It
-// is hard to force an actual flock failure on a writable file, so instead we
-// verify the happy path acquires and releases a lock and returns a working
-// release closure.
-func TestAcquireProjectFlockAcquiresAndReleases(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	dir := t.TempDir()
-	lockPath := filepath.Join(dir, "ensure-vm.lock")
-	release, err := acquireProjectFlock(lockPath)
-	if err != nil {
-		t.Fatalf("acquireProjectFlock: %v", err)
-	}
-	if release == nil {
-		t.Fatal("expected a non-nil release function")
-	}
-	release()
-}
-
 // TestStopProjectVMGetSandboxError covers the non-not-found GetSandbox error
 // branch in stopOrKillProjectVM.
 func TestStopProjectVMGetSandboxError(t *testing.T) {

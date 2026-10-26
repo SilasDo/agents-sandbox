@@ -9,7 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 
 	"github.com/Masterminds/semver/v3"
 
@@ -284,32 +285,20 @@ func removeRuntimeFiles(inspection Inspection) error {
 	return nil
 }
 
-// flockExclusive takes an exclusive advisory flock. It is a seam so tests can
-// exercise the failure path, which a real file cannot trigger. It mirrors
-// state.FlockExclusive rather than importing it: the runtime package cannot
-// depend on state because that edge (runtime -> state -> naming) would close an
-// import cycle through the naming package's test dependencies.
-var flockExclusive = func(f *os.File) error {
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX)
+// acquireRuntimeLock takes the host-only advisory lock that serializes runtime
+// repair across processes. The returned function releases the lock.
+func acquireRuntimeLock() (func(), error) {
+	release, err := hostlock.AcquireExclusive(runtimeLockDir(), runtimeLockName)
+	if err != nil {
+		return nil, fmt.Errorf("acquire runtime lock: %w", err)
+	}
+	return release, nil
 }
 
-// acquireRuntimeLock takes the host-only advisory lock that serializes runtime
-// repair across processes. The flock auto-releases on process exit, so a crashed
-// holder never pins it. The returned function releases the lock.
-func acquireRuntimeLock() (func(), error) {
-	dir := filepath.Join(PrivateHome(), ".agents-sandbox")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, fmt.Errorf("create runtime lock dir: %w", err)
-	}
-	f, err := os.OpenFile(filepath.Join(dir, "runtime.lock"), os.O_CREATE|os.O_RDWR, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("open runtime lock: %w", err)
-	}
-	if err := flockExclusive(f); err != nil {
-		_ = f.Close()
-		return nil, fmt.Errorf("flock runtime lock: %w", err)
-	}
-	return func() { _ = f.Close() }, nil
+const runtimeLockName = "runtime.lock"
+
+func runtimeLockDir() string {
+	return filepath.Join(PrivateHome(), ".agents-sandbox")
 }
 
 func runtimeMismatchError(inspection Inspection, reason string) error {

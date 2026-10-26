@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/inoio/agents-sandbox/internal/hostlock"
 )
 
 // Seams over the home lock's I/O so tests can exercise failures the real
@@ -19,9 +21,9 @@ var (
 // flock failure path.
 var flockHomeLock = func(f *os.File, blocking bool) error {
 	if blocking {
-		return FlockExclusive(f)
+		return hostlock.Exclusive(f)
 	}
-	return FlockExclusiveNB(f)
+	return hostlock.ExclusiveNonBlocking(f)
 }
 
 // homeLockPath returns the per-(slug, agent) home-state lock file path. Lock
@@ -68,7 +70,7 @@ func lockHomeState(k Key, blocking bool) (release func(), ok bool, err error) {
 		if blocking {
 			releaseLockPath(path)
 		}
-		if !blocking && isLockContention(err) {
+		if !blocking && hostlock.IsContention(err) {
 			return nil, false, nil
 		}
 		return nil, false, fmt.Errorf("flock home lock: %w", err)
