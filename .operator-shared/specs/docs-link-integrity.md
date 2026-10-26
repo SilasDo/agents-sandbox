@@ -55,12 +55,22 @@ local build and GitHub Pages agree). GFM headings are slugged by `kramdown-parse
 1. lowercase;
 2. keep only `[\p{Word}\- \t]` — the checker's ASCII form is `[A-Za-z0-9_-]` plus space and tab;
 3. spaces and tabs → `-`;
-4. no empty-string fallback (an all-punctuation heading slugs to the empty id);
+4. no empty-string fallback: an all-punctuation heading gets no `id` at all (the empty attribute is dropped),
+   while a second occurrence of it gets `id="-1"`;
 5. a repeated slug within a page gets `-1`, `-2`, … (`-1` is the first duplicate).
 
-The mirror operates on the heading text *as written* (backticks, `[text](url)` and emphasis included), because the
-slug derives from `raw_text` before inline parsing — stripping inline markdown first would diverge. Calibrated
-against a real `bundle exec jekyll build`: identical ids on every page.
+The mirror runs on the heading's **source-line text**; the published site slugs the **post-inline** `raw_text`
+`kramdown-parser-gfm` rebuilds from the parsed children, so a link becomes its link text, an entity is decoded, and
+emphasis delimiters are gone. The two agree on the whole corpus (0 mismatches over 32 pages), because no corpus
+heading carries inline markup or non-ASCII letters. They diverge only for such headings, which the docs style
+avoids:
+
+- emphasis: `## __init__ hook` → site `init-hook`, mirror `__init__-hook`
+- link: `## [Guide](foo.md)` → site `guide`, mirror `guidefoomd`
+- entity: `## A &amp; B` → site `a--b`, mirror `a-amp-b`
+- non-ASCII letters: `\p{Word}` is Unicode-aware on the site, ASCII-only in the mirror
+
+Calibrated against a real `bundle exec jekyll build`: identical ids on every page.
 
 ## `internal/docslink`
 

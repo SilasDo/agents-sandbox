@@ -311,11 +311,12 @@ printf '\n[Step](https://inoio.github.io/agents-sandbox/install.html#turn-off-ho
 expect "digit-led heading stripped form rejected" 1 "fragment 'turn-off-host-config-fallback' matches no heading in docs/install.md" "$d"
 rm -rf "$d"
 
-# Underscores survive a GFM slug (its \p{Word} class keeps them).
+# An intraword underscore survives a GFM slug (its \p{Word} class keeps it);
+# dropping it is the character-class regression this guards.
 d="$(new_fixture)"
-printf '\n## __init__ hook\n' >>"$d/docs/install.md"
-printf '\n[Hook](https://inoio.github.io/agents-sandbox/install.html#__init__-hook)\n' >>"$d/README.md"
-expect "underscore heading slug" 0 "all internal links are valid" "$d"
+printf '\n## foo_bar baz\n' >>"$d/docs/install.md"
+printf '\n[Hook](https://inoio.github.io/agents-sandbox/install.html#foo_bar-baz)\n' >>"$d/README.md"
+expect "intraword underscore heading slug" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
 # A same-file anchor in a docs page names a heading in that page.
