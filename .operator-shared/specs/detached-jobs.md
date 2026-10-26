@@ -8,7 +8,7 @@ read_if: Working on the VM's dockerd/agent-serve startup, readiness, or restart 
 ## Contract
 
 - `dockerd` and the agent `serve` daemon are launched as microsandbox **runtime-owned detached jobs** through the
-  `internal/sandbox/msb` seam (`Sandbox.ExecDetached` plus a minimal `Job` of `ID/Inspect/Kill/Signal/Logs/Close`). The
+  `internal/sandbox/msb` seam (`Sandbox.ExecDetached` plus a minimal `Job` of `ID/Inspect/Kill/Logs/Close`). The
   runtime owns the process: it survives client disconnect and is inspectable/killable by any later client.
 - **No shell fallback.** The previous `nohup … &` backgrounding, `/var/log/dockerd.log` (and agent `*-serve.log`)
   redirects, `pkill -f '… serve'`, and `pkill dockerd` plumbing are removed. The jobs ABI is an optional native symbol
@@ -16,8 +16,8 @@ read_if: Working on the VM's dockerd/agent-serve startup, readiness, or restart 
   trusts the pinned SDK plus the force-reinstalled private runtime rather than degrading to a shell path.
 - **Readiness is health-probe based**, not `Job.Wait`: `docker info` for dockerd, the agent health endpoint for the
   daemon. Each poll iteration consults `Job.Inspect` and fails fast (structured failure naming the exit code) when the
-  process has exited (`JobInfo.ExitCode != nil`). On timeout it embeds a `Job.Logs` tail (last 100 bytes) and the last
-  health-probe detail instead of a logfile read.
+  process has exited (`JobInfo.ExitCode != nil`). On timeout it embeds a `Job.Logs` tail (`tail=100`, as the runtime
+  interprets the unit) and the last health-probe detail instead of a logfile read.
 - **No live log streaming.** `Job.FollowLogs` is deliberately unused; verbose behaviour is unchanged (the daemon's
   per-poll detail is still logged) and job logs are read only on failure/timeout.
 - **Idempotency is health-probe based.** A healthy dockerd/daemon is left running; before (re)starting, any live job
@@ -53,6 +53,11 @@ read_if: Working on the VM's dockerd/agent-serve startup, readiness, or restart 
   (`RelayIdleState`). A detached job's *existence* does not reset the idle timer, while new job output still does. The
   launcher therefore needs no idle-exempt marker or flag: it just launches the jobs.
 - Verify on a KVM host: a quiet dockerd job lets the VM idle-stop; a busy job keeps it alive.
+- **Open risk in the sibling keepalive paths, verify in the same pass.** `keepVMAlive` (session reaper), `runServeOnly`,
+  and `waitQuiescent` start a *silent* attached `sleep` exec session to hold the VM, on the stated assumption that
+  `active_exec_sessions > 0` suppresses the idle timer. v0.7.11 changed exactly that aggregate, so if the monitor now
+  resets the timer on attached *output* rather than on session existence, a silent keeper no longer holds the VM. Confirm
+  a `--serve-only`/reaper keeper still keeps the VM alive; if it does not, those paths need a different keepalive.
 
 ## Verification
 

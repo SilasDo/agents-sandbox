@@ -146,8 +146,9 @@ the install stage. The install stage runs on the tool base, which carries `curl`
 requirement on the user's base; the runtime prerequisites may be installed in the body or an earlier project stage.
 
 The agent's **guest runtime tools** are declared per agent (`agent.GuestToolRequirer`, implemented by the daemon profiles)
-and rendered into the same final stage after the user body. For `opencode`/`opencode2` they are `curl` (health probe,
-session and worktree calls, notifications), `nohup`, and `pkill` (daemon start/stop); `pi` and `claude-code` run no daemon
+and rendered into the same final stage after the user body. For `opencode`/`opencode2` they are `curl` only (health probe,
+session and worktree calls, notifications) — the runtime-owned detachment job owns process start/stop, so no
+`nohup`/`pkill` is required; `pi` and `claude-code` run no daemon
 and declare none. The check fails the build naming the tool, so a custom base missing one fails at build time rather than
 at the daemon health probe. This is the honest-contract counterpart to #143: the *build's* downloads need no `curl`/`tar`
 from the base (they run on the tool base), but a daemon agent's *runtime* still does. Removing the `curl` requirement

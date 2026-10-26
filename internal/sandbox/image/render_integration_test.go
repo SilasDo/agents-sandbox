@@ -59,15 +59,15 @@ func TestRenderDockerfileBuilds(t *testing.T) {
 			false,
 		},
 		{"managed-base-dind-implied", []byte("FROM agents-sandbox/runner-base-dind:latest\nRUN echo managed\n"), false},
-		// procps-ng is the daemon agent's build-time pkill requirement; Fedora's
-		// base already ships curl, tar, and coreutils (nohup).
+		// The daemon agent's only checked guest runtime tool is curl; Fedora's
+		// base already ships curl and tar (procps is over-installed, no longer
+		// a requirement since the job owns daemon start/stop).
 		{"custom-base-fedora", []byte(
 			"FROM fedora:latest\n" +
 				"RUN dnf install -y curl tar procps-ng && dnf clean all\n"), false},
 		// #143: the image build's downloads run on the tool base, so a custom
-		// base needs no tar; curl and procps are installed only because the
-		// daemon agent's in-VM runtime tools (curl, nohup, pkill) are checked
-		// at build time.
+		// base needs no tar; curl is installed only because the daemon agent's
+		// in-VM runtime tool (curl) is checked at build time.
 		{"custom-base-slim-no-tar", []byte(
 			"FROM debian:trixie-slim\n" +
 				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps && rm -rf /var/lib/apt/lists/*\n"), false},

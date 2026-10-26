@@ -240,7 +240,7 @@ func applyLiveMounts(cfg *msbSdk.SandboxConfig, handle msb.SandboxHandle, ui ter
 	cfg.Volumes = liveMounts
 }
 
-// restartDaemons provisions config files and restarts the agent's daemon so an
+// restartDaemons restarts the agent's daemon so an already-provisioned
 // agent-config change is picked up. Env/secret changes are never routed
 // here: they require a VM rebuild and are handled by the recreate path instead.
 func restartDaemons(ctx context.Context, a agent.Agent, sb msb.Sandbox, serveOnly bool, ui termio.UI) {

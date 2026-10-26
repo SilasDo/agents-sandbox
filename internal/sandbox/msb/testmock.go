@@ -41,12 +41,10 @@ type MockJob struct {
 	Logs_     []msbSdk.JobLogEntry
 	LogsErr   error
 	KillErr   error
-	SignalErr error
 	CloseErr  error
 	InspectFn func(ctx context.Context) (*msbSdk.JobInfo, error)
 	LogsFn    func(ctx context.Context, opts msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error)
 	DidKill   bool
-	DidSignal int
 	DidClose  bool
 }
 
@@ -65,11 +63,6 @@ func (m *MockJob) Inspect(ctx context.Context) (*msbSdk.JobInfo, error) {
 func (m *MockJob) Kill(context.Context) error {
 	m.DidKill = true
 	return m.KillErr
-}
-
-func (m *MockJob) Signal(_ context.Context, signal int) error {
-	m.DidSignal = signal
-	return m.SignalErr
 }
 
 func (m *MockJob) Logs(ctx context.Context, opts msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {

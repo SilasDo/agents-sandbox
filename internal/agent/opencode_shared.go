@@ -7,7 +7,7 @@ import (
 )
 
 // opencodeCmdName is the opencode (v1) shell command the launcher invokes in
-// the VM (serve, attach, --version, pkill).
+// the VM (serve, attach, --version).
 const opencodeCmdName = "opencode"
 
 // opencodeConfigDirName is the opencode (v1) launcher config directory name,

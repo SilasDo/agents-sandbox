@@ -107,9 +107,6 @@ func TestMockJobMethods(t *testing.T) {
 	if err := job.Kill(ctx); err != nil || !job.DidKill {
 		t.Fatalf("Kill() = %v, DidKill=%v; want nil, true", err, job.DidKill)
 	}
-	if err := job.Signal(ctx, 9); err != nil || job.DidSignal != 9 {
-		t.Fatalf("Signal() = %v, DidSignal=%d; want nil, 9", err, job.DidSignal)
-	}
 	if err := job.Close(); err != nil || !job.DidClose {
 		t.Fatalf("Close() = %v, DidClose=%v; want nil, true", err, job.DidClose)
 	}
@@ -202,18 +199,42 @@ func TestRealSandboxDetachedDelegates(t *testing.T) {
 	t.Run("ListJobs paginates", func(t *testing.T) {
 		original := realSandboxListJobs
 		t.Cleanup(func() { realSandboxListJobs = original })
-		page := 0
+		var optsSeen []int
 		realSandboxListJobs = func(_ *msbSdk.Sandbox, _ context.Context, opts ...msbSdk.JobListOption) (*msbSdk.JobPage, error) {
-			page++
-			if page == 1 {
+			optsSeen = append(optsSeen, len(opts))
+			switch len(optsSeen) {
+			case 1:
 				next := "c1"
 				return &msbSdk.JobPage{Items: []msbSdk.JobInfo{{ID: "a"}}, NextCursor: &next}, nil
+			default:
+				return &msbSdk.JobPage{Items: []msbSdk.JobInfo{{ID: "b"}}}, nil
 			}
-			return &msbSdk.JobPage{Items: []msbSdk.JobInfo{{ID: "b"}}}, nil
 		}
 		got, err := (realSandbox{}).ListJobs(ctx)
-		if err != nil || len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" || page != 2 {
-			t.Fatalf("ListJobs() = (%v, err=%v, pages=%d), want [a b] over 2 pages", got, err, page)
+		if err != nil || len(got) != 2 || got[0].ID != "a" || got[1].ID != "b" {
+			t.Fatalf("ListJobs() = (%v, err=%v), want [a b] over 2 pages", got, err)
+		}
+		// Page 1 carries no cursor option; page 2 must carry exactly the cursor.
+		if len(optsSeen) != 2 || optsSeen[0] != 0 || optsSeen[1] != 1 {
+			t.Fatalf("per-page option counts = %v, want [0 1] so page 2 sends the cursor", optsSeen)
+		}
+	})
+
+	t.Run("ListJobs stops on an empty cursor", func(t *testing.T) {
+		original := realSandboxListJobs
+		t.Cleanup(func() { realSandboxListJobs = original })
+		empty := ""
+		calls := 0
+		realSandboxListJobs = func(_ *msbSdk.Sandbox, _ context.Context, _ ...msbSdk.JobListOption) (*msbSdk.JobPage, error) {
+			calls++
+			return &msbSdk.JobPage{Items: []msbSdk.JobInfo{{ID: "a"}}, NextCursor: &empty}, nil
+		}
+		got, err := (realSandbox{}).ListJobs(ctx)
+		if err != nil || len(got) != 1 || got[0].ID != "a" {
+			t.Fatalf("ListJobs() = (%v, err=%v), want [a]", got, err)
+		}
+		if calls != 1 {
+			t.Fatalf("ListJobs made %d calls; an empty cursor must terminate after the first page", calls)
 		}
 	})
 
@@ -264,16 +285,6 @@ func TestRealJobDelegates(t *testing.T) {
 		realJobKill = func(_ *msbSdk.Job, _ context.Context) error { called = true; return nil }
 		if err := (realJob{}).Kill(ctx); err != nil || !called {
 			t.Fatalf("Kill() = %v, called=%v; want nil, true", err, called)
-		}
-	})
-
-	t.Run("Signal", func(t *testing.T) {
-		original := realJobSignal
-		t.Cleanup(func() { realJobSignal = original })
-		got := 0
-		realJobSignal = func(_ *msbSdk.Job, _ context.Context, signal int) error { got = signal; return nil }
-		if err := (realJob{}).Signal(ctx, 15); err != nil || got != 15 {
-			t.Fatalf("Signal() = %v, signal=%d; want nil, 15", err, got)
 		}
 	})
 

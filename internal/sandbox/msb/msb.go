@@ -146,7 +146,6 @@ type Job interface {
 	ID() string
 	Inspect(ctx context.Context) (*msbSdk.JobInfo, error)
 	Kill(ctx context.Context) error
-	Signal(ctx context.Context, signal int) error
 	Logs(ctx context.Context, options msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error)
 	Close() error
 }
@@ -726,7 +725,10 @@ func (s realSandbox) ListJobs(ctx context.Context, opts ...msbSdk.JobListOption)
 		}
 		result = append(result, page.Items...)
 		cursor = page.NextCursor
-		if cursor == nil {
+		// The SDK drops an empty cursor (its listJobs only sends "cursor" when
+		// non-empty), so a pointer to "" means no more pages; treating it as a
+		// live cursor would re-request the first page forever.
+		if cursor == nil || *cursor == "" {
 			return result, nil
 		}
 	}
@@ -746,7 +748,6 @@ var (
 	realJobID               = (*msbSdk.Job).ID
 	realJobInspect          = (*msbSdk.Job).Inspect
 	realJobKill             = (*msbSdk.Job).Kill
-	realJobSignal           = (*msbSdk.Job).Signal
 	realJobLogs             = (*msbSdk.Job).Logs
 	realJobClose            = (*msbSdk.Job).Close
 )
@@ -758,10 +759,6 @@ func (j realJob) Inspect(ctx context.Context) (*msbSdk.JobInfo, error) {
 }
 
 func (j realJob) Kill(ctx context.Context) error { return realJobKill(j.job, ctx) }
-
-func (j realJob) Signal(ctx context.Context, signal int) error {
-	return realJobSignal(j.job, ctx, signal)
-}
 
 func (j realJob) Logs(ctx context.Context, options msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {
 	return realJobLogs(j.job, ctx, options)

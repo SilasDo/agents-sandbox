@@ -4,6 +4,7 @@ package msb
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -63,8 +64,16 @@ func TestJobsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListJobs: %v", err)
 	}
-	if !jobListContains(infos, job.ID()) {
+	info := jobInfoByID(infos, job.ID())
+	if info == nil {
 		t.Fatalf("ListJobs did not contain job %s: %+v", job.ID(), infos)
+	}
+	// killJobsByCommand matches JobInfo.Command as a prefix of [binary, args...],
+	// so the reported shape is load-bearing: if the runtime rewrote it (resolved
+	// argv[0], joined string), stale jobs would never be killed on restart.
+	wantCommand := []string{"sh", "-c", "echo " + sentinel + "; sleep 30"}
+	if len(info.Command) < len(wantCommand) || !slices.Equal(info.Command[:len(wantCommand)], wantCommand) {
+		t.Fatalf("JobInfo.Command = %q, want prefix %q", info.Command, wantCommand)
 	}
 
 	got, getErr := adapter.GetJob(ctx, job.ID())
@@ -84,13 +93,13 @@ func TestJobsRoundTrip(t *testing.T) {
 	awaitExit(t, ctx, job)
 }
 
-func jobListContains(infos []msbSdk.JobInfo, id string) bool {
-	for _, info := range infos {
-		if info.ID == id {
-			return true
+func jobInfoByID(infos []msbSdk.JobInfo, id string) *msbSdk.JobInfo {
+	for i := range infos {
+		if infos[i].ID == id {
+			return &infos[i]
 		}
 	}
-	return false
+	return nil
 }
 
 func awaitLogs(t *testing.T, ctx context.Context, job Job, sentinel string) {

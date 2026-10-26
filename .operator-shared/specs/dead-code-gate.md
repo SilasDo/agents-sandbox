@@ -133,7 +133,7 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
 - **The baseline is resolved, not merely marked.** The gate must be green from the commit that introduces it, or it is
   never switched on. Triaging the 21 scattered findings showed 9 are intentional test seams (`agent.Register`,
   `git.RepoSlug`, `git.CheckoutSlug`, `viperconfig.NewResolverWithConfig`, `docker.RealClient`,
-  `image.WithMockAgentVersion`, `image.WithMockAgentVersionResolver`, `vm.SetDaemonShellFunc`,
+  `image.WithMockAgentVersion`, `image.WithMockAgentVersionResolver`, `vm.SetDaemonHealthFunc`,
   `vm.SetRuntimeHomeMigrationOffer`) and carry a reason-bearing marker, while **12 are genuinely dead and are deleted**:
   `homeconfig.MergeManifests` / `BuildHomeFiles` / `DescribeManifest` (superseded by the production
   `BuildHomeFilesWithModes` / `DescribeLayers` / `LoadLayers`), `upgrade.IsNewer` (a wrapper existing only for its own
@@ -152,7 +152,7 @@ All measured on this VM on 2026-10-21 with `golang.org/x/tools/cmd/deadcode@v0.5
   ResolveIdentity fields"; `viperconfig.NewResolverWithConfig` "construction seam for cmd tests; see doc comment";
   `docker.RealClient` "integration tests opt back into the real docker daemon"; `image.WithMockAgentVersion` "test seam
   establishing a pinned agent version"; `image.WithMockAgentVersionResolver` "test seam establishing a custom agent
-  version resolver"; `vm.SetDaemonShellFunc` "test seam replacing the daemon shell"; `vm.SetRuntimeHomeMigrationOffer`
+  version resolver"; `vm.SetDaemonHealthFunc` "test seam replacing the daemon health"; `vm.SetRuntimeHomeMigrationOffer`
   "test seam replacing the runtime migration offer". Marking a genuinely dead function to silence the gate is the rubber
   stamp the anti-goals forbid.
 - **The gate has flagged two more seams on code that landed after it was designed** — the dry-run preview's
