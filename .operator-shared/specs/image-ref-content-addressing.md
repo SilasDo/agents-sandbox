@@ -56,6 +56,16 @@ label fallback for a legacy image with no digest), never overridden by a label m
 name ref by parsing `info.DockerTag` for its `(slug, agent)` (the Docker tag still names them), since it cannot derive it
 from `Ref` once that is content-addressed; no new `ImageInfo` field is needed.
 
+### Reconfig tolerance
+
+`decideReconfig`'s image comparison (`reconfig.sameImageIdentity`) treats the content, prefix-free-name and
+prefixed-Docker-tag spellings of one `(slug, agent)` as the same image, so a VM created under an older spelling is not
+recreated merely because the launcher now computes a content ref. A genuine content change is gated separately by the
+image digest (`hs.ImageDigest != imageInfo.Digest` sets the recreate flag in `vm.decideReconfig`), so `sameImageIdentity`
+compares `(Slug, Agent)` for non-digest runner refs and never keys on `ContentID`. A digest-pinned or non-runner ref
+remains equal only to itself. Without this, every existing install takes a pointless VM recreate on first run even though
+the digest is unchanged — the recreate the spec's migration clause forbids.
+
 ### Parse and ownership
 
 `naming.ParseImageTag` gains the content shape and `ArtifactInfo` gains a `ContentID` field:
@@ -130,7 +140,8 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
   once; the second and third runs import nothing (`--verbose` shows no `loading image ... into microsandbox`).
 - Same for an agent-version bump and back, and for a project-Dockerfile edit and back.
 - An existing 0.6.0 install (cached under `<slug>:<agent>-latest`) and a pre-0.6 install (cached under the prefixed ref)
-  each keep their cache when the content matches — no reimport on upgrade.
+  each keep their cache when the content matches — no reimport on upgrade, and no VM recreate while the image digest is
+  unchanged (`reconfig.sameImageIdentity` tolerates the content spelling).
 - `image list` shows every content ref; `image remove <content-ref>` refuses while a kept sandbox holds it and otherwise
   removes it; `image prune` keeps a live project's recent variants and removes a retired project's refs and aged-out
   variants (dry-run reports the same).
