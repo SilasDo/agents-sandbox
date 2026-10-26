@@ -10,11 +10,15 @@ import (
 
 var autoPruneOnce sync.Once
 
+// autoPruneDefaultThreshold is the stale-age threshold used when AutoPrune is
+// called with a zero threshold.
+var autoPruneDefaultThreshold = 30 * 24 * time.Hour
+
 // AutoPrune runs the prune logic once per process with the given threshold.
-// Threshold of 0 defaults to 30 days.
+// Threshold of 0 defaults to autoPruneDefaultThreshold.
 func AutoPrune(ctx context.Context, threshold time.Duration, dryRun bool, ui termio.UI) {
 	if threshold == 0 {
-		threshold = 30 * 24 * time.Hour
+		threshold = autoPruneDefaultThreshold
 	}
 	autoPruneOnce.Do(func() {
 		report, err := Prune(ctx, threshold, dryRun, ui)

@@ -138,10 +138,197 @@ func TestParseHomeVolumeNameEdgeCases(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: "agents-sandbox-vm-1mjusbm3wikhb0", Agent: "opencode"},
 		ParseHomeVolumeName("agents-sandbox-vm-1mjusbm3wikhb0-opencode-20260812T123456"))
 	require.Equal(t, ArtifactInfo{Slug: "single"}, ParseHomeVolumeName("agents-sandbox-home-single"))
+	// A prefix-free name with no embedded hash is not ours.
+	require.Equal(t, ArtifactInfo{}, ParseHomeVolumeName("foo-bar"))
 }
 
 func TestAllDigits(t *testing.T) {
 	require.False(t, allDigits(""))
 	require.False(t, allDigits("12a"))
 	require.True(t, allDigits("12"))
+	// A character below '0' must not pass as a digit.
+	require.False(t, allDigits("1/2"))
+	require.False(t, allDigits("/"))
+}
+
+func TestLooksLikeProjectSlug(t *testing.T) {
+	require.False(t, looksLikeProjectSlug(""))
+	require.False(t, looksLikeProjectSlug("a/b"))
+	require.True(t, looksLikeProjectSlug("foo"))
+}
+
+// TestFindHashSuffixBoundaries pins every bound of the right-to-left scan: the
+// loop's lower limit, the '-'-preceded guard, the 14-char window, and both
+// edges of the base36 predicate. Each case distinguishes the original from a
+// loop/boundary or operand-removal mutation.
+func TestFindHashSuffixBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		want int
+	}{
+		// The hash is the whole name body at index 1 (loop lower bound 1).
+		{"-abcdefghijklmn", 1},
+		// Index 1 is a valid run, but not preceded by '-', so it must not anchor.
+		{"0abcdefghijklmn", -1},
+		// End-anchored run after a leading segment; the 14-char window is exact.
+		{"a-abcdefghijklmn", 2},
+		{"myproj-1mjusbm3wikhb0", 7},
+		// A 14-char run containing '{' (outside a-z) is not a hash.
+		{"x-abcdefghijklm{", -1},
+		// A run ending in 'z' or '9' is still base36.
+		{"x-abcdefghijklmz", 2},
+		{"x-abcdefghijklm9", 2},
+		// No run at all.
+		{"short", -1},
+		{"", -1},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, findHashSuffix(tc.name), tc.name)
+	}
+}
+
+func TestIsBase36HashBoundaries(t *testing.T) {
+	require.False(t, isBase36Hash(""))
+	require.False(t, isBase36Hash("abc"))
+	require.False(t, isBase36Hash("abcdefghijklmA"))
+	require.False(t, isBase36Hash("abcdefghijklm{"))
+	require.False(t, isBase36Hash("abcdefghijklm/"))
+	require.True(t, isBase36Hash("abcdefghijklmz"))
+	require.True(t, isBase36Hash("abcdefghijklm0"))
+	require.True(t, isBase36Hash("1mjusbm3wikhb0"))
+}
+
+func TestIsHomeTimestampBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"20260812T123456", true},
+		{"20260101T120009", true},
+		{"30000000T000000", true},
+		// s[0] outside '2'..'3'.
+		{"40000000T123456", false},
+		{"10000000T123456", false},
+		// Non-digit in the time/date body.
+		{"20260101T12/000", false},
+		{"20260101T12:000", false},
+		{"20260101X120000", false},
+		// Wrong length.
+		{"20260101T12345", false},
+		{"20260101T1234567", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, isHomeTimestamp(tc.name), tc.name)
+	}
+}
+
+// TestParseImageRemainder pins the slug/agent/digest split and the foreign-ref
+// rejection on both the colon and no-colon paths, for the prefixed and
+// prefix-free forms.
+func TestParseImageRemainder(t *testing.T) {
+	require.Equal(t, ArtifactInfo{}, parseImageRemainder("docker.io/library/foo", false))
+	require.Equal(t, ArtifactInfo{}, parseImageRemainder("docker.io/library/foo:1", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug", Agent: "opencode"},
+		parseImageRemainder("slug:opencode-latest", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug"}, parseImageRemainder("slug:", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug"}, parseImageRemainder("slug:latest", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug", Digest: "deadbeef"},
+		parseImageRemainder("slug:deadbeef", false))
+	require.Equal(t, ArtifactInfo{Slug: "anything"}, parseImageRemainder("anything", true))
+	require.Equal(t, ArtifactInfo{Slug: "docker.io/foo"}, parseImageRemainder("docker.io/foo", true))
+	// A prefix-free body with no tag is accepted as a bare slug...
+	require.Equal(t, ArtifactInfo{Slug: "foo"}, parseImageRemainder("foo", false))
+	// ...while a prefixed body keeps a slash-containing slug and its digest tag.
+	require.Equal(t, ArtifactInfo{Slug: "docker.io/foo", Digest: "tag"},
+		parseImageRemainder("docker.io/foo:tag", true))
+}
+
+// TestParseSandboxBodyBranches pins the anchored split of a sandbox body: the
+// empty tail, a single-segment tail (agent), a single all-digit tail (still the
+// agent, not a task), and an agent plus a nanos tail (task).
+func TestParseSandboxBodyBranches(t *testing.T) {
+	cases := []struct {
+		remainder string
+		want      ArtifactInfo
+	}{
+		{fixtureSlug, ArtifactInfo{Slug: fixtureSlug}},
+		{fixtureSlug + "-x", ArtifactInfo{Slug: fixtureSlug, Agent: "x"}},
+		{fixtureSlug + "-123", ArtifactInfo{Slug: fixtureSlug, Agent: "123"}},
+		{
+			fixtureSlug + "-opencode-1729000000000000000",
+			ArtifactInfo{Slug: fixtureSlug, Agent: "opencode", Task: true},
+		},
+	}
+	for _, tc := range cases {
+		got, anchored := parseSandboxBody(tc.remainder, false)
+		if !anchored {
+			t.Errorf("parseSandboxBody(%q) anchored = false, want true", tc.remainder)
+		}
+		if got != tc.want {
+			t.Errorf("parseSandboxBody(%q) = %+v, want %+v", tc.remainder, got, tc.want)
+		}
+	}
+}
+
+// TestLegacyDigestNameBranches pins the two-hash legacy digest recognition and
+// its guards: an inner hash run must exist and reach the end of the inner part.
+func TestLegacyDigestNameBranches(t *testing.T) {
+	cases := []struct {
+		name      string
+		remainder string
+		hashStart int
+		wantSlug  string
+		wantDig   string
+		wantOK    bool
+	}{
+		{
+			// Inner hash at index 1 ending the inner part: recognised.
+			"inner hash at end",
+			"-abcdefghijklmn-abcdefghijklmn",
+			16,
+			"-abcdefghijklmn",
+			"abcdefghijklmn",
+			true,
+		},
+		{
+			// Inner hash at index 1 but not at the inner end: rejected.
+			"inner hash not at end",
+			"-abcdefghijklmn-X-abcdefghijklmn",
+			18,
+			"",
+			"",
+			false,
+		},
+		{
+			// No inner hash and a 13-char inner part: rejected without slicing.
+			"no inner hash",
+			"aaaaaaaaaaaaa-abcdefghijklmn",
+			14,
+			"",
+			"",
+			false,
+		},
+	}
+	for _, tc := range cases {
+		slug, digest, ok := legacyDigestName(tc.remainder, tc.hashStart)
+		if ok != tc.wantOK || slug != tc.wantSlug || digest != tc.wantDig {
+			t.Errorf("%s: legacyDigestName(%q, %d) = (%q, %q, %v), want (%q, %q, %v)",
+				tc.name, tc.remainder, tc.hashStart, slug, digest, ok, tc.wantSlug, tc.wantDig, tc.wantOK)
+		}
+	}
+}
+
+// TestParseHomeVolumeNameBoundaries pins the no-hash positional split: the
+// legacy timestamp tail, the optional preceding agent segment (and its
+// base36-hash exclusion), and the digest fallback.
+func TestParseHomeVolumeNameBoundaries(t *testing.T) {
+	require.Equal(t, ArtifactInfo{Slug: "proj", Agent: "agent"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-agent-20260812T123456"))
+	require.Equal(t, ArtifactInfo{Slug: "proj"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-20260812T123456"))
+	require.Equal(t, ArtifactInfo{Slug: "proj", Digest: "deadbeef"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-deadbeef"))
+	// A hash-anchored name with an empty tail.
+	require.Equal(t, ArtifactInfo{Slug: fixtureSlug}, ParseHomeVolumeName(fixtureSlug))
 }

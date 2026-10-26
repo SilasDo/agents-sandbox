@@ -206,4 +206,23 @@ func TestPruneSandboxes(t *testing.T) {
 			t.Errorf("WarnCalls = %v, want none for replaced/gone skips", ui.WarnCalls)
 		}
 	})
+
+	t.Run("prunes stopped task sandboxes carried in Tasks", func(t *testing.T) {
+		task := stoppedHandle("agents-sandbox-task-fill-1mjusbm3wikhb0-opencode-1729")
+		client := &msb.MockMsbClient{}
+		msb.WithMsbMock(t, client)
+		ui := &termio.Mock{}
+		r, err := PruneSandboxes(
+			context.Background(),
+			PruneState{Tasks: []msb.SandboxHandle{task}},
+			false,
+			ui,
+		)
+		if err != nil {
+			t.Fatalf("PruneSandboxes: %v", err)
+		}
+		if r.VMsPruned != 1 || !task.DidRemove() {
+			t.Errorf("task sandbox not pruned: pruned=%d removed=%v", r.VMsPruned, task.DidRemove())
+		}
+	})
 }

@@ -77,6 +77,17 @@ The source data is the **37 JSON reports attached to `#268`**, treated as an imm
   turn that spreads across all 35 pays for all 35. Prefer concentrating a turn in fewer packages.
 - Inside a unit, survivors are ordered **by mutant type**, using `guides/mutation-triage.md` as the playbook: a worker
   that closes ten `ERRORF_WRAP`s back to back applies `errors.Is`/`errors.AsType` once instead of re-deriving it.
+- **The order that made turn 3's single-agent sweep work: re-sweep first, drive off the fresh report, batch by type
+  within a file, and restructure an order-dependent loop/comparator first.** (1) Re-sweep before working: the attached
+  snapshot drifts (its mutant counts and even the functions it names go stale), so the fresh per-package LIVED set is
+  the worklist. (2) The **fresh report is the one with mutant types** — a posted residual summary often carries only
+  `file:line` and function names, which cannot be batched; take `(file, type, original → replacement)` from the sweep's
+  `mutation-report.json` (and, when only counts were posted, the per-package `jq` extracts survive in the session's
+  shell-output logs). (3) Batch same-type survivors inside one file. (4) Restructure an order-dependent loop or
+  comparator **before** the rest: a pre-sorted loop makes a redundant `sort.Slice` untestable, and a map-ordered loop
+  makes a `continue`→`break` non-deterministic, so make the iteration order deterministic and the comparator
+  load-bearing (or delete the redundant construct) first — otherwise later test edits are written against masked
+  ordering and have to be redone.
 - **Max unit size is discovered in the first turns.** A package is not a unit: in `internal/sandbox/vm`, 109 of 310
   survivors sit in `vm_lifecycle.go` and 61 in `reconfig.go`. The first real turn fixed the working figure: **one
   file-cluster of ≲10 survivors per worker** (e.g. `internal/sandbox/doctor`'s eight, all in `testmock.go`, closed

@@ -26,6 +26,7 @@ func sanitizeFolderName(name string) string {
 		return r < '0' || (r > '9' && r < 'a') || r > 'z'
 	})
 	s := strings.Join(fields, "-")
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="at len(s)==maxFolderNameLen both > and >= slice to the same unchanged string, and below it neither truncates"
 	if len(s) > maxFolderNameLen {
 		s = s[:maxFolderNameLen]
 	}
@@ -36,6 +37,9 @@ func HashID(input string) string {
 	sum := sha256.Sum256([]byte(input))
 	num := new(big.Int).SetBytes(sum[:])
 	encoded := num.Text(base)
+	// A base36 rendering of a SHA-256 value is never exactly hashIDLen chars
+	// (it is 1 for the all-zero hash and >=49 otherwise), so >= and > agree.
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the base36 of a 256-bit value is never 14 chars long, so the boundary value is unreachable and > and >= agree for every input"
 	if len(encoded) > hashIDLen {
 		encoded = encoded[:hashIDLen]
 	}
@@ -120,6 +124,7 @@ func resolveGitDir(root string) string {
 // linked worktrees and are never treated as outside.
 func isLinkedWorktree(root string) bool {
 	dir, ok := gitdirFile(root)
+	// gomutants:disable-next-line BRANCH_IF reason="with no gitdir the fall-through calls worktreeRegistration(root, \"\"), whose empty-name check returns false, exactly like this branch"
 	if !ok {
 		return false
 	}
@@ -137,8 +142,10 @@ func isLinkedWorktree(root string) bool {
 // validated before being stripped, and a relative gitdir is validated against
 // root.
 func worktreeRegistration(root, gitdir string) (string, bool) {
-	shared, name, found := strings.CutLast(gitdir, "/worktrees/")
-	if !found || name == "" || strings.Contains(name, "/") {
+	// strings.CutLast returns an empty name when the separator is absent, so
+	// the empty-name check below already rejects a non-registration gitdir.
+	shared, name, _ := strings.CutLast(gitdir, "/worktrees/")
+	if name == "" || strings.Contains(name, "/") {
 		return "", false
 	}
 	candidate := gitdir
@@ -160,11 +167,10 @@ func worktreeRegistration(root, gitdir string) (string, bool) {
 // directory, missing, unreadable, or lacks the "gitdir:" prefix.
 func gitdirFile(root string) (string, bool) {
 	path := filepath.Join(root, ".git")
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return "", false
-	}
+	// Reading .git directly rejects a directory, a missing entry, and an
+	// unreadable file alike, so no separate stat is needed to classify them.
 	data, err := os.ReadFile(path)
+	// gomutants:disable-next-line BRANCH_IF reason="with no data read, the CutPrefix below finds no gitdir: prefix and returns the same (\"\", false)"
 	if err != nil {
 		return "", false
 	}
@@ -180,15 +186,20 @@ func gitdirFile(root string) (string, bool) {
 // and URLs with an explicit scheme (https://host/org/repo.git).
 func lastPathSegment(url string) string {
 	s := url
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY,INTEGER_INCREMENT,BRANCH_IF reason="the later LastIndex('/') strip discards the scheme for every input, so dropping or shifting the '://' strip cannot change the final segment"
 	if i := strings.Index(s, "://"); i >= 0 {
+		// gomutants:disable-next-line STATEMENT_REMOVE,ARITHMETIC_BASE,INTEGER_DECREMENT reason="the later LastIndex('/') strip discards the scheme for every input, so skipping or shifting the strip cannot change the final segment"
 		s = s[i+3:]
 	}
+	// gomutants:disable-next-line INTEGER_DECREMENT reason="i>=-1 is always true and the i+1 slice is a no-op when i is -1"
 	if i := strings.Index(s, "@"); i >= 0 {
 		s = s[i+1:]
 	}
+	// gomutants:disable-next-line INTEGER_DECREMENT reason="i>=-1 is always true and the i+1 slice is a no-op when i is -1"
 	if i := strings.LastIndex(s, "/"); i >= 0 {
 		s = s[i+1:]
 	}
+	// gomutants:disable-next-line INTEGER_DECREMENT reason="i>=-1 is always true and the i+1 slice is a no-op when i is -1"
 	if i := strings.LastIndex(s, ":"); i >= 0 {
 		s = s[i+1:]
 	}

@@ -54,6 +54,8 @@ func TestResolveIdentityRepoWithOrigin(t *testing.T) {
 	require.False(t, id.OutsideWorktree)
 	require.Equal(t, root, id.BindRoot)
 	require.Equal(t, root, id.CheckoutRoot)
+	// A non-bare checkout never records a legacy (path-derived) slug.
+	require.Empty(t, id.LegacyRepoSlugs)
 }
 
 func TestResolveIdentityClonesShareRepoSlug(t *testing.T) {
@@ -147,6 +149,47 @@ func TestResolveIdentitySubdirectoryMatchesCheckoutRoot(t *testing.T) {
 	require.Equal(t, root, got.BindRoot)
 	require.Equal(t, root, got.CheckoutRoot)
 	require.False(t, got.OutsideWorktree)
+}
+
+// TestResolveIdentityIgnoresCwdForNonRepo pins the empty-worktree-root
+// short-circuit: a cwd that happens to hold a ".git" entry must not leak into
+// the identity of an unrelated directory that has none.
+func TestResolveIdentityIgnoresCwdForNonRepo(t *testing.T) {
+	cwdWithGit := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(cwdWithGit, ".git"), 0o755))
+	t.Chdir(cwdWithGit)
+
+	dir := resolvePath(t.TempDir())
+	got := ResolveIdentity(dir)
+	want := projectSlug(sanitizeFolderName(filepath.Base(dir)), dir)
+	require.Equal(t, want, got.RepoSlug)
+	require.Equal(t, want, got.CheckoutSlug)
+	require.Equal(t, dir, got.BindRoot)
+	require.Empty(t, got.CheckoutRoot)
+}
+
+// TestResolveIdentityResolvesSymlinkedWorktreeGitDir pins that the recorded
+// shared git dir is symlink-resolved before it is hashed: a linked worktree
+// whose .git names the shared dir through a symlink must still share its
+// checkout's slug.
+func TestResolveIdentityResolvesSymlinkedWorktreeGitDir(t *testing.T) {
+	const origin = "https://example.com/acme/widget.git"
+	repo := resolvePath(testutil.InitRepo(t))
+	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
+	main := ResolveIdentity(repo)
+
+	nested := filepath.Join(repo, "nested", "wt")
+	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
+	testutil.RunGit(t, repo, "worktree", "add", nested)
+
+	link := filepath.Join(resolvePath(t.TempDir()), "repo-link")
+	require.NoError(t, os.Symlink(repo, link))
+	shared := filepath.Join(link, ".git", "worktrees", "wt")
+	require.NoError(t, os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: "+shared+"\n"), 0o644))
+
+	got := ResolveIdentity(nested)
+	require.False(t, got.OutsideWorktree)
+	require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
 }
 
 func TestResolveIdentityNonRepoDirectory(t *testing.T) {

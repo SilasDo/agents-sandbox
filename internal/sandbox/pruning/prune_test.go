@@ -280,6 +280,22 @@ func TestPrune_BuildStateError(t *testing.T) {
 	}
 }
 
+func TestPruneSurfacesSubPrunerError(t *testing.T) {
+	client := &msb.MockMsbClient{
+		ListVolumesFn: func(context.Context) ([]msb.VolumeHandle, error) {
+			return nil, errBoom
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+	cp.WithMockConfigPaths(t)
+	testUI := termio.NewTestMock(t)
+	_, err := Prune(context.Background(), 7*24*time.Hour, false, &testUI)
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("expected the volume sub-pruner error to surface, got %v", err)
+	}
+}
+
 func TestRenderPruneSummary_NilReport(t *testing.T) {
 	ui := &termio.Mock{}
 	RenderPruneSummary(ui, nil, false)

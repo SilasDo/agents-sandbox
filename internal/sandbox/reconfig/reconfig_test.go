@@ -2,6 +2,7 @@ package reconfig
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -120,12 +121,15 @@ func TestResolveReconfigPromptAKeep(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return "q", nil // quit
 	}
-	applyRecreate, _, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err == nil {
 		t.Error("expected quit to abort (return an error)")
 	}
 	if applyRecreate {
 		t.Error("quit must not apply recreate")
+	}
+	if applyRestart {
+		t.Error("quit must not apply restart")
 	}
 }
 
@@ -232,5 +236,67 @@ func TestResolveReconfigPromptBRestart(t *testing.T) {
 	}
 	if !applyRestart {
 		t.Error("expected applyRestart=true for restart selection")
+	}
+}
+
+func TestResolveReconfigAloneRecreateNoRestart(t *testing.T) {
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), &termio.Mock{}, &Plan{Recreate: true}, 0, nil)
+	if err != nil || !applyRecreate || applyRestart {
+		t.Errorf("alone recreate: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	}
+}
+
+func TestResolveReconfigAloneRestartNoRecreate(t *testing.T) {
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), &termio.Mock{}, &Plan{RestartDaemons: true}, 0, nil)
+	if err != nil || applyRecreate || !applyRestart {
+		t.Errorf("alone restart: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	}
+}
+
+func TestResolveReconfigNoActionReturnsNothing(t *testing.T) {
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), &termio.Mock{}, &Plan{}, 0, nil)
+	if err != nil || applyRecreate || applyRestart {
+		t.Errorf("no-action: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	}
+}
+
+// TestResolveReconfigPromptAKeepDefers pins the keep path: a non-quit answer to
+// the recreate prompt returns without applying anything.
+func TestResolveReconfigPromptAKeepDefers(t *testing.T) {
+	ui := &termio.Mock{}
+	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return keepKey, nil }
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), ui, &Plan{Recreate: true}, 1, nil)
+	if err != nil || applyRecreate || applyRestart {
+		t.Errorf("keep: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	}
+}
+
+// TestResolveReconfigPromptAErrorDefers pins that a prompt error is swallowed
+// even when the prompt also reports the quit key.
+func TestResolveReconfigPromptAErrorDefers(t *testing.T) {
+	ui := &termio.Mock{}
+	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
+		return quitKey, errors.New("select failed")
+	}
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), ui, &Plan{Recreate: true}, 1, nil)
+	if err != nil || applyRecreate || applyRestart {
+		t.Errorf("prompt A error: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	}
+}
+
+func TestResolveReconfigPromptBErrorDefers(t *testing.T) {
+	ui := &termio.Mock{}
+	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
+		return quitKey, errors.New("select failed")
+	}
+	applyRecreate, applyRestart, err := ResolveReconfig(
+		context.Background(), ui, &Plan{RestartDaemons: true}, 1, nil)
+	if err != nil || applyRecreate || applyRestart {
+		t.Errorf("prompt B error: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
 	}
 }

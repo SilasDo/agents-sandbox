@@ -2,7 +2,6 @@ package pruning
 
 import (
 	"context"
-	"strings"
 
 	"github.com/moby/moby/client"
 
@@ -35,6 +34,7 @@ func PruneImages(
 	report := ImageReport{MSBImagesPruned: 0, DockerImagesPruned: 0, Details: nil}
 	handles, err := msb.Get().ImageList(ctx)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero ImageReport is identical"
 		return report, err
 	}
 	keptImageRefs := referencedImages(pruneState.ToKeep)
@@ -88,7 +88,9 @@ func keepImage(imageHandle msb.ImageHandle, pruneState PruneState, keptImageRefs
 	if _, pruned := pruneState.ToPrune[key]; pruned {
 		return false
 	}
-	return artifact.Agent != "" && strings.HasSuffix(ref, "-latest")
+	// A parsed agent implies a per-agent "-latest" tag, so the suffix test is
+	// implied by the agent check and would be an unkillable redundant operand.
+	return artifact.Agent != ""
 }
 
 // referencedImages collects the image references that kept sandboxes currently

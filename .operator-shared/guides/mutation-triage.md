@@ -35,6 +35,23 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `true && p == "!"`, which is the original. A same-line or `disable-next-line` directive is **type-scoped** (it cannot
   name a stable-id), so recording that one also suppresses the *killable* sibling. Delete the redundant operand — the
   mutant ceases to exist — and let the surviving condition be killed normally.
+- **A later strip or short-circuit can make an earlier one unobservable, so hand-apply before recording.** In
+  `internal/git`, `lastPathSegment`'s `://` strip, its `>= 0` bounds, and its `+3` arithmetic are all masked by the
+  following `LastIndex("/")` strip: for any URL containing `://` the scheme is discarded either way, so those mutants
+  are equivalent and recorded, not killed. Check whether a subsequent operation already throws the mutated value away.
+- **A stdlib guarantee can make one operand of a condition redundant; delete it, do not record it.** `strings.CutLast`
+  returns an empty `name` whenever the separator is absent, so `if !found || name == "" || strings.Contains(name, "/")`
+  is exactly `if name == "" || strings.Contains(name, "/")`. A line-scoped `disable` for the `!found` operand would also
+  suppress the killable `name == ""` and `Contains` siblings on the same line, so remove the `!found` operand (taking
+  `CutLast`'s third result as `_`) instead.
+- **Splitting a guard to narrow a type-scoped exclusion can mint a new equivalent survivor.** `gitdirFile`'s `if err !=
+  nil || info.IsDir()` bundled a killable operand (`err != nil` removal leaves `info` nil, so `info.IsDir()` panics on a
+  missing `.git`) with a redundant one (`info.IsDir()`: a directory makes the following `os.ReadFile` fail identically).
+  Splitting into two `if`s exposes the killable operand but the added `return "", false` mints an unobservable
+  `RETURN_TRUE` — `("", true)` for a directory is invisible because `resolveGitDir` returns before `gitdirFile` for a
+  directory and `isLinkedWorktree`'s `worktreeRegistration(root, "")` rejects it. Delete the redundant operand instead
+  (drop the stat; let `os.ReadFile` reject the directory), which removes the mutant family rather than recording a new
+  one.
 - **A guard can be operationally equivalent to its fall-through.** `if err := json.Unmarshal(...); err != nil { return
   "", false }` is indistinguishable from falling through to `return resp.Directory, resp.Directory != ""` for every
   payload *except* one that sets the field and then errors — a duplicate JSON key

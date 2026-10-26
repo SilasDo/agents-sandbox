@@ -2,6 +2,9 @@ package pruning
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -28,11 +31,13 @@ func PruneVolumes(
 	report := VolumeReport{VolumesPruned: 0, Details: nil}
 	handles, err := msb.Get().ListVolumes(ctx)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero VolumeReport is identical"
 		return report, err
 	}
 	exists := countVolumesByKey(handles)
 	references, err := state.HomeVolumeReferences()
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero VolumeReport is identical"
 		return report, err
 	}
 	removed := pruneHomeVolumes(ctx, handles, pruneState, references, dryRun, ui, &report)
@@ -104,16 +109,25 @@ func pruneHomeVolumes(
 }
 
 // removeStateForGoneKeys removes the state file for keys whose last home
-// volume was removed in this run.
+// volume was removed in this run. Keys are visited in a stable order so a
+// skipped key never determines whether a later one is processed.
 func removeStateForGoneKeys(ui termio.UI, removed, exists map[state.Key]int) {
-	for key, count := range removed {
-		if count < exists[key] {
+	for _, key := range slices.SortedFunc(maps.Keys(removed), compareStateKey) {
+		if removed[key] < exists[key] {
 			continue
 		}
 		if err := state.RemoveHomeState(key); err != nil {
 			ui.Warnf("failed to remove state file for key (slug %s, agent %s): %v", key.Slug, key.Agent, err)
 		}
 	}
+}
+
+// compareStateKey orders project keys by slug then agent.
+func compareStateKey(a, b state.Key) int {
+	if c := strings.Compare(a.Slug, b.Slug); c != 0 {
+		return c
+	}
+	return strings.Compare(a.Agent, b.Agent)
 }
 
 func RenderVolumeReport(ui termio.UI, r VolumeReport, dryRun bool) {

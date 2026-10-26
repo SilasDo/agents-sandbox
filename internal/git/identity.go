@@ -87,7 +87,7 @@ func ResolveIdentity(cwd string) Identity {
 			sanitizeFolderName(filepath.Base(worktreeRoot)),
 			worktreeRoot,
 		); legacy != repoSlug &&
-			legacy != checkoutSlug {
+			legacy != checkoutSlug { // gomutants:disable EXPRESSION_REMOVE reason="when reached, commonGitDir differs from the worktree root, so this legacy slug never equals the common-dir-derived checkout slug"
 			identity.LegacyRepoSlugs = []string{legacy}
 		}
 	}

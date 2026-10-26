@@ -31,6 +31,7 @@ func buildPruneState(ctx context.Context, age time.Duration) (PruneState, error)
 	}
 	handles, err := msb.Get().ListSandboxes(ctx, nil)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="every caller returns immediately on this error, discarding the PruneState, so its zero versus initialized maps are unobservable"
 		return result, err
 	}
 	for _, h := range handles {
@@ -74,5 +75,6 @@ func prunable(h msb.SandboxHandle, age time.Duration) bool {
 	if !msb.IsSandboxInactive(h.Status()) {
 		return false
 	}
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the boundary is an exact nanosecond equality between time.Since and the threshold, with no injectable clock to hit it; >= and > agree on every reachable input"
 	return time.Since(h.UpdatedAt()) >= age
 }

@@ -68,7 +68,7 @@ func findHashSuffix(name string) int {
 			c := name[i+j]
 			if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 				ok = false
-				break
+				break // gomutants:disable INVERT_LOOP_CTRL reason="ok is only ever cleared here, never set again, so breaking and continuing both leave it false and the outer check unchanged"
 			}
 		}
 		if ok {
@@ -98,8 +98,10 @@ func ParseImageTag(name string) ArtifactInfo {
 
 func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	before, after, ok := strings.CutLast(remainder, ":")
+	// gomutants:disable-next-line BRANCH_IF reason="without a ':' CutLast returns before==remainder and after=='', so falling through yields the same slug-only (or foreign-zero) result this branch computes"
 	if !ok {
 		if !prefixed && !looksLikeProjectSlug(remainder) {
+			// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 			return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 		}
 		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", Task: false}
@@ -107,12 +109,13 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	tag := after
 	slug := before
 	if !prefixed && !looksLikeProjectSlug(slug) {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	if agent, ok := strings.CutSuffix(tag, "-latest"); ok {
 		return ArtifactInfo{Slug: slug, Agent: agent, Digest: "", Task: false}
 	}
-	if tag != "" && tag != "latest" {
+	if tag != "latest" {
 		return ArtifactInfo{Slug: slug, Digest: tag, Agent: "", Task: false}
 	}
 	return ArtifactInfo{Slug: slug, Digest: "", Agent: "", Task: false}
@@ -217,7 +220,10 @@ func parseSandboxBody(remainder string, task bool) (ArtifactInfo, bool) {
 	hash := remainder[hashStart : hashStart+14]
 	slug := folderName + "-" + hash
 	rest := remainder[hashStart+14:]
-	if len(rest) < 2 || rest[0] != '-' {
+	// The hash is hyphen-delimited, so rest is empty or begins with '-'; a bare
+	// "-" carries no agent.
+	// gomutants:disable-next-line INTEGER_DECREMENT reason="the only one-character rest is \"-\", which falls through to the same slug-only result this early return produces"
+	if len(rest) < 2 {
 		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}, true
 	}
 	rest = rest[1:]
@@ -247,6 +253,7 @@ func ParseHomeVolumeName(name string) ArtifactInfo {
 		if info, anchored := parseHomeVolumeBody(name, false); anchored {
 			return info
 		}
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	default:
 		return parseHomeVolumeRemainder(name, false)
@@ -272,7 +279,9 @@ func parseHomeVolumeBody(remainder string, prefixed bool) (ArtifactInfo, bool) {
 }
 
 func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
+	// gomutants:disable-next-line BRANCH_IF reason="an empty remainder finds no hash and, prefixed or not, the fall-through returns the same zero ArtifactInfo this branch returns"
 	if remainder == "" {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	if hashStart := findHashSuffix(remainder); hashStart != -1 {
@@ -283,9 +292,6 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 		hash := remainder[hashStart : hashStart+14]
 		slug := folderName + "-" + hash
 		tail := strings.TrimPrefix(remainder[hashStart+14:], "-")
-		if tail == "" {
-			return ArtifactInfo{Slug: slug, Digest: "", Agent: "", Task: false}
-		}
 		parts := strings.Split(tail, "-")
 		last := parts[len(parts)-1]
 		if isHomeTimestamp(last) {
@@ -296,6 +302,7 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// A prefix-free home volume always embeds the project-slug hash; without it
 	// the name is not ours.
 	if !prefixed {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	// No embedded hash: the positional split still recognises the legacy digest
@@ -308,9 +315,12 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	if isHomeTimestamp(last) {
 		agent := ""
 		slugParts := parts[:len(parts)-1]
-		if len(parts) >= 3 && !isBase36Hash(parts[len(parts)-2]) {
-			agent = parts[len(parts)-2]
-			slugParts = parts[:len(parts)-2]
+		if len(parts) >= 3 {
+			// gomutants:disable-next-line INTEGER_DECREMENT,INTEGER_INCREMENT reason="findHashSuffix already rejected every hyphen-delimited 14-char base36 segment, so whichever part this index selects it is never a hash and the branch is taken regardless"
+			if !isBase36Hash(parts[len(parts)-2]) {
+				agent = parts[len(parts)-2]
+				slugParts = parts[:len(parts)-2]
+			}
 		}
 		return ArtifactInfo{Slug: strings.Join(slugParts, "-"), Agent: agent, Digest: "", Task: false}
 	}

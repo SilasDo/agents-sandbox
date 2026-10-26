@@ -437,10 +437,7 @@ func (m *MockSandboxHandle) Destroy(_ context.Context, _ ...msbSdk.DestroyOption
 func (m *MockSandboxHandle) DidDestroy() bool { return m.Destroyed }
 
 func (m *MockSandboxHandle) Config() (*msbSdk.SandboxConfig, error) {
-	if m.ConfigErr != nil {
-		return nil, m.ConfigErr
-	}
-	return m.Cfg, nil
+	return m.Cfg, m.ConfigErr
 }
 
 // ConfigMounts is seeded directly rather than derived from a persisted config

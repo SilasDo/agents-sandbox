@@ -240,6 +240,19 @@ func TestKeepImageNotReferencedWhenKeyAlsoPruned(t *testing.T) {
 	}
 }
 
+// TestKeepImageDropsLatestSuffixWithoutAgent pins that the per-agent "-latest"
+// rule needs an agent: a ref that only has the suffix (so it parses with an
+// empty agent) is not a live per-agent tag and must be reclaimed.
+func TestKeepImageDropsLatestSuffixWithoutAgent(t *testing.T) {
+	const ref = "proj-1mjusbm3wikhb0-latest"
+	pruneState := PruneState{ToKeep: map[state.Key]msb.SandboxHandle{
+		{Slug: ref, Agent: ""}: &msb.MockSandboxHandle{},
+	}}
+	if keepImage(&msb.MockImageHandle{Reference_: ref}, pruneState, nil) {
+		t.Error("a -latest ref with no parsed agent must not be kept")
+	}
+}
+
 // TestPruneImagesKeepsLiveProjectImageWithLeftoverTask is the end-to-end form
 // of the Greptile P1: a leftover stopped task sandbox for a live project must
 // not cause the project's current runner image to be reclaimed.

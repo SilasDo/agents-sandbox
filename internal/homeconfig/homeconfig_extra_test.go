@@ -357,3 +357,52 @@ func TestErrorMessagesMentionRelevantTarget(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveVMTargetRootBaseFailsContainment pins the final containment guard:
+// with a root home base the separator-prefixed comparison rejects the joined
+// path instead of returning it.
+func TestResolveVMTargetRootBaseFailsContainment(t *testing.T) {
+	if _, err := ResolveVMTarget("/", "etc", nil); err == nil {
+		t.Error("a root home base must fail the containment guard rather than return a path")
+	}
+}
+
+func TestBuildHomeFilesReportsLoadErrorWithHasFalse(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	user := t.TempDir()
+	proj := t.TempDir()
+	testutil.WritePath(t, filepath.Join(user, "config.yaml"), "home: [\n")
+
+	files, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
+	if err == nil {
+		t.Fatal("expected a load error from an invalid user config")
+	}
+	if files != nil || missing != nil || has {
+		t.Errorf("on error want (nil, nil, false), got files=%v missing=%v has=%v", files, missing, has)
+	}
+}
+
+func TestBuildHomeFilesContinuesPastMissingSource(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	user := t.TempDir()
+	proj := t.TempDir()
+	testutil.WritePath(t, filepath.Join(proj, "present.txt"), "data")
+	// The missing source sorts first, so it must not stop the later present one.
+	writeHomeConfig(t, proj, ""+
+		".aaa.txt: ./absent.txt\n"+
+		".zzz.txt: ./present.txt\n")
+
+	files, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
+	if err != nil {
+		t.Fatalf("BuildHomeFilesWithModes: %v", err)
+	}
+	if !has {
+		t.Fatal("expected has=true for a present manifest")
+	}
+	if len(missing) != 1 || !strings.HasSuffix(missing[0], "absent.txt") {
+		t.Errorf("missing = %v, want the absent source", missing)
+	}
+	if _, ok := files[filepath.Join(vmHome, ".zzz.txt")]; !ok {
+		t.Errorf("the present source after a missing one must still be built, got %v", files)
+	}
+}
