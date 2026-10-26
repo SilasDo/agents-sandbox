@@ -40,6 +40,9 @@ This is the field guide for doing it. It was distilled from the first full sweep
   payload *except* one that sets the field and then errors — a duplicate JSON key
   (`{"directory":"/x","directory":123}`). `json.Unmarshal` pre-validates syntax over the whole input, so a trailing
   syntax error aborts before any field is set; only a type error on a later duplicate key leaves the field populated.
+- **A caller guard duplicated by the callee is an equivalent `BRANCH_IF`.** When `if _, ok := asX(a); !ok { return }`
+  merely precedes a call that performs the same guard internally, removing the caller's branch is unobservable; delete
+  the redundant guard rather than recording it (the callee's own branch still kills the mutant's intent).
 - **`--detect-equivalent` compares assembly, not behaviour.** A mutation that is logically equivalent but compiles to
   different code still reports LIVED, and must be closed by hand (delete or record).
 - **A "restore the factory" mutant (`Get = orig` removed from a `t.Cleanup`) needs a type or behavioural check, not a
