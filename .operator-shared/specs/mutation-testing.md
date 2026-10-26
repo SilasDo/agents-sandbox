@@ -119,13 +119,18 @@ so the CI workflow can request the `::warning::` output. `CGO_ENABLED=1` mirrors
 
 ## CI signal (advisory)
 
-`.github/workflows/mutation.yml` runs `make mutation` on every PR and on manual dispatch. It is a **signal, not a check**:
-nothing depends on it, and because it lives in its own workflow file it can never join `ci.yml`'s `release.needs`.
+`.github/workflows/mutation.yml` runs `make mutation` on every PR that can change the code and on manual dispatch. It is
+a **signal, not a check**: nothing depends on it, and because it lives in its own workflow file it can never join
+`ci.yml`'s `release.needs`.
 
 - **A PR scopes to its own changeset.** `SINCE=origin/<base_ref>`, fetched at full depth so gomutants has a merge base;
   the sweep then covers only lines the PR changed, not every unreleased line.
 - **A dispatch leaves `SINCE` unset**, so it falls back to the last release tag — the release sweep. Dispatch is only
   available once this workflow is on the default branch (`ci-job-gating.md`).
+- **Docs-only PRs are filtered out.** `paths-ignore` on the `pull_request` trigger drops changes that cannot alter which
+  mutants exist — `**.md`, `docs/**`, `.operator-shared/**` (the operator brain), `Formula/**`, the issue templates, and
+  `.gitignore`. The sweep is about Go code, so paying the coverage pass for a markdown edit is pure waste. A PR that
+  starts docs-only and later touches code runs on that push; the filter does not apply to a dispatch.
 - **The job stays green on survivors** (no threshold). A red step means the *sweep* (or its reporting) failed, not that
   mutants survived.
 - **Three surfaces carry the survivors, because the annotation channel caps at 10 warnings per step.**
@@ -138,7 +143,8 @@ nothing depends on it, and because it lives in its own workflow file it can neve
     `pull-requests: write` on the job, and is skipped on a fork PR, whose token is read-only.
   - **The step summary and `mutation-report` artifact**: unchanged, the complete machine-readable record.
 - **Even a zero-mutant sweep is not free.** gomutants collects module-wide coverage before it discovers mutants on the
-  changed lines, so a docs-only changeset still costs ~2 minutes — paid on every PR now that the sweep is ungated.
+  changed lines, so a code PR whose changed lines carry no mutant still costs ~2 minutes. The `paths-ignore` filter is
+  what keeps that cost off a markdown-only PR.
 - **A timeout is a wasted run, not a gate.** The job is capped (90 min) so a large changeset cannot tie up a runner, and
   a cancelled or superseded run supplies neither annotations nor a comment.
 - **Not required by construction.** Required checks are a branch-protection setting, not this workflow; the design keeps

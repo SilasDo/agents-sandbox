@@ -58,8 +58,8 @@ and never blocks a PR a maintainer ran Docker Engine for.
 - Adding either label re-runs the whole workflow, so `lint`/`test` run again for that event.
 - `make fuzz` runs from its own workflow, not from `ci.yml`: it is neither a PR gate nor part of `make verify`. See
   `fuzz-ci.md` for its triggers, budgets, and corpus handling.
-- `make mutation` likewise runs from its own `mutation.yml`, on every PR (and manual dispatch), and is never a required
-  check or a `release.needs` member. See `specs/mutation-testing.md`.
+- `make mutation` likewise runs from its own `mutation.yml`, on every code-changing PR (docs are filtered out; and
+  manual dispatch), and is never a required check or a `release.needs` member. See `specs/mutation-testing.md`.
 - The label persists on the PR, so every later `synchronize` push runs the integration job again; removing the label
   stops that.
 - The gate is not a privilege boundary: `lint`/`test` already execute PR code on the same runner, so labeling adds

@@ -166,7 +166,7 @@ deadcode-test:
 # demand (at release time) and as an advisory CI signal, never as a gate — a
 # full run takes minutes per package and a survivor needs human triage, so it
 # stays out of check/verify and is never a required CI check (the `mutation`
-# workflow runs it on every PR). By default it mutates
+# workflow runs it on every code-changing PR). By default it mutates
 # only lines changed since the last release tag; FULL=1 runs every mutant and
 # PKG picks the package(s).
 #   make mutation                        # whole module, lines changed since the last tag

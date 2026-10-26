@@ -5,7 +5,7 @@ read_if: Adding or changing the on-demand mutation-testing Makefile target, or e
 
 # Mutation testing for Go — tool survey
 
-Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify` or made a required CI check (the advisory `mutation` workflow runs it on every PR and gates nothing). Whole-module runs take hours, so single-package scoping is required.
+Constraint recap: an **on-demand, per-package** command, invoked as `go run <module>@<version>` (no global install), version pinned by a `Makefile` constant **exactly like `GOVULNCHECK_VERSION`**, and **never** wired into `check`/`verify` or made a required CI check (the advisory `mutation` workflow runs it on every code-changing PR and gates nothing). Whole-module runs take hours, so single-package scoping is required.
 
 All invocations below were executed in this sandbox with `go version go1.27.1 linux/amd64`; failures and successes are quoted from that output.
 
