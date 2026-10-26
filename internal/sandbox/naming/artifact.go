@@ -98,8 +98,10 @@ func ParseImageTag(name string) ArtifactInfo {
 
 func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	before, after, ok := strings.CutLast(remainder, ":")
+	// gomutants:disable-next-line BRANCH_IF reason="without a ':' CutLast returns before==remainder and after=='', so falling through yields the same slug-only (or foreign-zero) result this branch computes"
 	if !ok {
 		if !prefixed && !looksLikeProjectSlug(remainder) {
+			// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 			return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 		}
 		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", Task: false}
@@ -107,6 +109,7 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	tag := after
 	slug := before
 	if !prefixed && !looksLikeProjectSlug(slug) {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	if agent, ok := strings.CutSuffix(tag, "-latest"); ok {
@@ -217,6 +220,7 @@ func parseSandboxBody(remainder string, task bool) (ArtifactInfo, bool) {
 	hash := remainder[hashStart : hashStart+14]
 	slug := folderName + "-" + hash
 	rest := remainder[hashStart+14:]
+	// gomutants:disable-next-line INTEGER_DECREMENT,EXPRESSION_REMOVE reason="rest is empty or begins with '-', so rest[0]!='-' is always false; and at the only differing length (1) the fall-through returns the same slug/empty-agent result as this early return"
 	if len(rest) < 2 || rest[0] != '-' {
 		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}, true
 	}
@@ -247,6 +251,7 @@ func ParseHomeVolumeName(name string) ArtifactInfo {
 		if info, anchored := parseHomeVolumeBody(name, false); anchored {
 			return info
 		}
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	default:
 		return parseHomeVolumeRemainder(name, false)
@@ -272,7 +277,9 @@ func parseHomeVolumeBody(remainder string, prefixed bool) (ArtifactInfo, bool) {
 }
 
 func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
+	// gomutants:disable-next-line BRANCH_IF reason="an empty remainder finds no hash and, prefixed or not, the fall-through returns the same zero ArtifactInfo this branch returns"
 	if remainder == "" {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	if hashStart := findHashSuffix(remainder); hashStart != -1 {
@@ -293,6 +300,7 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// A prefix-free home volume always embeds the project-slug hash; without it
 	// the name is not ours.
 	if !prefixed {
+		// gomutants:disable-next-line RETURN_ZERO reason="*new(ArtifactInfo) is the zero ArtifactInfo, identical to this explicit zero literal"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", Task: false}
 	}
 	// No embedded hash: the positional split still recognises the legacy digest
@@ -305,6 +313,7 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	if isHomeTimestamp(last) {
 		agent := ""
 		slugParts := parts[:len(parts)-1]
+		// gomutants:disable-next-line EXPRESSION_REMOVE,INTEGER_DECREMENT,INTEGER_INCREMENT reason="this branch is reached only when findHashSuffix returned -1 (no bounded 14-char base36 run), so !isBase36Hash is true whichever part the index picks and every listed mutation leaves the condition as len(parts)>=3"
 		if len(parts) >= 3 && !isBase36Hash(parts[len(parts)-2]) {
 			agent = parts[len(parts)-2]
 			slugParts = parts[:len(parts)-2]

@@ -83,6 +83,7 @@ func TestLastPathSegmentSeparators(t *testing.T) {
 		{"https userinfo and port", "https://user@host:8080/org/repo.git", "repo"},
 		{"scheme no path", "https://host", "host"},
 		{"at in final segment", "host/repo@v2.git", "v2"},
+		{"leading at", "@host", "host"},
 		{"leading slash", "/repo", "repo"},
 		{"leading colon", ":repo", "repo"},
 		{"no separator", "repo.git", "repo"},

@@ -246,6 +246,7 @@ func TestFormatSizeSpecEmptyRaw(t *testing.T) {
 	}{
 		{0, "", "0M"},
 		{1024, "", "1024M"},
+		{4096, "", "4096M"},
 		{2048, "2G", "2G"},
 		{2048, "3G", "2048M"},
 	}
@@ -289,6 +290,23 @@ func TestImageRecreateEmptyImageRef(t *testing.T) {
 	}
 	if !imageRecreate(cfg, "", true) {
 		t.Error("the Image flag alone must trigger a recreate")
+	}
+}
+
+func TestImageRecreateForeignRefs(t *testing.T) {
+	const foreign = "docker.io/library/foreign:1"
+	cfg := &msbSdk.SandboxConfig{Image: foreign}
+	if imageRecreate(cfg, foreign, false) {
+		t.Error("an identical foreign image reference must not trigger a recreate")
+	}
+	if !imageRecreate(cfg, "docker.io/library/other:1", false) {
+		t.Error("two different foreign image references must trigger a recreate")
+	}
+}
+
+func TestTmpSizeChangeMissingVolume(t *testing.T) {
+	if _, changed := tmpSizeChange(&msbSdk.SandboxConfig{}, options.RunOptions{TmpSize: "4G"}); changed {
+		t.Error("a requested tmp size with no mounted /tmp volume must not be a change")
 	}
 }
 
@@ -354,6 +372,38 @@ func TestPublishReconfigHostPort(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{PortBindings: options.ServeOnlyBindings(4097)}
 	if hostPort, changed := publishReconfig(options.RunOptions{ServeOnly: true}, cfg); hostPort != 4097 || changed {
 		t.Errorf("serve-only reuse: hostPort=%d changed=%v, want 4097 false", hostPort, changed)
+	}
+}
+
+func TestResourceModificationStagesSingleCPU(t *testing.T) {
+	cfg := &msbSdk.SandboxConfig{CPUs: 4, MaxCPUs: 8}
+	mo := resourceModification(cfg, options.RunOptions{CPUs: 1})
+	if mo == nil || mo.CPUs != 1 {
+		t.Fatalf("expected a staged CPU=1 modification, got %+v", mo)
+	}
+}
+
+func TestResourceModificationMaxCPUsOne(t *testing.T) {
+	cfg := &msbSdk.SandboxConfig{CPUs: 0, MaxCPUs: 1}
+	mo := resourceModification(cfg, options.RunOptions{CPUs: 2})
+	if mo == nil || mo.CPUs != 1 {
+		t.Fatalf("expected CPU clamped to 1, got %+v", mo)
+	}
+}
+
+func TestPlanReconfigAgentConfigSuppressedByRecreate(t *testing.T) {
+	cfg := &msbSdk.SandboxConfig{Image: "old:1", CPUs: 4, MemoryMiB: 4096}
+	plan := PlanReconfig(cfg, "new:2", options.RunOptions{}, ChangeFlags{AgentConfig: true}, "")
+	if !plan.Recreate {
+		t.Fatal("expected a recreate on the image change")
+	}
+	if plan.RestartDaemons {
+		t.Error("agent config must not restart daemons when the VM is recreated anyway")
+	}
+	for _, c := range plan.Changes {
+		if c.Label == "agent config" {
+			t.Errorf("agent config should not be a change line when recreating: %+v", plan.Changes)
+		}
 	}
 }
 

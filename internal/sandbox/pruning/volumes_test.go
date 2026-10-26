@@ -481,6 +481,31 @@ func TestPruneVolumesDryRunWarnsOnReferencedVolume(t *testing.T) {
 	}
 }
 
+// TestCompareStateKey pins the ordering contract: slug first, then agent. Every
+// branch must return a sign, since the stable iteration of removeStateForGoneKeys
+// depends on it.
+func TestCompareStateKey(t *testing.T) {
+	a := state.Key{Slug: "a-1mjusbm3wikhb0", Agent: "opencode"}
+	b := state.Key{Slug: "b-1mjusbm3wikhb0", Agent: "opencode"}
+	c := state.Key{Slug: "a-1mjusbm3wikhb0", Agent: "pi"}
+
+	if got := compareStateKey(a, b); got >= 0 {
+		t.Errorf("compareStateKey(a, b) = %d, want < 0 (slug order)", got)
+	}
+	if got := compareStateKey(b, a); got <= 0 {
+		t.Errorf("compareStateKey(b, a) = %d, want > 0 (slug order)", got)
+	}
+	if got := compareStateKey(a, c); got >= 0 {
+		t.Errorf("compareStateKey(a, c) = %d, want < 0 (agent order, same slug)", got)
+	}
+	if got := compareStateKey(c, a); got <= 0 {
+		t.Errorf("compareStateKey(c, a) = %d, want > 0 (agent order, same slug)", got)
+	}
+	if got := compareStateKey(a, a); got != 0 {
+		t.Errorf("compareStateKey(a, a) = %d, want 0", got)
+	}
+}
+
 func TestRenderVolumeReport(t *testing.T) {
 	ui := &termio.Mock{}
 	RenderVolumeReport(ui, VolumeReport{
@@ -507,6 +532,33 @@ func TestRenderVolumeReport(t *testing.T) {
 	}
 	if len(empty.VerboseCalls) != 0 {
 		t.Errorf("VerboseCalls = %v, want none without details", empty.VerboseCalls)
+	}
+}
+
+// TestRemoveStateForGoneKeysProcessesKeysAfterASkippedOne pins that a key held
+// back by the exists guard does not stop later keys from being processed: the
+// iteration visits keys in a stable order, so "gone" is removed though "kept"
+// is skipped.
+func TestRemoveStateForGoneKeysProcessesKeysAfterASkippedOne(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	kept := state.Key{Slug: "aaaa-kept"}
+	gone := state.Key{Slug: "bbbb-gone"}
+	for _, k := range []state.Key{kept, gone} {
+		if err := seedHomeState(k, state.HomeState{}); err != nil {
+			t.Fatalf("seedHomeState(%v): %v", k, err)
+		}
+	}
+	ui := &termio.Mock{}
+	removeStateForGoneKeys(
+		ui,
+		map[state.Key]int{kept: 1, gone: 1},
+		map[state.Key]int{kept: 2, gone: 0},
+	)
+	if _, err := state.ReadState(kept); err != nil {
+		t.Errorf("kept key state must survive, got %v", err)
+	}
+	if _, err := state.ReadState(gone); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("gone key state must be removed, got %v", err)
 	}
 }
 

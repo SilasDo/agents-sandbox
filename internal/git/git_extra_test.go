@@ -8,6 +8,49 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
+func TestIsBare(t *testing.T) {
+	repo := testutil.InitRepo(t)
+	if isBare(filepath.Join(repo, ".git")) {
+		t.Error("a normal checkout's git dir must not be bare")
+	}
+	if isBare(t.TempDir()) {
+		t.Error("a git dir without a readable config must not be reported bare")
+	}
+}
+
+// TestWorktreeRegistrationRejectsMalformedNames pins the two name guards: an
+// empty final segment (a trailing "/worktrees/") and a name containing "/" are
+// rejected even when the candidate carries a commondir marker, so a malformed
+// gitdir cannot strip to a shared dir.
+func TestWorktreeRegistrationRejectsMalformedNames(t *testing.T) {
+	base := resolvePath(t.TempDir())
+	marker := func(dir string) string {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatalf("MkdirAll(%s): %v", dir, err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "commondir"), []byte("../..\n"), 0o644); err != nil {
+			t.Fatalf("WriteFile(%s): %v", dir, err)
+		}
+		return dir
+	}
+	emptyName := marker(filepath.Join(base, "one", "worktrees")) + string(filepath.Separator)
+	if shared, ok := worktreeRegistration(base, emptyName); ok || shared != "" {
+		t.Errorf("empty worktree name: got (%q, %v), want (\"\", false)", shared, ok)
+	}
+	slashedName := marker(filepath.Join(base, "two", "worktrees", "name", "sub"))
+	if shared, ok := worktreeRegistration(base, slashedName); ok || shared != "" {
+		t.Errorf("slashed worktree name: got (%q, %v), want (\"\", false)", shared, ok)
+	}
+}
+
+func TestResolvePathReturnsAbsForMissingPath(t *testing.T) {
+	dir := resolvePath(t.TempDir())
+	missing := filepath.Join(dir, "does-not-exist")
+	if got := resolvePath(missing); got != missing {
+		t.Errorf("resolvePath(%q) = %q, want the absolute path", missing, got)
+	}
+}
+
 func TestResolveGitDir(t *testing.T) {
 	t.Run("missing dotgit", func(t *testing.T) {
 		dir := t.TempDir()

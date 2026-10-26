@@ -31,6 +31,7 @@ func buildPruneState(ctx context.Context, age time.Duration) (PruneState, error)
 	}
 	handles, err := msb.Get().ListSandboxes(ctx, nil)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="every caller returns immediately on this error, discarding the PruneState, so its zero versus initialized maps are unobservable"
 		return result, err
 	}
 	for _, h := range handles {

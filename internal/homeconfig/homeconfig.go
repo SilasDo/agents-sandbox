@@ -311,7 +311,8 @@ func BuildHomeFilesWithModes(
 	}
 	files := make(map[string]HomeFile)
 	var missing []string
-	for target, e := range merged {
+	for _, target := range slices.Sorted(maps.Keys(merged)) {
+		e := merged[target]
 		vmPath, vErr := ResolveVMTarget(homeBase, target, reserved)
 		if vErr != nil {
 			return nil, nil, false, vErr

@@ -222,7 +222,9 @@ func TestBuildHomeFilesReportsAllUnreadableSources(t *testing.T) {
 		}
 		lines = append(lines, "."+name+": "+name)
 	}
-	writeHomeConfig(t, user, strings.Join(lines, "\n")+"\n")
+	// The manifest lives next to the directories so each source Stats fine and
+	// only ReadFile fails, exercising the read-error continue.
+	writeHomeConfig(t, proj, strings.Join(lines, "\n")+"\n")
 	_, missing, has, err := BuildHomeFilesWithModes(user, proj, vmHome, nil)
 	if err != nil || !has {
 		t.Fatalf("BuildHomeFilesWithModes: has=%v err=%v", has, err)
@@ -266,6 +268,29 @@ func TestBuildHooksContinuesPastMissingSource(t *testing.T) {
 	}
 	if len(hooks) != 1 || hooks[0].Target != "/home/dev/.b" {
 		t.Errorf("hooks = %v, want only /home/dev/.b", hooks)
+	}
+}
+
+// TestBuildHooksSortsByVMTargetOrder pins that BuildHooks re-orders by the
+// resolved VM target, not by the manifest key: the keys "./b" and "a" iterate
+// in the opposite order to their VM targets, so the final sort must reorder
+// them.
+func TestBuildHooksSortsByVMTargetOrder(t *testing.T) {
+	user := t.TempDir()
+	proj := t.TempDir()
+	testutil.WritePath(t, filepath.Join(proj, "a.sh"), "#!/bin/sh\n")
+	testutil.WritePath(t, filepath.Join(proj, "b.sh"), "#!/bin/sh\n")
+	writeHomeConfig(t, proj, ""+
+		"./b:\n  source: b.sh\n  hook: startup\n"+
+		"a:\n  source: a.sh\n  hook: startup\n")
+
+	hooks, err := BuildHooks(user, proj, vmHome, nil)
+	if err != nil {
+		t.Fatalf("BuildHooks: %v", err)
+	}
+	want := []string{"/home/dev/a", "/home/dev/b"}
+	if len(hooks) != 2 || hooks[0].Target != want[0] || hooks[1].Target != want[1] {
+		t.Errorf("hooks = %v, want targets %v", hooks, want)
 	}
 }
 

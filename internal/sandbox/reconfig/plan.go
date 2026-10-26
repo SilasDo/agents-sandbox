@@ -261,11 +261,9 @@ func rootDiskChange(cfg *msbSdk.SandboxConfig, opts options.RunOptions) (Change,
 	if cfg.RootDisk != nil && cfg.RootDisk.SizeMiB == want {
 		return Change{}, false
 	}
-	oldRaw := ""
-	if cfg.RootDisk != nil {
-		oldRaw = FormatSizeSpec(cfg.RootDisk.SizeMiB, "")
-	}
-	return SizeChange("root disk size", diskMiBOr0(cfg), want, oldRaw, opts.DiskSize), true
+	// The display form normalises back to "<size>M", so passing no raw spec is
+	// identical to re-formatting the current size.
+	return SizeChange("root disk size", diskMiBOr0(cfg), want, "", opts.DiskSize), true
 }
 
 // publishReconfig returns the resolved serve-only host port and whether the
@@ -286,7 +284,7 @@ func resourceModification(cfg *msbSdk.SandboxConfig, opts options.RunOptions) *m
 	// A zero mo.CPUs is the unset sentinel, and clamping to a zero boot max also
 	// yields zero, so no mutation of this guard can change the staged non-zero
 	// CPU change.
-	// gomutants:disable-next-line EXPRESSION_REMOVE,INTEGER_INCREMENT,INVERT_LOGICAL,CONDITIONALS_BOUNDARY reason="opts.CPUs==0 or cfg.MaxCPUs==0 makes the clamp 0, and a zero mo.CPUs is the unset sentinel, so every guard mutation leaves the staged CPU change unchanged"
+	// gomutants:disable-next-line EXPRESSION_REMOVE,INVERT_LOGICAL,CONDITIONALS_BOUNDARY reason="opts.CPUs==0 or cfg.MaxCPUs==0 makes the clamp 0, and a zero mo.CPUs is the unset sentinel, so every listed guard mutation leaves the staged CPU change unchanged"
 	if opts.CPUs != 0 && cfg.MaxCPUs > 0 {
 		if want := min(opts.CPUs, cfg.MaxCPUs); want != cfg.CPUs {
 			mo.CPUs = want

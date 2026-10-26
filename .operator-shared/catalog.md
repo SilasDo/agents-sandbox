@@ -21,8 +21,8 @@
   - Description: Field guide for closing gomutants LIVED mutants: the recurring types and the assertion that kills each, the equivalent-mutant traps, and the record-with-a-reason fallback.
   - Read If: Triaging surviving mutants from a `make mutation` sweep, or choosing between strengthening a test and recording a `// gomutants:disable` reason.
 - `mutation-sweep-execution.md`
-  - Description: Runbook for burning down the #268 mutation-survivor tracker over turns: the immutable FULL-sweep snapshot, the 35-package queue, file-disjoint worker units with the package as the verification unit, the per-id disposition handback, and end-of-turn `make mutation FULL=1 PKG=<pkg>` verification.
-  - Read If: Coordinating or executing a #268 reduction pass, or changing the coordinator/subagent split, the queue and cursor format, the handback shape, the landing/sequencing model, or the verification protocol.
+  - Description: Runbook for burning down the #268 mutation-survivor tracker over turns: the immutable FULL-sweep snapshot, the 35-package queue, file-disjoint worker units with the package as the verification unit, the per-id disposition handback, end-of-turn `make mutation FULL=1 PKG=<pkg>` verification, and the effective turn ordering (re-sweep first, drive off the fresh typed report, batch by type per file, restructure order-dependent loops/comparators first).
+  - Read If: Coordinating or executing a #268 reduction pass, or changing the coordinator/subagent split, the queue and cursor format, the handback shape, the turn's work ordering, the landing/sequencing model, or the verification protocol.
 - `dead-code-detection-go.md`
   - Description: Using x/tools `deadcode` to find production code only tests keep alive: why staticcheck U1000 cannot, the default vs `-test` modes, the test-support paths to filter, and `-whylive` for seam-vs-accident triage.
   - Read If: Looking for dead or unreferenced production code, auditing whether a seam is still wired, evaluating a dead-code linter, or adding an on-demand dead-code Makefile target.

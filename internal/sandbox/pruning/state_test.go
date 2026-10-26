@@ -246,3 +246,40 @@ func TestBuildPruneState_ListError(t *testing.T) {
 		t.Fatal("expected error from ListSandboxes")
 	}
 }
+
+// TestNoteIdentityPrefersLabelsOverName pins that a sandbox carrying the
+// launcher's identity labels is classified from them, not from its name: the
+// name below parses to a different slug and agent.
+func TestNoteIdentityPrefersLabelsOverName(t *testing.T) {
+	handle := &msb.MockSandboxHandle{
+		Name_: "unparseable-name",
+		Cfg: &msbSdk.SandboxConfig{Labels: map[string]string{
+			naming.LabelType:  naming.SandboxTypeProject,
+			naming.LabelSlug:  "labeled-1mjusbm3wikhb0",
+			naming.LabelAgent: "opencode",
+		}},
+	}
+	want := naming.ArtifactInfo{Slug: "labeled-1mjusbm3wikhb0", Agent: "opencode"}
+	if got := noteIdentity(handle); got != want {
+		t.Errorf("noteIdentity() = %+v, want %+v", got, want)
+	}
+}
+
+// TestNoteIdentityFallsBackOnConfigError pins that a config read error wins over
+// a populated config: a handle that returns both labels and an error must use
+// the name heuristic, not the labels.
+func TestNoteIdentityFallsBackOnConfigError(t *testing.T) {
+	handle := &msb.MockSandboxHandle{
+		Name_: "unparseable-name",
+		Cfg: &msbSdk.SandboxConfig{Labels: map[string]string{
+			naming.LabelType:  naming.SandboxTypeProject,
+			naming.LabelSlug:  "labeled-1mjusbm3wikhb0",
+			naming.LabelAgent: "opencode",
+		}},
+		ConfigErr: errBoom,
+	}
+	want := naming.SandboxIdentity(handle.Name(), nil)
+	if got := noteIdentity(handle); got != want {
+		t.Errorf("noteIdentity() = %+v, want the name-derived %+v", got, want)
+	}
+}

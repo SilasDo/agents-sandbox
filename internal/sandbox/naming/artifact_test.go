@@ -138,12 +138,23 @@ func TestParseHomeVolumeNameEdgeCases(t *testing.T) {
 	require.Equal(t, ArtifactInfo{Slug: "agents-sandbox-vm-1mjusbm3wikhb0", Agent: "opencode"},
 		ParseHomeVolumeName("agents-sandbox-vm-1mjusbm3wikhb0-opencode-20260812T123456"))
 	require.Equal(t, ArtifactInfo{Slug: "single"}, ParseHomeVolumeName("agents-sandbox-home-single"))
+	// A prefix-free name with no embedded hash is not ours.
+	require.Equal(t, ArtifactInfo{}, ParseHomeVolumeName("foo-bar"))
 }
 
 func TestAllDigits(t *testing.T) {
 	require.False(t, allDigits(""))
 	require.False(t, allDigits("12a"))
 	require.True(t, allDigits("12"))
+	// A character below '0' must not pass as a digit.
+	require.False(t, allDigits("1/2"))
+	require.False(t, allDigits("/"))
+}
+
+func TestLooksLikeProjectSlug(t *testing.T) {
+	require.False(t, looksLikeProjectSlug(""))
+	require.False(t, looksLikeProjectSlug("a/b"))
+	require.True(t, looksLikeProjectSlug("foo"))
 }
 
 // TestFindHashSuffixBoundaries pins every bound of the right-to-left scan: the
@@ -226,6 +237,86 @@ func TestParseImageRemainder(t *testing.T) {
 		parseImageRemainder("slug:deadbeef", false))
 	require.Equal(t, ArtifactInfo{Slug: "anything"}, parseImageRemainder("anything", true))
 	require.Equal(t, ArtifactInfo{Slug: "docker.io/foo"}, parseImageRemainder("docker.io/foo", true))
+	// A prefix-free body with no tag is accepted as a bare slug...
+	require.Equal(t, ArtifactInfo{Slug: "foo"}, parseImageRemainder("foo", false))
+	// ...while a prefixed body keeps a slash-containing slug and its digest tag.
+	require.Equal(t, ArtifactInfo{Slug: "docker.io/foo", Digest: "tag"},
+		parseImageRemainder("docker.io/foo:tag", true))
+}
+
+// TestParseSandboxBodyBranches pins the anchored split of a sandbox body: the
+// empty tail, a single-segment tail (agent), a single all-digit tail (still the
+// agent, not a task), and an agent plus a nanos tail (task).
+func TestParseSandboxBodyBranches(t *testing.T) {
+	cases := []struct {
+		remainder string
+		want      ArtifactInfo
+	}{
+		{fixtureSlug, ArtifactInfo{Slug: fixtureSlug}},
+		{fixtureSlug + "-x", ArtifactInfo{Slug: fixtureSlug, Agent: "x"}},
+		{fixtureSlug + "-123", ArtifactInfo{Slug: fixtureSlug, Agent: "123"}},
+		{
+			fixtureSlug + "-opencode-1729000000000000000",
+			ArtifactInfo{Slug: fixtureSlug, Agent: "opencode", Task: true},
+		},
+	}
+	for _, tc := range cases {
+		got, anchored := parseSandboxBody(tc.remainder, false)
+		if !anchored {
+			t.Errorf("parseSandboxBody(%q) anchored = false, want true", tc.remainder)
+		}
+		if got != tc.want {
+			t.Errorf("parseSandboxBody(%q) = %+v, want %+v", tc.remainder, got, tc.want)
+		}
+	}
+}
+
+// TestLegacyDigestNameBranches pins the two-hash legacy digest recognition and
+// its guards: an inner hash run must exist and reach the end of the inner part.
+func TestLegacyDigestNameBranches(t *testing.T) {
+	cases := []struct {
+		name      string
+		remainder string
+		hashStart int
+		wantSlug  string
+		wantDig   string
+		wantOK    bool
+	}{
+		{
+			// Inner hash at index 1 ending the inner part: recognised.
+			"inner hash at end",
+			"-abcdefghijklmn-abcdefghijklmn",
+			16,
+			"-abcdefghijklmn",
+			"abcdefghijklmn",
+			true,
+		},
+		{
+			// Inner hash at index 1 but not at the inner end: rejected.
+			"inner hash not at end",
+			"-abcdefghijklmn-X-abcdefghijklmn",
+			18,
+			"",
+			"",
+			false,
+		},
+		{
+			// No inner hash and a 13-char inner part: rejected without slicing.
+			"no inner hash",
+			"aaaaaaaaaaaaa-abcdefghijklmn",
+			14,
+			"",
+			"",
+			false,
+		},
+	}
+	for _, tc := range cases {
+		slug, digest, ok := legacyDigestName(tc.remainder, tc.hashStart)
+		if ok != tc.wantOK || slug != tc.wantSlug || digest != tc.wantDig {
+			t.Errorf("%s: legacyDigestName(%q, %d) = (%q, %q, %v), want (%q, %q, %v)",
+				tc.name, tc.remainder, tc.hashStart, slug, digest, ok, tc.wantSlug, tc.wantDig, tc.wantOK)
+		}
+	}
 }
 
 // TestParseHomeVolumeNameBoundaries pins the no-hash positional split: the

@@ -121,12 +121,15 @@ func TestResolveReconfigPromptAKeep(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return "q", nil // quit
 	}
-	applyRecreate, _, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err == nil {
 		t.Error("expected quit to abort (return an error)")
 	}
 	if applyRecreate {
 		t.Error("quit must not apply recreate")
+	}
+	if applyRestart {
+		t.Error("quit must not apply restart")
 	}
 }
 
