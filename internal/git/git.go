@@ -26,6 +26,7 @@ func sanitizeFolderName(name string) string {
 		return r < '0' || (r > '9' && r < 'a') || r > 'z'
 	})
 	s := strings.Join(fields, "-")
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="at len(s)==maxFolderNameLen both > and >= slice to the same unchanged string, and below it neither truncates"
 	if len(s) > maxFolderNameLen {
 		s = s[:maxFolderNameLen]
 	}
@@ -36,6 +37,9 @@ func HashID(input string) string {
 	sum := sha256.Sum256([]byte(input))
 	num := new(big.Int).SetBytes(sum[:])
 	encoded := num.Text(base)
+	// A base36 rendering of a SHA-256 value is never exactly hashIDLen chars
+	// (it is 1 for the all-zero hash and >=49 otherwise), so >= and > agree.
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the base36 of a 256-bit value is never 14 chars long, so the boundary value is unreachable and > and >= agree for every input"
 	if len(encoded) > hashIDLen {
 		encoded = encoded[:hashIDLen]
 	}

@@ -35,6 +35,7 @@ func PruneImages(
 	report := ImageReport{MSBImagesPruned: 0, DockerImagesPruned: 0, Details: nil}
 	handles, err := msb.Get().ImageList(ctx)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero ImageReport is identical"
 		return report, err
 	}
 	keptImageRefs := referencedImages(pruneState.ToKeep)

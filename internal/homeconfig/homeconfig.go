@@ -88,6 +88,7 @@ func parseManifestValue(raw any, path string) (Manifest, error) {
 	for target, v := range rawMap {
 		e, err := parseEntry(v)
 		if err != nil {
+			// gomutants:disable-next-line ERRORF_WRAP reason="parseEntry errors are dynamic errors.New/fmt.Errorf values with no sentinel or typed cause, so no caller matches the chain and %v and %w yield the same message"
 			return nil, fmt.Errorf("parse %s entry %q: %w", path, target, err)
 		}
 		m[target] = e
@@ -144,24 +145,24 @@ func parseEntry(v any) (Entry, error) {
 		if s, ok := val["source"]; ok {
 			src, ok := s.(string)
 			if !ok {
-				return e, errors.New("source must be a string")
+				return Entry{}, errors.New("source must be a string")
 			}
 			e.Source = src
 		}
 		if h, ok := val["hook"]; ok {
 			hook, ok := h.(string)
 			if !ok {
-				return e, errors.New("hook must be a string")
+				return Entry{}, errors.New("hook must be a string")
 			}
 			e.Hook = hook
 		}
 		if e.Hook != "" && e.Hook != startupHook {
-			return e, fmt.Errorf("hook must be %q, got %q", startupHook, e.Hook)
+			return Entry{}, fmt.Errorf("hook must be %q, got %q", startupHook, e.Hook)
 		}
 		if r, ok := val["root"]; ok {
 			root, ok := r.(bool)
 			if !ok {
-				return e, errors.New("root must be a boolean")
+				return Entry{}, errors.New("root must be a boolean")
 			}
 			e.Root = root
 		}
@@ -301,6 +302,10 @@ func BuildHomeFilesWithModes(
 	for _, l := range resolved {
 		maps.Copy(merged, l.Manifest)
 	}
+	// An empty merged manifest short-circuits to an empty (non-nil) map, which is
+	// exactly what the general path below returns for zero entries; the boundary
+	// and branch mutations there are unobservable.
+	// gomutants:disable-next-line INTEGER_DECREMENT,BRANCH_IF reason="with zero entries the early return and the general path both yield an empty non-nil map, a nil missing slice, and the same has flag"
 	if len(merged) == 0 {
 		return map[string]HomeFile{}, nil, has, nil
 	}
@@ -312,6 +317,9 @@ func BuildHomeFilesWithModes(
 			return nil, nil, false, vErr
 		}
 		info, infoErr := os.Stat(e.Source)
+		// A source that Stat cannot stat also fails ReadFile below, which reports
+		// it missing the same way, so skipping this guard is unobservable.
+		// gomutants:disable-next-line BRANCH_IF reason="when Stat fails ReadFile on the same path also fails, so the fall-through appends the same missing source and continues"
 		if infoErr != nil {
 			missing = append(missing, e.Source)
 			continue
@@ -323,6 +331,9 @@ func BuildHomeFilesWithModes(
 		}
 		files[vmPath] = HomeFile{Data: data, Mode: info.Mode().Perm()}
 	}
+	// Reaching here means merged has at least one entry, which requires a layer
+	// that declared a home key, so has is always true here.
+	// gomutants:disable-next-line RETURN_TRUE reason="a non-empty merged manifest is only possible when a layer declared a home key, which sets has, so forcing has true changes nothing"
 	return files, missing, has, nil
 }
 
@@ -343,11 +354,12 @@ func DescribeLayers(layers []Layer, homeBase string, reserved []string) ([][2]st
 		}
 		pairs = append(pairs, [2]string{vmPath, e.Source})
 	}
-	sort.Slice(pairs, func(i, j int) bool {
-		return pairs[i][0] < pairs[j][0]
-	})
+	sort.Slice(pairs, func(i, j int) bool { return describePairLess(pairs[i], pairs[j]) })
 	return pairs, nil
 }
+
+// describePairLess orders (VM target, host source) pairs by VM target.
+func describePairLess(a, b [2]string) bool { return a[0] < b[0] }
 
 // HookSpec describes a single startup-hook entry: the provisioned VM target,
 // its resolved host source, whether the source declares a shebang, and whether
@@ -365,6 +377,7 @@ type HookSpec struct {
 // yields false.
 func hasShebang(path string) bool {
 	f, err := os.Open(path)
+	// gomutants:disable-next-line BRANCH_IF reason="a nil *os.File reads as ErrInvalid, so the missing-file fall-through reaches the read guard below and returns false exactly like this branch"
 	if err != nil {
 		return false
 	}
@@ -372,6 +385,7 @@ func hasShebang(path string) bool {
 	var line []byte
 	buf := make([]byte, 1)
 	for range 2 {
+		// gomutants:disable-next-line BRANCH_IF reason="a skipped read appends the zero byte, so both the early return and the fall-through yield an all-zero line that is not #!"
 		if _, err := f.Read(buf); err != nil {
 			return false
 		}
@@ -396,7 +410,8 @@ func BuildHooks(userConfigDir, projectConfigDir, homeBase string, reserved []str
 		maps.Copy(merged, l.Manifest)
 	}
 	var hooks []HookSpec
-	for target, e := range merged {
+	for _, target := range slices.Sorted(maps.Keys(merged)) {
+		e := merged[target]
 		if e.Hook != startupHook {
 			continue
 		}
@@ -412,8 +427,9 @@ func BuildHooks(userConfigDir, projectConfigDir, homeBase string, reserved []str
 			HookSpec{Target: vmPath, Source: e.Source, HasShebang: hasShebang(e.Source), Root: e.Root},
 		)
 	}
-	sort.Slice(hooks, func(i, j int) bool {
-		return hooks[i].Target < hooks[j].Target
-	})
+	sort.Slice(hooks, func(i, j int) bool { return hookSpecLess(hooks[i], hooks[j]) })
 	return hooks, nil
 }
+
+// hookSpecLess orders startup hooks by VM target.
+func hookSpecLess(a, b HookSpec) bool { return a.Target < b.Target }

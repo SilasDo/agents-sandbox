@@ -145,3 +145,99 @@ func TestAllDigits(t *testing.T) {
 	require.False(t, allDigits("12a"))
 	require.True(t, allDigits("12"))
 }
+
+// TestFindHashSuffixBoundaries pins every bound of the right-to-left scan: the
+// loop's lower limit, the '-'-preceded guard, the 14-char window, and both
+// edges of the base36 predicate. Each case distinguishes the original from a
+// loop/boundary or operand-removal mutation.
+func TestFindHashSuffixBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		want int
+	}{
+		// The hash is the whole name body at index 1 (loop lower bound 1).
+		{"-abcdefghijklmn", 1},
+		// Index 1 is a valid run, but not preceded by '-', so it must not anchor.
+		{"0abcdefghijklmn", -1},
+		// End-anchored run after a leading segment; the 14-char window is exact.
+		{"a-abcdefghijklmn", 2},
+		{"myproj-1mjusbm3wikhb0", 7},
+		// A 14-char run containing '{' (outside a-z) is not a hash.
+		{"x-abcdefghijklm{", -1},
+		// A run ending in 'z' or '9' is still base36.
+		{"x-abcdefghijklmz", 2},
+		{"x-abcdefghijklm9", 2},
+		// No run at all.
+		{"short", -1},
+		{"", -1},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, findHashSuffix(tc.name), tc.name)
+	}
+}
+
+func TestIsBase36HashBoundaries(t *testing.T) {
+	require.False(t, isBase36Hash(""))
+	require.False(t, isBase36Hash("abc"))
+	require.False(t, isBase36Hash("abcdefghijklmA"))
+	require.False(t, isBase36Hash("abcdefghijklm{"))
+	require.False(t, isBase36Hash("abcdefghijklm/"))
+	require.True(t, isBase36Hash("abcdefghijklmz"))
+	require.True(t, isBase36Hash("abcdefghijklm0"))
+	require.True(t, isBase36Hash("1mjusbm3wikhb0"))
+}
+
+func TestIsHomeTimestampBoundaries(t *testing.T) {
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"20260812T123456", true},
+		{"20260101T120009", true},
+		{"30000000T000000", true},
+		// s[0] outside '2'..'3'.
+		{"40000000T123456", false},
+		{"10000000T123456", false},
+		// Non-digit in the time/date body.
+		{"20260101T12/000", false},
+		{"20260101T12:000", false},
+		{"20260101X120000", false},
+		// Wrong length.
+		{"20260101T12345", false},
+		{"20260101T1234567", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, isHomeTimestamp(tc.name), tc.name)
+	}
+}
+
+// TestParseImageRemainder pins the slug/agent/digest split and the foreign-ref
+// rejection on both the colon and no-colon paths, for the prefixed and
+// prefix-free forms.
+func TestParseImageRemainder(t *testing.T) {
+	require.Equal(t, ArtifactInfo{}, parseImageRemainder("docker.io/library/foo", false))
+	require.Equal(t, ArtifactInfo{}, parseImageRemainder("docker.io/library/foo:1", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug", Agent: "opencode"},
+		parseImageRemainder("slug:opencode-latest", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug"}, parseImageRemainder("slug:", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug"}, parseImageRemainder("slug:latest", false))
+	require.Equal(t, ArtifactInfo{Slug: "slug", Digest: "deadbeef"},
+		parseImageRemainder("slug:deadbeef", false))
+	require.Equal(t, ArtifactInfo{Slug: "anything"}, parseImageRemainder("anything", true))
+	require.Equal(t, ArtifactInfo{Slug: "docker.io/foo"}, parseImageRemainder("docker.io/foo", true))
+}
+
+// TestParseHomeVolumeNameBoundaries pins the no-hash positional split: the
+// legacy timestamp tail, the optional preceding agent segment (and its
+// base36-hash exclusion), and the digest fallback.
+func TestParseHomeVolumeNameBoundaries(t *testing.T) {
+	require.Equal(t, ArtifactInfo{Slug: "proj", Agent: "agent"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-agent-20260812T123456"))
+	require.Equal(t, ArtifactInfo{Slug: "proj"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-20260812T123456"))
+	require.Equal(t, ArtifactInfo{Slug: "proj", Digest: "deadbeef"},
+		ParseHomeVolumeName("agents-sandbox-home-proj-deadbeef"))
+	// A hash-anchored name with an empty tail.
+	require.Equal(t, ArtifactInfo{Slug: fixtureSlug}, ParseHomeVolumeName(fixtureSlug))
+}

@@ -68,7 +68,7 @@ func findHashSuffix(name string) int {
 			c := name[i+j]
 			if (c < 'a' || c > 'z') && (c < '0' || c > '9') {
 				ok = false
-				break
+				break // gomutants:disable INVERT_LOOP_CTRL reason="ok is only ever cleared here, never set again, so breaking and continuing both leave it false and the outer check unchanged"
 			}
 		}
 		if ok {
@@ -112,7 +112,7 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	if agent, ok := strings.CutSuffix(tag, "-latest"); ok {
 		return ArtifactInfo{Slug: slug, Agent: agent, Digest: "", Task: false}
 	}
-	if tag != "" && tag != "latest" {
+	if tag != "latest" {
 		return ArtifactInfo{Slug: slug, Digest: tag, Agent: "", Task: false}
 	}
 	return ArtifactInfo{Slug: slug, Digest: "", Agent: "", Task: false}
@@ -283,9 +283,6 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 		hash := remainder[hashStart : hashStart+14]
 		slug := folderName + "-" + hash
 		tail := strings.TrimPrefix(remainder[hashStart+14:], "-")
-		if tail == "" {
-			return ArtifactInfo{Slug: slug, Digest: "", Agent: "", Task: false}
-		}
 		parts := strings.Split(tail, "-")
 		last := parts[len(parts)-1]
 		if isHomeTimestamp(last) {

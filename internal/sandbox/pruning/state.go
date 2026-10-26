@@ -74,5 +74,6 @@ func prunable(h msb.SandboxHandle, age time.Duration) bool {
 	if !msb.IsSandboxInactive(h.Status()) {
 		return false
 	}
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the boundary is an exact nanosecond equality between time.Since and the threshold, with no injectable clock to hit it; >= and > agree on every reachable input"
 	return time.Since(h.UpdatedAt()) >= age
 }

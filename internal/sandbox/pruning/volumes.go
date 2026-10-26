@@ -28,6 +28,7 @@ func PruneVolumes(
 	report := VolumeReport{VolumesPruned: 0, Details: nil}
 	handles, err := msb.Get().ListVolumes(ctx)
 	if err != nil {
+		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero VolumeReport is identical"
 		return report, err
 	}
 	exists := countVolumesByKey(handles)

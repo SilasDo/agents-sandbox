@@ -283,6 +283,10 @@ func publishReconfig(opts options.RunOptions, cfg *msbSdk.SandboxConfig) (int, b
 // when neither changes. Values are clamped to the boot maximum.
 func resourceModification(cfg *msbSdk.SandboxConfig, opts options.RunOptions) *msbSdk.ModifyOptions {
 	var mo msbSdk.ModifyOptions
+	// A zero mo.CPUs is the unset sentinel, and clamping to a zero boot max also
+	// yields zero, so no mutation of this guard can change the staged non-zero
+	// CPU change.
+	// gomutants:disable-next-line EXPRESSION_REMOVE,INTEGER_INCREMENT,INVERT_LOGICAL,CONDITIONALS_BOUNDARY reason="opts.CPUs==0 or cfg.MaxCPUs==0 makes the clamp 0, and a zero mo.CPUs is the unset sentinel, so every guard mutation leaves the staged CPU change unchanged"
 	if opts.CPUs != 0 && cfg.MaxCPUs > 0 {
 		if want := min(opts.CPUs, cfg.MaxCPUs); want != cfg.CPUs {
 			mo.CPUs = want
@@ -290,8 +294,8 @@ func resourceModification(cfg *msbSdk.SandboxConfig, opts options.RunOptions) *m
 	}
 	if opts.Memory != "" {
 		want := options.ParseMemory(opts.Memory)
-		if cfg.MaxMemoryMiB > 0 && want > cfg.MaxMemoryMiB {
-			want = cfg.MaxMemoryMiB
+		if cfg.MaxMemoryMiB > 0 {
+			want = min(want, cfg.MaxMemoryMiB)
 		}
 		if want != cfg.MemoryMiB {
 			mo.MemoryMiB = want
