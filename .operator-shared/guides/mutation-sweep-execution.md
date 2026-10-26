@@ -177,7 +177,8 @@ One turn = one pass over the queue (or the subset of packages it chose to target
 
 ## Not in scope
 
-- Wiring the sweep into `make check`/`verify`/CI. Per `specs/mutation-testing.md` it is on-demand only.
+- Wiring the sweep into `make check`/`verify` as a gate, or making the advisory `mutation.yml` workflow a required check.
+  Per `specs/mutation-testing.md` it is on-demand/advisory only.
 - Eliminating every survivor. Reduction across turns is the goal.
 
 ## Open to the builder

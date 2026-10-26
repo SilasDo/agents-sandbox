@@ -163,22 +163,30 @@ deadcode-test:
 	ci/test-check-deadcode.sh
 
 # Mutation testing: mutate the code and check whether the tests notice. Run on
-# demand (at release time), never as a gate — a full run takes minutes per
-# package, so it stays out of check/verify/CI. By default it mutates only lines
-# changed since the last release tag; FULL=1 runs every mutant and PKG picks
-# the package(s).
+# demand (at release time) and as an advisory CI signal, never as a gate — a
+# full run takes minutes per package and a survivor needs human triage, so it
+# stays out of check/verify and is never a required CI check (the `mutation`
+# workflow runs it on every code-changing PR). By default it mutates
+# only lines changed since the last release tag; FULL=1 runs every mutant and
+# PKG picks the package(s).
 #   make mutation                        # whole module, lines changed since the last tag
 #   make mutation PKG=./internal/foo     # one package, changed lines
 #   make mutation FULL=1                 # whole module, all lines (slow)
+#   make mutation ANNOTATIONS=github     # also print ::warning:: annotations (CI only)
 PKG   ?= ./...
 TAGS  ?=
 SINCE ?= $(shell git describe --tags --abbrev=0)
 FULL  ?=
+# Empty by default, so a plain `make mutation` prints no workflow commands. The
+# `mutation` CI workflow sets ANNOTATIONS=github so each survivor lands on the
+# PR's diff; locally that output is just noise, hence the opt-in.
+ANNOTATIONS ?=
 mutation:
 	@test -n "$(FULL)" || test -n "$(SINCE)" || { \
 		echo "make mutation: cannot resolve a release tag; pass SINCE=<ref> or FULL=1"; exit 1; }
 	CGO_ENABLED=1 go run github.com/gomutants/gomutants@$(GOMUTANTS_VERSION) \
 		--detect-equivalent \
+		$(if $(ANNOTATIONS),--annotations $(ANNOTATIONS)) \
 		$(if $(FULL),,--changed-since $(SINCE)) \
 		$(PKG)
 
