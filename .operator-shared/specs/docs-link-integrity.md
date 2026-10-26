@@ -44,20 +44,23 @@ the script itself.
   checker's Go extraction uniform: a call carries both the page and the anchor as literals, so the script needs no
   knowledge of an implied page or a private helper name.
 
-## The kramdown slug
+## The GFM slug
 
-kramdown's `basic_generate_id` (kramdown 2.5.2), applied to a heading's raw source text:
+The site builds with kramdown's **GFM input** (Jekyll's default; `_config.yml` leaves kramdown unconfigured, so a
+local build and GitHub Pages agree). GFM headings are slugged by `kramdown-parser-gfm`'s `generate_gfm_header_id`
+(kramdown-parser-gfm 1.1.0, kramdown 2.5.2) on the heading's raw source text — **not** kramdown core's
+`basic_generate_id`, which strips a leading `[^a-zA-Z]+` and diverges on a digit-led heading (the corpus has
+`manage-config.md`'s `## 1. …`–`## 4. …`):
 
-1. strip leading `[^a-zA-Z]+`;
-2. delete everything outside `[A-Za-z0-9 -]`;
-3. spaces → `-`;
-4. lowercase;
-5. empty → `section`;
-6. a repeated slug within a page gets `-1`, `-2`, … (`-1` is the first duplicate).
+1. lowercase;
+2. keep only `[\p{Word}\- \t]` — the checker's ASCII form is `[A-Za-z0-9_-]` plus space and tab;
+3. spaces and tabs → `-`;
+4. no empty-string fallback (an all-punctuation heading slugs to the empty id);
+5. a repeated slug within a page gets `-1`, `-2`, … (`-1` is the first duplicate).
 
-`auto_ids` is kramdown's default `true` and `_config.yml` leaves kramdown unconfigured, so a local build and
-GitHub Pages agree. The mirror operates on the heading text *as written* (backticks, `[text](url)` and emphasis
-included), because kramdown slugs `raw_text` before inline parsing — stripping inline markdown first would diverge.
+The mirror operates on the heading text *as written* (backticks, `[text](url)` and emphasis included), because the
+slug derives from `raw_text` before inline parsing — stripping inline markdown first would diverge. Calibrated
+against a real `bundle exec jekyll build`: identical ids on every page.
 
 ## `internal/docslink`
 

@@ -82,21 +82,19 @@ link_targets() {
 }
 
 # page_slugs FILE: print the id kramdown generates for every heading in FILE, in
-# document order. Mirrors kramdown's basic_generate_id on the heading's raw
-# source text (inline markdown included), with its -1/-2 uniqueness suffixes.
+# document order. The site builds with kramdown's GFM input, so this mirrors
+# kramdown-parser-gfm's generate_gfm_header_id on the heading's raw source text
+# (inline markdown included), with its -1/-2 uniqueness suffixes.
 page_slugs() {
   awk '
     function slug(s,    i, c, out) {
-      sub(/^[^a-zA-Z]+/, "", s)
       out = ""
       for (i = 1; i <= length(s); i++) {
         c = substr(s, i, 1)
-        if (c ~ /[A-Za-z0-9 -]/) out = out c
+        if (c ~ /[A-Za-z0-9_-]/ || c == " " || c == "\t") out = out c
       }
-      gsub(/ /, "-", out)
-      out = tolower(out)
-      if (out == "") out = "section"
-      return out
+      gsub(/[ \t]/, "-", out)
+      return tolower(out)
     }
     BEGIN { fence = 0; frontmatter = 0; line = 0; delete used }
     {

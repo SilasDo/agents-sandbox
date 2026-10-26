@@ -296,6 +296,28 @@ printf '\n[Second](https://inoio.github.io/agents-sandbox/install.html#foo-1)\n'
 expect "duplicate heading suffix" 0 "all internal links are valid" "$d"
 rm -rf "$d"
 
+# A heading that begins with a digit keeps it: the GFM parser slugs the raw
+# text without stripping leading non-letters (kramdown's core basic_generate_id
+# does strip them, so the two algorithms diverge here).
+d="$(new_fixture)"
+printf '\n## 1. Turn off host-config fallback\n' >>"$d/docs/install.md"
+printf '\n[Step](https://inoio.github.io/agents-sandbox/install.html#1-turn-off-host-config-fallback)\n' >>"$d/README.md"
+expect "digit-led heading slug" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
+d="$(new_fixture)"
+printf '\n## 1. Turn off host-config fallback\n' >>"$d/docs/install.md"
+printf '\n[Step](https://inoio.github.io/agents-sandbox/install.html#turn-off-host-config-fallback)\n' >>"$d/README.md"
+expect "digit-led heading stripped form rejected" 1 "fragment 'turn-off-host-config-fallback' matches no heading in docs/install.md" "$d"
+rm -rf "$d"
+
+# Underscores survive a GFM slug (its \p{Word} class keeps them).
+d="$(new_fixture)"
+printf '\n## __init__ hook\n' >>"$d/docs/install.md"
+printf '\n[Hook](https://inoio.github.io/agents-sandbox/install.html#__init__-hook)\n' >>"$d/README.md"
+expect "underscore heading slug" 0 "all internal links are valid" "$d"
+rm -rf "$d"
+
 # A same-file anchor in a docs page names a heading in that page.
 d="$(new_fixture)"
 printf '\n[Gone](#no-such-heading)\n' >>"$d/docs/introduction.md"
