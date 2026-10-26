@@ -33,7 +33,7 @@ func TestGuestToolRequirer(t *testing.T) {
 		if !wantDaemon {
 			continue
 		}
-		want := []string{"curl", "nohup", "pkill"}
+		want := []string{"curl"}
 		if got := requirer.GuestTools(); !slices.Equal(got, want) {
 			t.Errorf("%s: GuestTools() = %v, want %v", name, got, want)
 		}

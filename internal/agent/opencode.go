@@ -33,32 +33,25 @@ func (opencodeProfile) ImageSpec() ImageSpec {
 	}
 }
 
-// opencodeServeLog is where the start command redirects the opencode daemon's
-// output, tailed for diagnostics when the daemon never becomes healthy.
-const opencodeServeLog = "/tmp/opencode-serve.log"
-
-func (opencodeProfile) DaemonStartCmd(serveOnly bool) string {
-	hostname := "127.0.0.1"
+// DaemonCommand launches the v1 serve daemon as a runtime-owned detached job,
+// binding loopback for a co-located client or the external interface for a
+// forwarded port.
+func (opencodeProfile) DaemonCommand(serveOnly bool) DaemonCommand {
+	hostname := daemonLoopbackHostname
 	if serveOnly {
-		hostname = "0.0.0.0"
+		hostname = daemonExternalHostname
 	}
-	return fmt.Sprintf(
-		"nohup "+opencodeCmdName+" serve --hostname %s --port %s > %s 2>&1 &",
-		hostname,
-		"4096",
-		opencodeServeLog,
-	)
+	return DaemonCommand{
+		Binary: opencodeCmdName,
+		Args:   []string{"serve", "--hostname", hostname, "--port", "4096"},
+	}
 }
 
-func (opencodeProfile) DaemonKillCmd() string {
-	return "pkill -f '" + opencodeCmdName + " serve' || true"
-}
 func (opencodeProfile) DaemonHealthCmd() string {
 	// No -f: on an HTTP error the body is kept for the health probe's
 	// diagnostic detail instead of being swallowed.
 	return "curl -sm2 http://127.0.0.1:4096/global/health"
 }
-func (opencodeProfile) DaemonLogPath() string { return opencodeServeLog }
 
 // DaemonAuthHint: v1's basic auth is opt-in (its /global/health is
 // unauthenticated), so the credentials are the user's to set.

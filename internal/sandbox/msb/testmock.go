@@ -26,6 +26,64 @@ type MockRemoveImageCall struct {
 	Force bool
 }
 
+// MockDetachedCall tracks an ExecDetached call made on MockSandbox.
+type MockDetachedCall struct {
+	Cmd  string
+	Args []string
+	Opts []msbSdk.JobExecOption
+}
+
+// MockJob is a test double for Job. Nil callbacks return the configured fields.
+type MockJob struct {
+	ID_       string
+	Info      *msbSdk.JobInfo
+	InfoErr   error
+	Logs_     []msbSdk.JobLogEntry
+	LogsErr   error
+	KillErr   error
+	SignalErr error
+	CloseErr  error
+	InspectFn func(ctx context.Context) (*msbSdk.JobInfo, error)
+	LogsFn    func(ctx context.Context, opts msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error)
+	DidKill   bool
+	DidSignal int
+	DidClose  bool
+}
+
+// Compile-time check.
+var _ Job = (*MockJob)(nil)
+
+func (m *MockJob) ID() string { return m.ID_ }
+
+func (m *MockJob) Inspect(ctx context.Context) (*msbSdk.JobInfo, error) {
+	if m.InspectFn != nil {
+		return m.InspectFn(ctx)
+	}
+	return m.Info, m.InfoErr
+}
+
+func (m *MockJob) Kill(context.Context) error {
+	m.DidKill = true
+	return m.KillErr
+}
+
+func (m *MockJob) Signal(_ context.Context, signal int) error {
+	m.DidSignal = signal
+	return m.SignalErr
+}
+
+func (m *MockJob) Logs(ctx context.Context, opts msbSdk.JobLogOptions) ([]msbSdk.JobLogEntry, error) {
+	if m.LogsFn != nil {
+		return m.LogsFn(ctx, opts)
+	}
+	return m.Logs_, m.LogsErr
+}
+
+func (m *MockJob) Close() error {
+	m.DidClose = true
+	return m.CloseErr
+}
+
 // MockMsbClient is a test double for Client with callback-style fields
 // and collection fields for convenient test setup. Nil callbacks mean no-op/succeed.
 // Existing callers that set Sandboxes/Volumes/Images/List*Err fields work without change.
@@ -484,6 +542,15 @@ type MockSandbox struct {
 	Destroyed  bool
 	CloseErr   error
 
+	// Detached jobs. ExecDetached returns Job_ (or a fresh MockJob) when
+	// ExecDetachedFn is nil; ListJobs returns Jobs when ListJobsFn is nil.
+	ExecDetachedFn    func(ctx context.Context, cmd string, args []string, opts ...msbSdk.JobExecOption) (Job, error)
+	ExecDetachedCalls *[]MockDetachedCall
+	Job_              Job
+	GetJobFn          func(ctx context.Context, id string) (Job, error)
+	ListJobsFn        func(ctx context.Context, opts ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error)
+	Jobs              []msbSdk.JobInfo
+
 	// StreamHandle_ is returned by ShellStream when ShellStreamFn is nil. When
 	// both are nil, a no-op handle is returned that immediately reports
 	// stream-closed on Recv.
@@ -533,6 +600,41 @@ func (m *MockSandbox) Exec(
 	}
 	// Return successful result when no override is configured.
 	return &TestResult{success: true}, nil
+}
+
+func (m *MockSandbox) ExecDetached(
+	ctx context.Context,
+	cmd string,
+	args []string,
+	opts ...msbSdk.JobExecOption,
+) (Job, error) {
+	if m.ExecDetachedCalls != nil {
+		*m.ExecDetachedCalls = append(*m.ExecDetachedCalls, MockDetachedCall{Cmd: cmd, Args: args, Opts: opts})
+	}
+	if m.ExecDetachedFn != nil {
+		return m.ExecDetachedFn(ctx, cmd, args, opts...)
+	}
+	if m.Job_ != nil {
+		return m.Job_, nil
+	}
+	return &MockJob{}, nil
+}
+
+func (m *MockSandbox) GetJob(ctx context.Context, id string) (Job, error) {
+	if m.GetJobFn != nil {
+		return m.GetJobFn(ctx, id)
+	}
+	if m.Job_ != nil {
+		return m.Job_, nil
+	}
+	return &MockJob{ID_: id}, nil
+}
+
+func (m *MockSandbox) ListJobs(ctx context.Context, opts ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error) {
+	if m.ListJobsFn != nil {
+		return m.ListJobsFn(ctx, opts...)
+	}
+	return m.Jobs, nil
 }
 
 func (m *MockSandbox) Attach(_ context.Context, _ string, _ ...string) (int, error) {
@@ -616,26 +718,40 @@ type SandboxOpts struct {
 	ShellStreamFn func(command string) (StreamHandle, error)
 	// ShellStreamCmds records every command passed to ShellStream.
 	ShellStreamCmds *[]string
+
+	// Detached jobs.
+	ExecDetachedFn    func(ctx context.Context, cmd string, args []string, opts ...msbSdk.JobExecOption) (Job, error)
+	ExecDetachedCalls *[]MockDetachedCall
+	Job_              Job
+	GetJobFn          func(ctx context.Context, id string) (Job, error)
+	ListJobsFn        func(ctx context.Context, opts ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error)
+	Jobs              []msbSdk.JobInfo
 }
 
 // NewMockSandbox returns a Sandbox configured by opts. Zero/unset values produce
 // sensible defaults so callers only name the fields they care about.
 func NewMockSandbox(opts SandboxOpts) Sandbox {
 	return &MockSandbox{
-		FSValue_:        opts.FSValue,
-		ShellOut:        opts.ShellOut,
-		ShellErr:        opts.ShellErr,
-		ExecOut:         opts.ExecOut,
-		ExecErr:         opts.ExecErr,
-		AttachCode:      opts.AttachCode,
-		AttachErr:       opts.AttachErr,
-		DetachErr:       opts.DetachErr,
-		StopErr:         opts.StopErr,
-		DestroyErr:      opts.DestroyErr,
-		CloseErr:        opts.CloseErr,
-		StreamHandle_:   opts.StreamHandle_,
-		ShellStreamFn:   opts.ShellStreamFn,
-		ShellStreamCmds: opts.ShellStreamCmds,
+		FSValue_:          opts.FSValue,
+		ShellOut:          opts.ShellOut,
+		ShellErr:          opts.ShellErr,
+		ExecOut:           opts.ExecOut,
+		ExecErr:           opts.ExecErr,
+		AttachCode:        opts.AttachCode,
+		AttachErr:         opts.AttachErr,
+		DetachErr:         opts.DetachErr,
+		StopErr:           opts.StopErr,
+		DestroyErr:        opts.DestroyErr,
+		CloseErr:          opts.CloseErr,
+		StreamHandle_:     opts.StreamHandle_,
+		ShellStreamFn:     opts.ShellStreamFn,
+		ShellStreamCmds:   opts.ShellStreamCmds,
+		ExecDetachedFn:    opts.ExecDetachedFn,
+		ExecDetachedCalls: opts.ExecDetachedCalls,
+		Job_:              opts.Job_,
+		GetJobFn:          opts.GetJobFn,
+		ListJobsFn:        opts.ListJobsFn,
+		Jobs:              opts.Jobs,
 	}
 }
 

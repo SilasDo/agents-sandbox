@@ -57,7 +57,7 @@ subdirectories) and non-repo folders are unaffected.
 
 A `.agents-sandbox/Dockerfile` whose `FROM` is a specific image is treated as a **custom base** and the node, agent (and
 optional docker) stages are layered on top of it. See [Runner Image]({% link runner-image.md %}) for the contract: the base
-must provide the selected agent's in-VM runtime tools (`curl`, `nohup`, and `pkill` for the daemon agents), `/bin/bash` (the
+must provide the selected agent's in-VM runtime tool (`curl` for the daemon agents), `/bin/bash` (the
 launcher's attach and volume-edit sessions run `/bin/bash -l`), the docker prerequisites when docker runs, and idempotency
 for an existing docker/node/agent. The build checks the runtime tools, so a missing one fails early with its name.
 

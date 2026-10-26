@@ -11,6 +11,11 @@ command reports the bare version (e.g. `0.1.0`).
 ### Changed
 
 - Maintenance: updated the microsandbox Go SDK and managed `msb` runtime to v0.7.11.
+- Internal: `dockerd` and the agent `serve` daemon now run as microsandbox runtime-owned detached jobs
+  (`ExecDetached`), replacing shell-backgrounded `nohup` processes, logfile polling, and `pkill` start/stop plumbing.
+  Readiness stays health-probe based, a crashed job reports its exit code plus a log tail, and a stale job is killed by
+  command match before a restart. Re-landed after microsandbox v0.7.11 stopped a detached job from keeping the VM from
+  idling (#146).
 
 ## [0.6.0] - 2026-10-25
 

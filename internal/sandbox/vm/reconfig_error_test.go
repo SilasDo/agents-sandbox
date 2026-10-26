@@ -20,17 +20,21 @@ import (
 // TestRestartDaemonsEnsureDaemonError covers the ensureDaemon failure branch of
 // restartDaemons: the daemon restart fails and is logged as a warning.
 func TestRestartDaemonsEnsureDaemonError(t *testing.T) {
-	orig := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+	orig := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
 		if command == opencodeProvider(t).DaemonHealthCmd() {
 			return "", 0, errors.New("health check failed")
 		}
 		return "", 0, errors.New("command failed")
 	})
-	t.Cleanup(func() { SetDaemonShellFunc(orig) })
+	t.Cleanup(func() { SetDaemonHealthFunc(orig) })
 
 	ui := termio.NewTestMock(t)
-	fs := msb.NewTestFS(nil, nil)
-	sb := &msb.MockSandbox{Name_: "vm", FSValue_: fs}
+	sb := &msb.MockSandbox{
+		Name_: "vm",
+		ExecDetachedFn: func(context.Context, string, []string, ...msbSdk.JobExecOption) (msb.Job, error) {
+			return nil, errors.New("start failed")
+		},
+	}
 
 	restartDaemons(context.Background(), opencodeAgent(t), sb, false, &ui)
 
@@ -39,13 +43,13 @@ func TestRestartDaemonsEnsureDaemonError(t *testing.T) {
 	}
 }
 
-// TestDefaultDaemonShellFuncError covers the default daemonShellFunc closure
+// TestDefaultDaemonHealthFuncError covers the default daemonHealthFunc closure
 // (the non-test-seam path): when sb.Shell fails, it returns exit code -1.
-func TestDefaultDaemonShellFuncError(t *testing.T) {
+func TestDefaultDaemonHealthFuncError(t *testing.T) {
 	// Temporarily reset the seam to the default implementation.
-	orig := daemonShellFunc
-	defer func() { daemonShellFunc = orig }()
-	daemonShellFunc = func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
+	orig := daemonHealthFunc
+	defer func() { daemonHealthFunc = orig }()
+	daemonHealthFunc = func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
 		out, err := sb.Shell(ctx, command)
 		if err != nil {
 			return "", -1, err
@@ -54,9 +58,9 @@ func TestDefaultDaemonShellFuncError(t *testing.T) {
 	}
 
 	sb := &msb.MockSandbox{ShellErr: errors.New("shell failed")}
-	stdout, code, err := daemonShellFunc(context.Background(), sb, "some-command")
+	stdout, code, err := daemonHealthFunc(context.Background(), sb, "some-command")
 	if err == nil {
-		t.Fatal("expected error from default daemonShellFunc")
+		t.Fatal("expected error from default daemonHealthFunc")
 	}
 	if code != -1 {
 		t.Errorf("expected exit code -1 on error, got %d", code)

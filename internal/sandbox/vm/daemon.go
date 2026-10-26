@@ -15,9 +15,11 @@ var daemonReadyTimeout = 60 * time.Second
 
 var daemonPollInterval = 2 * time.Second
 
-// daemonShellFunc is the test seam for sb.Shell, matching the ensureInstalled
-// pattern in doctor.go. Tests override this; production code leaves the default.
-var daemonShellFunc = func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
+// daemonHealthFunc is the test seam for the daemon health probe, matching the
+// ensureInstalled pattern in doctor.go. Tests override this; production code
+// leaves the default. Only the health probe goes through it: the daemon itself
+// is started and stopped as a runtime-owned job, not by a shell command.
+var daemonHealthFunc = func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
 	out, err := sb.Shell(ctx, command)
 	if err != nil {
 		return "", -1, err
@@ -25,53 +27,80 @@ var daemonShellFunc = func(ctx context.Context, sb msb.Sandbox, command string) 
 	return out.Stdout(), out.ExitCode(), nil
 }
 
-// ensureDaemon guarantees the agent's serve daemon is healthy inside the VM. It
-// health checks via the provider's command inside the VM; if unhealthy, it
-// kills any stale daemon process, starts a fresh one bound to the hostname
-// appropriate for serveOnly mode, and polls until healthy or timeout. An agent
-// without a daemon provider is a no-op.
-func ensureDaemon(ctx context.Context, a agent.Agent, serveOnly bool, sb msb.Sandbox, ui termio.UI) error {
+// SetDaemonHealthFunc replaces the daemonHealthFunc factory used by
+// ensureDaemon with one that returns the provided function. The original
+// factory is returned so callers can restore it after their test.
+//
+//deadcode:ignore reason="test seam replacing the daemon health probe"
+func SetDaemonHealthFunc(
+	f func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error),
+) func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
+	orig := daemonHealthFunc
+	daemonHealthFunc = f
+	return orig
+}
+
+// ensureDaemon guarantees the agent's serve daemon is healthy inside the VM as
+// a runtime-owned detached job. It health checks via the provider's command; if
+// unhealthy (or force is set, as for a config restart), it kills any stale
+// daemon job, launches a fresh one via ExecDetached, and waits until healthy or
+// timeout. An agent without a daemon provider is a no-op.
+func ensureDaemon(
+	ctx context.Context,
+	a agent.Agent,
+	serveOnly, force bool,
+	sb msb.Sandbox,
+	ui termio.UI,
+) error {
 	provider, ok := agent.AsDaemonProvider(a)
 	if !ok {
 		return nil
 	}
 
-	if probe := probeDaemonHealth(ctx, sb, provider); probe.healthy {
-		ui.Verbosef("%s daemon already healthy", a.Name())
-		return nil
-	} else if probe.detail != "" {
-		ui.Verbosef("%s daemon not healthy: %s", a.Name(), probe.detail)
-	}
-
-	ui.Verbosef("starting %s serve daemon", a.Name())
-	if _, _, err := daemonShellFunc(ctx, sb, provider.DaemonKillCmd()); err != nil {
-		ui.Warnf("kill stale daemon failed (continuing): %v", err)
-	}
-	if _, _, err := daemonShellFunc(ctx, sb, provider.DaemonStartCmd(serveOnly)); err != nil {
-		return fmt.Errorf("start %s serve: %w", a.Name(), err)
-	}
-
-	deadline := time.Now().Add(daemonReadyTimeout)
-	var lastDetail string
-	for {
+	if !force {
 		if probe := probeDaemonHealth(ctx, sb, provider); probe.healthy {
-			ui.Verbosef("%s daemon is healthy", a.Name())
+			ui.Verbosef("%s daemon already healthy", a.Name())
 			return nil
-		} else {
-			lastDetail = probe.detail
+		} else if probe.detail != "" {
+			ui.Verbosef("%s daemon not healthy: %s", a.Name(), probe.detail)
 		}
-		if !time.Now().Before(deadline) {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(daemonPollInterval):
-		}
-		ui.Verbosef("Polling for daemon health: %s", lastDetail)
 	}
-	return fmt.Errorf("%s daemon did not become healthy within %s: %s%s",
-		a.Name(), daemonReadyTimeout, lastDetail, daemonLogTail(ctx, sb, provider))
+
+	command := provider.DaemonCommand(serveOnly)
+	ui.Verbosef("starting %s serve daemon", a.Name())
+	killJobsByCommand(ctx, sb, command.Binary, command.Args, ui)
+
+	job, startErr := sb.ExecDetached(ctx, command.Binary, command.Args)
+	if startErr != nil {
+		return fmt.Errorf("start %s serve: %w", a.Name(), startErr)
+	}
+	defer func() {
+		if closeErr := job.Close(); closeErr != nil {
+			ui.Verbosef("closing %s job handle failed: %v", a.Name(), closeErr)
+		}
+	}()
+
+	probe := func(probeCtx context.Context) (bool, string) {
+		p := probeDaemonHealth(probeCtx, sb, provider)
+		return p.healthy, p.detail
+	}
+	onUnhealthy := func(detail string) {
+		ui.Verbosef("Polling for daemon health: %s", detail)
+	}
+	label := a.Name() + " daemon"
+	if readyErr := awaitJobReady(
+		ctx,
+		job,
+		label,
+		probe,
+		onUnhealthy,
+		daemonReadyTimeout,
+		daemonPollInterval,
+	); readyErr != nil {
+		return readyErr
+	}
+	ui.Verbosef("%s daemon is healthy", a.Name())
+	return nil
 }
 
 // daemonProbe is the outcome of a single health probe, carrying enough detail
@@ -86,7 +115,7 @@ type daemonProbe struct {
 // result. A healthy probe carries no detail; an unhealthy one carries a
 // human-readable explanation for verbose logging.
 func probeDaemonHealth(ctx context.Context, sb msb.Sandbox, provider agent.DaemonProvider) daemonProbe {
-	stdout, exitCode, err := daemonShellFunc(ctx, sb, provider.DaemonHealthCmd())
+	stdout, exitCode, err := daemonHealthFunc(ctx, sb, provider.DaemonHealthCmd())
 	if err != nil {
 		return daemonProbe{healthy: false, detail: fmt.Sprintf("health probe failed: %v", err)}
 	}
@@ -113,42 +142,4 @@ func probeBody(stdout string) string {
 		return body
 	}
 	return "(no output)"
-}
-
-// daemonLogTail reads the daemon log's last lines to explain a health timeout.
-// It is best-effort: a missing log, a failed tail, or empty output contributes
-// nothing.
-func daemonLogTail(ctx context.Context, sb msb.Sandbox, provider agent.DaemonProvider) string {
-	path := provider.DaemonLogPath()
-	if path == "" {
-		return ""
-	}
-	stdout, exitCode, err := daemonShellFunc(ctx, sb, "tail -n 40 "+path)
-	if err != nil || exitCode != 0 {
-		return ""
-	}
-	if body := strings.TrimSpace(stdout); body != "" {
-		return fmt.Sprintf("\n--- %s (last 40 lines) ---\n%s", path, body)
-	}
-	return ""
-}
-
-// SetDaemonShellFunc replaces the daemonShellFunc factory used by ensureDaemon
-// with one that returns the provided function. The original factory is
-// returned so callers can restore it after their test.
-//
-// Usage from an external test package:
-//
-//	orig := sandbox.SetDaemonShellFunc(func(ctx context.Context, sb sandbox.msb.Sandbox, command string) (string, int, error) {
-//	    return "", 0, nil
-//	})
-//	t.Cleanup(func() { sandbox.SetDaemonShellFunc(orig) })
-//
-//deadcode:ignore reason="test seam replacing the daemon shell"
-func SetDaemonShellFunc(
-	f func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error),
-) func(ctx context.Context, sb msb.Sandbox, command string) (string, int, error) {
-	orig := daemonShellFunc
-	daemonShellFunc = f
-	return orig
 }

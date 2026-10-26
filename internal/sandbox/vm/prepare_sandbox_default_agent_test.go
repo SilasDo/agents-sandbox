@@ -34,7 +34,13 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 
 	installPrepareSandboxDockerMock(t)
-	installPrepareSandboxMSBMock(t)
+	mock := installPrepareSandboxMSBMock(t)
+	created, ok := mock.CreatedSandbox.(*msb.MockSandbox)
+	if !ok {
+		t.Fatalf("created sandbox is %T, want *msb.MockSandbox", mock.CreatedSandbox)
+	}
+	detached := &[]msb.MockDetachedCall{}
+	created.ExecDetachedCalls = detached
 	seedMatchingHomeState(t, state.Key{Slug: git.CheckoutSlug(), Agent: agent.DefaultAgentName})
 
 	// The first probe reports not-ready so the run takes the start-then-poll
@@ -43,7 +49,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	// markers, keeping the mock agnostic to which profile is the default.
 	var commands []string
 	healthProbes := 0
-	origDaemon := SetDaemonShellFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+	origDaemon := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
 		commands = append(commands, command)
 		if command == provider.DaemonHealthCmd() {
 			healthProbes++
@@ -54,7 +60,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 		}
 		return "", 0, nil
 	})
-	t.Cleanup(func() { SetDaemonShellFunc(origDaemon) })
+	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
 	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
@@ -66,8 +72,12 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 	defer sess.Cleanup()
 
-	if !slices.Contains(commands, provider.DaemonStartCmd(false)) {
-		t.Errorf("default agent %q daemon was not started; commands = %v", agent.DefaultAgentName, commands)
+	if want := provider.DaemonCommand(false).Binary; len(*detached) == 0 || (*detached)[0].Cmd != want {
+		t.Errorf(
+			"default agent %q daemon was not started as a detached job; calls = %v",
+			agent.DefaultAgentName,
+			*detached,
+		)
 	}
 	if !slices.Contains(commands, provider.DaemonHealthCmd()) {
 		t.Errorf("default agent %q daemon health was not probed; commands = %v", agent.DefaultAgentName, commands)

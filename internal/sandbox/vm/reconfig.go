@@ -115,7 +115,7 @@ func setUpSandbox(
 		return "", fmt.Errorf("docker startup: %w", dockerErr)
 	}
 
-	if daemonErr := ensureDaemon(ctx, a, opts.ServeOnly, sb, ui); daemonErr != nil {
+	if daemonErr := ensureDaemon(ctx, a, opts.ServeOnly, false, sb, ui); daemonErr != nil {
 		return "", daemonErr
 	}
 
@@ -245,14 +245,10 @@ func applyLiveMounts(cfg *msbSdk.SandboxConfig, handle msb.SandboxHandle, ui ter
 // here: they require a VM rebuild and are handled by the recreate path instead.
 func restartDaemons(ctx context.Context, a agent.Agent, sb msb.Sandbox, serveOnly bool, ui termio.UI) {
 	ui.Infof("%s serve restarting…", a.Name())
-	provider, ok := agent.AsDaemonProvider(a)
-	if !ok {
+	if _, ok := agent.AsDaemonProvider(a); !ok {
 		return
 	}
-	if _, _, err := daemonShellFunc(ctx, sb, provider.DaemonKillCmd()); err != nil {
-		ui.Warnf("kill stale daemon failed (continuing): %v", err)
-	}
-	if err := ensureDaemon(ctx, a, serveOnly, sb, ui); err != nil {
+	if err := ensureDaemon(ctx, a, serveOnly, true, sb, ui); err != nil {
 		ui.Warnf("daemon restart failed: %v (using existing)", err)
 	}
 }
