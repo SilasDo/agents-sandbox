@@ -220,8 +220,10 @@ func parseSandboxBody(remainder string, task bool) (ArtifactInfo, bool) {
 	hash := remainder[hashStart : hashStart+14]
 	slug := folderName + "-" + hash
 	rest := remainder[hashStart+14:]
-	// gomutants:disable-next-line INTEGER_DECREMENT,EXPRESSION_REMOVE reason="rest is empty or begins with '-', so rest[0]!='-' is always false; and at the only differing length (1) the fall-through returns the same slug/empty-agent result as this early return"
-	if len(rest) < 2 || rest[0] != '-' {
+	// The hash is hyphen-delimited, so rest is empty or begins with '-'; a bare
+	// "-" carries no agent.
+	// gomutants:disable-next-line INTEGER_DECREMENT reason="the only one-character rest is \"-\", which falls through to the same slug-only result this early return produces"
+	if len(rest) < 2 {
 		return ArtifactInfo{Slug: slug, Task: task, Digest: "", Agent: ""}, true
 	}
 	rest = rest[1:]
@@ -313,10 +315,12 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	if isHomeTimestamp(last) {
 		agent := ""
 		slugParts := parts[:len(parts)-1]
-		// gomutants:disable-next-line EXPRESSION_REMOVE,INTEGER_DECREMENT,INTEGER_INCREMENT reason="this branch is reached only when findHashSuffix returned -1 (no bounded 14-char base36 run), so !isBase36Hash is true whichever part the index picks and every listed mutation leaves the condition as len(parts)>=3"
-		if len(parts) >= 3 && !isBase36Hash(parts[len(parts)-2]) {
-			agent = parts[len(parts)-2]
-			slugParts = parts[:len(parts)-2]
+		if len(parts) >= 3 {
+			// gomutants:disable-next-line INTEGER_DECREMENT,INTEGER_INCREMENT reason="findHashSuffix already rejected every hyphen-delimited 14-char base36 segment, so whichever part this index selects it is never a hash and the branch is taken regardless"
+			if !isBase36Hash(parts[len(parts)-2]) {
+				agent = parts[len(parts)-2]
+				slugParts = parts[:len(parts)-2]
+			}
 		}
 		return ArtifactInfo{Slug: strings.Join(slugParts, "-"), Agent: agent, Digest: "", Task: false}
 	}

@@ -24,7 +24,6 @@ func PruneSandboxes(
 	ui termio.UI,
 ) (SandboxReport, error) {
 	report := SandboxReport{VMsPruned: 0, Details: nil}
-	// gomutants:disable-next-line ARITHMETIC_BASE reason="the expression only sizes the slice capacity; a different capacity does not change the appended contents or the result"
 	handles := make([]msb.SandboxHandle, 0, len(pruneState.ToPrune)+len(pruneState.Tasks))
 	for _, handle := range pruneState.ToPrune {
 		handles = append(handles, handle)

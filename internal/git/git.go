@@ -167,11 +167,8 @@ func worktreeRegistration(root, gitdir string) (string, bool) {
 // directory, missing, unreadable, or lacks the "gitdir:" prefix.
 func gitdirFile(root string) (string, bool) {
 	path := filepath.Join(root, ".git")
-	info, err := os.Stat(path)
-	// gomutants:disable-next-line EXPRESSION_REMOVE,BRANCH_IF reason="a directory or unreadable stat result makes os.ReadFile below fail the same way, so falling through returns the same (\"\", false)"
-	if err != nil || info.IsDir() {
-		return "", false
-	}
+	// Reading .git directly rejects a directory, a missing entry, and an
+	// unreadable file alike, so no separate stat is needed to classify them.
 	data, err := os.ReadFile(path)
 	// gomutants:disable-next-line BRANCH_IF reason="with no data read, the CutPrefix below finds no gitdir: prefix and returns the same (\"\", false)"
 	if err != nil {
