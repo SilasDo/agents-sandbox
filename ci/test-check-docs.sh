@@ -543,5 +543,16 @@ EOF
 expect "go two literal urls on one line" 1 "internal/fixture/fixture.go:7: fragment 'dead-anchor'" "$d"
 rm -rf "$d"
 
+# A call at column zero makes the preceding newline the boundary byte. It must
+# be counted once, so a link after it is not reported a line too low.
+d="$(new_fixture)"
+cat >>"$d/internal/fixture/fixture.go" <<'EOF'
+
+SectionURL("troubleshooting", "docker-not-running")
+var _ = docslink.SectionURL("troubleshooting", "dead-anchor")
+EOF
+expect "go column-zero call keeps later line numbers" 1 "internal/fixture/fixture.go:8: fragment 'dead-anchor'" "$d"
+rm -rf "$d"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]

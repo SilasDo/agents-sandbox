@@ -356,16 +356,21 @@ count_newlines() {
 # so the reported line is the call's, not the preceding newline's.
 scan_go_targets() {
   local text="$1" re="$2" boundary_group="$3" page_group="$4" anchor_group="$5"
-  local match prefix start_prefix lineno=1
+  local match prefix start_prefix boundary call lineno=1
   while [[ "$text" =~ $re ]]; do
     match="${BASH_REMATCH[0]}"
     prefix="${text%%"$match"*}"
-    start_prefix="$prefix"
-    [[ "$boundary_group" -gt 0 ]] && start_prefix="$prefix${BASH_REMATCH[$boundary_group]}"
+    boundary=""
+    [[ "$boundary_group" -gt 0 ]] && boundary="${BASH_REMATCH[$boundary_group]}"
+    # The call starts after the boundary byte, which may itself be the newline
+    # ending the previous line. Count it here (with the prefix) to reach the
+    # call's line, but not again below when advancing, or later links drift.
+    start_prefix="$prefix$boundary"
     lineno=$((lineno + $(count_newlines "$start_prefix")))
     printf '%s\t%s\t%s\n' "$lineno" "${BASH_REMATCH[$page_group]}" "${BASH_REMATCH[$anchor_group]}"
+    call="${match#"$boundary"}"
     text="${text#*"$match"}"
-    lineno=$((lineno + $(count_newlines "$match")))
+    lineno=$((lineno + $(count_newlines "$call")))
   done
 }
 
