@@ -114,6 +114,7 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// gomutants:disable-next-line BRANCH_IF reason="without a ':' CutLast returns before==remainder and after=='', so falling through yields the same slug-only (or foreign-zero) result this branch computes"
 	if !ok {
 		if !prefixed && !looksLikeProjectSlug(remainder) {
+			// gomutants:disable-next-line RETURN_ZERO reason="every field is its zero value, so returning a freshly zeroed ArtifactInfo is identical"
 			return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 		}
 		return ArtifactInfo{Slug: remainder, Digest: "", Agent: "", ContentID: "", Task: false}
@@ -121,12 +122,15 @@ func parseImageRemainder(remainder string, prefixed bool) ArtifactInfo {
 	tag := after
 	slug := before
 	if !prefixed && !looksLikeProjectSlug(slug) {
+		// gomutants:disable-next-line RETURN_ZERO reason="every field is its zero value, so returning a freshly zeroed ArtifactInfo is identical"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	if agent, ok := strings.CutSuffix(tag, "-latest"); ok {
 		return ArtifactInfo{Slug: slug, Agent: agent, Digest: "", ContentID: "", Task: false}
 	}
-	if agent, contentID, ok := strings.Cut(tag, "."); ok && contentID != "" {
+	// contentID is empty when the separator is absent, so the cut's ok result is
+	// implied by the non-empty check.
+	if agent, contentID, _ := strings.Cut(tag, "."); contentID != "" {
 		return ArtifactInfo{Slug: slug, Agent: agent, ContentID: contentID, Digest: "", Task: false}
 	}
 	if tag != "latest" {
@@ -268,6 +272,7 @@ func ParseHomeVolumeName(name string) ArtifactInfo {
 		if info, anchored := parseHomeVolumeBody(name, false); anchored {
 			return info
 		}
+		// gomutants:disable-next-line RETURN_ZERO reason="every field is its zero value, so returning a freshly zeroed ArtifactInfo is identical"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	default:
 		return parseHomeVolumeRemainder(name, false)
@@ -295,6 +300,7 @@ func parseHomeVolumeBody(remainder string, prefixed bool) (ArtifactInfo, bool) {
 func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// gomutants:disable-next-line BRANCH_IF reason="an empty remainder finds no hash and, prefixed or not, the fall-through returns the same zero ArtifactInfo this branch returns"
 	if remainder == "" {
+		// gomutants:disable-next-line RETURN_ZERO reason="every field is its zero value, so returning a freshly zeroed ArtifactInfo is identical"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	if hashStart := findHashSuffix(remainder); hashStart != -1 {
@@ -317,6 +323,7 @@ func parseHomeVolumeRemainder(remainder string, prefixed bool) ArtifactInfo {
 	// A prefix-free home volume always embeds the project-slug hash; without it
 	// the name is not ours.
 	if !prefixed {
+		// gomutants:disable-next-line RETURN_ZERO reason="every field is its zero value, so returning a freshly zeroed ArtifactInfo is identical"
 		return ArtifactInfo{Slug: "", Digest: "", Agent: "", ContentID: "", Task: false}
 	}
 	// No embedded hash: the positional split still recognises the legacy digest

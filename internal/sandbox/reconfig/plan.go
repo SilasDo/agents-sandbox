@@ -212,7 +212,7 @@ func sameImageIdentity(a, b string) bool {
 	parsedA := naming.ParseImageTag(a)
 	parsedB := naming.ParseImageTag(b)
 	// A digest-pinned or non-runner reference only ever equals itself.
-	if parsedA.Slug == "" || parsedA.Agent == "" || parsedA.Digest != "" {
+	if !isNameImage(parsedA) {
 		return false
 	}
 	if parsedB.Slug != parsedA.Slug || parsedB.Agent != parsedA.Agent {
@@ -225,6 +225,13 @@ func sameImageIdentity(a, b string) bool {
 	// At least one is a name/legacy spelling (the upgrade from a 0.6.0 or
 	// pre-0.6 VM): same slug+agent is the same image.
 	return true
+}
+
+// isNameImage reports whether info parsed to a recognizable project name
+// reference: a slug and agent with no digest. A foreign or digest-pinned
+// reference has no agent, while a content-addressed ref is still a name image.
+func isNameImage(info naming.ArtifactInfo) bool {
+	return info.Slug != "" && info.Agent != "" && info.Digest == ""
 }
 
 // tmpSizeChange reports the /tmp tmpfs size change, if any.

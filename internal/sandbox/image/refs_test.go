@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,6 +34,91 @@ func TestImageContentIDTrimsAndTruncates(t *testing.T) {
 		"sha256:9F2C1A7B4D6E0F3199999999999999999999999999999999999999999999999999",
 	); got != "9f2c1a7b4d6e0f31" {
 		t.Errorf("imageContentID(uppercase id) = %q, want the lowercased 16-char prefix", got)
+	}
+	// A 17-character id pins the exclusive bound: it must still truncate to 16.
+	if got := imageContentID("sha256:0123456789abcdefg"); got != "0123456789abcdef" {
+		t.Errorf("imageContentID(17-char id) = %q, want the 16-char prefix", got)
+	}
+}
+
+func TestHasNameIdentity(t *testing.T) {
+	cases := []struct {
+		name string
+		info naming.ArtifactInfo
+		want bool
+	}{
+		{"slug and agent", naming.ArtifactInfo{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}, true},
+		{"no slug", naming.ArtifactInfo{Agent: "opencode"}, false},
+		{"no agent", naming.ArtifactInfo{Slug: "proj-1mjusbm3wikhb0"}, false},
+		{"neither", naming.ArtifactInfo{}, false},
+	}
+	for _, tc := range cases {
+		if got := hasNameIdentity(tc.info); got != tc.want {
+			t.Errorf("%s: hasNameIdentity(%+v) = %v, want %v", tc.name, tc.info, got, tc.want)
+		}
+	}
+}
+
+func TestNameRefFromDockerTag(t *testing.T) {
+	const slug = "proj-1mjusbm3wikhb0"
+	cases := []struct {
+		name      string
+		dockerTag string
+		want      string
+	}{
+		{
+			"prefixed tag",
+			naming.DockerImageRef(slug, "opencode"),
+			naming.RunnerImageRef(slug, "opencode"),
+		},
+		{"prefix-free tag", naming.RunnerImageRef(slug, "opencode"), naming.RunnerImageRef(slug, "opencode")},
+		{"foreign reference", "docker.io/library/foreign:1", ""},
+		{"tag without an agent", slug + ":latest", ""},
+		{"empty tag", "", ""},
+	}
+	for _, tc := range cases {
+		if got := nameRefFromDockerTag(tc.dockerTag); got != tc.want {
+			t.Errorf("%s: nameRefFromDockerTag(%q) = %q, want %q", tc.name, tc.dockerTag, got, tc.want)
+		}
+	}
+}
+
+func TestImageRefCandidates(t *testing.T) {
+	const slug = "proj-1mjusbm3wikhb0"
+	contentRef := naming.ContentImageRef(slug, "opencode", "9f2c1a7b4d6e0f31")
+	dockerTag := naming.DockerImageRef(slug, "opencode")
+	nameRef := naming.RunnerImageRef(slug, "opencode")
+
+	cases := []struct {
+		name string
+		info ImageInfo
+		want []string
+	}{
+		{
+			"content, name, and legacy refs in preference order",
+			ImageInfo{Ref: contentRef, DockerTag: dockerTag},
+			[]string{contentRef, nameRef, dockerTag},
+		},
+		{
+			"empty ref is dropped",
+			ImageInfo{Ref: "", DockerTag: dockerTag},
+			[]string{nameRef, dockerTag},
+		},
+		{
+			"duplicate refs are deduplicated",
+			ImageInfo{Ref: nameRef, DockerTag: nameRef},
+			[]string{nameRef},
+		},
+		{
+			"foreign docker tag alone",
+			ImageInfo{Ref: "", DockerTag: "docker.io/library/foreign:1"},
+			[]string{"docker.io/library/foreign:1"},
+		},
+	}
+	for _, tc := range cases {
+		if got := imageRefCandidates(tc.info); !slices.Equal(got, tc.want) {
+			t.Errorf("%s: imageRefCandidates() = %v, want %v", tc.name, got, tc.want)
+		}
 	}
 }
 

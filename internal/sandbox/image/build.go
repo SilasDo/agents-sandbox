@@ -477,6 +477,7 @@ func EnsureImageWithClient(
 // falls back to the name reference rather than emitting a dangling suffix.
 func imageContentID(imageID string) string {
 	id := strings.ToLower(strings.TrimPrefix(imageID, "sha256:"))
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT reason="only a 16-character id distinguishes the bounds, and there both > and >= (and 16 and 15) leave the same 16 characters; only 16 and 17 differ"
 	if len(id) > 16 {
 		id = id[:16]
 	}
@@ -488,10 +489,17 @@ func imageContentID(imageID string) string {
 // is empty when the tag does not name a (slug, agent) pair.
 func nameRefFromDockerTag(dockerTag string) string {
 	info := naming.ParseImageTag(dockerTag)
-	if info.Slug == "" || info.Agent == "" {
+	if !hasNameIdentity(info) {
 		return ""
 	}
 	return naming.RunnerImageRef(info.Slug, info.Agent)
+}
+
+// hasNameIdentity reports whether info parsed to a usable (slug, agent) name
+// pair, i.e. the Docker tag names a project runner image rather than a foreign
+// or digest reference.
+func hasNameIdentity(info naming.ArtifactInfo) bool {
+	return info.Slug != "" && info.Agent != ""
 }
 
 // imageRefCandidates returns the microsandbox references that may already hold
@@ -499,7 +507,7 @@ func nameRefFromDockerTag(dockerTag string) string {
 // name ref a 0.6.0 install cached under, and the legacy prefixed Docker-tag ref a
 // pre-0.6 install cached under. Empty and duplicate refs are dropped.
 func imageRefCandidates(info ImageInfo) []string {
-	candidates := make([]string, 0, 3)
+	var candidates []string
 	for _, ref := range []string{info.Ref, nameRefFromDockerTag(info.DockerTag), info.DockerTag} {
 		if ref == "" || slices.Contains(candidates, ref) {
 			continue

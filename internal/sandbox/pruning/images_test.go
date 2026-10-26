@@ -555,6 +555,40 @@ func TestImageWithinAge(t *testing.T) {
 			t.Error("an image with no timestamps must not count as within age")
 		}
 	})
+
+	t.Run("a future timestamp is within any positive age", func(t *testing.T) {
+		// A future LastUsedAt makes time.Since negative, so it is within even the
+		// smallest positive age and pins the strict comparison downstream.
+		handle := &msb.MockImageHandle{Reference_: ref, LastUsedAt_: now.Add(time.Hour)}
+		if !imageWithinAge(handle, time.Nanosecond) {
+			t.Error("a future-dated image must count as within a positive age")
+		}
+	})
+
+	t.Run("a non-positive age short-circuits before any timestamp", func(t *testing.T) {
+		// Even a future-dated image is unprotected when the age disables the rule.
+		handle := &msb.MockImageHandle{Reference_: ref, LastUsedAt_: now.Add(time.Hour)}
+		if imageWithinAge(handle, 0) {
+			t.Error("a zero age must not keep even a future-dated image")
+		}
+	})
+}
+
+// TestKeepImageDropsAgentlessRefOfLiveKey pins that a ref that parses without an
+// agent is not a live per-agent tag, so a live key's fresh agent-less ref is
+// reclaimed rather than protected by recency.
+func TestKeepImageDropsAgentlessRefOfLiveKey(t *testing.T) {
+	const ref = "proj-1mjusbm3wikhb0-latest"
+	pruneState := PruneState{
+		Age: time.Hour,
+		ToKeep: map[state.Key]msb.SandboxHandle{
+			{Slug: ref, Agent: ""}: &msb.MockSandboxHandle{},
+		},
+	}
+	handle := &msb.MockImageHandle{Reference_: ref, LastUsedAt_: time.Now()}
+	if keepImage(handle, pruneState, nil) {
+		t.Error("an agent-less ref of a live key must not be kept even when fresh")
+	}
 }
 
 // TestPruneImagesKeepsPerAgentTagsOfLiveSlug verifies that a live slug keeps

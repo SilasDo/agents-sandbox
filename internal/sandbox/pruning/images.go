@@ -110,6 +110,7 @@ func imageWithinAge(imageHandle msb.ImageHandle, age time.Duration) bool {
 	if used.IsZero() {
 		used = imageHandle.CreatedAt()
 	}
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the boundary is an exact nanosecond equality between time.Since and the age, with no injectable clock to hit it; < and <= agree on every reachable input"
 	return time.Since(used) < age
 }
 
