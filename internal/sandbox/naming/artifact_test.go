@@ -128,6 +128,50 @@ func TestParseImageTagBothSchemes(t *testing.T) {
 	require.Equal(t, ArtifactInfo{}, ParseImageTag("docker.io/library/foo"))
 }
 
+func TestContentImageRefRoundTrips(t *testing.T) {
+	ref := ContentImageRef("myproj-1abc1234defg5", "claude-code", "9f2c1a7b4d6e0f31")
+	require.Equal(t, "myproj-1abc1234defg5:claude-code.9f2c1a7b4d6e0f31", ref)
+	require.Equal(t, ArtifactInfo{Slug: "myproj-1abc1234defg5", Agent: "claude-code", ContentID: "9f2c1a7b4d6e0f31"},
+		ParseImageTag(ref))
+}
+
+func TestParseImageTagContentVsNameVsDigest(t *testing.T) {
+	cases := []struct {
+		ref  string
+		want ArtifactInfo
+	}{
+		{
+			"myproj-1abc1234defg5:opencode-latest",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Agent: "opencode"},
+		},
+		{
+			"myproj-1abc1234defg5:opencode.9f2c1a7b4d6e0f31",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Agent: "opencode", ContentID: "9f2c1a7b4d6e0f31"},
+		},
+		{
+			"myproj-1abc1234defg5:opencode.0000000000000000",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Agent: "opencode", ContentID: "0000000000000000"},
+		},
+		{
+			"agents-sandbox/runner-myproj-1abc1234defg5:opencode.9f2c1a7b4d6e0f31",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Agent: "opencode", ContentID: "9f2c1a7b4d6e0f31"},
+		},
+		{
+			"myproj-1abc1234defg5:xYz1234AbCdEfGh",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Digest: "xYz1234AbCdEfGh"},
+		},
+		// A trailing dot with no content id is not the content shape: the empty
+		// id must not set Agent with an empty ContentID, so it stays a Digest.
+		{
+			"myproj-1abc1234defg5:opencode.",
+			ArtifactInfo{Slug: "myproj-1abc1234defg5", Digest: "opencode."},
+		},
+	}
+	for _, tc := range cases {
+		require.Equal(t, tc.want, ParseImageTag(tc.ref), tc.ref)
+	}
+}
+
 // TestParseHomeVolumeNameEdgeCases pins the small branches of the home-volume
 // parser: an empty input, a hash with no tail, a hash-anchored prefix-free
 // volume whose folder begins with a legacy VM prefix, and a legacy prefixed

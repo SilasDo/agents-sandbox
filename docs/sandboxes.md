@@ -77,9 +77,10 @@ Pruning removes:
 - Dangling runner images of projects whose sandbox is gone (for example, after `kill --force`, or a prune whose image
   removal failed). The prune snapshot tracks which slugs have a live sandbox, so it can tell a live project apart from
   a sandbox-less one and reclaim the latter's cached images.
-- Surplus msb images of a project that still has a sandbox. Retained are the per-agent `-latest` tags plus the images a
-  kept sandbox currently references (a stopped-not-yet-stale sandbox may still point at a pre-redesign digest ref);
-  every other ref (orphaned content, old digest refs no sandbox uses) is reclaimed.
+- Surplus msb images of a project that still has a sandbox. Retained are the runner-image variants a kept sandbox
+  currently references and the ones the project used within the age threshold (a stopped-not-yet-stale sandbox may still
+  point at a pre-redesign digest ref); every other ref (orphaned content, aged-out variants, old digest refs no sandbox
+  uses) is reclaimed.
 - Dangling Docker images: after a rebuild the previous runner image is no longer referenced by any tag and is reclaimed
   by a scoped Docker image prune. Tagged images (base images and the current `:latest` runner) are left untouched.
 
