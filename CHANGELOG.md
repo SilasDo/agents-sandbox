@@ -27,6 +27,12 @@ command reports the bare version (e.g. `0.1.0`).
   Readiness stays health-probe based, a crashed job reports its exit code plus a log tail, and a stale job is killed by
   command match before a restart. Re-landed after microsandbox v0.7.11 stopped a detached job from keeping the VM from
   idling (#146).
+- Internal: `make bootstrap` now guarantees the zig it manages is at the pinned version with the macOS cross-compile
+  stubs baked in and the `~/.local/bin/zig` link ensured, and reports instead of silently succeeding when `PATH`
+  resolves zig to an installation elsewhere (it is left untouched). A managed install that is not on `PATH` is no
+  longer re-downloaded, and the `~/.local/bin` fix is printed. Zig now installs under `~/.local` on Linux too, so `make
+  bootstrap` never needs `sudo`, and `make build-release` locates zig's libc by following the symlink rather than the
+  raw `PATH` entry.
 
 ### Fixed
 

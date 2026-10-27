@@ -134,6 +134,9 @@
 - `project-config-root.md`
   - Description: Contract for where a bare checkout's `.agents-sandbox` is read from (#145): the bare root next to `.git`, selected by `core.bare`, with all project accessors routed through one pure base-dir resolver.
   - Read If: Changing the bare-layout project-config fix, the `core.bare` discriminator, the project config base-dir resolver, or the bare-worktrees recipe/Beta marking.
+- `darwin-cross-compile.md`
+  - Description: Contract for the darwin cross-build's zig prerequisite: beyond zig on PATH, the macOS linker stubs (`.github/stubs/*.tbd`) must be baked into `<zig-root>/lib/libc/darwin`, and the three consumers that do it (CI release job, dev VM image, `make bootstrap`); plus `make bootstrap`'s classify-then-act guarantee (managed vs outside zig, on-disk idempotency, warnings), the symlink-following `ZIG_ROOT`/`ZIG_MANAGED_ROOT` resolution, and the accepted duplication between `.github/stubs` and the dev Dockerfile's inline `printf`.
+  - Read If: Changing the macOS/darwin cross-compile path, `make bootstrap` or its zig classification, the release job's stub step, `.github/stubs/*.tbd`, the dev VM Dockerfile's stub step, or the Makefile's `ZIG_ROOT`/`ZIG_MANAGED_ROOT` resolution; or diagnosing a darwin cross-build that cannot find CoreFoundation, Security, or resolv.
 - `detached-jobs.md`
   - Description: Contract for running dockerd and the agent serve daemon as microsandbox runtime-owned detached jobs (`ExecDetached`/`Job`) instead of shell-backgrounded `nohup` processes; health-probe readiness with `Job.Inspect` crash detection and `Job.Logs` on failure, no shell fallback, kill-by-command rediscovery, and the v0.7.11 idle fix that made re-landing safe.
   - Read If: Working on the VM's dockerd/agent-serve startup, readiness, or restart in `internal/sandbox/vm`, the msb detached-job seam, the agent `DaemonProvider` daemon command, or the VM idle timeout.

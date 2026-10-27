@@ -35,9 +35,11 @@ ENV PATH="/usr/local/zig:${PATH}"
 # zig ships macOS C headers but not the framework/library stubs that Go's
 # linker needs (-framework CoreFoundation, -framework Security, -lresolv).
 # These empty stubs satisfy the linker; symbols resolve at runtime on macOS.
-# The build context set up by build.go#dockerfileTar contains only the Dockerfile, so the stubs are inlined
-# as printf(1) output (works on legacy and BuildKit builders alike) instead of
-# heredoc syntax (fails on legacy builder).
+# The canonical copies live in .github/stubs/ and are used by the release CI job
+# and by `make bootstrap`. They are re-inlined here as printf(1) output because
+# the image build context is synthetic — the rendered Dockerfile plus the
+# launcher's own assets — so repository files are not available to COPY. printf
+# works on legacy and BuildKit builders alike; heredoc syntax fails on legacy.
 RUN ZIG_DARWIN="$(dirname "$(which zig)")/lib/libc/darwin" \
  && mkdir -p "$ZIG_DARWIN/System/Library/Frameworks/CoreFoundation.framework" \
     "$ZIG_DARWIN/System/Library/Frameworks/Security.framework" \

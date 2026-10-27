@@ -9,7 +9,7 @@ read_if: Navigating the codebase.
 
 - `agents-sandbox` is a Go CLI (module `github.com/inoio/agents-sandbox`, Go 1.26) that isolates coding agents (opencode, opencode2, pi, Claude Code) inside a dedicated microsandbox VM per project/agent.
 - It uses `msb` (the microsandbox CLI / SDK) and Docker to build/reuse the VM, and Viper + Cobra for config and CLI.
-- Layout: `cmd/agents-sandbox/` is the Cobra CLI; `internal/` holds the packages, dominated by `internal/sandbox/` (see its subindex). `docs/` is a Jekyll (just-the-docs) site; `ci/builder/`, `Formula/`, `.github/` handle cross-compile, Homebrew, and CI.
+- Layout: `cmd/agents-sandbox/` is the Cobra CLI; `internal/` holds the packages, dominated by `internal/sandbox/` (see its subindex). `docs/` is a Jekyll (just-the-docs) site; `ci/`, `Formula/`, `.github/` handle build/verification scripts, Homebrew, and CI (the macOS linker stubs the darwin cross-build needs live in `.github/stubs/`).
 - Target platforms: Linux (KVM) and macOS (Apple Silicon); platform-specific code lives in `_darwin.go`/`_linux.go` files.
 - Heavily test-driven; each `internal/` package pairs source files with `*_test.go` (and often `main_test.go`/`testmock.go`/`coverage_*.go`) for mocks and integration seams.
 
@@ -78,10 +78,10 @@ read_if: Navigating the codebase.
 - `diagrams/*.puml` — PlantUML C4 and lifecycle diagrams.
 - `vendor/` — Gitignored gem bundle; omit.
 
-### `ci/builder/` — Cross-compile builder image
+### `ci/` — Build and verification scripts
 
-- `Dockerfile`, `stubs/*.tbd` — Builder with macOS linker stubs.
-- `ci/check-docs.sh` — Docs build check script.
+- `check-docs.sh`, `test-check-docs.sh` — Documentation link/style gate and its own tests.
+- `check-deadcode.sh`, `test-check-deadcode.sh` — Dead-code gate driver and its own tests.
 
 ### `ci/deadcodecheck/` — Dead-code gate helper
 
@@ -94,6 +94,7 @@ read_if: Navigating the codebase.
 ### `.github/` — CI and issue templates
 
 - `workflows/ci.yml`, `workflows/pages.yml` — CI and GitHub Pages workflows.
+- `stubs/*.tbd` — Empty macOS framework/library stubs (`CoreFoundation`, `Security`, `libresolv`). zig ships macOS headers but not these, so the release job copies them into zig's `lib/libc/darwin` before the darwin cross-build; the dev VM image does the same.
 - `ISSUE_TEMPLATE/*.yml`, `PULL_REQUEST_TEMPLATE.md`, `dependabot.yml` — Templates and dependabot config.
 
 ### `.agents-sandbox/` — Development VM
