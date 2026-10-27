@@ -147,22 +147,6 @@ func TestParseHomeSectionJSON(t *testing.T) {
 	}
 }
 
-func TestFindConfigFileEmptyDir(t *testing.T) {
-	if _, _, ok := findConfigFile(""); ok {
-		t.Error("expected ok=false for an empty dir")
-	}
-}
-
-func TestFindConfigFileFirstExtWins(t *testing.T) {
-	dir := t.TempDir()
-	testutil.WriteFile(t, dir, "config.yaml", "a: 1\n")
-	testutil.WriteFile(t, dir, "config.json", `{"a": 1}`)
-	path, ext, ok := findConfigFile(dir)
-	if !ok || filepath.Base(path) != "config.yaml" || ext != ".yaml" {
-		t.Errorf("expected config.yaml to win, got path=%q ext=%q ok=%v", path, ext, ok)
-	}
-}
-
 func TestReadHomeFromConfigDirReadError(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "config.yaml"), 0o755); err != nil {

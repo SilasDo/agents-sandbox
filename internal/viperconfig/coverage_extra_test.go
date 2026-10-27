@@ -137,14 +137,6 @@ func TestNewResolverSurfacesDecodeError(t *testing.T) {
 	}
 }
 
-// findConfigFile with an empty dir returns no file.
-func TestFindConfigFileEmptyDir(t *testing.T) {
-	path, ext, ok := findConfigFile("")
-	if ok {
-		t.Errorf("findConfigFile(\"\") = %q,%q,true; want no file", path, ext)
-	}
-}
-
 // configType returns "" for unsupported extensions.
 func TestConfigTypeUnknown(t *testing.T) {
 	if got := configType(".toml"); got != "" {

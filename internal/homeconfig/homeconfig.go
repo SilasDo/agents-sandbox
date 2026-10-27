@@ -22,30 +22,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/yamlfmt"
 )
 
-// supportedExts are the config-file extensions, tried in order. The order MUST
-// match internal/viperconfig's supportedExts so both packages select the same
-// config file for a directory.
-var supportedExts = []string{".yaml", ".yml", ".json", ".jsonc", ".json5"}
-
-const (
-	extJSON5 = ".json5"
-	extJSONC = ".jsonc"
-)
-
-// findConfigFile returns the first existing config file in dir.
-func findConfigFile(dir string) (string, string, bool) {
-	if dir == "" {
-		return "", "", false
-	}
-	for _, ext := range supportedExts {
-		path := filepath.Join(dir, "config"+ext)
-		if _, err := os.Stat(path); err == nil {
-			return path, ext, true
-		}
-	}
-	return "", "", false
-}
-
 // ParseHomeSection parses the home manifest from raw config-file data (YAML or
 // JSON; JSON5/JSONC must be normalized first). The boolean reports whether a
 // top-level "home" key was present. path is used only for error messages.
@@ -99,7 +75,7 @@ func parseManifestValue(raw any, path string) (Manifest, error) {
 // ReadHomeFromConfigDir reads the config file in dir and returns its home
 // manifest. The boolean reports whether a home key was present.
 func ReadHomeFromConfigDir(dir string) (Manifest, bool, error) {
-	path, ext, ok := findConfigFile(dir)
+	path, ext, ok := configpaths.FindConfigFile(dir)
 	if !ok {
 		return Manifest{}, false, nil
 	}
@@ -107,7 +83,7 @@ func ReadHomeFromConfigDir(dir string) (Manifest, bool, error) {
 	if err != nil {
 		return nil, false, fmt.Errorf("read config %s: %w", path, err)
 	}
-	if ext == extJSON5 || ext == extJSONC {
+	if ext == configpaths.ExtJSON5 || ext == configpaths.ExtJSONC {
 		var m map[string]any
 		if unmarshalErr := json5.Unmarshal(data, &m); unmarshalErr != nil {
 			return nil, false, fmt.Errorf("parse config %s: %w", path, unmarshalErr)

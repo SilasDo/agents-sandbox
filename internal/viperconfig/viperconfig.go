@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
@@ -204,7 +203,7 @@ func ConfigLayers(slug string) []ConfigLayer {
 // fileLayer reports the directory of a config-file layer and whether a config
 // file exists there.
 func fileLayer(name, dir string) ConfigLayer {
-	_, _, present := findConfigFile(dir)
+	_, _, present := configpaths.FindConfigFile(dir)
 	return ConfigLayer{Name: name, Path: dir, Present: present}
 }
 
@@ -376,8 +375,6 @@ func NewResolverWithConfig(cfg Config) *Resolver {
 
 const (
 	strTrue                      = "true"
-	extJSON5                     = ".json5"
-	extJSONC                     = ".jsonc"
 	ctJSON                       = "json"
 	ctYAML                       = "yaml"
 	keyAutoPruneAge              = "auto-prune-age"
@@ -405,8 +402,6 @@ const (
 	keyNotifyOnDone        = "notify.on-done"
 	keyNotifyOnError       = "notify.on-error"
 )
-
-var supportedExts = []string{".yaml", ".yml", ".json", extJSONC, extJSON5}
 
 // configFlagKeys are the config-backed keys that are also exposed as CLI flags.
 // Their env vars use the AGENTS_SANDBOX_ prefix.
@@ -552,7 +547,7 @@ func durationDecodeHook() mapstructure.DecodeHookFunc {
 }
 
 func mergeDir(v *viper.Viper, dir string) error {
-	path, ext, ok := findConfigFile(dir)
+	path, ext, ok := configpaths.FindConfigFile(dir)
 	if !ok {
 		return nil
 	}
@@ -561,7 +556,7 @@ func mergeDir(v *viper.Viper, dir string) error {
 		return fmt.Errorf("read launcher config %s: %w", path, err)
 	}
 	ct := configType(ext)
-	if ext == extJSON5 || ext == extJSONC {
+	if ext == configpaths.ExtJSON5 || ext == configpaths.ExtJSONC {
 		var m map[string]any
 		if unmarshalErr := json5.Unmarshal(data, &m); unmarshalErr != nil {
 			return fmt.Errorf("parse launcher config %s: %w", path, unmarshalErr)
@@ -580,19 +575,6 @@ func mergeDir(v *viper.Viper, dir string) error {
 		return fmt.Errorf("load launcher config %s: %w", path, err)
 	}
 	return nil
-}
-
-func findConfigFile(dir string) (string, string, bool) {
-	if dir == "" {
-		return "", "", false
-	}
-	for _, ext := range supportedExts {
-		path := filepath.Join(dir, "config"+ext)
-		if _, err := os.Stat(path); err == nil {
-			return path, ext, true
-		}
-	}
-	return "", "", false
 }
 
 func configType(ext string) string {

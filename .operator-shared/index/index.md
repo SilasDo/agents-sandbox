@@ -47,7 +47,7 @@ read_if: Navigating the codebase.
 - `atomicwrite/` — Atomic file writes (unique temp file + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
 - `cliout/` — Output rendering: the generic list/JSON rendering core (`PrintList`/`Mode`/`WriteJSON`) plus the domain printers for list/inspect/prune/`df`.
 - `configmerge/` — Merge config with precedence.
-- `configpaths/` — Config/home path resolution and guards.
+- `configpaths/` — Config/home path resolution and guards, plus the shared config-file discovery (`FindConfigFile`, the single extension order) that both config loaders call.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
 - `git/` — Git helpers (go-git wrapper) and project identity: `Identity`/`ResolveIdentity` with the repo slug (origin-derived; keys the per-slug user config dir and the grouping label) and the checkout slug (git common dir; keys state/VM/volume/locks/image tag), plus the bind-root rule (#144).
 - `homeconfig/` — Home config provisioning.
