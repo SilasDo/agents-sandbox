@@ -11,9 +11,13 @@ import (
 // PreviewHomeVolume resolves, read-only, the home volume a run would use and
 // whether it would have to be created. It mirrors ResolveHomeVolume's
 // reuse → recover → create decision without any write: no volume is created,
-// no state is repaired, and nothing is prefilled. A lookup error that is not
-// true absence is returned rather than reported as "would create", matching the
-// real run's fail-closed behavior.
+// no state is repaired, and nothing is prefilled.
+//
+// A lookup error on the recorded volume that is not true absence is returned
+// rather than reported as "would create", matching the real run's fail-closed
+// check. The recovery candidate is supplied by the caller; how it was obtained
+// (the live VM's mount, read best-effort) is the caller's concern and is not
+// widened here.
 //
 // The create branch reports an empty name: a fresh volume's name embeds a
 // timestamp (HomeVolumeName), so a preview can only name a volume it would
