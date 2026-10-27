@@ -44,6 +44,24 @@ func TestReferencesImageTerminatesOnCyclicStageAlias(t *testing.T) {
 	}
 }
 
+func TestResolveStageBaseReturnsUnresolvedToken(t *testing.T) {
+	if got := resolveStageBase("debian", map[string]string{"builder": "base"}); got != "debian" {
+		t.Errorf(`resolveStageBase("debian", {builder: base}) = %q, want "debian"`, got)
+	}
+}
+
+func TestResolveStageBaseStopsOnCyclicAlias(t *testing.T) {
+	// The token the walk stops at is observable, not just "did it terminate":
+	// a self-alias stops at "0", and a two-stage cycle entered at "b" stops at
+	// "b". Asserting the value keeps the cycle guard's return honest.
+	if got := resolveStageBase("0", map[string]string{"0": "0"}); got != "0" {
+		t.Errorf(`resolveStageBase("0", {0: 0}) = %q, want "0"`, got)
+	}
+	if got := resolveStageBase("b", map[string]string{"a": "b", "b": "a"}); got != "b" {
+		t.Errorf(`resolveStageBase("b", {a: b, b: a}) = %q, want "b"`, got)
+	}
+}
+
 func TestFinalStageTokenSkipsFromWithoutImage(t *testing.T) {
 	if got := finalStageToken([]byte("FROM --platform=linux/amd64\n")); got != "" {
 		t.Errorf("finalStageToken = %q, want empty", got)
