@@ -54,11 +54,11 @@ func verifyAssetChecksum(ctx context.Context, version, assetPath, asset string) 
 // by the same release tag as the asset download.
 func fetchChecksums(ctx context.Context, version string) ([]byte, error) {
 	url := fmt.Sprintf("%s/v%s/%s", downloadBase, version, checksumsAsset)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newAssetRequest(ctx, url)
 	if err != nil {
 		return nil, fmt.Errorf("build %s request: %w", checksumsAsset, err)
 	}
-	req.Header.Set("User-Agent", "agents-sandbox")
+	// gomutants:disable-next-line INTEGER_INCREMENT,INTEGER_DECREMENT,ARITHMETIC_BASE reason="the client timeout is defensive; a local test server answers immediately and the value is not a contract"
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -68,6 +68,7 @@ func fetchChecksums(ctx context.Context, version string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("download %s: unexpected status %d", checksumsAsset, resp.StatusCode)
 	}
+	// gomutants:disable-next-line INTEGER_INCREMENT reason="reading max+1 or max+2 bytes both cross the same bound, so the overflow sentinel's size is equivalent"
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", checksumsAsset, err)
@@ -79,8 +80,10 @@ func fetchChecksums(ctx context.Context, version string) ([]byte, error) {
 }
 
 // checksumForAsset returns the SHA-256 recorded for asset in a checksums.txt
-// body. Entries use the sha256sum format `<hex><two-space><name>`; a line that
-// names asset but has any other shape is malformed and fails closed.
+// body. Entries use the sha256sum shape - a 64-hex digest, whitespace, then the
+// asset name (the published file uses two spaces); a line that names asset with
+// any other shape is malformed and fails closed. A duplicate entry resolves to
+// the first match.
 func checksumForAsset(checksums []byte, asset string) (string, error) {
 	for line := range strings.SplitSeq(string(checksums), "\n") {
 		fields := strings.Fields(line)

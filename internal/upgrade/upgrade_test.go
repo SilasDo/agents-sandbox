@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -899,6 +900,19 @@ func TestDownloadAssetNetworkError(t *testing.T) {
 	t.Cleanup(func() { downloadBase = orig })
 	if _, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0"); err == nil {
 		t.Fatal("expected error on unreachable download endpoint")
+	}
+}
+
+func TestDownloadAssetBadURL(t *testing.T) {
+	orig := downloadBase
+	downloadBase = "://missing-scheme"
+	t.Cleanup(func() { downloadBase = orig })
+	_, err := downloadAssetToDir(context.Background(), t.TempDir(), "2.0.0")
+	if err == nil {
+		t.Fatal("expected error for an unbuildable download request")
+	}
+	if _, ok := errors.AsType[*url.Error](err); !ok {
+		t.Fatalf("expected the request error to be preserved, got %v", err)
 	}
 }
 

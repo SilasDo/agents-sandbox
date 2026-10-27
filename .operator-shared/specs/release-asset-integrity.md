@@ -25,7 +25,8 @@ read_if: Changing the self-update download/verify/replace path, the release job'
   and a missing or malformed entry for the asset all return an error before the rename; the temp file
   is removed and the running binary is untouched.
 - `checksumForAsset` parses the `sha256sum` shape; a line that names the asset with any other shape is
-  malformed. Whitespace is collapsed and the digest is validated as 64 hex characters.
+  malformed. Whitespace is collapsed and the digest is validated as 64 hex characters, and a duplicate
+  entry for the asset resolves to the first match.
 - `assetName()` is the single source of the flat asset name, shared by the download URL and the
   checksums lookup.
 

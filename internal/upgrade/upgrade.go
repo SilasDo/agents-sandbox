@@ -464,6 +464,18 @@ func installRelease(ctx context.Context, version, exePath string) error {
 	return replaceExecutable(assetPath, exePath)
 }
 
+// newAssetRequest builds the GET request the updater uses to fetch a release
+// asset, carrying the User-Agent the GitHub release endpoints expect. Callers
+// address the specific asset; this keeps request construction in one place.
+func newAssetRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "agents-sandbox")
+	return req, nil
+}
+
 // downloadAssetToDir downloads the release binary for the given version and the
 // current platform into dir and returns the downloaded file path.
 //
@@ -473,11 +485,10 @@ func installRelease(ctx context.Context, version, exePath string) error {
 func downloadAssetToDir(ctx context.Context, dir string, version string) (string, error) {
 	asset := assetName()
 	url := fmt.Sprintf("%s/v%s/%s", downloadBase, version, asset)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newAssetRequest(ctx, url)
 	if err != nil {
 		return "", fmt.Errorf("build download request: %w", err)
 	}
-	req.Header.Set("User-Agent", "agents-sandbox")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {

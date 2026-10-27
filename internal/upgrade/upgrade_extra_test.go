@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -65,13 +66,22 @@ func TestUpdateExecutable(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	cmd := exec.Command(copyTestBinary(t), "-test.run=^TestUpdateExecutable$")
+	childBinary := copyTestBinary(t)
+	cmd := exec.Command(childBinary, "-test.run=^TestUpdateExecutable$")
 	cmd.Env = append(os.Environ(),
 		"UPGRADE_HELPER_PROCESS=1",
 		"UPGRADE_DOWNLOAD_BASE="+srv.URL,
 	)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("helper failed: %v\n%s", err, out)
+	}
+
+	installed, err := os.ReadFile(childBinary)
+	if err != nil {
+		t.Fatalf("read child binary: %v", err)
+	}
+	if !bytes.Equal(installed, asset) {
+		t.Fatalf("child binary content = %q, want %q", installed, asset)
 	}
 }
 
