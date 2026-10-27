@@ -20,6 +20,8 @@ command reports the bare version (e.g. `0.1.0`).
 - VM reconfiguration: when an existing project VM's config cannot be read, the launcher now surfaces a warning and
   forces a recreate instead of silently skipping every reconfig trigger and reusing a VM that may still run the old
   image, env, or network (#339).
+- `build` and `run` now agree on `--agent-version` for a user-provided agent: like `run`, `build` ignores the pin and
+  keeps the recorded version instead of replacing an agent the project supplies itself (#347).
 - Runner image: a project's image variants no longer overwrite each other in the microsandbox cache, so toggling
   `--docker` — or any other content change, such as an agent-version bump or a project-Dockerfile edit — reimports
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).

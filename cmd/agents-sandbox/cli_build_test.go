@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
+	"github.com/inoio/agents-sandbox/internal/sandbox/image"
+	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 )
@@ -153,6 +158,71 @@ func TestBuildCommandHasAgentVersionFlag(t *testing.T) {
 	}
 	if openCodeVersion.Name != "opencode-version" {
 		t.Errorf("flag name = %q, want %q", openCodeVersion.Name, "opencode-version")
+	}
+}
+
+// TestBuildAgentVersionPrecedenceMatchesRun pins that build shares run's
+// agent-version precedence: a user-provided agent is not owned by the tool, so
+// --agent-version is ignored and the recorded version is baked, while a
+// tool-managed project honors the pin.
+func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
+	tests := []struct {
+		name            string
+		agentSource     string
+		recordedVersion string
+		pin             string
+		wantVersion     string
+	}{
+		{
+			name:            "user-provided agent ignores the pin",
+			agentSource:     "user",
+			recordedVersion: "1.0.0",
+			pin:             "9.9.9",
+			wantVersion:     "1.0.0",
+		},
+		{
+			name:            "tool-managed agent honors the pin",
+			agentSource:     "tool",
+			recordedVersion: "1.0.0",
+			pin:             "9.9.9",
+			wantVersion:     "9.9.9",
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			initTestProjectDir(t)
+			cmd, _ := setupCommandFixtures(t, cmdBuild, "--agent-version", testCase.pin)
+
+			var resolvedVersion string
+			var resolverCalled bool
+			image.WithMockAgentVersionResolver(
+				t,
+				func(_ context.Context, _ agent.Agent, requested string) (string, error) {
+					resolvedVersion = requested
+					resolverCalled = true
+					return "0.0.0-test", nil
+				},
+			)
+
+			key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+			if err := seedHomeState(key, state.HomeState{
+				AgentVersion: testCase.recordedVersion,
+				AgentSource:  testCase.agentSource,
+			}); err != nil {
+				t.Fatalf("seed state: %v", err)
+			}
+
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("build: %v", err)
+			}
+			if !resolverCalled {
+				t.Fatal("build must resolve an agent version")
+			}
+			if resolvedVersion != testCase.wantVersion {
+				t.Errorf("build resolved agent version %q, want %q", resolvedVersion, testCase.wantVersion)
+			}
+		})
 	}
 }
 

@@ -111,6 +111,70 @@ func TestResolveBuildVersionUserAgentEmptyVersionLeavesResolutionToImageBuild(t 
 	}
 }
 
+// TestResolveAgentVersionForBuild pins the one shared precedence both the
+// standalone build and a run derive from: a user-provided agent is not owned by
+// the tool, so the pin is ignored and the recorded version is used with
+// userProvided=true; every other project honors the requested pin.
+func TestResolveAgentVersionForBuild(t *testing.T) {
+	tests := []struct {
+		name             string
+		source           string
+		recordedVersion  string
+		requestedVersion string
+		wantVersion      string
+		wantUserProvided bool
+	}{
+		{
+			name:             "user-provided agent ignores the pin",
+			source:           agentSourceUser,
+			recordedVersion:  "1.0.0",
+			requestedVersion: "9.9.9",
+			wantVersion:      "1.0.0",
+			wantUserProvided: true,
+		},
+		{
+			name:             "user-provided agent without a recorded version leaves resolution to the build",
+			source:           agentSourceUser,
+			recordedVersion:  "",
+			requestedVersion: "9.9.9",
+			wantVersion:      "",
+			wantUserProvided: true,
+		},
+		{
+			name:             "tool-managed agent honors the pin",
+			source:           agentSourceTool,
+			recordedVersion:  "1.0.0",
+			requestedVersion: "9.9.9",
+			wantVersion:      "9.9.9",
+			wantUserProvided: false,
+		},
+		{
+			name:             "tool-managed agent without a pin passes the request through",
+			source:           agentSourceTool,
+			recordedVersion:  "1.0.0",
+			requestedVersion: "",
+			wantVersion:      "",
+			wantUserProvided: false,
+		},
+	}
+
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			k := state.Key{Slug: "proj", Agent: "opencode"}
+			seedAgentState(t, k, testCase.recordedVersion, testCase.source)
+
+			version, userProvided := ResolveAgentVersionForBuild(k, testCase.requestedVersion)
+			if version != testCase.wantVersion {
+				t.Errorf("version = %q, want %q", version, testCase.wantVersion)
+			}
+			if userProvided != testCase.wantUserProvided {
+				t.Errorf("userProvided = %v, want %v", userProvided, testCase.wantUserProvided)
+			}
+		})
+	}
+}
+
 func TestResolveOpenCodeVersionPinnedSkipsUpdateCheck(t *testing.T) {
 	origLatest := agentLatestVersion
 	defer func() { agentLatestVersion = origLatest }()

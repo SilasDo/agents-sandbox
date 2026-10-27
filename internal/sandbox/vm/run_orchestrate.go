@@ -129,11 +129,12 @@ func PrepareSandbox(
 		return nil, err
 	}
 
+	buildVersion, userProvided := ResolveAgentVersionForBuild(k, agentVersion)
 	imageInfo, err := image.EnsureImage(
 		ctx,
 		a,
 		k.Slug,
-		buildOptions(opts, agentVersion, opts.Rebuild, currentAgentSource(k) == agentSourceUser),
+		buildOptions(opts, buildVersion, opts.Rebuild, userProvided),
 		ui,
 	)
 	if err != nil {

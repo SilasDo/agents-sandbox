@@ -59,7 +59,7 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 	}
 	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
 
-	userProvided := currentAgentSource(k) == agentSourceUser
+	_, userProvided := ResolveAgentVersionForBuild(k, opts.AgentVersion)
 	version := previewAgentVersion(ctx, k, opts, userProvided)
 	// A known version from the project's record or the recovered image label is
 	// what a real run would bake without running the upgrade check, so disclose
