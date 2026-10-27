@@ -29,6 +29,12 @@ const RootUser = "root"
 // not declare a shebang.
 const defaultHookInterpreter = "/bin/sh"
 
+// unreadableVMConfigChangeLabel names the forced recreate when an existing VM's
+// config cannot be read: the change detectors have nothing to compare against,
+// so the VM must be recreated rather than reused with possibly stale image,
+// env, or network settings (specs/reconfig-decision.md).
+const unreadableVMConfigChangeLabel = "unreadable VM config"
+
 // runStartupHooks runs each configured startup hook inside the VM via an
 // interactive attach. A hook with a shebang is executed directly so the VM
 // kernel resolves the interpreter; one without falls back to /bin/sh. Hook
@@ -141,23 +147,11 @@ func decideReconfig(
 	cfs *reprovision.ConfigFiles,
 	ui termio.UI,
 ) (bool, bool, string, int, error) {
-	handle, _, _ := findProjectVM(ctx, client, k)
-
-	var curCfg *msbSdk.SandboxConfig
-	var liveSb msb.Sandbox
-	if handle != nil {
-		var cfgErr error
-		curCfg, cfgErr = handle.Config()
-		if cfgErr != nil {
-			ui.Verbosef("reading existing VM config failed: %v (continuing)", cfgErr)
-		}
-		applyLiveMounts(curCfg, handle, ui)
-		var connectErr error
-		liveSb, connectErr = handle.Connect(ctx)
-		if connectErr != nil {
-			ui.Verbosef("connecting to existing VM failed: %v (continuing)", connectErr)
-		}
+	handle, _, lookupErr := findProjectVM(ctx, client, k)
+	if lookupErr != nil {
+		return false, false, homeVol, 0, fmt.Errorf("locate project VM: %w", lookupErr)
 	}
+	curCfg, liveSb, configUnreadable := readExistingVM(ctx, handle, k, ui)
 
 	// Detect whether the project's image digest changed since the last run. The
 	// home-volume prompt is deferred until the rebuild decision below confirms
@@ -196,6 +190,17 @@ func decideReconfig(
 		},
 		homeVol,
 	)
+
+	// An unreadable config leaves PlanReconfig with nothing to compare, so its
+	// change detectors are all skipped. Force a recreate through the normal
+	// resolution path (plan.Recreate + a change label), which still prompts when
+	// other clients are attached, instead of silently reusing a VM whose image,
+	// env, or network may differ.
+	if configUnreadable {
+		plan.Recreate = true
+		plan.Changes = append([]reconfig.Change{{Label: unreadableVMConfigChangeLabel}}, plan.Changes...)
+	}
+
 	otherClients := state.CountActiveClients(k)
 	applyRecreate, applyRestart, err := reconfig.ResolveReconfig(ctx, ui, plan, otherClients, plan.Changes)
 	if err != nil {
@@ -221,6 +226,36 @@ func decideReconfig(
 		homeVol = newVol
 	}
 	return recreate, restart, homeVol, plan.ServeHostPort, nil
+}
+
+// readExistingVM reads the existing project VM's config and live handle. A
+// failed Config read is surfaced as a warning and reported as unreadable, so
+// the caller can force a recreate instead of silently reusing a VM whose image,
+// env, or network may differ (specs/reconfig-decision.md). handle may be nil
+// when no VM exists, in which case all three results are zero.
+func readExistingVM(
+	ctx context.Context,
+	handle msb.SandboxHandle,
+	k state.Key,
+	ui termio.UI,
+) (*msbSdk.SandboxConfig, msb.Sandbox, bool) {
+	if handle == nil {
+		return nil, nil, false
+	}
+	cfg, configReadErr := handle.Config()
+	configUnreadable := configReadErr != nil
+	if configUnreadable {
+		ui.Warnf(
+			"reading the existing VM config for %s failed: %v; treating the VM as changed (a recreate is required)",
+			projectVMName(k), configReadErr,
+		)
+	}
+	applyLiveMounts(cfg, handle, ui)
+	liveSb, connectErr := handle.Connect(ctx)
+	if connectErr != nil {
+		ui.Verbosef("connecting to existing VM failed: %v (continuing)", connectErr)
+	}
+	return cfg, liveSb, configUnreadable
 }
 
 // applyLiveMounts fills cfg.Volumes with the mounts the persisted config
