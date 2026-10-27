@@ -1,18 +1,21 @@
 ---
-description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test`/`race`/`vulncheck` run ungated, the `fuzz` and `mutation` workflows are deliberately outside this gating (see `fuzz-ci.md` and `mutation-testing.md`), and the costly `integration` (Docker Engine) and `integration-podman` (rootless podman) jobs run the same build suite on `main`, on release tags, on manual dispatch, and on a PR a maintainer opted in with the matching `run-integration` / `run-integration-podman` label; plus the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
-read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration or integration-podman job's gating, the `run-integration`/`run-integration-podman` opt-in labels, or deciding whether a check belongs in CI.
+description: Contract for what `.github/workflows/ci.yml` runs and gates — `lint`/`test` always run (the only required checks), `race`/`vulncheck`/`deadcode` run when the `changes` gate reports code and are skipped on a code-free change, the `fuzz` and `mutation` workflows are deliberately outside this gating (see `fuzz-ci.md` and `mutation-testing.md`), the costly `integration` (Docker Engine) and `integration-podman` (rootless podman) jobs run the same build suite on a code-affecting `main` push, on release tags, on manual dispatch, and on a PR a maintainer opted in with the matching `run-integration` / `run-integration-podman` label; plus the PR-only concurrency group, the `changes` code-free gate, and the invariants that keep those conditions live (declared triggers, `pull_request.types` defaults, why integration must stay in `ci.yml`).
+read_if: Changing the CI triggers or job conditions in `.github/workflows/ci.yml`, the integration or integration-podman job's gating, the `run-integration`/`run-integration-podman` opt-in labels, the PR-only concurrency group, the `changes` code-free gate (integration and `race`/`vulncheck`/`deadcode`), or deciding whether a check belongs in CI.
 ---
 
 # CI job gating
 
 ## Contract
 
-`.github/workflows/ci.yml` runs `lint`, `test`, `race` (`make test-race`), and `vulncheck` (`make vulncheck`) on every
-push to `main`, every `v*` tag, and every PR event — all four ungated. The
+`.github/workflows/ci.yml` always runs `lint` and `test` — the only two required branch checks. `race` (`make test-race`),
+`vulncheck` (`make vulncheck`), and `deadcode` (`make deadcode`) are **not** required, so they `needs: [changes]` and run
+on a PR, main push, tag, or dispatch only when the `changes` gate reports `code=true`; a code-free change skips them. The
 `integration` job (`make test-integration`, the `integration`-tagged docker-build suite, ~10 minutes) is gated to four
 paths:
 
-1. `github.ref == 'refs/heads/main'` — every push to `main`.
+1. `github.ref == 'refs/heads/main'` **and** the `changes` job reports `code=true` — a code-affecting push to `main`. A
+   merge that touches only docs, the operator brain, the Homebrew formula, issue templates, or `.gitignore` sets
+   `code=false` and skips both integration jobs.
 2. `startsWith(github.ref, 'refs/tags/')` — every release tag. `release` declares
    `needs: [lint, test, integration, integration-podman]`, so both integration jobs stay in this workflow; a second
    workflow would drop that gate.
@@ -24,6 +27,21 @@ paths:
 points `DOCKER_HOST` at its socket) with the same four gates and its own `run-integration-podman` label. It exists to
 hold podman to the claim that it is a tested Docker-compatible engine, so a podman-only failure has its own job and label
 and never blocks a PR a maintainer ran Docker Engine for.
+
+### Concurrency and the `changes` gate
+
+The workflow sets `concurrency.group` to `ci-<ref>` for pull requests and a per-run id otherwise, with
+`cancel-in-progress: true` only for pull requests: a re-pushed PR cancels its superseded run (its `lint`/`test` required
+checks re-report on the newer commit), while a main push, tag, or dispatch is never cancelled or serialized.
+
+The `changes` job runs on every event, cheaply, and reports whether the push changed anything that can affect the runner
+image or the tests — the complement of `mutation.yml`'s `paths-ignore` list (docs, `.operator-shared/`, `Formula/`,
+`.github/ISSUE_TEMPLATE/`, `**.md`, `.gitignore`). It diffs the event's base against `github.sha`: a push uses the
+payload's `before` tip, a pull request (whose payload has no `before`) the base branch's merge base, so a PR is judged on
+its own changeset. `race`, `vulncheck`, and `deadcode` `needs: [changes]` and, on a PR or main push, run only when
+`code=true`; tags and dispatch always run them. Both integration jobs `needs: [changes]` and, on a `refs/heads/main`
+push, additionally require `needs.changes.outputs.code == 'true'`. Tags, dispatch, and the PR opt-in labels ignore the
+gate. CodeQL keeps its own equivalent `paths-ignore` in `.github/workflows/codeql.yml`; see `codeql-scanning.md`.
 
 ## Invariants
 
@@ -47,6 +65,9 @@ and never blocks a PR a maintainer ran Docker Engine for.
   access qualifies and a read-only collaborator or outside contributor cannot self-serve. That is why CONTRIBUTING says
   to ask a maintainer. A label a contributor sets in their own fork does nothing: the condition reads the base
   repository's labels on the PR.
+- The repository's `protect main branch` ruleset requires only `lint` and `test`. `race`, `vulncheck`, `deadcode`, and both
+  integration jobs are optional, which is what makes the `changes` gate safe: a skipped job cannot leave a required check
+  pending.
 
 ## Behavior
 

@@ -109,7 +109,8 @@ This project defaults to **test-driven development**:
   required, and a marker that excuses nothing fails the gate, so markers cannot rot. `PKG=./cmd/...` narrows the analysis
   for inspection and skips the stale-marker pass; the analysis needs cgo. It runs on every PR but is deliberately not a
   release prerequisite, and `make check` runs only the gate's own script test (`make deadcode-test`).
-- `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target (`FUZZPKG` narrows it to one). The seed corpus
+- `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target (`FUZZPKG` narrows it to one package,
+  `FUZZTARGET` to one target). The seed corpus
   and any committed crasher run under `make test`, so a crasher is a regression test first; the `fuzz` workflow explores
   the targets nightly and on merges that touch them, and nothing is gated on it, so a red run reports a crasher instead of
   blocking a merge. A crasher it finds comes back as a build artifact to commit as a seed.
@@ -127,7 +128,7 @@ This project defaults to **test-driven development**:
   ever gated on it.
 - The `integration`-tagged docker-build suite is excluded from `make test` and from PR CI by default (~10 minutes). Run
   it locally with `make test-integration`, or ask a maintainer to add the `run-integration` label to a PR to run it
-  there; it always runs on `main` and on releases. The same suite also runs against rootless podman under the
+  there; it always runs on `main` (when the merge changed code) and on releases. The same suite also runs against rootless podman under the
   `run-integration-podman` label, which keeps podman an engine this project tests rather than only documents.
 
 ## Documentation

@@ -18,6 +18,16 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- CI: the `ci` workflow cancels a superseded pull-request run when a PR is pushed again (main, tag, and dispatch runs are
+  never cancelled), and a change that touches no code — docs, the operator brain, the Homebrew formula, issue templates,
+  or `.gitignore` only — now skips the two ~16-minute integration jobs and the non-required `race`/`vulncheck`/`deadcode`
+  jobs instead of rebuilding and re-running them.
+- CI: code scanning moved from GitHub's default setup to a committed advanced-setup workflow
+  (`.github/workflows/codeql.yml`) scanning `actions`, `go`, and `ruby`, so docs-only changes are path-filtered out of
+  the scan.
+- CI: the `fuzz` workflow runs one matrix job per fuzz target instead of one per package, so a package's targets each get
+  the full `FUZZTIME` budget and run in parallel. This fixes the nightly sweep being cancelled when a package with three
+  targets (15 minutes each) exceeded the job's 45-minute timeout.
 - Docs integrity: `ci/check-docs.sh` now verifies that every documentation fragment landing on the published site —
   rendered-HTML links, `docs/` in-page and cross-page anchors, and the launcher's printed links — resolves to a
   heading that slugs to it. The launcher composes its links through the new `internal/docslink` package (#296).
@@ -39,6 +49,9 @@ command reports the bare version (e.g. `0.1.0`).
 - Runner image: a project's image variants no longer overwrite each other in the microsandbox cache, so toggling
   `--docker` — or any other content change, such as an agent-version bump or a project-Dockerfile edit — reimports
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).
+- Runner image: a project Dockerfile whose stages alias each other — including a stage named after its own base
+  (`FROM 0 AS 0`) — no longer makes the launcher spin forever resolving the final stage's base image. The alias walk
+  stops when it revisits a token, so the render returns and the build fails with a clear error instead of hanging.
 
 ## [0.6.0] - 2026-10-25
 

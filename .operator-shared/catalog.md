@@ -18,8 +18,8 @@
   - Description: Survey of Go mutation-testing tools against the on-demand `go run module@version` Makefile constraint; recommends gomutants, and records the `--changed-since` line scoping (verified flag name) and the canonical `make mutation` target.
   - Read If: Adding or changing the on-demand mutation-testing Makefile target, or evaluating a Go mutation-testing tool.
 - `mutation-triage.md`
-  - Description: Field guide for closing gomutants LIVED mutants: the recurring types and the assertion that kills each, the equivalent-mutant traps, and the record-with-a-reason fallback.
-  - Read If: Triaging surviving mutants from a `make mutation` sweep, or choosing between strengthening a test and recording a `// gomutants:disable` reason.
+  - Description: Field guide for closing gomutants LIVED mutants: the recurring types and the assertion that kills each, the equivalent-mutant traps, the record-with-a-reason fallback, and the operational scoping/timing notes (`SINCE=<base ref>` for a branch sweep).
+  - Read If: Triaging surviving mutants from a `make mutation` sweep, choosing between strengthening a test and recording a `// gomutants:disable` reason, or picking a `SINCE` scope for a branch/PR sweep.
 - `mutation-sweep-execution.md`
   - Description: Runbook for burning down the #268 mutation-survivor tracker over turns: the immutable FULL-sweep snapshot, the 35-package queue, file-disjoint worker units with the package as the verification unit, the per-id disposition handback, end-of-turn `make mutation FULL=1 PKG=<pkg>` verification, and the effective turn ordering (re-sweep first, drive off the fresh typed report, batch by type per file, restructure order-dependent loops/comparators first).
   - Read If: Coordinating or executing a #268 reduction pass, or changing the coordinator/subagent split, the queue and cursor format, the handback shape, the turn's work ordering, the landing/sequencing model, or the verification protocol.
@@ -159,8 +159,11 @@
   - Description: Contract for #228: `--dry-run` is a true make-no-changes preview of a run/shell (build plan, image build decision, read-only home-volume probe) that returns before any build/volume/state/VM/network side effect; `--dry-run-vm` stays the KVM-less "prepare everything, skip the VM" flag.
   - Read If: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision / `resolveAgentVersion` / `resolveBaseDigest`, or the `vm.agentLatestVersion` test seam.
 - `ci-job-gating.md`
-  - Description: Contract for gating the costly integration jobs: `integration` (Docker Engine) and `integration-podman` (rootless podman) both run on `main`, release tags, manual dispatch, and on a PR a maintainer opted into with the matching `run-integration` / `run-integration-podman` label, plus the invariants keeping those conditions live, the release gate set (`lint`/`test`/`integration`/`integration-podman`, with `race`/`vulncheck` deliberately non-blocking), and the `fuzz`/`mutation` workflows kept outside this gating.
-  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `integration` or `integration-podman` gating, or the `run-integration`/`run-integration-podman` labels.
+  - Description: Contract for gating the costly integration jobs and the non-required `race`/`vulncheck`/`deadcode` jobs behind the `changes` code-free gate, the PR-only concurrency group, `lint`/`test` as the only required checks, and the integration jobs' opt-in labels.
+  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `changes` gate or PR concurrency, the integration/`race`/`vulncheck`/`deadcode` gating, or the `run-integration`/`run-integration-podman` labels.
+- `codeql-scanning.md`
+  - Description: Contract for the advanced-setup CodeQL workflow replacing GitHub's default setup: languages (`actions`/`go`/`ruby`), Go autobuild with CGO, the `paths-ignore` filter mirroring the `changes` gate, and why default setup must stay disabled.
+  - Read If: Changing `.github/workflows/codeql.yml`, the scanned languages or CodeQL path filter/schedule, or the repository's CodeQL default-setup state.
 - `fuzz-ci.md`
   - Description: Contract for the `fuzz` workflow: it discovers targets from sources the same way `make fuzz` does (a `discover` job feeding the matrix), is never a PR gate, and caches a per-target corpus keyed by the flattened package name.
   - Read If: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.

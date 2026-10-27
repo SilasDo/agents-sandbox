@@ -95,9 +95,17 @@ func scanFromStages(dockerfile []byte) (string, map[string]string) {
 }
 
 // resolveStageBase follows a FROM image token through any declared stage
-// aliases until it reaches the underlying image reference.
+// aliases until it reaches the underlying image reference. A project
+// Dockerfile controls its own aliases, so it can declare a cycle (a stage named
+// after its own base image, or two stages that alias each other); the walk
+// stops once a token repeats instead of following the cycle forever.
 func resolveStageBase(token string, stageBase map[string]string) string {
+	seen := make(map[string]struct{}, len(stageBase))
 	for {
+		if _, ok := seen[token]; ok {
+			return token
+		}
+		seen[token] = struct{}{}
 		base, ok := stageBase[token]
 		if !ok {
 			return token
