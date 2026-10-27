@@ -18,8 +18,8 @@
   - Description: Survey of Go mutation-testing tools against the on-demand `go run module@version` Makefile constraint; recommends gomutants, and records the `--changed-since` line scoping (verified flag name) and the canonical `make mutation` target.
   - Read If: Adding or changing the on-demand mutation-testing Makefile target, or evaluating a Go mutation-testing tool.
 - `mutation-triage.md`
-  - Description: Field guide for closing gomutants LIVED mutants: the recurring types and the assertion that kills each, the equivalent-mutant traps, and the record-with-a-reason fallback.
-  - Read If: Triaging surviving mutants from a `make mutation` sweep, or choosing between strengthening a test and recording a `// gomutants:disable` reason.
+  - Description: Field guide for closing gomutants LIVED mutants: the recurring types and the assertion that kills each, the equivalent-mutant traps, the record-with-a-reason fallback, and the operational scoping/timing notes (`SINCE=<base ref>` for a branch sweep).
+  - Read If: Triaging surviving mutants from a `make mutation` sweep, choosing between strengthening a test and recording a `// gomutants:disable` reason, or picking a `SINCE` scope for a branch/PR sweep.
 - `mutation-sweep-execution.md`
   - Description: Runbook for burning down the #268 mutation-survivor tracker over turns: the immutable FULL-sweep snapshot, the 35-package queue, file-disjoint worker units with the package as the verification unit, the per-id disposition handback, end-of-turn `make mutation FULL=1 PKG=<pkg>` verification, and the effective turn ordering (re-sweep first, drive off the fresh typed report, batch by type per file, restructure order-dependent loops/comparators first).
   - Read If: Coordinating or executing a #268 reduction pass, or changing the coordinator/subagent split, the queue and cursor format, the handback shape, the turn's work ordering, the landing/sequencing model, or the verification protocol.

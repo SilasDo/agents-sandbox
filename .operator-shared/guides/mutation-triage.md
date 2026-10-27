@@ -144,6 +144,13 @@ This is the field guide for doing it. It was distilled from the first full sweep
 
 - A cold `FULL=1` run of one package (`internal/agent`, ~320 mutants) exceeds 15 minutes in a fresh worktree; reruns
   resume from `.gomutants-cache.json` and are much faster. Run it in the background.
+- **Scope a branch or PR sweep with `SINCE=<base ref>`, not the release-tag default.** `SINCE` defaults to the last
+  release tag, so a branch sweep covers every unreleased line rather than the branch's own. Measured on
+  `internal/sandbox/image` (cold `.gomutants-cache.json` each run, warm Go build cache): the default `SINCE=v0.6.0` found
+  42 mutants in 45s, `SINCE=origin/main` found 3 in 19s, and `SINCE=HEAD` found 0 and paid a ~7s floor — discovery and the
+  coverage pass are package-scoped, so the module-wide floor the CI job pays is larger than this single-package one. The
+  CI `mutation` workflow already scopes a PR to `SINCE=origin/<base_ref>`; use `SINCE=origin/main` locally to match, and
+  reserve the bare default for the release sweep.
 - `make mutation FULL=1 PKG=./internal/agent/` writes `mutation-report.json` (gitignored) plus the cache into the
   worktree. Read the result with `jq`:
   `jq -r '[.files[] as $f | $f.mutations[] | select(.status=="LIVED") | "\($f.file_name):\(.line) \(.type)"] | .[]'`.

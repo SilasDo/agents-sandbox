@@ -36,11 +36,12 @@ checks re-report on the newer commit), while a main push, tag, or dispatch is ne
 
 The `changes` job runs on every event, cheaply, and reports whether the push changed anything that can affect the runner
 image or the tests — the complement of `mutation.yml`'s `paths-ignore` list (docs, `.operator-shared/`, `Formula/`,
-`.github/ISSUE_TEMPLATE/`, `**.md`, `.gitignore`). `race`, `vulncheck`, and `deadcode` `needs: [changes]` and, on a PR or
-main push, run only when `code=true`; tags and dispatch always run them. Both integration jobs `needs: [changes]` and, on
-a `refs/heads/main` push, additionally require `needs.changes.outputs.code == 'true'`. Tags, dispatch, and the PR opt-in
-labels ignore the gate. CodeQL keeps its own equivalent `paths-ignore` in `.github/workflows/codeql.yml`; see
-`codeql-scanning.md`.
+`.github/ISSUE_TEMPLATE/`, `**.md`, `.gitignore`). It diffs the event's base against `github.sha`: a push uses the
+payload's `before` tip, a pull request (whose payload has no `before`) the base branch's merge base, so a PR is judged on
+its own changeset. `race`, `vulncheck`, and `deadcode` `needs: [changes]` and, on a PR or main push, run only when
+`code=true`; tags and dispatch always run them. Both integration jobs `needs: [changes]` and, on a `refs/heads/main`
+push, additionally require `needs.changes.outputs.code == 'true'`. Tags, dispatch, and the PR opt-in labels ignore the
+gate. CodeQL keeps its own equivalent `paths-ignore` in `.github/workflows/codeql.yml`; see `codeql-scanning.md`.
 
 ## Invariants
 

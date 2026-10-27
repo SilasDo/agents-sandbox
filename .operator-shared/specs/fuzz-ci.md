@@ -64,8 +64,8 @@ locally. `timeout-minutes: 45` bounds a single target.
   prints it in the log; the failing job uploads `<path>/testdata/fuzz/<Target>/` for its own matrix entry, so a `cmd/` or
   `test/` target's crasher is captured too. CI does not commit the seed (that needs a push token, which the workflow
   deliberately does not have) — a maintainer or agent commits it, and from then on it runs under `make test`.
-- **`FUZZPKG`/`FUZZTARGET` fail loudly.** `make fuzz FUZZPKG=<package path>` narrows to a package and
-  `FUZZTARGET=<func name>` to one target; either exits non-zero when nothing matches, so a typo cannot read as a green
-  run over zero targets.
+- **`FUZZPKG`/`FUZZTARGET` fail loudly.** `make fuzz FUZZPKG=<package path>` narrows to a package; `FUZZTARGET=<func
+  name>` narrows to one target, used alone or within `FUZZPKG`. An unknown package, or a target matching nowhere in the
+  searched set, exits non-zero — a typo cannot read as a green run over zero targets.
 - A schedule runs only from the default branch's copy of the workflow, and always against the default branch: this
   workflow is inert until it merges, and it never fuzzes a PR branch.

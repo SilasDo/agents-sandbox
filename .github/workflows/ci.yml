@@ -43,8 +43,16 @@ jobs:
         id: filter
         run: |
           set -euo pipefail
-          base='${{ github.event.before }}'
-          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then base='HEAD^'; fi
+          # A push carries the previous tip in `before`. A pull_request payload
+          # has no `before`, so diff against the base branch's merge base, which
+          # is exactly the PR's changeset.
+          if [ '${{ github.event_name }}' = 'pull_request' ]; then
+            git fetch --no-tags origin "refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
+            base=$(git merge-base "origin/${{ github.base_ref }}" '${{ github.sha }}')
+          else
+            base='${{ github.event.before }}'
+            if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then base='HEAD^'; fi
+          fi
           files=$(git diff --name-only "$base" '${{ github.sha }}' || true)
           # The complement of mutation.yml's paths-ignore: docs, the operator
           # brain, the Homebrew formula, issue templates, and .gitignore.
