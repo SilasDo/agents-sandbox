@@ -506,7 +506,7 @@ func TestListImages(t *testing.T) {
 			mockSetup: func(m *sandboxmsb.MockMsbClient) {
 				m.Images = []sandboxmsb.ImageHandle{
 					&sandboxmsb.MockImageHandle{
-						Reference_:      "agents-sandbox/runner-abc123",
+						Reference_:      "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest",
 						ManifestDigest_: "sha256-abc123def456",
 						SizeBytes_:      int64PtrCLI(2 * 1024 * 1024 * 1024),
 						CreatedAt_:      time.Date(2026, 8, 17, 10, 42, 36, 0, time.UTC),
@@ -515,7 +515,7 @@ func TestListImages(t *testing.T) {
 			},
 			wantOut: []string{
 				"REFERENCE DIGEST SIZE CREATED",
-				"agents-sandbox/runner-abc123 sha256-abc123def456 2 GiB 2026-08-17 10:42:36",
+				"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest sha256-abc123def456 2 GiB 2026-08-17 10:42:36",
 			},
 		},
 		{
@@ -523,27 +523,27 @@ func TestListImages(t *testing.T) {
 			mockSetup: func(m *sandboxmsb.MockMsbClient) {
 				m.Images = []sandboxmsb.ImageHandle{
 					&sandboxmsb.MockImageHandle{
-						Reference_:      "agents-sandbox/runner-latest",
+						Reference_:      "agents-sandbox/runner-alpha-1mjusbm3wikhb0:opencode-latest",
 						ManifestDigest_: "sha256-aaa",
 						SizeBytes_:      int64PtrCLI(864256000),
 						CreatedAt_:      time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC),
 					},
 					&sandboxmsb.MockImageHandle{
-						Reference_:      "agents-sandbox/runner-v1.0.0",
+						Reference_:      "agents-sandbox/runner-beta-1mjusbm3wikhb0:pi-latest",
 						ManifestDigest_: "sha256-bbb",
 						SizeBytes_:      int64PtrCLI(1024),
 						CreatedAt_:      time.Date(2026, 8, 16, 12, 0, 0, 0, time.UTC),
 					},
 					&sandboxmsb.MockImageHandle{
-						Reference_:      "agents-sandbox/runner-v2.0.0-beta",
+						Reference_:      "agents-sandbox/runner-gamma-1mjusbm3wikhb0:opencode-latest",
 						ManifestDigest_: "sha256-ccc",
 					},
 				}
 			},
 			wantOut: []string{
-				"agents-sandbox/runner-latest sha256-aaa 824.2 MiB 2026-08-17 09:00:00",
-				"agents-sandbox/runner-v1.0.0 sha256-bbb 1 KiB 2026-08-16 12:00:00",
-				"agents-sandbox/runner-v2.0.0-beta sha256-ccc unknown",
+				"agents-sandbox/runner-alpha-1mjusbm3wikhb0:opencode-latest sha256-aaa 824.2 MiB 2026-08-17 09:00:00",
+				"agents-sandbox/runner-beta-1mjusbm3wikhb0:pi-latest sha256-bbb 1 KiB 2026-08-16 12:00:00",
+				"agents-sandbox/runner-gamma-1mjusbm3wikhb0:opencode-latest sha256-ccc unknown",
 			},
 		},
 		{
@@ -551,7 +551,7 @@ func TestListImages(t *testing.T) {
 			mockSetup: func(m *sandboxmsb.MockMsbClient) {
 				m.Images = []sandboxmsb.ImageHandle{
 					&sandboxmsb.MockImageHandle{
-						Reference_:      "agents-sandbox/runner-xyz",
+						Reference_:      "agents-sandbox/runner-xyz-1mjusbm3wikhb0:opencode-latest",
 						ManifestDigest_: "sha256-abc123",
 						SizeBytes_:      int64PtrCLI(512),
 						CreatedAt_:      time.Date(2026, 8, 17, 10, 0, 0, 0, time.UTC),
@@ -560,7 +560,7 @@ func TestListImages(t *testing.T) {
 				}
 			},
 			wantOut: []string{
-				"agents-sandbox/runner-xyz sha256-abc123 512 B 2026-08-17 10:00:00",
+				"agents-sandbox/runner-xyz-1mjusbm3wikhb0:opencode-latest sha256-abc123 512 B 2026-08-17 10:00:00",
 			},
 		},
 		{
@@ -590,15 +590,24 @@ func TestListImages(t *testing.T) {
 func TestListImagesQuiet(t *testing.T) {
 	mock := &sandboxmsb.MockMsbClient{}
 	mock.Images = []sandboxmsb.ImageHandle{
-		&sandboxmsb.MockImageHandle{Reference_: "agents-sandbox/runner-aaa", ManifestDigest_: "sha256-aaa"},
-		&sandboxmsb.MockImageHandle{Reference_: "agents-sandbox/runner-bbb", ManifestDigest_: "sha256-bbb"},
+		&sandboxmsb.MockImageHandle{
+			Reference_:      "agents-sandbox/runner-aaa-1mjusbm3wikhb0:opencode-latest",
+			ManifestDigest_: "sha256-aaa",
+		},
+		&sandboxmsb.MockImageHandle{
+			Reference_:      "agents-sandbox/runner-bbb-1mjusbm3wikhb0:pi-latest",
+			ManifestDigest_: "sha256-bbb",
+		},
 	}
 	cmd, ui := setupCommandFixtures(t, cmdImage, cmdList, "--quiet")
 	sandboxmsb.WithMsbMock(t, mock)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"agents-sandbox/runner-aaa", "agents-sandbox/runner-bbb"} {
+	for _, want := range []string{
+		"agents-sandbox/runner-aaa-1mjusbm3wikhb0:opencode-latest",
+		"agents-sandbox/runner-bbb-1mjusbm3wikhb0:pi-latest",
+	} {
 		if !containsNormalized(ui.PrintCalls, want) {
 			t.Errorf("PrintCalls missing reference %q; got: %v", want, ui.PrintCalls)
 		}
@@ -612,15 +621,24 @@ func TestListImagesEnvQuiet(t *testing.T) {
 	t.Setenv("AGENTS_SANDBOX_QUIET", "true")
 	mock := &sandboxmsb.MockMsbClient{}
 	mock.Images = []sandboxmsb.ImageHandle{
-		&sandboxmsb.MockImageHandle{Reference_: "agents-sandbox/runner-aaa", ManifestDigest_: "sha256-aaa"},
-		&sandboxmsb.MockImageHandle{Reference_: "agents-sandbox/runner-bbb", ManifestDigest_: "sha256-bbb"},
+		&sandboxmsb.MockImageHandle{
+			Reference_:      "agents-sandbox/runner-aaa-1mjusbm3wikhb0:opencode-latest",
+			ManifestDigest_: "sha256-aaa",
+		},
+		&sandboxmsb.MockImageHandle{
+			Reference_:      "agents-sandbox/runner-bbb-1mjusbm3wikhb0:pi-latest",
+			ManifestDigest_: "sha256-bbb",
+		},
 	}
 	cmd, ui := setupCommandFixtures(t, cmdImage, cmdList)
 	sandboxmsb.WithMsbMock(t, mock)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"agents-sandbox/runner-aaa", "agents-sandbox/runner-bbb"} {
+	for _, want := range []string{
+		"agents-sandbox/runner-aaa-1mjusbm3wikhb0:opencode-latest",
+		"agents-sandbox/runner-bbb-1mjusbm3wikhb0:pi-latest",
+	} {
 		if !containsNormalized(ui.PrintCalls, want) {
 			t.Errorf("PrintCalls missing reference %q; got: %v", want, ui.PrintCalls)
 		}
@@ -637,9 +655,10 @@ func TestListImagesFormatUnknown(t *testing.T) {
 
 func TestListImagesFormatJSON(t *testing.T) {
 	mock := &sandboxmsb.MockMsbClient{}
+	reference := "agents-sandbox/runner-abc-1mjusbm3wikhb0:opencode-latest"
 	mock.Images = []sandboxmsb.ImageHandle{
 		&sandboxmsb.MockImageHandle{
-			Reference_:      "agents-sandbox/runner-abc",
+			Reference_:      reference,
 			ManifestDigest_: "sha256-abc",
 			SizeBytes_:      int64PtrCLI(1024),
 			CreatedAt_:      time.Date(2026, 8, 17, 10, 0, 0, 0, time.UTC),
@@ -663,8 +682,9 @@ func TestListImagesFormatJSON(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("expected 1 image in JSON, got %d: %q", len(got), joined)
 	}
-	if got[0].Reference != "agents-sandbox/runner-abc" || got[0].Digest != "sha256-abc" ||
-		got[0].Size != "1 KiB" || got[0].Created != "2026-08-17 10:00:00" {
+	if got[0].Reference != reference || got[0].Digest != "sha256-abc" ||
+		got[0].Size != "1 KiB" ||
+		got[0].Created != "2026-08-17 10:00:00" {
 		t.Errorf("unexpected JSON fields: %+v", got[0])
 	}
 }

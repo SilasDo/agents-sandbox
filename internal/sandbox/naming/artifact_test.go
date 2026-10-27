@@ -128,6 +128,33 @@ func TestParseImageTagBothSchemes(t *testing.T) {
 	require.Equal(t, ArtifactInfo{}, ParseImageTag("docker.io/library/foo"))
 }
 
+// TestIsRunnerImageRef pins ownership: a reference is ours only when its parsed
+// slug embeds the 14-character base36 hash every launcher-built slug carries,
+// under either reference scheme. A single-segment reference without that hash
+// (a manually loaded image) and a repository reference are both foreign.
+func TestIsRunnerImageRef(t *testing.T) {
+	owned := []string{
+		"myproj-1mjusbm3wikhb0:opencode-latest",
+		"myproj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
+		"agents-sandbox/runner-myproj-1mjusbm3wikhb0:opencode-latest",
+		"agents-sandbox/runner-myproj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
+	}
+	for _, ref := range owned {
+		require.True(t, IsRunnerImageRef(ref), ref)
+	}
+	foreign := []string{
+		"",
+		"manualimage",
+		"manualimage:latest",
+		"manualimage:opencode-latest",
+		"agents-sandbox/runner-manualimage:latest",
+		"docker.io/library/alpine:latest",
+	}
+	for _, ref := range foreign {
+		require.False(t, IsRunnerImageRef(ref), ref)
+	}
+}
+
 func TestContentImageRefRoundTrips(t *testing.T) {
 	ref := ContentImageRef("myproj-1abc1234defg5", "claude-code", "9f2c1a7b4d6e0f31")
 	require.Equal(t, "myproj-1abc1234defg5:claude-code.9f2c1a7b4d6e0f31", ref)
