@@ -156,10 +156,11 @@ func IsRunnerImageRef(name string) bool {
 }
 
 // slugEmbedsHash reports whether slug ends in the base36 project-slug hash every
-// launcher-built slug carries.
+// launcher-built slug carries. A slug without a '-' cuts to an empty hash, which
+// isBase36Hash rejects, so the cut's found result is implied.
 func slugEmbedsHash(slug string) bool {
-	separator := strings.LastIndexByte(slug, '-')
-	return separator >= 0 && isBase36Hash(slug[separator+1:])
+	_, hash, _ := strings.CutLast(slug, "-")
+	return isBase36Hash(hash)
 }
 
 // isBase36Hash reports whether s is a 14-character lowercase-alphanumeric hash

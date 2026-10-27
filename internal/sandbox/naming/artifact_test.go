@@ -149,6 +149,11 @@ func TestIsRunnerImageRef(t *testing.T) {
 		"manualimage:opencode-latest",
 		"agents-sandbox/runner-manualimage:latest",
 		"docker.io/library/alpine:latest",
+		// A hyphenated single segment whose tail is not a slug hash.
+		"manual-image:opencode-latest",
+		// Fourteen base36 characters but no hyphen-delimited hash segment: the
+		// whole name is the slug, so there is no hash to embed.
+		"abcdefghijklmn",
 	}
 	for _, ref := range foreign {
 		require.False(t, IsRunnerImageRef(ref), ref)
