@@ -24,7 +24,9 @@ release is found, the `upgrade.mode` decides what happens:
 The `upgrade` command (`agents-sandbox upgrade`) checks for and installs the latest release at any time, independent of
 `upgrade.mode`/`upgrade.interval`. Upgrading replaces the running executable with the release binary for your platform
 (`agents-sandbox-<os>-<arch>` from the GitHub release assets); because a running process cannot swap its own binary, an
-upgrade (or `auto-exit`) takes effect on the next invocation.
+upgrade (or `auto-exit`) takes effect on the next invocation. Before replacing the binary, the launcher verifies the
+download's SHA-256 against the release's published `checksums.txt`; if that file is missing, or the entry for the asset
+is missing, malformed, or does not match, the install aborts and the running binary stays untouched.
 
 ## Release channels
 
