@@ -490,7 +490,7 @@ entrypoint, working dir, user, labels, stop signal), and every layer (diff ID,
 blob digest, media type, compressed and erofs sizes).
 
 ```console
-agents-sandbox image inspect myproj-aBc1234D:opencode-latest
+agents-sandbox image inspect myproj-1mjusbm3wikhb0:opencode-latest
 agents-sandbox image inspect <ref> --format json   # structured output
 agents-sandbox image inspect <ref> --quiet         # reference only
 ```
@@ -517,7 +517,7 @@ confirmation unless the global `--yes` is set; non-interactively, `--yes` is
 required.
 
 ```console
-agents-sandbox image remove myproj-aBc1234D:opencode-latest
+agents-sandbox image remove myproj-1mjusbm3wikhb0:opencode-latest
 agents-sandbox image remove <ref>... --force   # remove even when still in use
 ```
 
