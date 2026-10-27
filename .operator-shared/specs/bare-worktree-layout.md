@@ -136,30 +136,12 @@ How `guestCWD` reaches the agent (see Background):
   directory for clients that ignore the attach target.
 - **`--worktree`** keeps overriding the target with the daemon-created directory (unchanged).
 
-## VM / State Identity and the Naming Scheme (unchanged)
+## VM / State Identity
 
-> **Superseded in part by `checkout-identity.md` (#144).** This section's "one origin, one project VM"
-> premise and the outside-worktree warning no longer hold: identity is split per checkout (state, VM,
-> home volume, image), a worktree inside its checkout shares that checkout's identity, and a worktree
-> outside its checkout gets an identity of its own. The mount rule and guest-CWD derivation above stand;
-> the naming/identity statements below are kept only as the state this feature was designed against.
-
-VMs, home volumes, and persisted state are all keyed by `state.Key{Slug, Agent}`, where the slug is
-`<folder>-<14-char hash>` derived from the origin URL (`internal/git`, `internal/sandbox/state`,
-`internal/sandbox/volume`, `internal/sandbox/naming`).
-
-**This change does not alter identity.** Every worktree of a project already resolves to the same origin-derived slug,
-so all worktrees — the bare layout's subdirectories, a nested non-bare worktree, the main checkout — continue to share
-**one VM, one home volume, one state dir, one runner image**. That is exactly the "one origin, one project VM" model the
-feature relies on. Consequences:
-
-- VM/volume/state/image names are **byte-identical** to today. No slug scoping, no parser changes, no migration.
-- An outside worktree is not given a separate VM: it keeps today's behavior (it shares the origin VM and binds its CWD),
-  and the launcher warns (see the mount rule).
-
-Because identity is unchanged, `git.ProjectSlug()` needs no `bindRoot` parameter. Its existing multiple call sites
-(`PrepareSandbox`, `session.Run`/`Shell`) keep deriving the same origin slug, so no VM-name/lease-key divergence is
-introduced. The only new host-side derivation is `bindRoot`/`guestCWD`, which is separate from the slug.
+> **Superseded by [`checkout-identity.md`](checkout-identity.md) (#144).** Identity is split per checkout (state, VM,
+> home volume, image). The "one origin, one project VM" premise, the warn-and-bind-CWD behavior for an outside
+> worktree, and the "names are byte-identical / no migration" statements this section carried are no longer true; the
+> slug is the checkout-scoped slug defined there. The mount rule and guest-CWD derivation above stand.
 
 ## Conventions (deliberately not code)
 
@@ -235,7 +217,6 @@ The questions this section used to list as open were resolved during implementat
   the attach target, and `--worktree` still overrides the target.
 - **Bare git dir not named `.git`**: recognized by the same rule (the `checkoutRoot` is the common git dir
   itself), not only the documented `<root>/.git` layout.
-- **Fresh-VM scope**: the bind source stays a creation-time property, reconfig does not detect a bind-source
-  change, and identity/naming is unchanged (no scoping, no migration).
-- The outside-worktree warning wording is moot: [checkout-identity.md](checkout-identity.md) (#144) supersedes
-  the warn-and-bind-CWD behavior with a per-worktree identity.
+- **Fresh-VM scope**: the bind source stays a creation-time property, so reconfig does not detect a bind-source change.
+  Identity is no longer "unchanged": [checkout-identity.md](checkout-identity.md) (#144) supersedes the warn-and-bind-CWD
+  behavior with a per-checkout identity.

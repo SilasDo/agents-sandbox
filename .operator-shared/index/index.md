@@ -45,9 +45,7 @@ read_if: Navigating the codebase.
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `configfile/` — Comment/order-preserving launcher-config editor (`Config`, `Parse`, `LoadDir`, `WriteAtomic`); shared by `configmigration` and the setup wizard. *(Guided-onboarding work; not on `main` yet.)*
 - `configmerge/` — Merge config with precedence.
-- `configmigration/` — **See [configmigration subindex](configmigration.md)** (native agent config migration, guided onboarding, network plan). *(Guided-onboarding work; not on `main` yet.)*
 - `configpaths/` — Config/home path resolution and guards.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
 - `git/` — Git helpers (go-git wrapper) and project identity: `Identity`/`ResolveIdentity` with the repo slug (origin-derived; keys the per-slug user config dir and the grouping label) and the checkout slug (git common dir; keys state/VM/volume/locks/image tag), plus the bind-root rule (#144).
