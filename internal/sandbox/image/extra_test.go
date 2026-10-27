@@ -29,6 +29,21 @@ func TestReferencesImageFalseForUnparseableRef(t *testing.T) {
 	}
 }
 
+func TestReferencesImageTerminatesOnCyclicStageAlias(t *testing.T) {
+	// The project Dockerfile controls its own stage aliases, so it can name a
+	// stage after its own base token or make two stages alias each other.
+	// Resolving the final stage to its underlying image must terminate rather
+	// than follow the cycle forever.
+	for _, dockerfile := range []string{
+		"FROM 0 AS 0\n",
+		"FROM base AS builder\nFROM builder AS base\n",
+	} {
+		if referencesImage([]byte(dockerfile), "agents-sandbox/runner-base") {
+			t.Errorf("referencesImage(%q) = true, want false", dockerfile)
+		}
+	}
+}
+
 func TestFinalStageTokenSkipsFromWithoutImage(t *testing.T) {
 	if got := finalStageToken([]byte("FROM --platform=linux/amd64\n")); got != "" {
 		t.Errorf("finalStageToken = %q, want empty", got)
