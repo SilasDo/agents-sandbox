@@ -28,7 +28,9 @@ command reports the bare version (e.g. `0.1.0`).
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).
 - Runner image: a project Dockerfile's instructions are scanned case-insensitively, so a valid lowercase or mixed-case
   `FROM`/`AS` (e.g. `from debian:trixie-slim`) is composed correctly instead of failing the build with a missing stage
-  alias. A CRLF line ending is trimmed rather than leaking into the stage alias (#346).
+  alias. A CRLF line ending is trimmed rather than leaking into the stage alias, and a `RUN` heredoc body or a continued
+  argument is not mistaken for a stage header, so a lowercase `from … import …` inside a heredoc stays part of the body
+  (#346).
 
 ## [0.6.0] - 2026-10-25
 
