@@ -11,8 +11,9 @@ command reports the bare version (e.g. `0.1.0`).
 ### Fixed
 
 - State: pruning a project's state no longer removes the project-VM creation lock. The lock moved from the
-  removable per-key state directory to the never-deleted `locks/` tree, so `prune` concurrent with `run` can no
-  longer unlink a held lock and let a second invocation create a duplicate or clobbering VM (#330).
+  removable per-key state directory to the never-deleted `locks/` tree, still keyed per agent, so `prune` concurrent
+  with `run` can no longer unlink a held lock and let a second invocation create a duplicate or clobbering VM, and
+  agents of one project do not serialize on each other's lock (#330).
 - Home volume: a transient microsandbox lookup error (daemon, timeout, or permission failure) while checking a
   project's recorded home volume is no longer mistaken for the volume being gone. Resolution now fails closed on any
   non-absence error instead of creating a fresh volume and rewriting state, which could orphan the real volume; only a
@@ -27,7 +28,7 @@ command reports the bare version (e.g. `0.1.0`).
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).
 - Runner image: a project Dockerfile's instructions are scanned case-insensitively, so a valid lowercase or mixed-case
   `FROM`/`AS` (e.g. `from debian:trixie-slim`) is composed correctly instead of failing the build with a missing stage
-  alias (#346).
+  alias. A CRLF line ending is trimmed rather than leaking into the stage alias (#346).
 
 ## [0.6.0] - 2026-10-25
 

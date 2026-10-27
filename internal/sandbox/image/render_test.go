@@ -887,6 +887,22 @@ func TestCustomBaseStageReusesDeclaredAlias(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileCRLFProjectDockerfile pins that a CRLF project Dockerfile
+// still composes: customBaseStage reads raw lines (which keep the CR), while the
+// stage-alias scan uses a line-buffered reader (which drops it), so a leaked CR
+// in the alias would make the runner reference a stage that was never declared.
+func TestRenderDockerfileCRLFProjectDockerfile(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM ubuntu:24.04 AS base\r\nRUN echo hi\r\n")
+	s := mustRender(t, a, project, false)
+	if strings.Contains(s, "\r AS "+runnerStageAlias) {
+		t.Errorf("runner stage must not reference an alias with a trailing CR; got:\n%s", s)
+	}
+	if !strings.Contains(s, "FROM base AS "+runnerStageAlias) {
+		t.Errorf("runner stage must reference the declared base alias; got:\n%s", s)
+	}
+}
+
 func TestAgentImageConfigBlock(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	block := agentImageConfigBlock(a)

@@ -115,10 +115,11 @@ func imageRefMatches(token, imageRef string) bool {
 // parseFrom parses a Dockerfile FROM line, returning the main image reference
 // and the declared stage alias (the "AS <name>" token, if present). The FROM and
 // AS keywords are matched case-insensitively and leading build flags (e.g.
-// --platform) are ignored. A line that is not a FROM instruction yields empty
-// values.
+// --platform) are ignored. Trailing whitespace is trimmed so a CRLF line's CR
+// does not leak into the alias. A line that is not a FROM instruction yields
+// empty values.
 func parseFrom(line string) (string, string) {
-	keyword, rest := instruction(line)
+	keyword, rest := instruction(strings.TrimRight(line, " \t\r\n"))
 	if keyword != fromInstruction {
 		return "", ""
 	}
