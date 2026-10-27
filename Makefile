@@ -10,6 +10,13 @@ PLANTUML ?= plantuml
 GO_VERSION = $(shell cat .go-version)
 GOLANGCI_LINT_VERSION = 2.15.0
 ZIG_VERSION ?= 0.17.0
+# zig's install root (the dir holding lib/libc/...), following any symlink so it
+# resolves whether zig is reached via ~/.local/bin or the ~/.local/zig install-root
+# symlink. Requires zig on PATH; build-release checks that before using it.
+ZIG_ROOT = $(shell f="$$(readlink "$$(command -v zig)" 2>/dev/null || command -v zig)"; cd "$$(dirname "$$f")" 2>/dev/null && pwd -P)
+# Realpath of the bootstrap-managed zig install root, or empty when absent. Lets
+# the recipe tell the managed zig apart from one PATH resolves to elsewhere.
+ZIG_MANAGED_ROOT = $(shell cd "$$HOME/.local/zig" 2>/dev/null && pwd -P)
 GOTESTSUM_VERSION = 1.13.0
 GOVULNCHECK_VERSION = v1.9.0
 GOMUTANTS_VERSION = v0.7.2
@@ -41,9 +48,10 @@ build-release:
 	@test -n "$(ZIG_TARGET)" || { echo "ZIG_TARGET is required (e.g. x86_64-linux-gnu)"; exit 1; }
 	@echo "building $(ARTIFACT) (zig target: $(ZIG_TARGET))"
 ifeq ($(GOOS),darwin)
+	@command -v zig >/dev/null 2>&1 || { echo "zig not found on PATH; run 'make bootstrap'"; exit 1; }
 	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) \
-	    CGO_CFLAGS="-isystem $(shell dirname $(shell which zig))/lib/libc/include/any-darwin-any" \
-	    CGO_LDFLAGS="-F $(shell dirname $(shell which zig))/lib/libc/darwin/System/Library/Frameworks -L $(shell dirname $(shell which zig))/lib/libc/darwin/usr/lib -Wl,-undefined,dynamic_lookup" \
+	    CGO_CFLAGS="-isystem $(ZIG_ROOT)/lib/libc/include/any-darwin-any" \
+	    CGO_LDFLAGS="-F $(ZIG_ROOT)/lib/libc/darwin/System/Library/Frameworks -L $(ZIG_ROOT)/lib/libc/darwin/usr/lib -Wl,-undefined,dynamic_lookup" \
 	    go build -trimpath -buildvcs=false -ldflags "-s -w -X main.version=$(VERSION)" -o $(ARTIFACT) ./cmd/agents-sandbox
 else
 	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) \
@@ -58,7 +66,10 @@ build-release-all:
 
 
 # One-shot dev environment bootstrap: requires goenv; installs the pinned Go
-# version, golangci-lint, and Zig (for cross-compilation). Idempotent.
+# version, golangci-lint, and Zig (for cross-compilation). Idempotent. Zig lands
+# in ~/.local/zig-<arch>-<os>-<version> with a stable ~/.local/zig install-root
+# symlink, a ~/.local/bin/zig binary symlink, and the macOS cross-compile stubs
+# baked in. A zig that PATH resolves to elsewhere is left untouched and reported.
 bootstrap:
 	@command -v goenv >/dev/null 2>&1 || { echo "goenv is required; see CONTRIBUTING.md"; exit 1; }
 	@if goenv versions 2>/dev/null | grep -qw "$(GO_VERSION)"; then \
@@ -67,22 +78,41 @@ bootstrap:
 	    goenv install "$(GO_VERSION)"; \
 	fi
 	goenv tools install "golangci-lint@v$(GOLANGCI_LINT_VERSION)"
-	@if command -v zig >/dev/null 2>&1 && [ "$$(zig version)" = "$(ZIG_VERSION)" ]; then \
-	    echo "zig $(ZIG_VERSION) already installed"; \
+	@MANAGED_ROOT='$(ZIG_MANAGED_ROOT)'; \
+	ON_PATH_ROOT='$(ZIG_ROOT)'; \
+	ZIG_ON_PATH="$$(command -v zig 2>/dev/null || true)"; \
+	if [ -n "$$ZIG_ON_PATH" ] && [ "$$ON_PATH_ROOT" != "$$MANAGED_ROOT" ]; then \
+	    echo "warning: zig resolves to $$ZIG_ON_PATH ($$(zig version 2>/dev/null || echo unknown)) outside the managed install $${HOME}/.local/zig; leaving it untouched" >&2; \
+	    { [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation.tbd" ] \
+	   || [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/System/Library/Frameworks/Security.framework/Security.tbd" ] \
+	   || [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/usr/lib/libresolv.tbd" ]; } \
+	 && echo "warning: that zig lacks the macOS cross-compile stubs under $$ON_PATH_ROOT/lib/libc/darwin; darwin builds will fail to link" >&2; \
+	    true; \
 	else \
-	    ZIG_ARCH=$$(if [ "$$(uname -m)" = aarch64 ]; then echo aarch64; else echo x86_64; fi); \
-	    if [ "$$(uname -s)" = "Darwin" ]; then \
-	        ZIG_OS=macos; ZIG_PREFIX="$${HOME}/.local"; \
-	    else \
-	        ZIG_OS=linux; ZIG_PREFIX=/usr/local; \
+	    ZIG_MANAGED_VERSION=""; \
+	    if [ -x "$${HOME}/.local/zig/zig" ]; then ZIG_MANAGED_VERSION="$$("$${HOME}/.local/zig/zig" version 2>/dev/null || true)"; fi; \
+	    if [ "$$ZIG_MANAGED_VERSION" != "$(ZIG_VERSION)" ]; then \
+	        case "$$(uname -m)" in aarch64|arm64) ZIG_ARCH=aarch64 ;; *) ZIG_ARCH=x86_64 ;; esac; \
+	        case "$$(uname -s)" in Darwin) ZIG_OS=macos ;; *) ZIG_OS=linux ;; esac; \
+	        ZIG_DIR=zig-$${ZIG_ARCH}-$${ZIG_OS}-$(ZIG_VERSION); \
+	        mkdir -p "$${HOME}/.local/bin" \
+	     && curl -fsSL "https://ziglang.org/download/$(ZIG_VERSION)/$${ZIG_DIR}.tar.xz" -o /tmp/zig.tar.xz \
+	     && tar -xf /tmp/zig.tar.xz -C "$${HOME}/.local" \
+	     && rm /tmp/zig.tar.xz \
+	     && ln -sfn "$${HOME}/.local/$${ZIG_DIR}" "$${HOME}/.local/zig" \
+	     && ln -sfn "$${HOME}/.local/zig/zig" "$${HOME}/.local/bin/zig" \
+	     && echo "zig $(ZIG_VERSION) installed ($${HOME}/.local/bin/zig); add $${HOME}/.local/bin to PATH if 'zig' is not found" \
+	     || { echo "error: installing zig $(ZIG_VERSION) failed" >&2; exit 1; }; \
 	    fi; \
-	    ZIG_TARBALL=zig-$${ZIG_ARCH}-$${ZIG_OS}-$(ZIG_VERSION).tar.xz; \
-	    ZIG_DIR=zig-$${ZIG_ARCH}-$${ZIG_OS}-$(ZIG_VERSION); \
-	    mkdir -p "$$ZIG_PREFIX"; \
-	    curl -fsSL "https://ziglang.org/download/$(ZIG_VERSION)/$${ZIG_TARBALL}" -o /tmp/zig.tar.xz \
-	 && tar -xf /tmp/zig.tar.xz -C "$$ZIG_PREFIX" \
-	 && rm /tmp/zig.tar.xz \
-	 && ln -sfn "$$ZIG_PREFIX/$${ZIG_DIR}" "$$ZIG_PREFIX/zig"; \
+	    ZIG_DARWIN="$${HOME}/.local/zig/lib/libc/darwin"; \
+	    mkdir -p "$$ZIG_DARWIN/System/Library/Frameworks/CoreFoundation.framework" \
+	             "$$ZIG_DARWIN/System/Library/Frameworks/Security.framework" \
+	             "$$ZIG_DARWIN/usr/lib" \
+	 && cp .github/stubs/CoreFoundation.tbd "$$ZIG_DARWIN/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation.tbd" \
+	 && cp .github/stubs/Security.tbd "$$ZIG_DARWIN/System/Library/Frameworks/Security.framework/Security.tbd" \
+	 && cp .github/stubs/libresolv.tbd "$$ZIG_DARWIN/usr/lib/libresolv.tbd" \
+	 && echo "macOS cross-compile stubs ensured in $$ZIG_DARWIN" \
+	 || { echo "error: installing zig stubs failed" >&2; exit 1; }; \
 	fi
 
 test:

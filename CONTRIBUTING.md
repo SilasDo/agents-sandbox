@@ -35,11 +35,24 @@ and installs:
 source of truth for the golangci-lint, Zig, and gotestsum versions; the Go version lives in `.go-version`. The
 `.agents-sandbox/Dockerfile` carries its own matching versions for the runtime runner image, which is built separately.
 
-#### Platform notes
+#### Zig and `darwin` cross-compilation
 
-- **Linux**: Zig is installed under `/usr/local` and symlinked as `/usr/local/zig`.
-- **macOS**: Zig is installed under `~/.local` and symlinked as `~/.local/zig`, avoiding the need for `sudo`. Add
-  `~/.local/zig` to your `PATH` so `zig` is on the command line.
+Zig is installed under `~/.local` (`~/.local/zig-<arch>-<os>-<version>`) and `make bootstrap` symlinks it into the
+standard `~/.local/bin`, so no `sudo` or PATH edit is needed where that directory is already on your PATH (the default
+on most Linux and macOS setups). It also keeps a stable `~/.local/zig` install-root symlink, and copies the macOS linker
+stubs (`.github/stubs/*.tbd`) into that zig's `lib/libc/darwin`. zig ships the macOS headers but not these
+framework/library stubs, so without them `make build-release` for `darwin/arm64` fails to link `CoreFoundation`,
+`Security`, and `resolv`.
+
+`make bootstrap` only manages that zig. If `PATH` resolves `zig` to an installation elsewhere — a Homebrew or system
+zig — bootstrap leaves it untouched and warns: once that it resolves outside the managed install, and again if that zig
+lacks the macOS cross-compile stubs. It decides what to install from the managed zig on disk, so a managed install that
+is not on your `PATH` is not re-downloaded. If `zig` is not found after bootstrapping, add `~/.local/bin` to your
+`PATH` and open a new shell.
+
+`make bootstrap` also copies the macOS linker stubs (`.github/stubs/*.tbd`) into that zig's `lib/libc/darwin`. zig ships
+the macOS headers but not these framework/library stubs, so without them `make build-release` for `darwin/arm64` fails
+to link `CoreFoundation`, `Security`, and `resolv`.
 
 ## Common commands
 
