@@ -154,6 +154,11 @@ at the daemon health probe. This is the honest-contract counterpart to #143: the
 from the base (they run on the tool base), but a daemon agent's *runtime* still does. Removing the `curl` requirement
 altogether — moving the daemon HTTP/SSE calls host-side — is #263.
 
+On top of the agent's tools, the launcher declares its own in-VM tools (`launcherGuestTools`), rendered as a second check
+in the same final stage. Today that is `curl`: the host opener replays a browser-login callback inside the VM with it
+(#273). Because the opener is on by default, this check runs for every agent, including the daemonless ones, so a custom
+base without `curl` fails the image build naming the tool instead of failing at login time.
+
 ## Naming: `docker` (renamed from `dind`)
 
 The capability installs and runs the Docker engine inside the microsandbox VM, which is not literal Docker-in-Docker, so

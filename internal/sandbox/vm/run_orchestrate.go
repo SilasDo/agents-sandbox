@@ -32,6 +32,7 @@ type Session struct {
 	guestCWD      string
 	serveHostPort int
 	key           state.Key
+	homeVolume    string
 }
 
 // Cleanup releases the sandbox handle. It is safe to call on a nil session.
@@ -62,6 +63,11 @@ func (s *Session) GuestCWD() string {
 // at in serve-only mode (0 when not serving).
 func (s *Session) ServeHostPort() int {
 	return s.serveHostPort
+}
+
+// HomeVolume returns the name of the home volume mounted at /home/dev.
+func (s *Session) HomeVolume() string {
+	return s.homeVolume
 }
 
 // Key returns the state key the session was prepared with: the checkout-scoped
@@ -208,6 +214,7 @@ func PrepareSandbox(
 		guestCWD:      guestCWD,
 		serveHostPort: opts.ServeHostPort,
 		key:           k,
+		homeVolume:    homeVol,
 	}, nil
 }
 

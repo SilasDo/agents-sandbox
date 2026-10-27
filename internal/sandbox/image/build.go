@@ -323,6 +323,7 @@ func buildContextFiles() []buildContextFile {
 		{pathMergeAsset, pathMergeScript(), dockerfileMode},
 		{trustHelperAsset, trustHelperScript(), executableFileMode},
 		{trustHelperLicenseAsset, trustHelperLicense(), dockerfileMode},
+		{hostOpenerShimAsset, hostOpenerShimScript(), executableFileMode},
 	}
 }
 

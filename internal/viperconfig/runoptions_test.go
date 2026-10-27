@@ -135,6 +135,34 @@ func TestBuildRunOptionsAutoStopTimeout(t *testing.T) {
 	}
 }
 
+// TestBuildRunOptionsOpenLinksFromConfig covers the config branch: with a
+// resolver, open-links comes from the launcher config.
+func TestBuildRunOptionsOpenLinksFromConfig(t *testing.T) {
+	r := NewResolverWithConfig(Config{OpenLinks: true})
+	opts, err := r.BuildRunOptions(newRunCommand(), &termio.Mock{})
+	if err != nil {
+		t.Fatalf("BuildRunOptions: %v", err)
+	}
+	if !opts.OpenLinks {
+		t.Fatal("opts.OpenLinks = false, want true from the config")
+	}
+}
+
+// TestBuildRunOptionsOpenLinksFromFlagWithoutConfig covers the nil-resolver
+// branch: without config, open-links comes from the flag.
+func TestBuildRunOptionsOpenLinksFromFlagWithoutConfig(t *testing.T) {
+	cmd := newRunCommand()
+	cmd.Flags().Bool(FlagOpenLinks, true, "open-links")
+	var r *Resolver
+	opts, err := r.BuildRunOptions(cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("BuildRunOptions: %v", err)
+	}
+	if !opts.OpenLinks {
+		t.Fatal("opts.OpenLinks = false, want true from the flag")
+	}
+}
+
 func TestBuildRunOptionsNilResolver(t *testing.T) {
 	ui := &termio.Mock{}
 	cmd := newRunCommand()

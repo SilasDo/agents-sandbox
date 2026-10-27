@@ -58,6 +58,9 @@ type RunOptions struct {
 	// copied into the VM (drop-in provisioning). A nil value enables it
 	// (default); cmd resolves the launcher config and sets it explicitly.
 	ProvisionHostConfig *bool
+	// OpenLinks starts the host side of the in-VM xdg-open shim for the
+	// session, so links opened in the VM open on the host (internal/opener).
+	OpenLinks bool
 }
 
 // ServeOnlyBindAddr is the loopback address the agent server binds to

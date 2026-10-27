@@ -3,6 +3,7 @@ package filewalk
 import (
 	"testing"
 
+	"github.com/inoio/agents-sandbox/internal/opener"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 )
 
@@ -12,5 +13,6 @@ import (
 // contract test requires every acyclically importable family to be installed.
 func TestMain(m *testing.M) {
 	docker.InstallFailFastGet()
+	opener.InstallFailFast()
 	m.Run()
 }

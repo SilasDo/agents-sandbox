@@ -27,6 +27,7 @@ type preparedSandbox interface {
 	ServeHostPort() int
 	GuestCWD() string
 	Key() state.Key
+	HomeVolume() string
 }
 
 // prepareSandbox is a test seam swapped in tests to avoid real VM setup.
@@ -198,6 +199,8 @@ func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 	}
 	stopNotify := startNotifyWatcher(ctx, sb, opts.Notify, ui, streamSpec, projectSlug)
 	defer logNotifyWatcherError(stopNotify, ui)
+	stopHostOpener := startHostOpener(ctx, ses, opts.OpenLinks, ui)
+	defer stopHostOpener()
 
 	if opts.ServeOnly {
 		return runServeOnlySession(ctx, a, sb, opts, ui, ses.ServeHostPort(), projectSlug)
@@ -264,6 +267,9 @@ func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 		ui.Infof("dry-run: Would start interactive shell session")
 		return nil
 	}
+
+	stopHostOpener := startHostOpener(ctx, ses, opts.OpenLinks, ui)
+	defer stopHostOpener()
 
 	projectSlug := ses.Key().Slug
 	return runAttach(ctx, sb, projectSlug, ses.GuestCWD(), ui, opts, "-l")

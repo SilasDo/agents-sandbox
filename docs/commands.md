@@ -64,6 +64,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--serve-only` | `-s`  | `false`  | Start the agent server published on host loopback at a dynamically allocated host port (no in-VM TUI); press `Ctrl-D` to exit. The printed `http://127.0.0.1:<port>` URL is authoritative — use it (rather than assuming a fixed port) to connect from clients like Opencode Desktop. Set `OPENCODE_SERVER_PASSWORD` for basic auth (opencode); opencode2's server requires the baked credential `opencode:opencode` (username:password). |
 | `--agent`      | —     | `opencode2` | Coding-agent profile to run: `opencode`, `opencode2` (default), `pi`, or `claude-code`.                                                                |
 | `--notify`     | —     | `off`     | Notify on session status: `on`, `off`, `desktop`, or `audio` (bare `--notify` = `on`). Overridable via `AGENTS_SANDBOX_NOTIFY`. Only applies to the `opencode` and `opencode2` agents (the only agents with a session event stream). |
+| `--open-links` | —    | `true`   | Open links from the VM (`xdg-open`) in the host's browser; `--open-links=false` turns it off. Overridable via `AGENTS_SANDBOX_OPEN_LINKS`. See [Opening links]({% link configuration/opening-links.md %}). |
 | `--docker`     | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias)                                                               |
 
 **Aliases:** `sandbox run`

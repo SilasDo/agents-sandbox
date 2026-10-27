@@ -24,6 +24,8 @@ describes that flow and how a project's identity and state are laid out.
    provisions `home:` mappings, and syncs them into the VM.
 5. **Agent** — Runs the agent's attach command (e.g. `opencode attach`) inside the VM, forwarding any arguments after
    `--` to the AI agent.
+   While the agent runs, links it opens are handed to your host's browser
+   (see [Opening links]({% link configuration/opening-links.md %})).
 6. **Cleanup** — On exit, the client detaches and the VM remains available for reuse or is stopped by its idle policy. In a
    normal session `/workspace` is the host repository and remains intentionally shared; only `--worktree` sessions use a
    VM-internal worktree that leaves the host checkout untouched. When launched from inside a git worktree or a repository

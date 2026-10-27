@@ -74,7 +74,7 @@ func TestMain(m *testing.M) {
 	mocks.InitFailFastMocks(m)
 }
 `,
-			want: []string{"configpaths", "docker", "doctor", "msb", "notify"},
+			want: []string{"configpaths", "docker", "doctor", "msb", "notify", "opener"},
 		},
 		{
 			name: "an unqualified wrapper call in the wrapper's own package",
@@ -86,7 +86,7 @@ func TestMain(m *testing.M) {
 	InitFailFastMocks(m)
 }
 `,
-			want: []string{"configpaths", "docker", "doctor", "msb", "notify"},
+			want: []string{"configpaths", "docker", "doctor", "msb", "notify", "opener"},
 		},
 		{
 			name: "direct installers with an aliased import",
@@ -391,32 +391,36 @@ func TestAcyclicSeamFamilies(t *testing.T) {
 		pkgDir string
 		want   []string
 	}{
-		{"a seam imported by others drops those importers", "internal/configpaths", []string{"configpaths", "docker"}},
+		{
+			"a seam imported by others drops those importers",
+			"internal/configpaths",
+			[]string{"configpaths", "docker", "opener"},
+		},
 		{
 			"a seam imported by doctor drops only doctor",
 			"internal/sandbox/docker",
-			[]string{"configpaths", "docker", "msb", "notify"},
+			[]string{"configpaths", "docker", "msb", "notify", "opener"},
 		},
-		{"another seam imported by doctor", "internal/sandbox/msb", []string{"configpaths", "docker", "msb"}},
+		{"another seam imported by doctor", "internal/sandbox/msb", []string{"configpaths", "docker", "msb", "opener"}},
 		{
 			"the top of the graph may install every family",
 			"internal/sandbox/doctor",
-			[]string{"configpaths", "docker", "doctor", "msb", "notify"},
+			[]string{"configpaths", "docker", "doctor", "msb", "notify", "opener"},
 		},
 		{
 			"a package imported by doctor and notify drops both",
 			"internal/termio",
-			[]string{"configpaths", "docker", "msb"},
+			[]string{"configpaths", "docker", "msb", "opener"},
 		},
 		{
 			"a package notify imports drops notify",
 			"internal/sandbox/state",
-			[]string{"configpaths", "docker", "doctor", "msb"},
+			[]string{"configpaths", "docker", "doctor", "msb", "opener"},
 		},
 		{
 			"an unrelated package may install every family",
 			"internal/sandbox/vm",
-			[]string{"configpaths", "docker", "doctor", "msb", "notify"},
+			[]string{"configpaths", "docker", "doctor", "msb", "notify", "opener"},
 		},
 	}
 

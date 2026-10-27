@@ -14,6 +14,9 @@ var embeddedTrustHelperScript []byte
 //go:embed data/msb-trust.LICENSE
 var embeddedTrustHelperLicense []byte
 
+//go:embed data/xdg-open.sh
+var embeddedHostOpenerShim []byte
+
 // pathMergeScript returns the profile.d merge script shipped in the build
 // context and installed into the image.
 func pathMergeScript() []byte { return embeddedPathMergeScript }
@@ -28,3 +31,7 @@ func trustHelperScript() []byte { return embeddedTrustHelperScript }
 // binary that embeds these bytes, and the runner image that installs them — has
 // to receive the license copy section 4(a) requires.
 func trustHelperLicense() []byte { return embeddedTrustHelperLicense }
+
+// hostOpenerShimScript returns the in-VM xdg-open shim that hands targets to the
+// launcher's host opener (internal/opener).
+func hostOpenerShimScript() []byte { return embeddedHostOpenerShim }
