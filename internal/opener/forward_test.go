@@ -585,7 +585,7 @@ func TestForwarderRelaysTruncatedGuestBody(t *testing.T) {
 func TestRelayResponseSetsSandboxHeaders(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	raw := "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 2\r\n\r\nhi"
-	if err := relayResponse(recorder, []byte(raw)); err != nil {
+	if _, err := relayResponse(recorder, []byte(raw), 0); err != nil {
 		t.Fatalf("relayResponse: %v", err)
 	}
 	if got := recorder.Header().Get("Content-Security-Policy"); got != guestPagePolicy {
@@ -603,7 +603,7 @@ func TestRelayResponseWrapsGuestErrors(t *testing.T) {
 		"not http at all",
 		"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n",
 	} {
-		err := relayResponse(httptest.NewRecorder(), []byte(raw))
+		_, err := relayResponse(httptest.NewRecorder(), []byte(raw), 0)
 		if err == nil || errors.Unwrap(err) == nil {
 			t.Fatalf("relayResponse(%q) = %v, want a wrapped cause", raw, err)
 		}

@@ -21,6 +21,7 @@ command reports the bare version (e.g. `0.1.0`).
   editor/app links) and refuses `file:` and loopback URLs. Browser logins that wait for a callback inside the VM
   (Claude Code, pi, opencode/opencode2 provider and MCP server logins) complete on the host: while the login is open,
   the launcher listens on the callback port on the host's loopback and replays the browser's callback inside the VM.
+  An agent's redirect back to that same port (Codex's `/success` page) is passed on to the agent too.
   On by default; turn it off with `open-links: false`,
   `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim; a
   custom runner base must now provide `curl`, which the image build verifies.

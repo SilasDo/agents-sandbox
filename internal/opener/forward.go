@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -41,11 +42,16 @@ type GuestFetcher func(ctx context.Context, url string) ([]byte, error)
 // already answered cannot close a listener an in-flight earlier callback's
 // return would otherwise take down after a new login reused it.
 //
+// followUpPath is the one extra path the forward serves after the guest
+// answered the callback with a redirect to its own port (codex sends the
+// browser to /success and only finishes its login once that page is fetched).
+//
 //exhaustruct:ignore
 type activeForward struct {
-	redirect   LoopbackRedirect
-	generation uint64
-	extend     chan struct{}
+	redirect     LoopbackRedirect
+	generation   uint64
+	followUpPath string
+	extend       chan struct{}
 }
 
 // CallbackForwarder completes loopback OAuth logins started inside the VM.
@@ -212,8 +218,9 @@ func (f *CallbackForwarder) callbackHandler(forward *activeForward, done context
 		f.mutex.Lock()
 		redirect := forward.redirect
 		login := forward.generation
+		followUpPath := forward.followUpPath
 		f.mutex.Unlock()
-		if request.Method != http.MethodGet || request.URL.Path != redirect.Path {
+		if request.Method != http.MethodGet || !servesPath(request.URL.Path, redirect.Path, followUpPath) {
 			http.NotFound(writer, request)
 			return
 		}
@@ -221,8 +228,9 @@ func (f *CallbackForwarder) callbackHandler(forward *activeForward, done context
 		fetchContext, cancel := context.WithTimeout(context.WithoutCancel(request.Context()), guestCallbackTimeout)
 		defer cancel()
 		raw, err := f.fetchInGuest(fetchContext, guestURL)
+		nextPath := ""
 		if err == nil {
-			err = relayResponse(writer, raw)
+			nextPath, err = relayResponse(writer, raw, redirect.Port)
 		}
 		if err != nil {
 			http.Error(
@@ -231,8 +239,28 @@ func (f *CallbackForwarder) callbackHandler(forward *activeForward, done context
 				http.StatusBadGateway,
 			)
 		}
+		if nextPath != "" {
+			f.awaitFollowUp(forward, login, nextPath)
+			return
+		}
 		f.endForward(forward, login, done)
 	})
+}
+
+// servesPath reports whether the forward answers path: the callback path, or
+// the follow-up path a same-port guest redirect opened.
+func servesPath(path, callbackPath, followUpPath string) bool {
+	return path == callbackPath || (followUpPath != "" && path == followUpPath)
+}
+
+// awaitFollowUp keeps the forward open for the path the guest redirected the
+// browser to on its own port. The lifetime still bounds the wait.
+func (f *CallbackForwarder) awaitFollowUp(forward *activeForward, login uint64, path string) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	if forward.generation == login {
+		forward.followUpPath = path
+	}
 }
 
 // endForward closes a forward once the login that owns it answered the browser
@@ -282,26 +310,51 @@ func isSafeRedirectLocation(location string) bool {
 	return !isLoopbackHost(host) && !isAmbiguousNumericHost(host)
 }
 
+// ownPortFollowUpPath reports whether location redirects the browser back to
+// the forward's own listener (plain http, a loopback host, ownPort) and returns
+// the path it requests. That redirect reaches no other host service: the
+// forwarder itself answers it by replaying the request in the guest.
+func ownPortFollowUpPath(location string, ownPort int) (string, bool) {
+	redirect, err := url.Parse(location)
+	if err != nil || !strings.EqualFold(redirect.Scheme, "http") || !isLoopbackHost(redirect.Hostname()) {
+		return "", false
+	}
+	if redirect.Port() != strconv.Itoa(ownPort) {
+		return "", false
+	}
+	if redirect.Path == "" {
+		return "/", true
+	}
+	return redirect.Path, true
+}
+
 // relayResponse writes the guest's raw HTTP response to writer. The page is
 // served with a sandbox content security policy that gives it an opaque origin,
 // blocks scripts, and blocks subresources, so guest-supplied HTML can neither
 // read nor write anything that belongs to localhost on the host and cannot make
 // the browser request a host-local address. A redirect to a loopback or non-web
-// target is replaced with a local notice instead of being relayed.
-func relayResponse(writer http.ResponseWriter, raw []byte) error {
+// target is replaced with a local notice instead of being relayed, except a
+// redirect back to ownPort: it returns that redirect's path so the forward
+// serves the follow-up request.
+func relayResponse(writer http.ResponseWriter, raw []byte, ownPort int) (string, error) {
 	response, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(raw)), nil)
 	if err != nil {
-		return fmt.Errorf("parse guest response: %w", err)
+		return "", fmt.Errorf("parse guest response: %w", err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(response.Body)
 	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
-		return fmt.Errorf("read guest response: %w", err)
+		return "", fmt.Errorf("read guest response: %w", err)
 	}
+	followUpPath := ""
 	for _, location := range response.Header.Values("Location") {
+		if path, ok := ownPortFollowUpPath(location, ownPort); ok {
+			followUpPath = path
+			continue
+		}
 		if !isSafeRedirectLocation(location) {
 			writeBlockedRedirect(writer)
-			return nil
+			return "", nil
 		}
 	}
 	for _, name := range relayedHeaders {
@@ -313,7 +366,7 @@ func relayResponse(writer http.ResponseWriter, raw []byte) error {
 	writer.Header().Set("X-Content-Type-Options", "nosniff")
 	writer.WriteHeader(response.StatusCode)
 	_, _ = writer.Write(body)
-	return nil
+	return followUpPath, nil
 }
 
 // writeBlockedRedirect answers a guest redirect the host refuses to follow.

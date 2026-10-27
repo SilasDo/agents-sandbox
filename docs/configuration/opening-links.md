@@ -54,7 +54,9 @@ agent in the sandbox and shows you the agent's answer. Like the link hand-over, 
 agents-sandbox stops listening after the login completes, after five minutes, or when the session ends. It only passes
 on the one request to the address the agent named. It shows you the agent's answer with scripts, cookies and other
 resources blocked, and refuses an answer that would redirect your browser to a local address, so a page from the
-sandbox can neither read your cookies nor reach other services on your computer.
+sandbox can neither read your cookies nor reach other services on your computer. The one exception is a redirect back to
+the same port the login uses, such as Codex's `/success` page: agents-sandbox answers that request itself by passing it
+on to the agent too.
 
 If you build the runner image on a custom base, that base must provide `curl`: the launcher uses it to pass the callback
 into the sandbox. See the [base image contract]({% link runner-image.md %}#the-base-image-contract).
