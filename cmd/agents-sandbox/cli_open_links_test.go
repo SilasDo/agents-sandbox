@@ -26,7 +26,7 @@ func resolveOpenLinks(t *testing.T, commandName string, args ...string) bool {
 	command.SetContext(context.WithValue(context.Background(), (*launcherConfigKey)(nil), mustResolver(t, command)))
 	opts, err := runoptions.Build(resolverFromContext(command.Context()).Config(), command, ui)
 	if err != nil {
-		t.Fatalf("BuildRunOptions: %v", err)
+		t.Fatalf("runoptions.Build: %v", err)
 	}
 	return opts.OpenLinks
 }

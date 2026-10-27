@@ -76,15 +76,12 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 	v.SetEnvKeyReplacer(envKeyReplacer)
 	v.AutomaticEnv()
 	for _, key := range configEnvKeys {
-		if err := v.BindEnv(key, envVarName(LegacyEnvPrefix, key)); err != nil {
-			return nil, err
-		}
+		// Keys are non-empty constants, so binding cannot fail.
+		v.MustBindEnv(key, envVarName(LegacyEnvPrefix, key))
 	}
 
 	if cmd != nil {
-		if err := bindConfigFlags(v, cmd); err != nil {
-			return nil, err
-		}
+		bindConfigFlags(v, cmd)
 	}
 
 	// Non-flag defaults: host config provisioning is on unless opted out.
@@ -138,24 +135,24 @@ func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, s
 	if dockerExplicit(v, cmd) {
 		return value, ""
 	}
-	if !v.IsSet(keyDind) {
+	if !v.IsSet(KeyDind) {
 		return value, ""
 	}
-	return v.GetBool(keyDind), dockerLegacySource(v)
+	return v.GetBool(KeyDind), dockerLegacySource(v)
 }
 
 // dockerExplicit reports whether the canonical docker setting is explicitly set
 // via env, config file, or the --docker flag, so it takes precedence over the
 // deprecated dind alias.
 func dockerExplicit(v *viper.Viper, cmd *cobra.Command) bool {
-	if os.Getenv(envVarName(EnvPrefix, keyDocker)) != "" {
+	if os.Getenv(envVarName(EnvPrefix, KeyDocker)) != "" {
 		return true
 	}
-	if v.InConfig(keyDocker) {
+	if v.InConfig(KeyDocker) {
 		return true
 	}
 	if cmd != nil {
-		if flag := findFlag(cmd, keyDocker); flag != nil && flag.Changed {
+		if flag := findFlag(cmd, KeyDocker); flag != nil && flag.Changed {
 			return true
 		}
 	}
@@ -164,10 +161,10 @@ func dockerExplicit(v *viper.Viper, cmd *cobra.Command) bool {
 
 // dockerLegacySource names where the deprecated dind value came from.
 func dockerLegacySource(v *viper.Viper) string {
-	if env := envVarName(EnvPrefix, keyDind); os.Getenv(env) != "" {
+	if env := envVarName(EnvPrefix, KeyDind); os.Getenv(env) != "" {
 		return env
 	}
-	if v.InConfig(keyDind) {
+	if v.InConfig(KeyDind) {
 		return "the dind config key"
 	}
 	return "dind"

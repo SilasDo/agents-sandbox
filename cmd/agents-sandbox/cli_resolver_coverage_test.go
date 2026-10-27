@@ -127,10 +127,10 @@ func TestReservedHomeConfigTargetsOK(t *testing.T) {
 	}
 }
 
-// TestBuildRunOptionsInvalidNotifyFlag exercises the --notify flag override
-// error branch in BuildRunOptions (an invalid value passed directly on the
+// TestBuildInvalidNotifyFlag exercises the --notify flag override
+// error branch in runoptions.Build (an invalid value passed directly on the
 // flag, not via the env var), with a nil resolver.
-func TestBuildRunOptionsInvalidNotifyFlag(t *testing.T) {
+func TestBuildInvalidNotifyFlag(t *testing.T) {
 	ui := &termio.Mock{}
 	cmd := buildRunCmd(ui)
 	if err := cmd.Flags().Set(flagNotify, "loud"); err != nil {

@@ -38,7 +38,7 @@ promises a preview and still mutates.
 
 `--dry-run` becomes a **read-only plan**: it runs the pure planning and read-only inspection steps and reports the
 decision, then returns before any mutation. It keeps implying `--dry-run-vm` (harmless once the preview returns before
-the VM), so `opts.DryRun` continues to set `opts.DryRunVM` (`viperconfig.go:823`).
+the VM), so `opts.DryRun` continues to set `opts.DryRunVM` (`runoptions.go:143`).
 
 `--dry-run-vm` is unchanged: it still prepares fully (image ensure/build, home volume ensure/create, state writes,
 reconfig) and only skips the VM lifecycle. That is its purpose — running the tool on machines without `/dev/kvm`.

@@ -1,6 +1,8 @@
 package viperconfig
 
 import (
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/homeconfig"
@@ -43,15 +45,32 @@ func (r *Resolver) AutoPruneAge() time.Duration { return r.cfg.AutoPruneAge }
 
 func (r *Resolver) ManualPruneAge() time.Duration { return r.cfg.ManualPruneAge }
 
-// Config returns the resolved launcher config, or nil when the resolver itself
-// is nil. runoptions.Build treats a nil config as flag-only, with no config,
-// env, or defaults applied.
+// Config returns a deep copy of the resolved launcher config, or nil when the
+// resolver itself is nil. runoptions.Build treats a nil config as flag-only,
+// with no config, env, or defaults applied. The copy owns its slices and maps,
+// so a caller mutating the returned config cannot change later resolver reads.
 func (r *Resolver) Config() *Config {
 	if r == nil {
 		return nil
 	}
-	cfg := r.cfg
-	return &cfg
+	return r.cfg.clone()
+}
+
+// clone returns a deep copy of the config, cloning its reference fields (the
+// network policy slices, mounts, and home layers) so the copy shares no mutable
+// state with the original.
+func (c Config) clone() *Config {
+	out := c
+	out.Network.Profiles = slices.Clone(c.Network.Profiles)
+	out.Network.EgressAllow = slices.Clone(c.Network.EgressAllow)
+	out.Network.EgressDeny = slices.Clone(c.Network.EgressDeny)
+	out.Network.DNSServers = slices.Clone(c.Network.DNSServers)
+	out.Mounts = maps.Clone(c.Mounts)
+	out.Home = slices.Clone(c.Home)
+	for i := range out.Home {
+		out.Home[i].Manifest = maps.Clone(c.Home[i].Manifest)
+	}
+	return &out
 }
 
 // UpgradeMode returns the configured upgrade mode, defaulting to prompt. An

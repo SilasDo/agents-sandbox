@@ -106,6 +106,15 @@ func TestDurationDecodeHook(t *testing.T) {
 		t.Errorf("hook int->duration = %v, want unchanged", got)
 	}
 
+	// a negative duration: ParseHumanDuration rejects negatives, time.ParseDuration accepts them
+	got, err = exec(strType, durType, "-5s")
+	if err != nil {
+		t.Fatalf("hook error: %v", err)
+	}
+	if got != -5*time.Second {
+		t.Errorf("hook(-5s) = %v, want -5s", got)
+	}
+
 	// unparseable string unchanged
 	got, err = exec(strType, durType, "notaduration")
 	if err != nil {

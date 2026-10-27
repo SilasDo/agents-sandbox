@@ -33,14 +33,8 @@ const (
 	FlagNetwork      = "network"
 	FlagDNSServers   = "dns"
 	FlagNotify       = "notify"
-	FlagOpenLinks    = "open-links"
-)
-
-// Deprecated dind flag names. The config keys of the same name live in
-// viperconfig; these matter only for reading the flags off the command.
-const (
-	flagDocker = "docker"
-	flagDind   = "dind"
+	// FlagOpenLinks is the --open-links flag name, shared with the config key.
+	FlagOpenLinks = viperconfig.KeyOpenLinks
 )
 
 // defaultAgentName is the fallback agent used when --agent is not provided.
@@ -66,8 +60,9 @@ func notifyEnvOverride() (string, string) {
 
 // Build resolves the shared run/shell options from the command's flags and the
 // resolved launcher config, with precedence flag > env > config > default. A
-// nil config resolves flag-only options with zero-value policy fields (no
-// config, env, or defaults applied).
+// nil config resolves the options from the command's flags alone, still applying
+// the agent default and the notify env override but leaving the config-derived
+// fields (policy, sizes, mounts, provisioning) at their zero values.
 func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.RunOptions, error) {
 	opts, err := resolveFlags(cmd, ui)
 	if err != nil {
@@ -120,14 +115,14 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 // not bound to viper, so it is resolved here. Cobra emits the deprecation
 // warning for the flag itself.
 func applyDeprecatedDindFlag(cmd *cobra.Command, opts *options.RunOptions) {
-	dindFlag := cmd.Flags().Lookup(flagDind)
+	dindFlag := cmd.Flags().Lookup(viperconfig.KeyDind)
 	if dindFlag == nil || !dindFlag.Changed {
 		return
 	}
-	if dockerFlag := cmd.Flags().Lookup(flagDocker); dockerFlag != nil && dockerFlag.Changed {
+	if dockerFlag := cmd.Flags().Lookup(viperconfig.KeyDocker); dockerFlag != nil && dockerFlag.Changed {
 		return
 	}
-	dind, _ := cmd.Flags().GetBool(flagDind)
+	dind, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
 	opts.Docker = dind
 }
 

@@ -114,9 +114,10 @@ const (
 	keyNetworkProfile            = "network.profile"
 	keyNetworkDNSServers         = "network.dns-servers"
 	keyAgent                     = "agent"
-	keyDocker                    = "docker"
-	// keyDind is the deprecated alias for the docker capability.
-	keyDind                = "dind"
+	// KeyDocker is the config key and CLI flag name for the docker capability.
+	KeyDocker = "docker"
+	// KeyDind is the deprecated alias for the docker capability.
+	KeyDind                = "dind"
 	keyCPUs                = "cpus"
 	keyQuiet               = "quiet"
 	keyYes                 = "yes"
@@ -124,19 +125,20 @@ const (
 	keyUpgradeInterval     = "upgrade.interval"
 	keyUpgradeChannel      = "upgrade.channel"
 	keyProvisionHostConfig = "provision-host-config"
-	keyOpenLinks           = "open-links"
-	keyNotifyDesktop       = "notify.desktop"
-	keyNotifyAudio         = "notify.audio"
-	keyNotifyOnInput       = "notify.on-input"
-	keyNotifyOnDone        = "notify.on-done"
-	keyNotifyOnError       = "notify.on-error"
+	// KeyOpenLinks is the config key and CLI flag name for the open-links setting.
+	KeyOpenLinks     = "open-links"
+	keyNotifyDesktop = "notify.desktop"
+	keyNotifyAudio   = "notify.audio"
+	keyNotifyOnInput = "notify.on-input"
+	keyNotifyOnDone  = "notify.on-done"
+	keyNotifyOnError = "notify.on-error"
 )
 
 // configFlagKeys are the config-backed keys that are also exposed as CLI flags.
 // Their env vars use the AGENTS_SANDBOX_ prefix.
 var configFlagKeys = []string{
 	keyCPUs, "memory", "tmp-size", "disk-size", "workspace-quota",
-	keyYes, keyQuiet, "log-level", "agent", keyDocker, keyOpenLinks,
+	keyYes, keyQuiet, "log-level", "agent", KeyDocker, KeyOpenLinks,
 }
 
 // configEnvKeys are all launcher config keys bound to env vars.
@@ -147,8 +149,8 @@ var configEnvKeys = []string{
 	keyAutoStopOnActiveSessions, keyAutoStopTimeout, keyAutoStopMaxSessionRetries,
 	keyNetworkProfile, keyNetworkDNSServers,
 	keyAgent,
-	keyDocker, keyDind,
+	KeyDocker, KeyDind,
 	keyUpgradeMode, keyUpgradeInterval, keyUpgradeChannel,
 	keyProvisionHostConfig,
-	keyOpenLinks,
+	KeyOpenLinks,
 }
