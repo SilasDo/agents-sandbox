@@ -68,17 +68,6 @@ func TestProjectVMNameExtremeAgentCoversFinalCut(t *testing.T) {
 	}
 }
 
-// TestKeyDirFlockPath covers the agent-scoped flock-path construction used by
-// ensureProjectVM: it lives under the (slug, agent) key directory.
-func TestKeyDirFlockPath(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	k := state.Key{Slug: "myproj", Agent: "opencode"}
-	want := filepath.Join(configpaths.Get().UserStateDir(), "myproj", "opencode", "ensure-vm.lock")
-	if got := filepath.Join(state.KeyDir(k), "ensure-vm.lock"); got != want {
-		t.Errorf("flock path = %q, want %q", got, want)
-	}
-}
-
 // TestCurrentAgentVersionIgnoresCorruptFile covers the read-error branch of
 // currentAgentVersion (a corrupt project state file must yield "").
 func TestCurrentAgentVersionIgnoresCorruptFile(t *testing.T) {

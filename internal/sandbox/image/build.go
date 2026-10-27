@@ -72,17 +72,14 @@ func referencesImage(dockerfile []byte, imageRef string) bool {
 }
 
 // scanFromStages walks a Dockerfile's FROM lines, returning the final stage's
-// image token and the declared stage-alias map.
+// image token and the declared stage-alias map. Instruction keywords are matched
+// case-insensitively, so lowercase and mixed-case FROM lines are recognised.
 func scanFromStages(dockerfile []byte) (string, map[string]string) {
 	stageBase := make(map[string]string)
 	var lastImage string
 	scanner := bufio.NewScanner(bytes.NewReader(dockerfile))
 	for scanner.Scan() {
-		line := strings.TrimLeft(scanner.Text(), " \t")
-		if !strings.HasPrefix(line, "FROM") {
-			continue
-		}
-		fromImage, stageAlias := parseFrom(line)
+		fromImage, stageAlias := parseFrom(scanner.Text())
 		if fromImage == "" {
 			continue
 		}
@@ -125,10 +122,15 @@ func imageRefMatches(token, imageRef string) bool {
 }
 
 // parseFrom parses a Dockerfile FROM line, returning the main image reference
-// and the declared stage alias (the "AS <name>" token, if present). Leading
-// build flags (e.g. --platform) are ignored.
+// and the declared stage alias (the "AS <name>" token, if present). The FROM and
+// AS keywords are matched case-insensitively and leading build flags (e.g.
+// --platform) are ignored. A line that is not a FROM instruction yields empty
+// values.
 func parseFrom(line string) (string, string) {
-	rest := strings.TrimSpace(strings.TrimPrefix(line, "FROM"))
+	keyword, rest := instruction(line)
+	if keyword != fromInstruction {
+		return "", ""
+	}
 	var fromImage string
 	for rest != "" {
 		token, tail := nextField(rest)

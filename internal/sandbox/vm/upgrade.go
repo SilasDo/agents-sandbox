@@ -78,8 +78,8 @@ func resolveBuildVersion(
 	// change its version, so never check or offer an upgrade, and ignore any pin.
 	// If no version was recorded, leave it empty so the image build can resolve a
 	// real version if the current base image does not provide the agent.
-	if currentAgentSource(k) == agentSourceUser {
-		return currentAgentVersion(k), false, "", nil
+	if version, userProvided := ResolveAgentVersionForBuild(k, opts.AgentVersion); userProvided {
+		return version, false, "", nil
 	}
 
 	// An explicitly pinned version is authoritative: never prompt for an upgrade.
@@ -117,6 +117,18 @@ func resolveBuildVersion(
 		return latest, true, latest, nil
 	}
 	return current, false, latest, nil
+}
+
+// ResolveAgentVersionForBuild applies the one agent-version precedence shared by
+// the standalone build and a run. A user-provided agent is not owned by the
+// tool, so any requested version (an explicit --agent-version pin) is ignored in
+// favor of the recorded version and the caller must treat the build as
+// user-provided. Every other project honors the requested version as-is.
+func ResolveAgentVersionForBuild(k state.Key, requestedVersion string) (string, bool) {
+	if currentAgentSource(k) == agentSourceUser {
+		return currentAgentVersion(k), true
+	}
+	return requestedVersion, false
 }
 
 // promptUpgrade offers to rebuild the runner image with a newer release. It

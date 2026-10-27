@@ -714,6 +714,21 @@ func TestRenderDockerfileReservedAliasCaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileReservedAliasLowercaseFrom guards that a lowercase FROM
+// line still reaches checkReservedAliases, so a lowercase reserved alias is a
+// hard error rather than a silent collision.
+func TestRenderDockerfileReservedAliasLowercaseFrom(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("from ubuntu:24.04 as agents-sandbox-base\nRUN echo hi\n")
+	_, err := RenderDockerfile(a, testAgentVersion, project, false)
+	if err == nil {
+		t.Fatal("declaring reserved alias agents-sandbox-base with a lowercase FROM must be a hard error")
+	}
+	if !strings.Contains(err.Error(), "agents-sandbox-base") {
+		t.Errorf("error must report the alias spelling from the Dockerfile; got %q", err)
+	}
+}
+
 func TestRenderDockerfileDeterministic(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04\n# agents-sandbox:docker\nRUN echo hi\n")
@@ -780,6 +795,75 @@ func TestSplitFinalStageMultiStage(t *testing.T) {
 	}
 	if body != "COPY --from=build /app /app\n" {
 		t.Errorf("body = %q, want the final-stage body", body)
+	}
+}
+
+func TestSplitFinalStageLowercaseFrom(t *testing.T) {
+	project := []byte("from debian:trixie-slim\nRUN echo hi\n")
+	earlier, base, body := splitFinalStage(project)
+	if earlier != "" {
+		t.Errorf("earlier = %q, want empty", earlier)
+	}
+	if base != "from debian:trixie-slim\n" {
+		t.Errorf("base = %q, want the user's lowercase FROM line", base)
+	}
+	if body != "RUN echo hi\n" {
+		t.Errorf("body = %q, want the user body", body)
+	}
+}
+
+func TestSplitFinalStageMixedCaseFrom(t *testing.T) {
+	project := []byte("From debian:trixie-slim\nRUN echo hi\n")
+	earlier, base, body := splitFinalStage(project)
+	if earlier != "" {
+		t.Errorf("earlier = %q, want empty", earlier)
+	}
+	if base != "From debian:trixie-slim\n" {
+		t.Errorf("base = %q, want the user's mixed-case FROM line", base)
+	}
+	if body != "RUN echo hi\n" {
+		t.Errorf("body = %q, want the user body", body)
+	}
+}
+
+func TestSplitFinalStageLowercaseMultiStage(t *testing.T) {
+	project := []byte(
+		"from golang:1.24 as build\nRUN go build\n" +
+			"from debian:trixie-slim as final\nCOPY --from=build /app /app\n",
+	)
+	earlier, base, body := splitFinalStage(project)
+	wantEarlier := "from golang:1.24 as build\nRUN go build\n"
+	if earlier != wantEarlier {
+		t.Errorf("earlier = %q, want %q", earlier, wantEarlier)
+	}
+	if base != "from debian:trixie-slim as final\n" {
+		t.Errorf("base = %q, want the final lowercase FROM", base)
+	}
+	if body != "COPY --from=build /app /app\n" {
+		t.Errorf("body = %q, want the final-stage body", body)
+	}
+}
+
+func TestSplitFinalStageIgnoresFromage(t *testing.T) {
+	project := []byte("FROMAGE debian:trixie-slim\nRUN echo hi\n")
+	earlier, base, body := splitFinalStage(project)
+	if earlier != "" {
+		t.Errorf("earlier = %q, want empty", earlier)
+	}
+	if base != string(project) {
+		t.Errorf("base = %q, want the whole file (no FROM instruction)", base)
+	}
+	if body != "" {
+		t.Errorf("body = %q, want empty", body)
+	}
+}
+
+func TestRenderDockerfileLowercaseFrom(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("from debian:trixie-slim\nRUN echo hi\n")
+	s := mustRender(t, a, project, false)
+	if !strings.Contains(s, "from debian:trixie-slim AS "+baseStageAlias) {
+		t.Errorf("rendered Dockerfile must alias the lowercase base FROM; got:\n%s", s)
 	}
 }
 

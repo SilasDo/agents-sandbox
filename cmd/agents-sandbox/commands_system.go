@@ -259,8 +259,12 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 				ui.Infof("dry-run: Would build runner image")
 				return nil
 			}
+			agentVersion, userProvided := sandbox.ResolveAgentVersionForBuild(
+				state.Key{Slug: adoption.Slug, Agent: a.Name()},
+				openCodeVersion,
+			)
 			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
-				Force: force, AgentVersion: openCodeVersion, UserProvided: false, Docker: resolveBuildDocker(cmd),
+				Force: force, AgentVersion: agentVersion, UserProvided: userProvided, Docker: resolveBuildDocker(cmd),
 			}, ui)
 		},
 	}

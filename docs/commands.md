@@ -107,7 +107,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 | `--rebuild`          | `-r`  | `false`  | Force a clean rebuild                                           |
 | `--dry-run`          | `-n`  | `false`  | Dry run without building                                        |
 | `--agent`            | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2` (default), `pi`, or `claude-code`. |
-| `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest) |
+| `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest). Ignored for a user-provided agent |
 | `--docker`           | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
 
 > The deprecated `--opencode-version` flag remains as an alias for `--agent-version`.

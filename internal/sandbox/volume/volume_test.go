@@ -719,7 +719,7 @@ func TestResolveHomeVolume_VolumeNotFoundInSandbox(t *testing.T) {
 	mock := &msb.MockMsbClient{}
 	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		return msb.MockVolumeHandle{Name_: name}, nil
@@ -752,7 +752,131 @@ func TestResolveHomeVolume_VolumeNotFoundInSandbox(t *testing.T) {
 	}
 }
 
-// TestResolveHomeVolume_RecoversLiveVMVolumeOnMissingState covers issue #219:
+// TestResolveHomeVolume_TransientRecordedErrorFailsClosed pins that a lookup
+// error that is not true absence (a daemon, timeout, or permission failure) is
+// never mistaken for a missing volume: resolution fails closed rather than
+// minting a fresh volume over the still-valid one and rewriting the state.
+func TestResolveHomeVolume_TransientRecordedErrorFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	key := state.Key{Slug: "transientproj", Agent: "opencode"}
+	seedHomeState(key, state.HomeState{
+		HomeVolume:  "agents-sandbox-home-transientproj-20260806T143022",
+		ImageDigest: "sha256:abc",
+	})
+
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("daemon unavailable looking up %s", name)
+	}
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		t.Fatalf("CreateVolume must not be called on a transient lookup error (got %q)", name)
+		return msb.MockVolumeHandle{Name_: name}, nil
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	_, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		key,
+		image.ImageInfo{Digest: "sha256:def"},
+		false,
+		state.Fingerprints{},
+		"",
+		ui,
+	)
+	if err == nil {
+		t.Fatal("ResolveHomeVolume returned no error for a transient lookup failure, want fail-closed")
+	}
+
+	persisted, readErr := state.ReadState(key)
+	if readErr != nil {
+		t.Fatalf("state not readable after fail-closed: %v", readErr)
+	}
+	if persisted.HomeVolume != "agents-sandbox-home-transientproj-20260806T143022" {
+		t.Errorf("state was rewritten on a transient error: HomeVolume = %q", persisted.HomeVolume)
+	}
+}
+
+// TestResolveHomeVolume_TransientRecoveryErrorFailsClosed pins that a transient
+// error while confirming the recovered candidate also fails closed: recovery
+// must not fall back to a fresh prefill when the candidate's existence cannot
+// be established.
+func TestResolveHomeVolume_TransientRecoveryErrorFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	const recovered = "agents-sandbox-home-transientrecover-20260101T000000"
+	mock := &msb.MockMsbClient{}
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+		var vh msb.VolumeHandle
+		return vh, fmt.Errorf("daemon unavailable looking up %s", name)
+	}
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		t.Fatalf("CreateVolume must not be called on a transient lookup error (got %q)", name)
+		return msb.MockVolumeHandle{Name_: name}, nil
+	}
+
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+	_, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		state.Key{Slug: "transientrecover", Agent: "opencode"},
+		image.ImageInfo{Digest: "sha256:def"},
+		false,
+		state.Fingerprints{},
+		recovered,
+		ui,
+	)
+	if err == nil {
+		t.Fatal("ResolveHomeVolume returned no error for a transient recovery lookup, want fail-closed")
+	}
+}
+
+// TestConfirmedRecoveredVolume pins the three outcomes that drive recovery:
+// an empty candidate and a genuinely absent volume report "not confirmed" with
+// no error (fall back to a fresh prefill), a present volume is confirmed, and
+// any other lookup error is returned so the caller fails closed.
+func TestConfirmedRecoveredVolume(t *testing.T) {
+	const present = "agents-sandbox-home-confirm-20260101T000000"
+
+	tests := []struct {
+		name      string
+		candidate string
+		getErr    error
+		wantName  string
+		wantOK    bool
+		wantErr   bool
+	}{
+		{"empty candidate", "", nil, "", false, false},
+		{"present", present, nil, present, true, false},
+		{"absent", present, volumeNotFoundError(present), "", false, false},
+		{"transient", present, errors.New("daemon unavailable"), "", false, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &msb.MockMsbClient{}
+			mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
+				if tt.getErr != nil {
+					var vh msb.VolumeHandle
+					return vh, tt.getErr
+				}
+				return msb.MockVolumeHandle{Name_: name}, nil
+			}
+
+			name, ok, err := confirmedRecoveredVolume(context.Background(), mock, tt.candidate)
+			if name != tt.wantName || ok != tt.wantOK {
+				t.Errorf("confirmedRecoveredVolume() = (%q, %v), want (%q, %v)", name, ok, tt.wantName, tt.wantOK)
+			}
+			if (err != nil) != tt.wantErr {
+				t.Errorf("confirmedRecoveredVolume() err = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // when a project's state file is lost but its VM still mounts a home volume,
 // the existing volume must be reused instead of a duplicate being created and
 // the previous one orphaned.
@@ -766,7 +890,7 @@ func TestResolveHomeVolume_RecoversLiveVMVolumeOnMissingState(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		t.Fatalf("CreateVolume must not be called when a live home volume can be recovered (got %q)", name)
@@ -824,7 +948,7 @@ func TestResolveHomeVolume_RecoversPersistedAdoptionVolume(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
@@ -876,7 +1000,7 @@ func TestResolveHomeVolume_RecoveredVolumeMissingStartsFresh(t *testing.T) {
 	mock := &msb.MockMsbClient{}
 	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		createdName = name
@@ -926,7 +1050,7 @@ func TestResolveHomeVolume_RecoversWhenRecordedVolumeGone(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		t.Fatalf("CreateVolume must not be called when the live volume can be recovered (got %q)", name)
@@ -972,7 +1096,7 @@ func TestResolveHomeVolume_RecoveryStateFails(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
@@ -1074,7 +1198,7 @@ func TestResolveHomeVolume_RecoveryPreservesFingerprints(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		t.Fatalf("CreateVolume must not be called during recovery (got %q)", name)
@@ -1589,7 +1713,7 @@ func TestResolveHomeVolume_ClearsAdoptionClaim(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 
 	ui := &termio.Mock{}
@@ -1640,7 +1764,7 @@ func TestResolveHomeVolume_AdoptionClaimClearErrorWarns(t *testing.T) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		}
 		var vh msb.VolumeHandle
-		return vh, fmt.Errorf("volume %s not found", name)
+		return vh, volumeNotFoundError(name)
 	}
 
 	ui := &termio.Mock{}
