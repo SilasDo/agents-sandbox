@@ -17,6 +17,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/docslink"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
@@ -237,10 +238,6 @@ func buildImage(
 	return nil
 }
 
-// docsBaseURL is the published documentation site, used to point a build failure
-// at the section that fixes it.
-const docsBaseURL = "https://inoio.github.io/agents-sandbox"
-
 // buildFailureError classifies an engine build failure and tailors the message
 // for the two a user can act on: a base image the engine could not resolve
 // (Docker Engine reports "pull access denied"), and an image name with no
@@ -256,7 +253,7 @@ func buildFailureError(err error) error {
 		return fmt.Errorf(
 			"docker image build failed (the engine could not resolve an image name that has no registry): %w\n  Docs: %s",
 			err,
-			docsBaseURL+"/troubleshooting.html#the-base-image-cannot-be-found",
+			docslink.SectionURL("troubleshooting", "the-base-image-cannot-be-found"),
 		)
 	default:
 		return fmt.Errorf("docker image build failed: %w", err)

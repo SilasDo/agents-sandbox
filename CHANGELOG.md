@@ -18,6 +18,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- Docs integrity: `ci/check-docs.sh` now verifies that every documentation fragment landing on the published site —
+  rendered-HTML links, `docs/` in-page and cross-page anchors, and the launcher's printed links — resolves to a
+  heading that slugs to it. The launcher composes its links through the new `internal/docslink` package (#296).
 - Maintenance: updated the microsandbox Go SDK and managed `msb` runtime to v0.7.11.
 - Internal: `dockerd` and the agent `serve` daemon now run as microsandbox runtime-owned detached jobs
   (`ExecDetached`), replacing shell-backgrounded `nohup` processes, logfile polling, and `pkill` start/stop plumbing.

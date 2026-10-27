@@ -7,6 +7,7 @@ import (
 
 	"github.com/moby/moby/client"
 
+	"github.com/inoio/agents-sandbox/internal/docslink"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/runtime"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -17,15 +18,6 @@ var (
 	checkDockerFunc   = realCheckDocker
 	collectChecksFunc = collectChecks
 )
-
-// docsBaseURL is the published documentation site that doctor links failures to.
-const docsBaseURL = "https://inoio.github.io/agents-sandbox"
-
-// troubleshootingURL returns the troubleshooting-page section for a resolved
-// problem, so a failing check ends with where to read the fix.
-func troubleshootingURL(anchor string) string {
-	return docsBaseURL + "/troubleshooting.html#" + anchor
-}
 
 // CheckDocker reports whether the docker binary is on PATH.
 func CheckDocker(ctx context.Context) error {
@@ -93,7 +85,7 @@ func checkMsb(ctx context.Context) ([]string, error) {
 	if err := ensureMsbInstalled(ctx); err != nil {
 		return nil, fmt.Errorf(
 			"msb runtime setup failed: %w\n  Docs: %s",
-			err, troubleshootingURL("microsandbox-runtime"),
+			err, docslink.SectionURL("troubleshooting", "microsandbox-runtime"),
 		)
 	}
 	home := runtime.PrivateHome()

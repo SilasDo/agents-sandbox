@@ -5,6 +5,8 @@ package doctor
 import (
 	"errors"
 	"os"
+
+	"github.com/inoio/agents-sandbox/internal/docslink"
 )
 
 // kvmDevice is the host device the sandbox VM needs.
@@ -34,7 +36,7 @@ func kvmUnavailableError() error {
 		"    sudo usermod -aG kvm \"$USER\"\n" +
 		"  If the kernel module is not loaded:  sudo modprobe kvm\n" +
 		"  If it still fails, enable Intel VT-x / AMD-V in your firmware.\n" +
-		"  Docs: " + troubleshootingURL("kvm-unavailable"))
+		"  Docs: " + docslink.SectionURL("troubleshooting", "kvm-unavailable"))
 }
 
 // dockerRemedyHint is the Linux way to start the Docker daemon.
@@ -42,5 +44,5 @@ func dockerRemedyHint() string {
 	return "  Start the Docker daemon, then verify:\n" +
 		"    sudo systemctl start docker\n" +
 		"    docker info\n" +
-		"  Docs: " + troubleshootingURL("docker-not-running")
+		"  Docs: " + docslink.SectionURL("troubleshooting", "docker-not-running")
 }
