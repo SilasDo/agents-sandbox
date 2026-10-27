@@ -83,6 +83,8 @@ command reports the bare version (e.g. `0.1.0`).
   alias. A CRLF line ending is trimmed rather than leaking into the stage alias, and a `RUN` heredoc body or a continued
   argument is not mistaken for a stage header, so a lowercase `from … import …` inside a heredoc stays part of the body
   (#346).
+- Secret specs: merging the user and project secret-spec maps returns a fresh map instead of writing into the first
+  map passed in, so both merge helpers in `internal/sandbox/envsecret` now share one non-mutating contract (#352).
 
 ## [0.6.0] - 2026-10-25
 

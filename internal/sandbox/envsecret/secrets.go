@@ -89,13 +89,11 @@ func ParseSecretSpecYAML(filename string, ui termio.UI) map[string]SecretSpec {
 	return specs
 }
 
+// MergeSecretSpecs merges multiple secret-spec maps into a fresh map. Later
+// maps win on key collisions, and no argument map is modified.
 func MergeSecretSpecs(mapsToMerge ...map[string]SecretSpec) map[string]SecretSpec {
-	var result map[string]SecretSpec
+	result := make(map[string]SecretSpec)
 	for _, m := range mapsToMerge {
-		if result == nil {
-			result = m
-			continue
-		}
 		maps.Copy(result, m)
 	}
 	return result
