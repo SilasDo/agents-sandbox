@@ -14,7 +14,7 @@ command reports the bare version (e.g. `0.1.0`).
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
 - Agent: `codex` runs OpenAI's Codex CLI (`--agent codex`), installed from its GitHub release binary, with upgrade
-  checks via GitHub releases. `~/.codex/config.toml` is provisioned from the host; log in inside the VM  (device code login; needs egress to `auth.openai.com`, `chatgpt.com`, `api.openai.com`) (#107).
+  checks via GitHub releases. `~/.codex/config.toml` is provisioned from the host; log in inside the VM (device code login; needs egress to `auth.openai.com`, `chatgpt.com`, `api.openai.com`) (#107).
 - Config snippets: TOML snippets (`.toml`) are merged, and an agent whose config file is TOML gets its merged config
   written as TOML. codex merges `config*.toml` snippets from its `codex/` config dir into `~/.codex/config.toml` (#107).
 - CI: an advisory `mutation` workflow sweeps every code-changing PR's changeset with gomutants (docs-only PRs are
