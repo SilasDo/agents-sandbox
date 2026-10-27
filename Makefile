@@ -97,15 +97,18 @@ bootstrap:
 	        case "$$(uname -m)" in aarch64|arm64) ZIG_ARCH=aarch64 ;; *) ZIG_ARCH=x86_64 ;; esac; \
 	        case "$$(uname -s)" in Darwin) ZIG_OS=macos ;; *) ZIG_OS=linux ;; esac; \
 	        ZIG_DIR=zig-$${ZIG_ARCH}-$${ZIG_OS}-$(ZIG_VERSION); \
-	        mkdir -p "$${HOME}/.local/bin" \
+	        mkdir -p "$${HOME}/.local" \
 	     && curl -fsSL "https://ziglang.org/download/$(ZIG_VERSION)/$${ZIG_DIR}.tar.xz" -o /tmp/zig.tar.xz \
 	     && tar -xf /tmp/zig.tar.xz -C "$${HOME}/.local" \
 	     && rm /tmp/zig.tar.xz \
 	     && ln -sfn "$${HOME}/.local/$${ZIG_DIR}" "$${HOME}/.local/zig" \
-	     && ln -sfn "$${HOME}/.local/zig/zig" "$${HOME}/.local/bin/zig" \
-	     && echo "zig $(ZIG_VERSION) installed ($${HOME}/.local/bin/zig)" \
+	     && echo "zig $(ZIG_VERSION) installed under $${HOME}/.local" \
 	     || { echo "error: installing zig $(ZIG_VERSION) failed" >&2; exit 1; }; \
 	    fi; \
+	    mkdir -p "$${HOME}/.local/bin" \
+	 && ln -sfn "$${HOME}/.local/zig/zig" "$${HOME}/.local/bin/zig" \
+	 && echo "zig binary link ensured at $${HOME}/.local/bin/zig" \
+	 || { echo "error: creating zig binary link failed" >&2; exit 1; }; \
 	    ZIG_DARWIN="$${HOME}/.local/zig/lib/libc/darwin"; \
 	    mkdir -p "$$ZIG_DARWIN/System/Library/Frameworks/CoreFoundation.framework" \
 	             "$$ZIG_DARWIN/System/Library/Frameworks/Security.framework" \

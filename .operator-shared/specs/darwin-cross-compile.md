@@ -51,14 +51,15 @@ Bootstrap classifies on the install root of the zig that `PATH` resolves to (com
 | `command -v zig` resolves to | action |
 |---|---|
 | nothing | install the managed zig into `~/.local` (versioned dir + `~/.local/zig` + `~/.local/bin/zig`), then ensure the stubs |
-| the managed install | ensure idempotently: reinstall only when the on-disk version differs from `ZIG_VERSION`, then ensure the stubs |
+| the managed install | ensure idempotently: reinstall only when the on-disk version differs from `ZIG_VERSION`, then ensure the `~/.local/bin/zig` link and the stubs |
 | anywhere else | warn only, mutate nothing — once that it resolves outside the managed install (naming the path and the version that zig reports), plus once more if the stubs are not found under the resolved root |
 
 What to install is decided from the managed zig **on disk**, not from `PATH`, so a managed install that is not on
 `PATH` is not re-downloaded; in that case bootstrap prints the `~/.local/bin` PATH hint, since without it the
 `build-release` guard's "run `make bootstrap`" is a closed loop. Managed-path failures (download, extraction) exit
-non-zero; everything about an outside zig is a warning and the run still exits 0. The stubs are re-copied on every
-managed run rather than only when missing — idempotent in effect, and it self-heals a stale stub.
+non-zero; everything about an outside zig is a warning and the run still exits 0. The binary link and the stubs are
+re-ensured on every managed run rather than only when missing — idempotent in effect, and it self-heals a stale stub or
+a pre-fix install that never created `~/.local/bin/zig` (the link the `~/.local/bin` PATH hint depends on).
 
 **Accepted risk:** the packaging decision (make-only, no new files) means there is no committed test. The
 classification is verified by a throwaway harness (`/tmp/opencode/zbz.sh`-style: a fake zig tree plus a stub `goenv`
