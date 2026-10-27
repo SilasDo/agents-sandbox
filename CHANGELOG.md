@@ -16,6 +16,9 @@ command reports the bare version (e.g. `0.1.0`).
 - Runner image: a project's image variants no longer overwrite each other in the microsandbox cache, so toggling
   `--docker` — or any other content change, such as an agent-version bump or a project-Dockerfile edit — reimports
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).
+- Runner image: a project Dockerfile's instructions are scanned case-insensitively, so a valid lowercase or mixed-case
+  `FROM`/`AS` (e.g. `from debian:trixie-slim`) is composed correctly instead of failing the build with a missing stage
+  alias (#346).
 
 ## [0.6.0] - 2026-10-25
 
