@@ -1,6 +1,7 @@
 package envsecret
 
 import (
+	"maps"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -235,8 +236,49 @@ func TestMergeSecretSpecsLaterWins(t *testing.T) {
 }
 
 func TestMergeSecretSpecsEmpty(t *testing.T) {
-	if got := MergeSecretSpecs(); got != nil {
-		t.Errorf("expected nil for no maps, got %#v", got)
+	got := MergeSecretSpecs()
+	if got == nil {
+		t.Fatalf("expected an allocated empty map for no maps, got nil")
+	}
+	if len(got) != 0 {
+		t.Errorf("expected an empty map for no maps, got %#v", got)
+	}
+}
+
+func TestMergeSecretSpecsDoesNotMutateArguments(t *testing.T) {
+	first := map[string]SecretSpec{"K": {Value: "legacy", Hosts: []string{"a.example"}}}
+	second := map[string]SecretSpec{
+		"K": {Value: "yaml", Host: "b.example"},
+		"J": {Value: "only-second"},
+	}
+	firstBefore := maps.Clone(first)
+	secondBefore := maps.Clone(second)
+
+	got := MergeSecretSpecs(first, second)
+
+	if !reflect.DeepEqual(first, firstBefore) {
+		t.Errorf("first argument mutated: got %#v, want %#v", first, firstBefore)
+	}
+	if !reflect.DeepEqual(second, secondBefore) {
+		t.Errorf("second argument mutated: got %#v, want %#v", second, secondBefore)
+	}
+	want := map[string]SecretSpec{
+		"K": {Value: "yaml", Host: "b.example"},
+		"J": {Value: "only-second"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("MergeSecretSpecs = %#v, want %#v", got, want)
+	}
+}
+
+func TestMergeSecretSpecsSingleMapReturnsCopy(t *testing.T) {
+	arg := map[string]SecretSpec{"K": {Value: "only"}}
+
+	got := MergeSecretSpecs(arg)
+	delete(got, "K")
+
+	if !reflect.DeepEqual(arg, map[string]SecretSpec{"K": {Value: "only"}}) {
+		t.Errorf("mutating the result changed the argument: %#v", arg)
 	}
 }
 

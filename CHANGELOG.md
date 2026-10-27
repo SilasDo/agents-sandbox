@@ -86,6 +86,8 @@ command reports the bare version (e.g. `0.1.0`).
 - Config: the launcher-config loader and the home-manifest loader now discover their `config.<ext>` file through one
   shared helper in `internal/configpaths`. Extension order and lookup have a single definition, so the two can no
   longer drift and silently read different files from the same directory (#359).
+- Secret specs: merging the user and project secret-spec maps returns a fresh map instead of writing into the first
+  map passed in, so both merge helpers in `internal/sandbox/envsecret` now share one non-mutating contract (#352).
 
 ## [0.6.0] - 2026-10-25
 
