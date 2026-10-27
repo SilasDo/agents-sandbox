@@ -22,10 +22,6 @@ var heredocDirectives = map[string]struct{}{
 // "<<EOF" are excluded, matching BuildKit.
 var heredocOperator = regexp.MustCompile(`^(\d*)<<(-?)\s*([^<]*)$`)
 
-// quoteStripper removes the quoting BuildKit's shell lexer would strip from a
-// heredoc delimiter word.
-var quoteStripper = strings.NewReplacer("'", "", `"`, "")
-
 // lineContinuations maps a supported escape token to BuildKit's line
 // continuation pattern: an escape at end of line that is not itself escaped, or
 // a line that is only the escape token.
@@ -85,11 +81,14 @@ func instructionEnd(lines [][]byte, start int, escape byte) int {
 			continue
 		}
 		first = false
-		logical.WriteString(line)
-		logical.WriteByte('\n')
 		if !lineContinues(line, escape) {
+			logical.WriteString(line)
 			break
 		}
+		// BuildKit drops the continuation escape and joins the physical lines
+		// before it reads the heredoc delimiters, so a delimiter word glued to
+		// the escape is read whole.
+		logical.WriteString(stripContinuation(line, escape))
 	}
 	for _, delimiter := range heredocDelimiters(logical.String()) {
 		for i < len(lines) {
@@ -117,7 +116,7 @@ func heredocDelimiters(instructionText string) []heredocDelimiter {
 		if match == nil {
 			continue
 		}
-		name := quoteStripper.Replace(match[3])
+		name := unquoteDelimiter(match[3])
 		if name == "" {
 			continue
 		}
@@ -195,6 +194,59 @@ func escapeToken(lines [][]byte) byte {
 func lineContinues(line string, escape byte) bool {
 	pattern, ok := lineContinuations[escape]
 	return ok && pattern.MatchString(line)
+}
+
+// stripContinuation removes a line's trailing continuation escape, mirroring
+// BuildKit's trimContinuationCharacter: the escape and any trailing whitespace
+// are dropped, and a line that is only the escape becomes empty.
+func stripContinuation(line string, escape byte) string {
+	return strings.TrimSuffix(strings.TrimRight(line, " \t"), string(escape))
+}
+
+// unquoteDelimiter removes the quoting from a heredoc delimiter word the way
+// BuildKit's shell lexer does: a quoted run keeps the other quote character
+// literally, so <<'E"OF' names the delimiter E"OF rather than EOF, and an
+// unquoted escape token is consumed.
+func unquoteDelimiter(word string) string {
+	var result strings.Builder
+	for i := 0; i < len(word); {
+		switch word[i] {
+		case '\'':
+			i++
+			for i < len(word) && word[i] != '\'' {
+				result.WriteByte(word[i])
+				i++
+			}
+			i++ // skip the closing quote
+		case '"':
+			i++
+			for i < len(word) && word[i] != '"' {
+				if word[i] == '\\' && i+1 < len(word) && isDoublyEscapeable(word[i+1]) {
+					i++ // drop the escape, keep the escaped character
+				}
+				result.WriteByte(word[i])
+				i++
+			}
+			i++ // skip the closing quote
+		case '\\':
+			if i+1 < len(word) {
+				result.WriteByte(word[i+1])
+				i += 2
+				continue
+			}
+			i++ // a trailing escape is dropped
+		default:
+			result.WriteByte(word[i])
+			i++
+		}
+	}
+	return result.String()
+}
+
+// isDoublyEscapeable reports whether a byte is one of the characters a
+// backslash escapes inside a double-quoted shell string.
+func isDoublyEscapeable(c byte) bool {
+	return c == '"' || c == '\\' || c == '$'
 }
 
 // lineText returns a line without its trailing newline or carriage return.

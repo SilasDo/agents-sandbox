@@ -73,6 +73,37 @@ func TestInstructionLineIndicesQuotedDelimiterWithSpace(t *testing.T) {
 	}
 }
 
+func TestInstructionLineIndicesHeredocAfterContinuation(t *testing.T) {
+	// A delimiter word glued to the line-continuation escape still names the
+	// heredoc, so its body is skipped and the later FROM is found.
+	got := instructionIndexes(t,
+		"FROM debian:trixie-slim\n"+
+			"RUN python3 - <<'PY'\\\n"+
+			"    && echo hi\n"+
+			"print(1)\n"+
+			"PY\n"+
+			"FROM alpine\n")
+	want := []int{0, 1, 5}
+	if !slices.Equal(got, want) {
+		t.Fatalf("instruction starts = %v, want %v", got, want)
+	}
+}
+
+func TestInstructionLineIndicesLiteralQuoteInDelimiter(t *testing.T) {
+	// The double quote inside the single-quoted delimiter is literal, so the
+	// body ends at E"OF and the later FROM is found.
+	got := instructionIndexes(t,
+		"FROM debian:trixie-slim\n"+
+			"RUN cat <<'E\"OF'\n"+
+			"body\n"+
+			"E\"OF\n"+
+			"FROM alpine\n")
+	want := []int{0, 1, 4}
+	if !slices.Equal(got, want) {
+		t.Fatalf("instruction starts = %v, want %v", got, want)
+	}
+}
+
 func TestInstructionLineIndicesEscapeDirectiveSwitchesContinuation(t *testing.T) {
 	got := instructionIndexes(t,
 		"# escape=`\n"+
@@ -160,6 +191,12 @@ func TestHeredocDelimiters(t *testing.T) {
 		{"RUN python3 - <<'PY'", []heredocDelimiter{{name: "PY"}}},
 		{"RUN python3 - <<'PY DOC'", []heredocDelimiter{{name: "PY DOC"}}},
 		{"COPY <<\"FILE\" /dest", []heredocDelimiter{{name: "FILE"}}},
+		{"RUN cat <<'E\"OF'", []heredocDelimiter{{name: `E"OF`}}},  // a quote inside single quotes is literal
+		{"RUN cat <<\"E'OF\"", []heredocDelimiter{{name: `E'OF`}}}, // and vice versa
+		{"RUN cat <<E\\OF", []heredocDelimiter{{name: "EOF"}}},     // an unquoted escape is consumed
+		{"RUN cat <<\"A\\\"B\"", []heredocDelimiter{{name: `A"B`}}},
+		{"RUN cat <<\"A\\$B\"", []heredocDelimiter{{name: "A$B"}}},
+		{"RUN cat <<EOF\\", []heredocDelimiter{{name: "EOF"}}}, // a trailing escape is dropped
 		{"RUN echo $((1<<2))", nil},
 		{"RUN echo hi", nil},
 		{"RUN cat<<EOF", nil},       // matches BuildKit: the operator must start the word
