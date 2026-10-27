@@ -63,6 +63,16 @@ func TestParseFromIgnoresNonFromInstruction(t *testing.T) {
 	}
 }
 
+// TestParseFromTrimsCRLF pins the trailing-whitespace trim of a CRLF Dockerfile
+// line. Without it the alias keeps a trailing CR, which no longer matches the
+// alias the line-buffered scanner sees, so a custom CRLF base fails the build.
+func TestParseFromTrimsCRLF(t *testing.T) {
+	image, alias := parseFrom("FROM ubuntu:24.04 AS base\r")
+	if image != "ubuntu:24.04" || alias != "base" {
+		t.Errorf("parseFrom(CRLF line) = (%q, %q), want (ubuntu:24.04, base)", image, alias)
+	}
+}
+
 func TestParseFromIgnoresFromage(t *testing.T) {
 	if image, _ := parseFrom("FROMAGE debian:trixie-slim"); image != "" {
 		t.Errorf("parseFrom(FROMAGE ...) image = %q, want empty", image)

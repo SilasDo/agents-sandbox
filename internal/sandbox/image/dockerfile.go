@@ -656,11 +656,13 @@ RUN id -u dev >/dev/null 2>&1 || \
 }
 
 // lastFromLine returns the index of the last FROM instruction in lines, or -1.
-// Instruction keywords are matched case-insensitively.
+// Only real instruction starts are considered, so a FROM inside a heredoc body
+// or a continuation line is not a stage header; keywords are matched
+// case-insensitively.
 func lastFromLine(lines [][]byte) int {
 	lastFrom := -1
-	for i, line := range lines {
-		if keyword, _ := instruction(string(line)); keyword == fromInstruction {
+	for _, i := range instructionLineIndices(lines) {
+		if keyword, _ := instruction(string(lines[i])); keyword == fromInstruction {
 			lastFrom = i
 		}
 	}
