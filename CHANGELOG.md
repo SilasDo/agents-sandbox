@@ -13,7 +13,7 @@ command reports the bare version (e.g. `0.1.0`).
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
-- Agent: `codex` runs OpenAI's Codex CLI (`--agent codex`), installed from its GitHub release binary, with upgrade
+- Agent: `codex` runs OpenAI's Codex CLI (`--agent codex`), installed from its GitHub release package, with upgrade
   checks via GitHub releases. Codex's own command sandbox is off (`danger-full-access`), since the VM isolates
   it. `~/.codex/config.toml` is provisioned from the host. You log in inside the VM, through
   the host browser or with a device code (#107).

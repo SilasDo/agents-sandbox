@@ -310,9 +310,10 @@ Five agents are built in: `opencode`, `opencode2` (default, the opencode 2 beta)
 needs node: its published package is an npm-installed `#!/usr/bin/env node` bundle, so it installs through
 `npm install -g --prefix /opt/agents-sandbox @earendil-works/pi-coding-agent@$PI_VERSION`. The other four ship
 self-contained native binaries — `opencode` and `opencode2` via their upstream installers
-`https://opencode.ai/install` and `https://opencode.ai/v2/install`, `claude-code` via `https://claude.ai/install.sh`, and
-`codex` as the static `codex-<arch>-unknown-linux-musl` asset of its `openai/codex` GitHub release — copying the binary
-into `/opt/agents-sandbox/bin`; their images contain no node/npm. All five resolve their latest
+`https://opencode.ai/install` and `https://opencode.ai/v2/install` and `claude-code` via `https://claude.ai/install.sh`,
+copying the binary into `/opt/agents-sandbox/bin`, and `codex` from the static `codex-package-<arch>-unknown-linux-musl`
+asset of its `openai/codex` GitHub release, unpacked into `/opt/agents-sandbox/codex` (codex runs commands through
+helpers in that package) and linked into `/opt/agents-sandbox/bin`; their images contain no node/npm. All five resolve their latest
 version for an unpinned build — opencode via its GitHub releases endpoint, opencode2 via the opencode update API
 (`/update/api/latest/cli/npm`, the installer's own source), pi via `pi.dev`, claude-code via the npm registry's
 `latest` dist-tag, and codex via its GitHub releases endpoint — as a host-side HTTP query, never

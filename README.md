@@ -99,7 +99,7 @@ Four agents ship as built-in profiles:
   needs node), run interactively, with upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, installed from its native installer, run interactively, with upgrade
   checks via the npm registry.
-- **`codex`** — OpenAI's Codex CLI, installed from its GitHub release binary, run interactively, with upgrade checks via
+- **`codex`** — OpenAI's Codex CLI, installed from its GitHub release package, run interactively, with upgrade checks via
   GitHub releases.
 
 ## Documentation

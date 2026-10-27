@@ -532,6 +532,7 @@ func TestRenderDockerfileCodexNodeFree(t *testing.T) {
 	for _, want := range []string{
 		"ARG CODEX_VERSION",
 		"https://github.com/openai/codex/releases/download/",
+		"/opt/agents-sandbox/codex",
 		"/opt/agents-sandbox/bin/codex",
 	} {
 		if !strings.Contains(s, want) {

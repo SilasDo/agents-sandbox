@@ -23,8 +23,7 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Five agents ship 
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
 - **`codex`** — OpenAI's Codex CLI, run interactively; upgrade checks via GitHub releases. Its startup update check is
   turned off because agents-sandbox offers upgrades itself. Codex's own command sandbox is turned off too
-  (`sandbox_mode = "danger-full-access"`), because the VM already isolates it and the image does not ship the
-  `bubblewrap` it needs. This overrides `sandbox_mode` in `config.toml`; to choose another mode, pass it as an agent
+  (`sandbox_mode = "danger-full-access"`), because the VM already isolates it. This overrides `sandbox_mode` in `config.toml`; to choose another mode, pass it as an agent
   argument, e.g. `agents-sandbox --agent codex -- --sandbox workspace-write`. Codex still asks for approval according
   to its `approval_policy`.
 

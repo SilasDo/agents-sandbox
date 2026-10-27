@@ -17,15 +17,20 @@ type codexProfile struct{}
 func (codexProfile) Name() string          { return codexName }
 func (codexProfile) ConfigDirName() string { return "codex" }
 
-// ImageSpec installs the static musl build from the Codex GitHub release. The
-// release asset names use the same architecture names as `uname -m`.
+// ImageSpec installs the codex-package release asset, the layout Codex's own
+// installer uses: bin/codex plus the helpers it resolves next to its real path
+// (bin/codex-code-mode-host runs commands, codex-path/rg, codex-resources/).
+// The bare codex binary asset lacks those helpers. The package lands in
+// toolDir/codex and the tool bin links to its bin/codex; the release asset
+// names use the same architecture names as `uname -m`.
 func (codexProfile) ImageSpec() ImageSpec {
 	return ImageSpec{
 		VersionArg: versionArgFor(codexName),
 		AgentEnv:   nil,
-		InstallCommand: `asset="codex-$(uname -m)-unknown-linux-musl" && ` +
-			`curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${asset}.tar.gz" | tar -xz -C /tmp && ` +
-			`install -m 0755 "/tmp/$asset" /opt/agents-sandbox/bin/codex && rm "/tmp/$asset"`,
+		InstallCommand: `mkdir -p /opt/agents-sandbox/codex && ` +
+			`curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-package-$(uname -m)-unknown-linux-musl.tar.gz" | ` +
+			`tar -xz -C /opt/agents-sandbox/codex && ` +
+			`ln -s ../codex/bin/codex /opt/agents-sandbox/bin/codex`,
 		RequiresNode: false,
 	}
 }
@@ -52,8 +57,8 @@ func (codexProfile) ProvisionRules() []ProvisionRule {
 
 // AttachCommand disables the startup update check (the sandbox pins the baked
 // version and offers upgrades itself) and turns off codex's own command
-// sandbox: the VM is the isolation boundary, and codex's bubblewrap sandbox is
-// not installed in the image. A forwarded --sandbox flag still overrides it.
+// sandbox: the VM is the isolation boundary. A forwarded --sandbox flag still
+// overrides it.
 // Every forwarded argument is shell-quoted, because the command runs through
 // `bash -c`.
 func (codexProfile) AttachCommand(_ string, args []string) string {

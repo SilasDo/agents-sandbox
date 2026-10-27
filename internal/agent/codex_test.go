@@ -34,9 +34,9 @@ func TestCodexImageSpec(t *testing.T) {
 		t.Errorf("VersionArg = %q, want CODEX_VERSION", spec.VersionArg)
 	}
 	for _, want := range []string{
-		`asset="codex-$(uname -m)-unknown-linux-musl"`,
-		`https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/${asset}.tar.gz`,
-		"/opt/agents-sandbox/bin/codex",
+		`https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-package-$(uname -m)-unknown-linux-musl.tar.gz`,
+		"tar -xz -C /opt/agents-sandbox/codex",
+		"ln -s ../codex/bin/codex /opt/agents-sandbox/bin/codex",
 	} {
 		if !strings.Contains(spec.InstallCommand, want) {
 			t.Errorf("InstallCommand = %q, want it to contain %q", spec.InstallCommand, want)
