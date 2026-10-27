@@ -171,6 +171,9 @@ func TestRealSandboxHandleOperationsReturnErrors(t *testing.T) {
 	if err := h.Destroy(ctx); err == nil {
 		t.Error("Destroy() = nil, want error on empty handle")
 	}
+	if result, err := h.Compact(ctx, msbSdk.DiskCompactionOptions{}); !IsUnsupportedOperation(err) || result != nil {
+		t.Errorf("Compact() = %v, %v; want unsupported-operation error on non-local handle", result, err)
+	}
 	if plan, err := h.Modify(ctx, msbSdk.ModifyOptions{}); err == nil || plan != nil {
 		t.Errorf("Modify() = %v, %v; want error on empty handle", plan, err)
 	}
