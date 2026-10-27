@@ -10,6 +10,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: pruning a project's state no longer removes the project-VM creation lock. The lock moved from the
+  removable per-key state directory to the never-deleted `locks/` tree, so `prune` concurrent with `run` can no
+  longer unlink a held lock and let a second invocation create a duplicate or clobbering VM (#330).
 - Runner image: a project's image variants no longer overwrite each other in the microsandbox cache, so toggling
   `--docker` — or any other content change, such as an agent-version bump or a project-Dockerfile edit — reimports
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).

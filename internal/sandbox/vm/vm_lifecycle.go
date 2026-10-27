@@ -105,7 +105,7 @@ func ensureProjectVM(
 
 	name := projectVMName(k)
 
-	flockPath := filepath.Join(state.KeyDir(k), "ensure-vm.lock")
+	flockPath := projectVMFlockPath(k)
 	if err := os.MkdirAll(filepath.Dir(flockPath), 0o750); err != nil {
 		return nil, vmBootConnected, fmt.Errorf("create flock dir: %w", err)
 	}
@@ -601,6 +601,14 @@ func buildMounts(
 		built[target] = msbSdk.Mount.Bind(mount.Source, msbSdk.MountOptions{Readonly: mount.Readonly})
 	}
 	return built
+}
+
+// projectVMFlockPath returns the project's VM-creation lock file. It lives
+// under state's never-deleted locks tree, not the prunable key directory, so a
+// prune concurrent with a create cannot unlink the lock the creator holds and
+// let a second invocation create a duplicate VM (#330).
+func projectVMFlockPath(k state.Key) string {
+	return filepath.Join(state.ProjectVMLockDir(k), "ensure-vm.lock")
 }
 
 // acquireProjectFlock takes an exclusive flock on the given path. It returns a

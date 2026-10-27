@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -81,8 +80,9 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 	t.Chdir(tmpRepo)
 	slug := git.CheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
-	flockDir := filepath.Join(configpaths.Get().UserStateDir(), slug, "opencode")
-	if err := os.MkdirAll(filepath.Join(flockDir, "ensure-vm.lock"), 0o750); err != nil {
+	// A directory at the lock path makes os.OpenFile fail, exercising the flock
+	// acquisition error branch.
+	if err := os.MkdirAll(projectVMFlockPath(k), 0o750); err != nil {
 		t.Fatal(err)
 	}
 
