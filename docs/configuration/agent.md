@@ -195,14 +195,10 @@ default: enable it in your ChatGPT security settings (personal account) or ask a
 Codex fails with `device code request failed with status 403 Forbidden`.
 
 The default **Sign in with ChatGPT** browser flow does not work as-is: it redirects your host browser to
-`http://127.0.0.1:1455/auth/callback`, but the callback server listens inside the VM. Two workarounds:
-
-- Keep the login screen open, complete the browser login, copy the failed `127.0.0.1:1455/auth/callback?...` URL from
-  the address bar, and send it from a second terminal: `agents-sandbox shell --agent codex`, then
-  `curl '<callback URL>'`. The code is single-use, so use the callback of the login currently on screen.
-- Log in on the host into a separate Codex home (`CODEX_HOME=/tmp/codex-vm codex login`), copy
-  `/tmp/codex-vm/auth.json` to `~/.codex/auth.json` in the VM (mode `600`), and delete `/tmp/codex-vm`. A separate home
-  keeps the host's own login from being invalidated.
+`http://127.0.0.1:1455/auth/callback`, but the callback server listens inside the VM. If you cannot use device code
+login, log in on the host into a separate Codex home (`CODEX_HOME=/tmp/codex-vm codex login`), copy
+`/tmp/codex-vm/auth.json` to `~/.codex/auth.json` in the VM (mode `600`), and delete `/tmp/codex-vm`. A separate home
+keeps the host's own login from being invalidated.
 
 The login is stored in `~/.codex/auth.json` on the home volume, so you sign in once per project.
 
