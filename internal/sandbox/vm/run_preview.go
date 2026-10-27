@@ -77,7 +77,10 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 	}
 
 	client := msb.Get()
-	homeVolume, createHome := volume.PreviewHomeVolume(ctx, client, k, liveHomeVolume(ctx, client, k, ui))
+	homeVolume, createHome, err := volume.PreviewHomeVolume(ctx, client, k, liveHomeVolume(ctx, client, k, ui))
+	if err != nil {
+		return Preview{}, err
+	}
 
 	return Preview{
 		AgentVersion:          version,

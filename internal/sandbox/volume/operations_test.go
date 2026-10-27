@@ -753,9 +753,9 @@ func TestResolveHomeVolume_VolumeNotFound_Warns(t *testing.T) {
 	)
 
 	mock := &msb.MockMsbClient{}
-	mock.GetVolumeFn = func(_ context.Context, _ string) (msb.VolumeHandle, error) {
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
 		var vh msb.VolumeHandle
-		return vh, errors.New("volume not found")
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		return msb.MockVolumeHandle{Name_: name}, nil
@@ -799,9 +799,9 @@ func TestResolveHomeVolume_MissingRecordedVolumeStartsFresh(t *testing.T) {
 
 	var createdName string
 	mock := &msb.MockMsbClient{}
-	mock.GetVolumeFn = func(_ context.Context, _ string) (msb.VolumeHandle, error) {
+	mock.GetVolumeFn = func(_ context.Context, name string) (msb.VolumeHandle, error) {
 		var vh msb.VolumeHandle
-		return vh, errors.New("volume not found in private home")
+		return vh, volumeNotFoundError(name)
 	}
 	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 		createdName = name

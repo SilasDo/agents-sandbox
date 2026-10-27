@@ -276,6 +276,14 @@ func IsNotFound(err error) bool {
 	return msbSdk.IsKind(err, msbSdk.ErrSandboxNotFound)
 }
 
+// IsVolumeNotFound reports whether err is the microsandbox "volume does not
+// exist" error, unwrapping any wrapped errors. Absence must be distinguished
+// from a transient lookup failure: callers that recover or recreate a missing
+// resource treat any other error as a failure rather than as absence.
+func IsVolumeNotFound(err error) bool {
+	return msbSdk.IsKind(err, msbSdk.ErrVolumeNotFound)
+}
+
 // IsReplaced reports whether err indicates that a handle's name now refers to a
 // different persisted sandbox identity (the handle was replaced), unwrapping any
 // wrapped errors. Operate on live identities and treat a replaced handle as a
