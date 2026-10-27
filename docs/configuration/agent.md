@@ -189,16 +189,14 @@ network:
 Without `chatgpt.com`, a ChatGPT login completes in the browser but Codex then reports
 `workspace routing discovery failed`.
 
-To sign in with a ChatGPT plan, choose **Sign in with Device Code** on Codex's login screen (or run
-`codex login --device-auth`), open the link on your host, and enter the one-time code. Device code login is off by
-default: enable it in your ChatGPT security settings (personal account) or ask a workspace admin. While it is off,
-Codex fails with `device code request failed with status 403 Forbidden`.
+To sign in with a ChatGPT plan, choose **Sign in with ChatGPT**. Codex opens the sign-in page in your host browser,
+and agents-sandbox passes the browser's return to `http://127.0.0.1:1455/auth/callback` on to Codex in the sandbox (see
+[Opening links]({% link configuration/opening-links.md %}#logging-in-to-an-agent)).
 
-The default **Sign in with ChatGPT** browser flow does not work as-is: it redirects your host browser to
-`http://127.0.0.1:1455/auth/callback`, but the callback server listens inside the VM. If you cannot use device code
-login, log in on the host into a separate Codex home (`CODEX_HOME=/tmp/codex-vm codex login`), copy
-`/tmp/codex-vm/auth.json` to `~/.codex/auth.json` in the VM (mode `600`), and delete `/tmp/codex-vm`. A separate home
-keeps the host's own login from being invalidated.
+If that doesn't work, for example because port 1455 is in use on your computer or `open-links` is off, choose **Sign in
+with Device Code** (or run `codex login --device-auth`), open the link on your host, and enter the one-time code. Device
+code login is off by default: enable it in your ChatGPT security settings (personal account) or ask a workspace admin.
+While it is off, Codex fails with `device code request failed with status 403 Forbidden`.
 
 The login is stored in `~/.codex/auth.json` on the home volume, so you sign in once per project.
 
