@@ -56,10 +56,12 @@ recovery as the only wholesale writer.
 
 ## Current failure surface (what this fixes)
 
-1. **Lock-file deletion breaks mutual exclusion.** `RemoveState` (`internal/sandbox/state/state.go:161`) does
+1. **Lock-file deletion breaks mutual exclusion.** `RemoveHomeState` (`internal/sandbox/state/state.go:198`) does
    `os.RemoveAll(KeyDir(k))`, deleting `home.lock`, and is called by pruning
    (`internal/sandbox/pruning/volumes.go:107`). A holder keeps its flock on the unlinked inode while a new writer locks
-   a fresh file: two "holders".
+   a fresh file: two "holders". The project-VM creation lock (`ensure-vm.lock`) had the same defect — `prune`
+   concurrent with `run` could unlink a held lock and let a second invocation create a duplicate or clobbering VM
+   (#330); it lives under `locks/<slug>/ensure-vm.lock` now too.
 2. **TOCTOU on unlocked reads.** `ResolveHomeVolume` reads state unlocked (`internal/sandbox/volume/state.go:33`);
    the write lands much later (`volume/operations.go:196`→`:250`, `RecordHomeImage` `state.go:168`→`:174`). The lock
    covers a single write, not read→decide→write.
@@ -165,10 +167,10 @@ lock-and-write, so there is no import cycle.
 ### Locks are never deleted, and removal is locked
 
 Lock files move to a dedicated `<root>/locks/` directory (`locks/root.lock`, `locks/<slug>/<agent>.lock` — or
-`locks/<slug>/legacy.lock` for an agent-less legacy key) that `RemoveHomeState`, pruning, and every other path never
-touch. `RemoveHomeState` continues to remove the key's state directory (the state file and `clients/`) but never the
-lock; `claims/` is per-slug, outside the key dir, and is untouched. (This changes the lock path once; there are no
-cross-change holders.)
+`locks/<slug>/legacy.lock` for an agent-less legacy key, plus `locks/<slug>/ensure-vm.lock` for the project-VM
+creation lock) that `RemoveHomeState`, pruning, and every other path never touch. `RemoveHomeState` continues to
+remove the key's state directory (the state file and `clients/`) but never the lock; `claims/` is per-slug, outside
+the key dir, and is untouched. (This changes the lock path once; there are no cross-change holders.)
 
 Because the lock now outlives the state directory, removal must itself take the home lock: `RemoveHomeState(k)` removes
 under the home lock (`withHomeLock`) directly, so a prune cannot delete the directory between a writer's read and its

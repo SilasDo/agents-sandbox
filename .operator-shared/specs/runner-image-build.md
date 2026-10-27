@@ -61,7 +61,10 @@ contract is `specs/image-ref-content-addressing.md`.
 
 ## Version selection
 
-`resolveBuildVersion` (run/shell) picks the version to bake with this precedence:
+`vm.ResolveAgentVersionForBuild(k, requested)` is the one precedence rule both `build` and `run`/`shell` apply: a
+user-provided agent (`agent-source=user`) ignores the requested version and returns the recorded one with
+`UserProvided=true`; every other project honors the requested version with `UserProvided=false`. `resolveBuildVersion`
+(run/shell) builds on it for the version to bake, with this precedence:
 
 1. **User-provided agent** (`agent-source=user`) → recorded version, no check; any `--agent-version` pin is **ignored** (the tool
    does not own the agent, so a pin cannot change what is baked).
@@ -73,8 +76,9 @@ contract is `specs/image-ref-content-addressing.md`.
 5. **Recorded or recovered baseline** → upgrade check; may prompt to rebuild with a newer release.
 
 `--agent-version` is available on `build`, `run`, and `shell`. `--rebuild` is orthogonal: it only forces a clean rebuild of
-whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check because it always resolves a
-fresh version (pinned or latest) rather than reusing the baked one.
+whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check, but it is not
+always a fresh version: for a user-provided agent it, like `run`, ignores the pin and reuses the recorded version
+(`UserProvided=true`), resolving a release only if a rebuild later needs one.
 
 ### Latest-version sources
 
