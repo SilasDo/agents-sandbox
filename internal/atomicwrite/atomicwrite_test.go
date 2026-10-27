@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 )
@@ -183,6 +184,161 @@ func TestWriteFileRenameError(t *testing.T) {
 	}
 	if _, ok := errors.AsType[*os.LinkError](err); !ok {
 		t.Errorf("WriteFile() error = %v, want the rename's *os.LinkError reachable", err)
+	}
+	assertNoTempFiles(t, dir)
+}
+
+// TestWriteFileSyncsTempFileThenDirectory pins the durable write sequence: the
+// temp file's data is flushed with fsync while its handle is still open and
+// before the rename, and the destination directory is fsynced after the rename
+// has put the file in place, so a crash cannot lose or truncate the write.
+func TestWriteFileSyncsTempFileThenDirectory(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+
+	var events []string
+	var dirHandle *os.File
+	origSyncTempFile := syncTempFile
+	origCloseTempFile := closeTempFile
+	origSyncDirectory := syncDirectory
+	t.Cleanup(func() {
+		syncTempFile = origSyncTempFile
+		closeTempFile = origCloseTempFile
+		syncDirectory = origSyncDirectory
+	})
+
+	syncTempFile = func(f *os.File) error {
+		content, err := os.ReadFile(f.Name())
+		if err != nil {
+			t.Errorf("read temp file at sync: %v", err)
+		}
+		if string(content) != "payload" {
+			t.Errorf("temp file content at sync = %q, want %q", content, "payload")
+		}
+		events = append(events, "sync temp file")
+		return nil
+	}
+	closeTempFile = func(f *os.File) error {
+		events = append(events, "close temp file")
+		return f.Close()
+	}
+	syncDirectory = func(f *os.File) error {
+		content, err := os.ReadFile(path)
+		if err != nil || string(content) != "payload" {
+			t.Errorf(
+				"destination at directory sync: content = %q, error = %v, want %q in place",
+				content,
+				err,
+				"payload",
+			)
+		}
+		dirHandle = f
+		events = append(events, "sync directory "+f.Name())
+		return nil
+	}
+
+	if err := WriteFile(path, []byte("payload")); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	want := []string{"sync temp file", "close temp file", "sync directory " + dir}
+	if !slices.Equal(events, want) {
+		t.Errorf("call order = %v, want %v", events, want)
+	}
+	if dirHandle == nil {
+		t.Fatal("directory sync did not receive a handle")
+	}
+	if err := dirHandle.Close(); !errors.Is(err, os.ErrClosed) {
+		t.Errorf("directory handle close error = %v, want the writer to have closed it already", err)
+	}
+	assertNoTempFiles(t, dir)
+}
+
+// TestWriteFileStagesContentOutsideTheDestination pins that a reader never
+// observes a partial file: while the new content is being written and flushed,
+// the destination still holds the previous content, and only the rename swaps
+// it.
+func TestWriteFileStagesContentOutsideTheDestination(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+	if err := WriteFile(path, []byte("old")); err != nil {
+		t.Fatalf("WriteFile() seed error = %v", err)
+	}
+
+	origSyncTempFile := syncTempFile
+	observed := ""
+	syncTempFile = func(f *os.File) error {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("read destination at temp-file sync: %v", err)
+		}
+		observed = string(content)
+		return nil
+	}
+	t.Cleanup(func() { syncTempFile = origSyncTempFile })
+
+	if err := WriteFile(path, []byte("new")); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if observed != "old" {
+		t.Errorf("destination at temp-file sync = %q, want the previous content %q", observed, "old")
+	}
+}
+
+// TestWriteFileSyncTempFileError covers the file-sync failure via the seam: the
+// write fails before the rename, and the temp file is cleaned up.
+func TestWriteFileSyncTempFileError(t *testing.T) {
+	wantErr := errors.New("sync boom")
+	orig := syncTempFile
+	syncTempFile = func(*os.File) error { return wantErr }
+	t.Cleanup(func() { syncTempFile = orig })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	assertNoTempFiles(t, dir)
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("destination stat error = %v, want the write to have failed before the rename", statErr)
+	}
+}
+
+// TestWriteFileOpenDirectoryError covers the failure to open the destination
+// directory for its post-rename sync via the seam. The rename has already
+// completed, so the destination keeps the new content.
+func TestWriteFileOpenDirectoryError(t *testing.T) {
+	wantErr := errors.New("open dir boom")
+	orig := openDirectory
+	openDirectory = func(string) (*os.File, error) { return nil, wantErr }
+	t.Cleanup(func() { openDirectory = orig })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "x" {
+		t.Errorf("destination content = %q, error = %v, want %q", content, readErr, "x")
+	}
+	assertNoTempFiles(t, dir)
+}
+
+// TestWriteFileSyncDirectoryError covers the directory-sync failure via the
+// seam: the error propagates and the destination keeps the new content.
+func TestWriteFileSyncDirectoryError(t *testing.T) {
+	wantErr := errors.New("sync dir boom")
+	orig := syncDirectory
+	syncDirectory = func(*os.File) error { return wantErr }
+	t.Cleanup(func() { syncDirectory = orig })
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "state.yaml")
+	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "x" {
+		t.Errorf("destination content = %q, error = %v, want %q", content, readErr, "x")
 	}
 	assertNoTempFiles(t, dir)
 }
