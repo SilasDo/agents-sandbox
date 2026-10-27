@@ -60,6 +60,27 @@ func TestInUseImageReferencesDeduplicatesProjectAndSandbox(t *testing.T) {
 	}
 }
 
+// TestInUseImageReferencesProtectsContentRefHeldByKeptSandbox pins that the
+// in-use guard protects a content ref a kept sandbox holds: state.ImageReferences
+// does not enumerate content refs, so the live-sandbox scan must catch it.
+func TestInUseImageReferencesProtectsContentRefHeldByKeptSandbox(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
+	contentRef := naming.ContentImageRef(key.Slug, key.Agent, "9f2c1a7b4d6e0f31")
+	handle := &msb.MockSandboxHandle{
+		Name_: "agents-sandbox-vm-proj-1mjusbm3wikhb0-opencode",
+		Cfg:   &msbSdk.SandboxConfig{Image: contentRef},
+	}
+
+	references, err := InUseImageReferences([]msb.SandboxHandle{handle})
+	if err != nil {
+		t.Fatalf("InUseImageReferences: %v", err)
+	}
+	if keys := references[contentRef]; len(keys) != 1 || keys[0] != key {
+		t.Fatalf("references[%q] = %v, want [%v] from the kept sandbox", contentRef, keys, key)
+	}
+}
+
 func TestInUseImageReferencesSkipsSandboxesWithoutImage(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	empty := &msb.MockSandboxHandle{

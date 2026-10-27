@@ -105,6 +105,51 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 	}
 }
 
+// TestPrepareSandboxDryRunVMServeOnlyPublishesPort covers the serve-only
+// ServeHostPort assignment in PrepareSandbox: with no existing published port
+// the run probes a free host port and records it on the Session, even on the
+// dry-run-vm path that skips the VM.
+func TestPrepareSandboxDryRunVMServeOnlyPublishesPort(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	stubPrepareSandboxImage(t)
+
+	slug := git.CheckoutSlug()
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	mock := &msb.MockMsbClient{
+		ImageGetFn: func(_ context.Context, _ string) error { return nil },
+		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
+			return &msbSdk.ImageConfig{
+				Env:    []string{"PATH=/usr/bin"},
+				Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+			}, nil
+		},
+		Volumes: []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "home-vol"}},
+	}
+	msb.WithMsbMock(t, mock)
+
+	if err := seedHomeState(k, state.HomeState{
+		HomeVolume:   "home-vol",
+		ImageDigest:  "sha256:abc123",
+		AgentVersion: "1.5.0",
+		AgentSource:  agentSourceTool,
+	}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	ui := termio.NewTestMock(t)
+	opts := options.RunOptions{Agent: "opencode", DryRunVM: true, ServeOnly: true}
+	sess, err := PrepareSandbox(context.Background(), opts, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox (dry-run-vm, serve-only): %v", err)
+	}
+	if sess == nil {
+		t.Fatal("expected a non-nil session")
+	}
+	if sess.ServeHostPort() == 0 {
+		t.Error("expected a probed serve host port on the Session")
+	}
+}
+
 // TestPrepareSandboxDryRunVMLaunchSubdirectory covers the guest-CWD derivation:
 // when launched from a repository subdirectory the bound /workspace is the
 // checkout root and the agent starts in the launched subdirectory.
@@ -184,7 +229,7 @@ func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 	}
 }
 
-// TestPrepareSandboxVolumeError covers the resolveHomeVolume failure branch of
+// TestPrepareSandboxVolumeError covers the home-volume resolution failure branch of
 // PrepareSandbox: a volume-creation failure is propagated.
 func TestPrepareSandboxVolumeError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)

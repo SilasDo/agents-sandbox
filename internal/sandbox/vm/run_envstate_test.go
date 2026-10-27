@@ -171,7 +171,7 @@ func TestPersistNetworkState_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestDecideReconfig_NetworkChangedWithPersistedState(t *testing.T) {
+func TestResolveReconfigDecision_NetworkChangedWithPersistedState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
@@ -192,7 +192,7 @@ func TestDecideReconfig_NetworkChangedWithPersistedState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -205,17 +205,17 @@ func TestDecideReconfig_NetworkChangedWithPersistedState(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if !recreate {
+	if !decision.Recreate {
 		t.Error("expected recreate when network policy differs from persisted state (network cannot be applied live)")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no daemon restart for network change (folded into recreate)")
 	}
 }
 
-func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
+func TestResolveReconfigDecision_NetworkUnchangedNoRecreate(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
@@ -236,7 +236,7 @@ func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -249,12 +249,12 @@ func TestDecideReconfig_NetworkUnchangedNoRecreate(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected no recreate when network policy matches persisted state")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart when network policy matches persisted state")
 	}
 }
@@ -311,7 +311,7 @@ func TestPersistEnvSecrets_ReadFailsReturnsError(t *testing.T) {
 	}
 }
 
-func TestDecideReconfig_EnvChangedWithPersistedState(t *testing.T) {
+func TestResolveReconfigDecision_EnvChangedWithPersistedState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	// Set up handle so reconfig.PlanReconfig gets a non-nil cfg
@@ -337,7 +337,7 @@ func TestDecideReconfig_EnvChangedWithPersistedState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -350,17 +350,17 @@ func TestDecideReconfig_EnvChangedWithPersistedState(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if !recreate {
+	if !decision.Recreate {
 		t.Error("expected recreate when env differs from persisted state (env cannot be applied live)")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no daemon restart for env change (folded into recreate)")
 	}
 }
 
-func TestDecideReconfig_EnvUnchangedWithPersistedState(t *testing.T) {
+func TestResolveReconfigDecision_EnvUnchangedWithPersistedState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	userDir := t.TempDir()
@@ -390,7 +390,7 @@ func TestDecideReconfig_EnvUnchangedWithPersistedState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -403,17 +403,17 @@ func TestDecideReconfig_EnvUnchangedWithPersistedState(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected no recreate")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart when env matches persisted state")
 	}
 }
 
-func TestDecideReconfig_SecretsChangedWithPersistedState(t *testing.T) {
+func TestResolveReconfigDecision_SecretsChangedWithPersistedState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
@@ -438,7 +438,7 @@ func TestDecideReconfig_SecretsChangedWithPersistedState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -451,17 +451,17 @@ func TestDecideReconfig_SecretsChangedWithPersistedState(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if !recreate {
+	if !decision.Recreate {
 		t.Error("expected recreate when secrets differ from persisted state (secrets cannot be applied live)")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no daemon restart for secrets change (folded into recreate)")
 	}
 }
 
-func TestDecideReconfig_ZeroPersistedStateNoSpuriousChange(t *testing.T) {
+func TestResolveReconfigDecision_ZeroPersistedStateNoSpuriousChange(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	userDir := t.TempDir()
@@ -482,7 +482,7 @@ func TestDecideReconfig_ZeroPersistedStateNoSpuriousChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -495,12 +495,12 @@ func TestDecideReconfig_ZeroPersistedStateNoSpuriousChange(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected no recreate")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart when no env is configured (zero+empty)")
 	}
 }
@@ -651,7 +651,7 @@ func TestPersistEnvSecrets_ZeroStateOverwritesOnlyFields(t *testing.T) {
 	}
 }
 
-func TestDecideReconfig_PersistedSecretsMatchDesired(t *testing.T) {
+func TestResolveReconfigDecision_PersistedSecretsMatchDesired(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	userDir := t.TempDir()
@@ -683,7 +683,7 @@ func TestDecideReconfig_PersistedSecretsMatchDesired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -696,17 +696,17 @@ func TestDecideReconfig_PersistedSecretsMatchDesired(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected no recreate")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart when env matches persisted state and no secrets")
 	}
 }
 
-func TestDecideReconfig_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
+func TestResolveReconfigDecision_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
@@ -746,25 +746,33 @@ func TestDecideReconfig_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, homeVol, _, err := decideReconfig(
+	imageInfo := image.ImageInfo{
+		DockerTag: "img:tag",
+		Ref:       "img:tag",
+		// imageRef == cfg.Image; the digest still identifies the image
+		Digest: "sha256:new",
+	} // stored digest differs -> image-triggered rebuild
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
 		key,
 		options.RunOptions{Agent: "opencode"},
-		image.ImageInfo{
-			DockerTag: "img:tag",
-			Ref:       "img:tag",
-			Digest:// imageRef == cfg.Image; the digest still identifies the image
-			"sha256:new",
-		}, // stored digest differs -> image-triggered rebuild
+		imageInfo,
 		"vol",
 		persisted,
 		cfs,
 		ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
+	}
+	homeVol, err := applyReconfigHomeAction(
+		context.Background(), mock, vm, key, "vol", imageInfo,
+		options.RunOptions{Agent: "opencode"}, decision, ui,
+	)
+	if err != nil {
+		t.Fatalf("applyReconfigHomeAction: %v", err)
 	}
 	if !reconfigPrompted {
 		t.Error("expected VM-recreate prompt when another client is active")
@@ -775,10 +783,10 @@ func TestDecideReconfig_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
 	if homeVol != "vol" {
 		t.Errorf("homeVol = %q, want unchanged %q", homeVol, "vol")
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected VM rebuild to be deferred when another client keeps the current VM")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart")
 	}
 	if joined := strings.Join(ui.VerboseCalls, "\n"); !strings.Contains(joined, "image digest changed") {
@@ -786,7 +794,7 @@ func TestDecideReconfig_HomePromptDeferredWhenRebuildDeferred(t *testing.T) {
 	}
 }
 
-func TestDecideReconfig_HomePromptAskedWhenRebuildConfirmed(t *testing.T) {
+func TestResolveReconfigDecision_HomePromptAskedWhenRebuildConfirmed(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := reconfigMockClient()
@@ -817,33 +825,41 @@ func TestDecideReconfig_HomePromptAskedWhenRebuildConfirmed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, homeVol, _, err := decideReconfig(
+	imageInfo := image.ImageInfo{
+		DockerTag: "img:new",
+		Ref:       "img:new",
+		// imageRef != cfg.Image("img:tag") -> image-triggered rebuild
+		Digest: "sha256:new",
+	} // stored digest differs -> image change detected
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
 		state.Key{Slug: slug, Agent: "opencode"},
 		options.RunOptions{Agent: "opencode"},
-		image.ImageInfo{
-			DockerTag: "img:new",
-			Ref:       "img:new",
-			Digest:// imageRef != cfg.Image("img:tag") -> image-triggered rebuild
-			"sha256:new",
-		}, // stored digest differs -> image change detected
+		imageInfo,
 		"vol",
 		persisted,
 		cfs,
 		ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
+	}
+	homeVol, err := applyReconfigHomeAction(
+		context.Background(), mock, vm, state.Key{Slug: slug, Agent: "opencode"}, "vol", imageInfo,
+		options.RunOptions{Agent: "opencode"}, decision, ui,
+	)
+	if err != nil {
+		t.Fatalf("applyReconfigHomeAction: %v", err)
 	}
 	if !prompted {
 		t.Error("expected home-volume prompt to fire when the rebuild onto the new image is confirmed")
 	}
-	if !recreate {
+	if !decision.Recreate {
 		t.Error("expected recreate when switching to the new image")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no restart (env/secret/config unchanged)")
 	}
 	if homeVol != "vol" {
@@ -859,7 +875,7 @@ func TestDecideReconfig_HomePromptAskedWhenRebuildConfirmed(t *testing.T) {
 	}
 }
 
-func TestDecideReconfig_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
+func TestResolveReconfigDecision_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	// Desired opencode config: a snippet producing {"model":"y"} (new config).
@@ -869,10 +885,10 @@ func TestDecideReconfig_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 		`{"model":"y"}`,
 	)
 
-	// Existing VM whose Connect fails (stopped/suspended VM): decideReconfig
-	// cannot read live config, so it must neither recreate nor spuriously flag a
-	// daemon restart. Provisioning + fresh daemon pickup happen downstream in
-	// setUpSandbox once the VM is started.
+	// Existing VM whose Connect fails (stopped/suspended VM):
+	// resolveReconfigDecision cannot read live config, so it must neither
+	// recreate nor spuriously flag a daemon restart. Provisioning + fresh daemon
+	// pickup happen downstream in setUpSandbox once the VM is started.
 	sh := &msb.MockSandboxHandle{
 		Cfg: &msbSdk.SandboxConfig{Image: "img:tag", CPUs: 4, MemoryMiB: 4096},
 	}
@@ -895,7 +911,7 @@ func TestDecideReconfig_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	recreate, restart, _, _, err := decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -908,12 +924,12 @@ func TestDecideReconfig_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("decideReconfig: %v", err)
+		t.Fatalf("resolveReconfigDecision: %v", err)
 	}
-	if recreate {
+	if decision.Recreate {
 		t.Error("expected no recreate for an opencode-config-only change on a stopped VM")
 	}
-	if restart {
+	if decision.Restart {
 		t.Error("expected no daemon-restart flag from a stopped VM (fresh daemon picks up config on start)")
 	}
 }

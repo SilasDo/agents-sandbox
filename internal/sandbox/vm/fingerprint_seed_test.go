@@ -41,9 +41,8 @@ func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 		Network: state.BuildNetworkState(policy),
 		Mount:   state.BuildMountState(extraMounts),
 	}
-	_, homeState, err := resolveHomeVolume(
+	_, homeState, err := volume.NewManager(&ui).ResolveHomeVolume(
 		context.Background(),
-		volume.NewManager(&ui),
 		client,
 		k,
 		sandboximage.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
@@ -53,7 +52,7 @@ func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 		&ui,
 	)
 	if err != nil {
-		t.Fatalf("resolveHomeVolume: %v", err)
+		t.Fatalf("ResolveHomeVolume: %v", err)
 	}
 
 	if state.NetworkChanged(homeState.NetworkState, policy) {

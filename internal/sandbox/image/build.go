@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,10 +47,12 @@ const userProvidedImageIdentity = "user-provided"
 
 // ImageInfo describes the built or existing runner image. DockerTag is the
 // namespaced tag in the system Docker daemon; Ref is the reference the image
-// carries in the microsandbox cache, resolved by EnsureLoaded (the prefix-free
-// reference, or the legacy Docker-tag reference when that already holds the same
-// content). Digest is the content identity (Docker's image ID); DockerfileID is
-// the source signature carried as the dockerfile-id label.
+// carries in the microsandbox cache, resolved by EnsureLoaded. It is the
+// content-addressed reference when the built image has an ID, otherwise the
+// prefix-free name reference; EnsureLoaded may resolve it to whichever cached
+// candidate already holds the content. Digest is the content identity (Docker's
+// image ID); DockerfileID is the source signature carried as the dockerfile-id
+// label.
 type ImageInfo struct {
 	DockerTag    string
 	Ref          string
@@ -452,13 +455,63 @@ func EnsureImageWithClient(
 	if err != nil {
 		return ImageInfo{}, fmt.Errorf("inspect built image: %w", err)
 	}
+	ref := naming.RunnerImageRef(projectSlug, a.Name())
+	if contentID := imageContentID(imageDigest); contentID != "" {
+		ref = naming.ContentImageRef(projectSlug, a.Name(), contentID)
+	}
 	return ImageInfo{
 		DockerTag:    rTag,
-		Ref:          naming.RunnerImageRef(projectSlug, a.Name()),
+		Ref:          ref,
 		Digest:       imageDigest,
 		DockerfileID: plan.dockerfileID,
 		Env:          env,
 	}, nil
+}
+
+// imageContentID derives the content id that keys the microsandbox reference
+// from Docker's image ID: the sha256: prefix stripped and truncated to a short,
+// filesystem-safe hex prefix. It is empty when the image ID is, so the caller
+// falls back to the name reference rather than emitting a dangling suffix.
+func imageContentID(imageID string) string {
+	id := strings.ToLower(strings.TrimPrefix(imageID, "sha256:"))
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT reason="only a 16-character id distinguishes the bounds, and there both > and >= (and 16 and 15) leave the same 16 characters; only 16 and 17 differ"
+	if len(id) > 16 {
+		id = id[:16]
+	}
+	return id
+}
+
+// nameRefFromDockerTag returns the prefix-free name reference the Docker tag
+// names, so EnsureLoaded can reuse an image a 0.6.0 install cached under it. It
+// is empty when the tag does not name a (slug, agent) pair.
+func nameRefFromDockerTag(dockerTag string) string {
+	info := naming.ParseImageTag(dockerTag)
+	if !hasNameIdentity(info) {
+		return ""
+	}
+	return naming.RunnerImageRef(info.Slug, info.Agent)
+}
+
+// hasNameIdentity reports whether info parsed to a usable (slug, agent) name
+// pair, i.e. the Docker tag names a project runner image rather than a foreign
+// or digest reference.
+func hasNameIdentity(info naming.ArtifactInfo) bool {
+	return info.Slug != "" && info.Agent != ""
+}
+
+// imageRefCandidates returns the microsandbox references that may already hold
+// info's content, in reuse-preference order: the content ref, the prefix-free
+// name ref a 0.6.0 install cached under, and the legacy prefixed Docker-tag ref a
+// pre-0.6 install cached under. Empty and duplicate refs are dropped.
+func imageRefCandidates(info ImageInfo) []string {
+	var candidates []string
+	for _, ref := range []string{info.Ref, nameRefFromDockerTag(info.DockerTag), info.DockerTag} {
+		if ref == "" || slices.Contains(candidates, ref) {
+			continue
+		}
+		candidates = append(candidates, ref)
+	}
+	return candidates
 }
 
 // initialBuildVersions returns the requested agent version, the version baked
@@ -569,33 +622,31 @@ func logBuildDecision(
 // EnsureLoaded loads the runner image described by info into the microsandbox
 // cache if it is not already the cached content, so the image can be used to
 // create VMs, and returns info with Ref set to the reference that now holds that
-// content. It is idempotent: when microsandbox already holds the same image
-// content it returns immediately, otherwise the Docker image is loaded under the
-// prefix-free reference. A pre-change install cached the image under the legacy
-// reference (the Docker tag); when that reference exists with the same content it
-// is reused, so nothing is reimported. The comparison uses the content digest
-// microsandbox records for the image, the same value as Docker's image ID; only a
-// legacy image that exposes no digest falls back to the dockerfile-id label.
-// Loading directly avoids removing a manifest that an existing VM may still
-// reference.
+// content. It is idempotent: it reuses the first candidate reference whose cache
+// content matches (see imageRefCandidates for the content, name, and legacy
+// prefixed refs), otherwise it loads the Docker image under info.Ref. The
+// comparison uses the content digest microsandbox records for the image, the
+// same value as Docker's image ID; only a legacy image that exposes no digest
+// falls back to the dockerfile-id label. Loading directly avoids removing a
+// manifest that an existing VM may still reference.
 func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui termio.UI) (ImageInfo, error) {
-	// The Docker tag and the legacy microsandbox reference are the same string.
-	legacyRef := info.DockerTag
-	if legacyRef != "" && legacyRef != info.Ref &&
-		mclient.ImageGet(ctx, legacyRef) == nil && cachedImageMatches(ctx, mclient, legacyRef, info) {
-		info.Ref = legacyRef
-		ui.Verbosef("microsandbox image %s is up to date", legacyRef)
-		return info, nil
+	anyCandidateCached := false
+	for _, candidate := range imageRefCandidates(info) {
+		if mclient.ImageGet(ctx, candidate) != nil {
+			continue
+		}
+		anyCandidateCached = true
+		if cachedImageMatches(ctx, mclient, candidate, info) {
+			info.Ref = candidate
+			ui.Verbosef("microsandbox image %s is up to date", candidate)
+			return info, nil
+		}
 	}
 	if info.Ref == "" {
 		info.Ref = info.DockerTag
 	}
 	loadReason := "not present in microsandbox cache"
-	if err := mclient.ImageGet(ctx, info.Ref); err == nil {
-		if cachedImageMatches(ctx, mclient, info.Ref, info) {
-			ui.Verbosef("microsandbox image %s is up to date", info.Ref)
-			return info, nil
-		}
+	if anyCandidateCached {
 		loadReason = "cached content differs from the Docker image"
 	}
 	ui.Verbosef("loading image %s into microsandbox: %s", info.Ref, loadReason)

@@ -17,10 +17,11 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
-// TestDecideReconfigHomeQuit covers the user-quit branch of decideReconfig:
-// when the home-volume prompt is answered with "quit", the session is aborted
-// with an ExitError.
-func TestDecideReconfigHomeQuit(t *testing.T) {
+// TestApplyReconfigHomeActionQuit covers the user-quit branch of the reconfig
+// decision: when the home-volume prompt is answered with "quit", the action
+// that resolveReconfigDecision resolves makes applyReconfigHomeAction abort the
+// session with an ExitError.
+func TestApplyReconfigHomeActionQuit(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	sh := &msb.MockSandboxHandle{
@@ -53,7 +54,7 @@ func TestDecideReconfigHomeQuit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfigFiles: %v", err)
 	}
-	_, _, _, _, err = decideReconfig(
+	decision, err := resolveReconfigDecision(
 		context.Background(),
 		mock,
 		vm,
@@ -65,6 +66,20 @@ func TestDecideReconfigHomeQuit(t *testing.T) {
 		cfs,
 		ui,
 	)
+	if err != nil {
+		t.Fatalf("resolveReconfigDecision: %v", err)
+	}
+	_, err = applyReconfigHomeAction(
+		context.Background(),
+		mock,
+		vm,
+		state.Key{Slug: "testproj", Agent: "opencode"},
+		"vol",
+		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
+		options.RunOptions{Agent: "opencode"},
+		decision,
+		ui,
+	)
 	if err == nil {
 		t.Fatal("expected an ExitError when the user quits the home-volume prompt")
 	}
@@ -74,5 +89,8 @@ func TestDecideReconfigHomeQuit(t *testing.T) {
 	}
 	if exitErr.Code != 1 {
 		t.Errorf("expected exit code 1, got %d", exitErr.Code)
+	}
+	if !contains(joinStrings(ui.InfoCalls), "exiting as requested by user") {
+		t.Errorf("expected the quit to log the exit notice, got %v", ui.InfoCalls)
 	}
 }

@@ -47,20 +47,29 @@ recreated on the next run so it uses the new image (the home volume is preserved
 
 Runner images are tagged **per agent**. The `-latest` tag is namespaced by the agent, so each agent's image can be
 identified and updated independently. The Docker tag keeps the `agents-sandbox/runner-` prefix so it stays
-distinguishable in the system Docker daemon, while the microsandbox image reference is prefix-free:
+distinguishable in the system Docker daemon, while the microsandbox image reference is prefix-free and keyed by the
+image content:
 
 ```text
-Docker tag:             agents-sandbox/runner-<slug>:<agent>-latest
-microsandbox reference: <slug>:<agent>-latest
+Docker tag:               agents-sandbox/runner-<slug>:<agent>-latest
+microsandbox name ref:    <slug>:<agent>-latest
+microsandbox content ref: <slug>:<agent>.<contentid>
 ```
 
+The content reference is what keeps a project's variants apart. Its `<contentid>` is the first 16 characters of the
+image's content ID, so each distinct image content is imported into microsandbox once, under its own reference. A
+project's variants — with and without the Docker engine, a different agent version, an edited project Dockerfile —
+therefore coexist in the cache, and switching between them reimports nothing after the first load. The
+`<slug>:<agent>-latest` name reference is the older prefix-free form (a 0.6.0 cache); it is still read, never produced.
+
 For example, with a checkout slug of `my-project`, the opencode image is tagged
-`agents-sandbox/runner-my-project:opencode-latest` and referenced in microsandbox as `my-project:opencode-latest`; the
-pi image is tagged `agents-sandbox/runner-my-project:pi-latest` and referenced as `my-project:pi-latest`.
+`agents-sandbox/runner-my-project:opencode-latest` and referenced in microsandbox as
+`my-project:opencode.9f2c1a7b4d6e0f31`; the pi image is tagged `agents-sandbox/runner-my-project:pi-latest` and
+referenced as `my-project:pi.4b8d0e6f2a1c3b57`.
 
 An image loaded by an earlier version sits under the old prefixed microsandbox reference
 (`agents-sandbox/runner-<slug>:<agent>-latest`). agents-sandbox reuses that reference whenever it still holds the
-current content, so an upgrade never reimports an unchanged image; changed content is imported under the new prefix-free
+current content, so an upgrade never reimports an unchanged image; changed content is imported under a new content
 reference, silently migrating the project.
 
 ### Skip-build when unchanged
@@ -89,9 +98,10 @@ the Docker image ID) or the `dockerfile-id` label. If the cached content no long
 VM always boots from the correct image. At verbose level the load states whether the image was absent from the cache or
 its cached content was stale.
 
-The load resolves the reference it uses: when the legacy prefixed reference already holds the current content, that
-reference is kept (no reimport); otherwise the Docker image is loaded under the prefix-free reference. Every following
-VM creation, label read and log line uses the resolved reference.
+The load tries three candidate references and reuses the first that already holds the current content: the new content
+reference, the prefix-free name reference (`<slug>:<agent>-latest`, a 0.6.0 cache), and the legacy prefixed reference
+(`agents-sandbox/runner-<slug>:<agent>-latest`, a pre-0.6 cache). When none matches, the Docker image is loaded under
+its content reference. Every following VM creation, label read and log line uses the resolved reference.
 
 ### Pruning images
 
@@ -104,12 +114,11 @@ agents-sandbox image prune             # actually remove them (prompts; or pass 
 
 See [Pruning]({% link sandboxes.md %}#pruning) for the confirmation prompt, `--yes`, and `--dry-run` behavior.
 
-Pruning retains the `-latest` images **per agent** per live project and any image a kept VM still references, reclaiming
-every other ref — pre-redesign digest refs no sandbox uses, orphaned surplus images, and every ref of projects (slugs)
-that no longer have a live VM. It also runs microsandbox's native image-data prune so manifests and layers orphaned by a
-runner-image refresh are reclaimed after no VM references them. See [Commands]({% link commands.md %}) for details on
-the
-prune command.
+Pruning retains any image a kept VM still references and, for a live project, its runner-image variants that were used
+within the prune age. It reclaims the rest — a retired project's refs, a live project's aged-out variants, pre-redesign
+digest refs no sandbox uses, and orphaned surplus images. It also runs microsandbox's native image-data prune so
+manifests and layers orphaned by a runner-image refresh are reclaimed after no VM references them. See
+[Commands]({% link commands.md %}) for details on the prune command.
 
 agents-sandbox also auto-prunes all resources that are ephemeral, unused or haven't been in use for more than 30 days by
 default. Cached runner images and home volumes are only pruned once they are older than the threshold, so a recently
@@ -126,9 +135,10 @@ When an image change actually leads to a rebuild, agents-sandbox prompts you to 
 see [Home volumes]({% link sandboxes.md %}#home-volumes) for the choices and the non-interactive default. `volume
 migrate`, `volume reset`, and `volume edit` remain available for manual management.
 
-When a rebuilt image uses the same runner-image tag, agents-sandbox refreshes the microsandbox cache by loading the new
-Docker image directly under that tag. It does not remove the old cached manifest first, because a stopped project VM can
-still reference it. Unused image data is reclaimed later by image pruning.
+When a rebuilt image changes content, its new content reference does not collide with the previous one, so
+agents-sandbox refreshes the microsandbox cache by loading the new Docker image under the new reference. It does not
+remove the old cached manifest first, because a stopped project VM can still reference it. Unused image data is
+reclaimed later by image pruning.
 
 ## One image per checkout
 

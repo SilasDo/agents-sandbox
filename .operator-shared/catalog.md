@@ -47,6 +47,9 @@
 - `artifact-naming.md`
   - Description: Contract for the prefix-free artifact naming strategy: project VMs, task sandboxes, home volumes and microsandbox image refs drop the `agents-sandbox-` prefix while Docker images keep it (the `ImageInfo` Docker-tag/msb-ref split), new artifacts follow the new scheme while legacy ones stay discoverable without reimport or rebuild, ownership is positional in the private runtime home, and project-vs-task classification is label-based.
   - Read If: Changing `internal/sandbox/naming`, the VM/home-volume/runner-image name or reference constructors or parsers, artifact discovery (list/remove/prune/reference scans), the sandbox or volume labels, or the Docker-vs-msb image reference split.
+- `image-ref-content-addressing.md`
+  - Description: Contract for keying the msb runner-image cache by content (`<slug>:<agent>.<contentid>`) instead of the constant name ref, so a project's variants (docker on/off, agent bumps, body edits) coexist and toggling reimports nothing; the stable Docker tag, the ParseImageTag/ownership round-trip, the expanded load-candidate set, and prune retention by liveness + age (#322).
+  - Read If: Changing the msb runner-image reference, `EnsureImageWithClient`/`EnsureLoaded`, `ParseImageTag`, image prune retention, or diagnosing an unexpected msb image reimport.
 - `self-upgrade-channels.md`
   - Description: Design for the launcher's self-upgrade release channels: `upgrade.channel` (`stable` default, `canary`), canary = newest channel-eligible release, a tag-addressed download, no downgrade path, the undocumented `AGENTS_SANDBOX_UPGRADE_ANY` dev lever, the release CI's prerelease classification / Homebrew skip, and the docs workflow's prerelease guard.
   - Read If: Changing `upgrade.channel`, canary resolution/eligibility, the tag-pinned release download, `AGENTS_SANDBOX_UPGRADE_ANY`, the `publish` job's prerelease/Homebrew handling, or the Pages prerelease guard.
@@ -82,7 +85,7 @@
   - Read If: Changing image build/caching, `BuildOptions`, `--rebuild`, `--agent-version`, agent upgrade, volume subcommands' image handling, or the `EnsureLoaded`/`ImageInfo` load decision.
 - `reconfig-decision.md`
   - Description: Contract for the per-startup project-VM reconfiguration decision: fingerprint-backed detection of env/secret/network/mount changes, which changes recreate vs restart the daemon, the fingerprint-preservation invariant on state rewrites, order-stability of `ConfigFiles.Keys`, and the #183/#223 resolutions.
-  - Read If: Changing `decideReconfig`/`PlanReconfig`, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
+  - Read If: Changing `resolveReconfigDecision`/`applyReconfigHomeAction`/`PlanReconfig`, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
 - `network-profiles.md`
   - Description: Contract for composable network profiles: `public`/`private`/`host` union through one microsandbox policy, `none` is terminal and allowlist-only, the config/env/flag surface accepts a scalar/comma-string/list, and the fingerprint keeps one `profile=` line per profile so single-profile digests are stable.
   - Read If: Changing `network.Policy`, `ParseProfile`/`ParseProfiles`, viperconfig `profileEntries`/`stringToSliceDecodeHook`, the `network.profile`/`--network`/`AGENTS_SANDBOX_NETWORK_PROFILE` surface, or network fingerprinting and its VM-recreation trigger.
@@ -179,6 +182,9 @@
 - `2026-10-26-docs-link-integrity.md`
   - Description: 6-task TDD plan for `specs/docs-link-integrity.md`: the `internal/docslink` leaf package, the doctor/image rewiring, and the `ci/check-docs.sh` kramdown slug mirror plus fragment resolution for rendered-HTML, docs in-page, `{% link %}#anchor`, and Go-source links.
   - Read If: Implementing the documentation fragment gate (#296).
+- `2026-10-26-image-ref-content-addressing.md`
+  - Description: 4-task TDD plan for `specs/image-ref-content-addressing.md` (#322): the `naming` content ref + `ContentID` parse, the `image` content ref and widened load-candidate set, `pruning` retention by liveness and age, and the docs/CHANGELOG/spec amendments.
+  - Read If: Implementing the content-addressed msb runner-image reference (the `--docker` reimport fix).
 - `2026-10-22-artifact-naming.md`
   - Description: 7-task TDD plan for `specs/artifact-naming.md`: the prefix-free and legacy name/reference constructors, the dual-scheme parsers, project VMs, task sandboxes, home volumes, the `ImageInfo` Docker-tag/msb-ref split, image discovery/reference scans, and the legacy foreign scan.
   - Read If: Implementing the prefix-free artifact naming change.

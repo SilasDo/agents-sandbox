@@ -85,6 +85,39 @@ func FuzzRunnerImageRefRoundTrip(f *testing.F) {
 	})
 }
 
+// FuzzContentImageRefRoundTrip checks that a content-addressed runner
+// reference round-trips through ParseImageTag: the content id must come back on
+// ContentID (not folded into the agent or read as a legacy Digest), since a
+// mis-parse silently targets the wrong cached image.
+func FuzzContentImageRefRoundTrip(f *testing.F) {
+	f.Add("myproject", "opencode", "9f2c1a7b4d6e0f31")
+	f.Add("x", "claude-code", "0000000000000000")
+
+	f.Fuzz(func(t *testing.T, slug, agent, contentID string) {
+		if !validArtifactPart(slug) || !validArtifactPart(agent) || contentID == "" || !validContentID(contentID) {
+			t.Skip()
+		}
+		info := ParseImageTag(ContentImageRef(slug, agent, contentID))
+		if info.Slug != slug || info.Agent != agent || info.ContentID != contentID {
+			t.Fatalf("ParseImageTag(ContentImageRef(%q,%q,%q)) = %+v", slug, agent, contentID, info)
+		}
+	})
+}
+
+// validContentID constrains fuzzed content ids to the lowercase-hex prefix
+// (1..16 chars) that the launcher derives from an image ID.
+func validContentID(s string) bool {
+	if s == "" || len(s) > 16 {
+		return false
+	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // validArtifactPart constrains fuzzed inputs to the shape the launcher itself
 // generates (lowercase alphanumerics joined by interior dashes), so the fuzzer
 // explores that space rather than producing inputs the naming scheme never
