@@ -22,7 +22,11 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Five agents ship 
 - **`pi`** — the pi coding agent, run interactively; upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
 - **`codex`** — OpenAI's Codex CLI, run interactively; upgrade checks via GitHub releases. Its startup update check is
-  turned off because agents-sandbox offers upgrades itself.
+  turned off because agents-sandbox offers upgrades itself. Codex's own command sandbox is turned off too
+  (`sandbox_mode = "danger-full-access"`), because the VM already isolates it and the image does not ship the
+  `bubblewrap` it needs. This overrides `sandbox_mode` in `config.toml`; to choose another mode, pass it as an agent
+  argument, e.g. `agents-sandbox --agent codex -- --sandbox workspace-write`. Codex still asks for approval according
+  to its `approval_policy`.
 
 `--worktree` and `--serve-only` are rejected for pi, claude-code, and codex (they have no daemon); they run through the
 interactive TUI instead. Passing an unsupported `--agent` name reports the valid names in its error message.

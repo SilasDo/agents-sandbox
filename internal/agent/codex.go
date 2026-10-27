@@ -51,10 +51,17 @@ func (codexProfile) ProvisionRules() []ProvisionRule {
 }
 
 // AttachCommand disables the startup update check (the sandbox pins the baked
-// version and offers upgrades itself) and shell-quotes every forwarded
-// argument, because the command runs through `bash -c`.
+// version and offers upgrades itself) and turns off codex's own command
+// sandbox: the VM is the isolation boundary, and codex's bubblewrap sandbox is
+// not installed in the image. A forwarded --sandbox flag still overrides it.
+// Every forwarded argument is shell-quoted, because the command runs through
+// `bash -c`.
 func (codexProfile) AttachCommand(_ string, args []string) string {
-	parts := []string{"codex", "-c", "check_for_update_on_startup=false"}
+	parts := []string{
+		"codex",
+		"-c", "check_for_update_on_startup=false",
+		"-c", shellQuote(`sandbox_mode="danger-full-access"`),
+	}
 	for _, arg := range args {
 		parts = append(parts, shellQuote(arg))
 	}
