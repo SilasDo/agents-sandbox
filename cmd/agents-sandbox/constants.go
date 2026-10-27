@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
-	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
 )
 
 const (
@@ -43,27 +43,27 @@ const (
 
 	flagRemove = "rm"
 
-	flagRebuild        = launcherconfig.FlagRebuild
+	flagRebuild        = runoptions.FlagRebuild
 	flagCpus           = "cpus"
 	flagMemory         = "memory"
 	flagTmpSize        = "tmp-size"
 	flagDiskSize       = "disk-size"
 	flagWorkspaceQuota = "workspace-quota"
-	flagDryRun         = launcherconfig.FlagDryRun
+	flagDryRun         = runoptions.FlagDryRun
 	flagDryRunShort    = "n"
-	flagDryRunVM       = launcherconfig.FlagDryRunVM
+	flagDryRunVM       = runoptions.FlagDryRunVM
 	flagForce          = "force"
 	flagOlderThan      = "older-than"
 	// flagAge is the deprecated alias for --older-than.
 	flagAge        = "age"
-	flagWorktree   = launcherconfig.FlagWorktree
-	flagRoot       = launcherconfig.FlagRoot
-	flagServeOnly  = launcherconfig.FlagServeOnly
-	flagNetwork    = launcherconfig.FlagNetwork
-	flagDNSServers = launcherconfig.FlagDNSServers
-	flagAgent      = launcherconfig.FlagAgent
-	flagNotify     = launcherconfig.FlagNotify
-	flagOpenLinks  = launcherconfig.FlagOpenLinks
+	flagWorktree   = runoptions.FlagWorktree
+	flagRoot       = runoptions.FlagRoot
+	flagServeOnly  = runoptions.FlagServeOnly
+	flagNetwork    = runoptions.FlagNetwork
+	flagDNSServers = runoptions.FlagDNSServers
+	flagAgent      = runoptions.FlagAgent
+	flagNotify     = runoptions.FlagNotify
+	flagOpenLinks  = runoptions.FlagOpenLinks
 	flagDocker     = "docker"
 	// flagDind is the deprecated alias for --docker.
 	flagDind            = "dind"

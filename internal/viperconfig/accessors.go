@@ -1,0 +1,96 @@
+package viperconfig
+
+import (
+	"time"
+
+	"github.com/inoio/agents-sandbox/internal/homeconfig"
+	"github.com/inoio/agents-sandbox/internal/upgrade"
+)
+
+// LegacyEnvVars returns the deprecated-prefix environment variables that were
+// in effect (their AGENTS_SANDBOX_ counterpart was unset) when the resolver
+// was built, so the CLI can warn once.
+func (r *Resolver) LegacyEnvVars() []string {
+	return r.legacyEnv
+}
+
+// DockerLegacyAlias returns the deprecated dind source that was in effect
+// (empty when the canonical docker setting is used), so the CLI can warn once.
+func (r *Resolver) DockerLegacyAlias() string {
+	return r.dockerLegacy
+}
+
+func (c Config) IdleTimeout() time.Duration {
+	if c.AutoStopTimeout > 0 {
+		return c.AutoStopTimeout
+	}
+	return 10 * time.Second
+}
+
+func (r *Resolver) Yes() bool { return r.cfg.Yes }
+
+func (r *Resolver) Quiet() bool { return r.cfg.Quiet }
+
+func (r *Resolver) LogLevel() string { return r.cfg.LogLevel }
+
+func (r *Resolver) Agent() string { return r.cfg.Agent }
+
+func (r *Resolver) Docker() bool { return r.cfg.Docker }
+
+func (r *Resolver) ProvisionHostConfig() bool { return r.cfg.ProvisionHostConfig }
+
+func (r *Resolver) AutoPruneAge() time.Duration { return r.cfg.AutoPruneAge }
+
+func (r *Resolver) ManualPruneAge() time.Duration { return r.cfg.ManualPruneAge }
+
+// Config returns the resolved launcher config, or nil when the resolver itself
+// is nil. runoptions.Build treats a nil config as flag-only, with no config,
+// env, or defaults applied.
+func (r *Resolver) Config() *Config {
+	if r == nil {
+		return nil
+	}
+	cfg := r.cfg
+	return &cfg
+}
+
+// UpgradeMode returns the configured upgrade mode, defaulting to prompt. An
+// unparsable value (possible via NewResolverWithConfig, which skips
+// validation) also falls back to prompt.
+func (r *Resolver) UpgradeMode() upgrade.Mode {
+	m, err := upgrade.ParseMode(r.cfg.Upgrade.Mode)
+	if err != nil {
+		return upgrade.ModePrompt
+	}
+	return m
+}
+
+// UpgradeChannel returns the configured release channel, defaulting to stable.
+// An unparsable value (possible via NewResolverWithConfig, which skips
+// validation) also falls back to stable.
+func (r *Resolver) UpgradeChannel() upgrade.Channel {
+	ch, err := upgrade.ParseChannel(r.cfg.Upgrade.Channel)
+	if err != nil {
+		return upgrade.ChannelStable
+	}
+	return ch
+}
+
+// UpgradeInterval returns the configured upgrade-check interval, defaulting to
+// a day and never returning less than the rate-limit guard.
+func (r *Resolver) UpgradeInterval() time.Duration {
+	switch {
+	case r.cfg.Upgrade.Interval <= 0:
+		return upgrade.DefaultInterval
+	case r.cfg.Upgrade.Interval < upgrade.MinInterval:
+		return upgrade.MinInterval
+	default:
+		return r.cfg.Upgrade.Interval
+	}
+}
+
+// Home returns the per-layer home manifests read from the config files' home:
+// key, and whether any config file declared a home key.
+func (r *Resolver) Home() (homeconfig.Layers, bool) {
+	return r.cfg.Home, r.cfg.hasHome
+}

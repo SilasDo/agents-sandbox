@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
 )
@@ -136,7 +137,7 @@ func TestBuildRunOptionsInvalidNotifyFlag(t *testing.T) {
 		t.Fatalf("set notify: %v", err)
 	}
 	var r *launcherconfig.Resolver
-	if _, err := r.BuildRunOptions(cmd, ui); err == nil {
+	if _, err := runoptions.Build(r.Config(), cmd, ui); err == nil {
 		t.Fatal("expected error for invalid --notify flag value")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
@@ -23,7 +24,7 @@ func resolveOpenLinks(t *testing.T, commandName string, args ...string) bool {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	command.SetContext(context.WithValue(context.Background(), (*launcherConfigKey)(nil), mustResolver(t, command)))
-	opts, err := resolverFromContext(command.Context()).BuildRunOptions(command, ui)
+	opts, err := runoptions.Build(resolverFromContext(command.Context()).Config(), command, ui)
 	if err != nil {
 		t.Fatalf("BuildRunOptions: %v", err)
 	}

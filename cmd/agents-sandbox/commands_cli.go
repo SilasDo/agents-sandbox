@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/upgrade"
 	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
@@ -117,7 +118,7 @@ func rpad(s string, padding int) string {
 func runFunc(ui termio.UI) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		r := resolverFromContext(cmd.Context())
-		opts, err := r.BuildRunOptions(cmd, ui)
+		opts, err := runoptions.Build(r.Config(), cmd, ui)
 		if err != nil {
 			return err
 		}
@@ -220,7 +221,7 @@ func buildShellCmd(ui termio.UI) *cobra.Command {
 					return nil
 				}
 			}
-			opts, err := resolverFromContext(cmd.Context()).BuildRunOptions(cmd, ui)
+			opts, err := runoptions.Build(resolverFromContext(cmd.Context()).Config(), cmd, ui)
 			if err != nil {
 				return err
 			}
