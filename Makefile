@@ -10,10 +10,12 @@ PLANTUML ?= plantuml
 GO_VERSION = $(shell cat .go-version)
 GOLANGCI_LINT_VERSION = 2.15.0
 ZIG_VERSION ?= 0.17.0
-# zig's install root (the dir holding lib/libc/...), following any symlink so it
-# resolves whether zig is reached via ~/.local/bin or the ~/.local/zig install-root
-# symlink. Requires zig on PATH; build-release checks that before using it.
-ZIG_ROOT = $(shell f="$$(readlink "$$(command -v zig)" 2>/dev/null || command -v zig)"; cd "$$(dirname "$$f")" 2>/dev/null && pwd -P)
+# zig's install root (the dir holding lib/libc/...), following a symlink to the binary so
+# it resolves whether zig is reached via ~/.local/bin or the ~/.local/zig install-root
+# symlink. Empty when zig is absent. Assumes a flat tarball layout: the binary's directory
+# is the libc root. A package-manager layout (Homebrew: bin/ and lib/ siblings) is not
+# resolved and the stub probe below will miss — see specs/darwin-cross-compile.md.
+ZIG_ROOT = $(shell f="$$(command -v zig)"; [ -n "$$f" ] || exit 0; cd "$$(dirname "$$f")" 2>/dev/null || exit 0; t="$$(readlink "$$f" 2>/dev/null || true)"; if [ -n "$$t" ]; then cd "$$(dirname "$$t")" 2>/dev/null || exit 0; fi; pwd -P)
 # Realpath of the bootstrap-managed zig install root, or empty when absent. Lets
 # the recipe tell the managed zig apart from one PATH resolves to elsewhere.
 ZIG_MANAGED_ROOT = $(shell cd "$$HOME/.local/zig" 2>/dev/null && pwd -P)
@@ -48,7 +50,7 @@ build-release:
 	@test -n "$(ZIG_TARGET)" || { echo "ZIG_TARGET is required (e.g. x86_64-linux-gnu)"; exit 1; }
 	@echo "building $(ARTIFACT) (zig target: $(ZIG_TARGET))"
 ifeq ($(GOOS),darwin)
-	@command -v zig >/dev/null 2>&1 || { echo "zig not found on PATH; run 'make bootstrap'"; exit 1; }
+	@command -v zig >/dev/null 2>&1 || { echo "zig not found on PATH; run 'make bootstrap', then put \$$HOME/.local/bin on PATH"; exit 1; }
 	CGO_ENABLED=1 GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	    CGO_CFLAGS="-isystem $(ZIG_ROOT)/lib/libc/include/any-darwin-any" \
 	    CGO_LDFLAGS="-F $(ZIG_ROOT)/lib/libc/darwin/System/Library/Frameworks -L $(ZIG_ROOT)/lib/libc/darwin/usr/lib -Wl,-undefined,dynamic_lookup" \
@@ -86,7 +88,7 @@ bootstrap:
 	    { [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation.tbd" ] \
 	   || [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/System/Library/Frameworks/Security.framework/Security.tbd" ] \
 	   || [ ! -f "$$ON_PATH_ROOT/lib/libc/darwin/usr/lib/libresolv.tbd" ]; } \
-	 && echo "warning: that zig lacks the macOS cross-compile stubs under $$ON_PATH_ROOT/lib/libc/darwin; darwin builds will fail to link" >&2; \
+	 && echo "warning: no macOS cross-compile stubs found under $$ON_PATH_ROOT/lib/libc/darwin; a darwin build with this zig may fail to link CoreFoundation/Security/resolv" >&2; \
 	    true; \
 	else \
 	    ZIG_MANAGED_VERSION=""; \
@@ -101,7 +103,7 @@ bootstrap:
 	     && rm /tmp/zig.tar.xz \
 	     && ln -sfn "$${HOME}/.local/$${ZIG_DIR}" "$${HOME}/.local/zig" \
 	     && ln -sfn "$${HOME}/.local/zig/zig" "$${HOME}/.local/bin/zig" \
-	     && echo "zig $(ZIG_VERSION) installed ($${HOME}/.local/bin/zig); add $${HOME}/.local/bin to PATH if 'zig' is not found" \
+	     && echo "zig $(ZIG_VERSION) installed ($${HOME}/.local/bin/zig)" \
 	     || { echo "error: installing zig $(ZIG_VERSION) failed" >&2; exit 1; }; \
 	    fi; \
 	    ZIG_DARWIN="$${HOME}/.local/zig/lib/libc/darwin"; \
@@ -113,6 +115,9 @@ bootstrap:
 	 && cp .github/stubs/libresolv.tbd "$$ZIG_DARWIN/usr/lib/libresolv.tbd" \
 	 && echo "macOS cross-compile stubs ensured in $$ZIG_DARWIN" \
 	 || { echo "error: installing zig stubs failed" >&2; exit 1; }; \
+	    if [ -z "$$ZIG_ON_PATH" ]; then \
+	        echo "note: 'zig' is not on PATH; add $${HOME}/.local/bin (managed zig: $${HOME}/.local/zig/zig)"; \
+	    fi; \
 	fi
 
 test:

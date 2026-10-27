@@ -21,10 +21,18 @@ empty `!tapi-tbd` files; symbols resolve at runtime on macOS.
 
 ## ZIG_ROOT resolution
 
-The `Makefile` resolves zig's install root by following symlinks (`readlink` → `dirname` → `pwd -P`), so it works
-whether zig is reached through `~/.local/bin/zig` (a binary symlink) or `~/.local/zig` (the stable install-root
-symlink), and for a plain install whose directory is on `PATH`. It is a lazy (`=`) variable, so non-darwin targets do
+The `Makefile` resolves zig's install root (`ZIG_ROOT`) from `command -v zig`, following **one** symlink level: the
+link's target is made absolute against the link's own directory (`dirname "$f"/$(readlink "$f")`) before `dirname` +
+`pwd -P`. Making the target absolute matters — a relative target (Homebrew's `bin/zig -> ../Cellar/...`, for instance)
+left `ZIG_ROOT` empty, which made an outside zig compare equal to the managed root and silently install a managed zig
+instead of warning. `ZIG_ROOT` is empty when zig is absent, and it is a lazy (`=`) variable, so non-darwin targets do
 not invoke `command -v zig` or `readlink` at all.
+
+Two limits are structural, not bugs to discover later: only one link level is followed, and the layout is assumed to be
+a flat tarball install, where the binary's directory is the libc root. A package manager's layout (Homebrew installs the
+binary to `<prefix>/bin/zig` with libs under `<prefix>/lib/zig/`) therefore does not resolve, and the stub probe looks
+under the wrong directory. The probe errs toward reporting "no stubs found" rather than toward claiming compliance, and
+its message says what it looked for, not that the zig is broken.
 
 ## The three consumers
 
@@ -44,12 +52,13 @@ Bootstrap classifies on the install root of the zig that `PATH` resolves to (com
 |---|---|
 | nothing | install the managed zig into `~/.local` (versioned dir + `~/.local/zig` + `~/.local/bin/zig`), then ensure the stubs |
 | the managed install | ensure idempotently: reinstall only when the on-disk version differs from `ZIG_VERSION`, then ensure the stubs |
-| anywhere else | warn only, mutate nothing — once that it resolves outside the managed install (naming the path and the version that zig reports), plus once more if that zig lacks the stubs |
+| anywhere else | warn only, mutate nothing — once that it resolves outside the managed install (naming the path and the version that zig reports), plus once more if the stubs are not found under the resolved root |
 
 What to install is decided from the managed zig **on disk**, not from `PATH`, so a managed install that is not on
-`PATH` is not re-downloaded. Managed-path failures (download, extraction) exit non-zero; everything about an outside
-zig is a warning and the run still exits 0. The stubs are re-copied on every managed run rather than only when
-missing — idempotent in effect, and it self-heals a stale stub.
+`PATH` is not re-downloaded; in that case bootstrap prints the `~/.local/bin` PATH hint, since without it the
+`build-release` guard's "run `make bootstrap`" is a closed loop. Managed-path failures (download, extraction) exit
+non-zero; everything about an outside zig is a warning and the run still exits 0. The stubs are re-copied on every
+managed run rather than only when missing — idempotent in effect, and it self-heals a stale stub.
 
 **Accepted risk:** the packaging decision (make-only, no new files) means there is no committed test. The
 classification is verified by a throwaway harness (`/tmp/opencode/zbz.sh`-style: a fake zig tree plus a stub `goenv`
