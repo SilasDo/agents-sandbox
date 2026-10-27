@@ -17,6 +17,9 @@ command reports the bare version (e.g. `0.1.0`).
   project's recorded home volume is no longer mistaken for the volume being gone. Resolution now fails closed on any
   non-absence error instead of creating a fresh volume and rewriting state, which could orphan the real volume; only a
   true volume-not-found recovers (#331).
+- VM reconfiguration: when an existing project VM's config cannot be read, the launcher now surfaces a warning and
+  forces a recreate instead of silently skipping every reconfig trigger and reusing a VM that may still run the old
+  image, env, or network (#339).
 - Runner image: a project's image variants no longer overwrite each other in the microsandbox cache, so toggling
   `--docker` — or any other content change, such as an agent-version bump or a project-Dockerfile edit — reimports
   nothing after the first load. Image pruning retains a live project's recent variants and reclaims the rest (#322).
