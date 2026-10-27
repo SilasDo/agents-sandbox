@@ -34,8 +34,9 @@ var lineContinuations = map[byte]*regexp.Regexp{
 	'`':  regexp.MustCompile("([^`])`[ \t]*$|^`[ \t]*$"),
 }
 
-// escapeDirective matches a BuildKit parser directive that sets the escape token.
-var escapeDirective = regexp.MustCompile(`(?i)^#\s*escape=(.)\s*$`)
+// directiveLine matches a BuildKit parser directive: a leading comment line of
+// the form "# key=value", with the key case-insensitive.
+var directiveLine = regexp.MustCompile(`^#\s*([a-zA-Z][a-zA-Z0-9]*)\s*=\s*(.+?)\s*$`)
 
 // heredocDelimiter is a heredoc a Dockerfile instruction declares: its delimiter
 // word and whether the leading tabs of its body are stripped (the "<<" vs "<<-"
@@ -168,15 +169,23 @@ func instructionWords(text string) []string {
 }
 
 // escapeToken returns the escape and line-continuation token for the Dockerfile.
-// BuildKit honors an "# escape=" directive only on the literal first line, so a
-// directive after a blank line, a comment, or an instruction is not read.
+// BuildKit honors a "# escape=" directive only among the leading directive
+// comment lines: parsing stops at the first line that is not a directive-shaped
+// comment (a plain comment, a blank line, or an instruction), so a later
+// "# escape=" is not read.
 func escapeToken(lines [][]byte) byte {
-	if len(lines) == 0 {
-		return '\\'
-	}
-	match := escapeDirective.FindStringSubmatch(lineText(lines[0]))
-	if match != nil && match[1] == "`" {
-		return '`'
+	for _, raw := range lines {
+		line := strings.TrimLeft(lineText(raw), " \t")
+		match := directiveLine.FindStringSubmatch(line)
+		if match == nil {
+			break
+		}
+		if strings.EqualFold(match[1], "escape") {
+			if match[2] == "`" {
+				return '`'
+			}
+			return '\\'
+		}
 	}
 	return '\\'
 }
