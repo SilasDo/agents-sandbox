@@ -887,6 +887,44 @@ func TestCustomBaseStageReusesDeclaredAlias(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileCRLFProjectDockerfile pins that a CRLF project Dockerfile
+// still composes: customBaseStage reads raw lines (which keep the CR), while the
+// stage-alias scan uses a line-buffered reader (which drops it), so a leaked CR
+// in the alias would make the runner reference a stage that was never declared.
+func TestRenderDockerfileCRLFProjectDockerfile(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM ubuntu:24.04 AS base\r\nRUN echo hi\r\n")
+	s := mustRender(t, a, project, false)
+	if strings.Contains(s, "\r AS "+runnerStageAlias) {
+		t.Errorf("runner stage must not reference an alias with a trailing CR; got:\n%s", s)
+	}
+	if !strings.Contains(s, "FROM base AS "+runnerStageAlias) {
+		t.Errorf("runner stage must reference the declared base alias; got:\n%s", s)
+	}
+}
+
+// TestRenderDockerfileHeredocBodyIsNotAStage pins that a RUN heredoc body is not
+// scanned for stage headers: a lowercase "from pathlib import Path" inside the
+// body must not be split out and rewritten as the base stage.
+func TestRenderDockerfileHeredocBodyIsNotAStage(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM debian:trixie-slim\n" +
+		"RUN python3 - <<'PY'\n" +
+		"from pathlib import Path\n" +
+		"print(Path.cwd())\n" +
+		"PY\n")
+	s := mustRender(t, a, project, false)
+	if strings.Contains(s, "from pathlib import Path AS ") {
+		t.Errorf("a heredoc body must not be rewritten as a stage header; got:\n%s", s)
+	}
+	if !strings.Contains(s, "RUN python3 - <<'PY'\nfrom pathlib import Path\n") {
+		t.Errorf("the heredoc must be preserved verbatim; got:\n%s", s)
+	}
+	if !strings.Contains(s, "FROM debian:trixie-slim AS "+baseStageAlias) {
+		t.Errorf("the real base FROM must be composed; got:\n%s", s)
+	}
+}
+
 func TestAgentImageConfigBlock(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	block := agentImageConfigBlock(a)

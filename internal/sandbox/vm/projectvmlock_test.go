@@ -1,9 +1,11 @@
 package vm
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -55,7 +57,13 @@ func TestProjectVMFlockSurvivesStateRemoval(t *testing.T) {
 		t.Fatalf("open lock for probe: %v", err)
 	}
 	defer probe.Close()
-	if err := state.FlockExclusiveNB(probe); err == nil {
+	contentionErr := state.FlockExclusiveNB(probe)
+	if contentionErr == nil {
 		t.Fatal("held project-VM lock must still contend after state removal")
+	}
+	// Only a lock-held error proves contention; an unrelated flock failure would
+	// let the regression pass without another invocation having to wait.
+	if !errors.Is(contentionErr, syscall.EWOULDBLOCK) && !errors.Is(contentionErr, syscall.EAGAIN) {
+		t.Fatalf("probe must fail because the lock is held, got: %v", contentionErr)
 	}
 }

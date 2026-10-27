@@ -170,6 +170,11 @@ touch. `RemoveHomeState` continues to remove the key's state directory (the stat
 lock; `claims/` is per-slug, outside the key dir, and is untouched. (This changes the lock path once; there are no
 cross-change holders.)
 
+The project-VM creation lock that serializes `ensureProjectVM` also lives under `<root>/locks/`, at
+`locks/<slug>/<agent>/ensure-vm.lock` — keyed per agent as well as slug, since agents of one project use separate VMs
+and must not serialize on each other's creation — so a prune cannot unlink the lock a concurrent creation holds
+(#330).
+
 Because the lock now outlives the state directory, removal must itself take the home lock: `RemoveHomeState(k)` removes
 under the home lock (`withHomeLock`) directly, so a prune cannot delete the directory between a writer's read and its
 `atomicwrite` (which would recreate the directory and resurrect a just-pruned key). Legacy agent-less keys and

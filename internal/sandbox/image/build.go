@@ -2,7 +2,6 @@ package image
 
 import (
 	"archive/tar"
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -70,15 +69,17 @@ func referencesImage(dockerfile []byte, imageRef string) bool {
 	return imageRefMatches(resolveStageBase(lastImage, stageBase), imageRef)
 }
 
-// scanFromStages walks a Dockerfile's FROM lines, returning the final stage's
-// image token and the declared stage-alias map. Instruction keywords are matched
-// case-insensitively, so lowercase and mixed-case FROM lines are recognised.
+// scanFromStages walks a Dockerfile's FROM instructions, returning the final
+// stage's image token and the declared stage-alias map. Only real instruction
+// starts are read, so a stage header is not found inside a heredoc body or a
+// continuation line; keywords are matched case-insensitively, so lowercase and
+// mixed-case FROM lines are recognised.
 func scanFromStages(dockerfile []byte) (string, map[string]string) {
 	stageBase := make(map[string]string)
 	var lastImage string
-	scanner := bufio.NewScanner(bytes.NewReader(dockerfile))
-	for scanner.Scan() {
-		fromImage, stageAlias := parseFrom(scanner.Text())
+	lines := dockerfileLines(dockerfile)
+	for _, i := range instructionLineIndices(lines) {
+		fromImage, stageAlias := parseFrom(string(lines[i]))
 		if fromImage == "" {
 			continue
 		}
@@ -115,10 +116,11 @@ func imageRefMatches(token, imageRef string) bool {
 // parseFrom parses a Dockerfile FROM line, returning the main image reference
 // and the declared stage alias (the "AS <name>" token, if present). The FROM and
 // AS keywords are matched case-insensitively and leading build flags (e.g.
-// --platform) are ignored. A line that is not a FROM instruction yields empty
-// values.
+// --platform) are ignored. Trailing whitespace is trimmed so a CRLF line's CR
+// does not leak into the alias. A line that is not a FROM instruction yields
+// empty values.
 func parseFrom(line string) (string, string) {
-	keyword, rest := instruction(line)
+	keyword, rest := instruction(strings.TrimRight(line, " \t\r\n"))
 	if keyword != fromInstruction {
 		return "", ""
 	}

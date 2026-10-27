@@ -193,6 +193,15 @@ The old build-time `daemon.json` overwrite is removed; the build-time invariant 
   `debian:trixie-slim` for managed, the user's image for custom), never the `runner` stage alias or the tool base.
 - `BuildOptions.Force`, `NoCache`, and the `dockerfile-id` skip-build contract are unchanged.
 - The body still runs without node/agent/docker available (they are `COPY`ed after it), preserving prior ordering.
+- The project Dockerfile is scanned for stage headers by a dependency-free walker aligned with BuildKit's
+  `frontend/dockerfile/parser`: instruction keywords match case-insensitively (`FROMAGE` is not `FROM`), a line's
+  trailing whitespace is trimmed (CRLF is handled), and blank lines, comments, continuation lines (honoring a
+  leading `# escape=` directive), and heredoc bodies are skipped. Only `RUN`/`COPY`/`ADD`/`ONBUILD` may declare a
+  heredoc; the operator is recognised per whitespace/quoted token with BuildKit's `^(\d*)<<(-?)\s*([^<]*)$`, so
+  `$((1<<2))`, a quoted operator (`"<<EOF"`), and a glued operator (`cat<<EOF`) are not heredocs. Continued lines are
+  joined with the continuation escape dropped, and a delimiter word is unquoted the way BuildKit's shell lexer does — a
+  quote inside a differently quoted run stays literal (`<<'E"OF'` names `E"OF`) — so neither a delimiter glued to a
+  continuation escape nor such inner quoting hides a later stage.
 
 ## Integration-test cache
 
