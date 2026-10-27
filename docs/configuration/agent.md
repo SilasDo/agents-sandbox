@@ -159,24 +159,23 @@ To opt out, exclude `auth.json` from the drop-in copy by placing a `home:` entry
 host secrets in any other way; the env-secret mechanism is the supported channel for secrets you do not want on disk in
 the VM.
 
-For pi, claude-code, and codex, the drop-in copy does not include credential files; authenticate them with env secrets instead:
+For pi, claude-code, and codex, the drop-in copy does not include credential files. pi and claude-code authenticate with
+env secrets instead; codex logs in inside the VM:
 
 - **pi** — per-provider env vars, e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (see pi's docs for the
   full list). Put them in an `env.secret` / `env.secret.yaml` file.
 - **claude-code** — `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN`. Claude's
   `.credentials.json` is machine-managed and not hand-provisioned, so env vars are the supported channel here.
-- **codex** — the interactive Codex CLI reads its login from `~/.codex/auth.json`, not from an env var, so log in once
-  inside the VM; the home volume keeps the login across runs. For an API key, declare `OPENAI_API_KEY` as an env secret
-  for `api.openai.com` and run `printenv OPENAI_API_KEY | codex login --with-api-key` in `agents-sandbox shell --agent
-  codex`; `auth.json` then holds only the secret placeholder, which microsandbox substitutes on egress. For a ChatGPT
-  plan, use device code login (see [Codex login](#codex-login)). The host `auth.json` is not copied because a ChatGPT
-  login rotates its refresh token, and a second copy using it would sign the host out.
+- **codex** — the interactive Codex CLI reads its login from `~/.codex/auth.json`, not from an env var, so you log in
+  once inside the VM (see [Codex login](#codex-login)). The host `auth.json` is not copied because a ChatGPT login
+  rotates its refresh token, and a second copy using it would sign the host out.
 - **opencode** — `OPENCODE_API_KEY`.
 
 ### Codex login
 
-Codex needs these egress hosts. If your network policy restricts egress, add them to `network.egress-allow` (see
-[Networking]({% link configuration/networking.md %})) and restart the sandbox:
+The default `public` network profile already lets Codex reach OpenAI. With `profile: none`, add these hosts to
+`network.egress-allow` (see [Networking]({% link configuration/networking.md %})); the network policy applies when the
+VM is created, so restart the sandbox afterwards:
 
 ```yaml
 network:
@@ -189,7 +188,7 @@ network:
 Without `chatgpt.com`, a ChatGPT login completes in the browser but Codex then reports
 `workspace routing discovery failed`.
 
-To sign in with a ChatGPT plan, choose **Sign in with ChatGPT**. Codex opens the sign-in page in your host browser,
+**ChatGPT plan:** choose **Sign in with ChatGPT**. Codex opens the sign-in page in your host browser,
 and agents-sandbox passes the browser's return to `http://127.0.0.1:1455/auth/callback` on to Codex in the sandbox (see
 [Opening links]({% link configuration/opening-links.md %}#logging-in-to-an-agent)).
 
@@ -198,7 +197,12 @@ with Device Code** (or run `codex login --device-auth`), open the link on your h
 code login is off by default: enable it in your ChatGPT security settings (personal account) or ask a workspace admin.
 While it is off, Codex fails with `device code request failed with status 403 Forbidden`.
 
-The login is stored in `~/.codex/auth.json` on the home volume, so you sign in once per project.
+**API key:** declare `OPENAI_API_KEY` as an [env secret]({% link configuration/secrets.md %}) for `api.openai.com`, then
+run `printenv OPENAI_API_KEY | codex login --with-api-key` in `agents-sandbox shell --agent codex`. The VM only sees the
+secret's placeholder, so `auth.json` stores the placeholder and the network proxy replaces it on requests to
+`api.openai.com`.
+
+The login is stored in `~/.codex/auth.json` on the home volume, so you sign in once per project and agent.
 
 ## Example: permissions
 
