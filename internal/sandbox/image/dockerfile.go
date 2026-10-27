@@ -333,11 +333,12 @@ func splitFinalStage(projectDockerfile []byte) (string, string, string) {
 }
 
 // managedBaseStage renders the embedded tools block with its FROM given the
-// reserved base alias.
+// reserved base alias. The first-line check matches the FROM keyword
+// case-insensitively.
 func managedBaseStage() string {
 	block := string(embeddedBaseToolsBlock)
 	lines := strings.SplitAfter(block, "\n")
-	if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[0]), "FROM") {
+	if keyword, _ := instruction(lines[0]); keyword == fromInstruction {
 		lines[0] = strings.TrimRight(lines[0], "\n") + " AS " + baseStageAlias + "\n"
 	}
 	return strings.Join(lines, "")
@@ -604,10 +605,11 @@ RUN id -u dev >/dev/null 2>&1 || \
 }
 
 // lastFromLine returns the index of the last FROM instruction in lines, or -1.
+// Instruction keywords are matched case-insensitively.
 func lastFromLine(lines [][]byte) int {
 	lastFrom := -1
 	for i, line := range lines {
-		if bytes.HasPrefix(bytes.TrimSpace(line), []byte("FROM")) {
+		if keyword, _ := instruction(string(line)); keyword == fromInstruction {
 			lastFrom = i
 		}
 	}
