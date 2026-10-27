@@ -246,7 +246,7 @@ func readExistingVM(
 	configUnreadable := configReadErr != nil
 	if configUnreadable {
 		ui.Warnf(
-			"reading the existing VM config for %s failed: %v; recreating the VM",
+			"reading the existing VM config for %s failed: %v; forcing a VM recreate",
 			projectVMName(k), configReadErr,
 		)
 	}
