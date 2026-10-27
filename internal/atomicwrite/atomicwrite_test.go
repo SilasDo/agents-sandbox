@@ -107,6 +107,9 @@ func TestWriteFileMkdirAllError(t *testing.T) {
 	if _, statErr := os.Stat(path); statErr == nil {
 		t.Errorf("destination %s exists, want the write to have failed before touching it", path)
 	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a failure before the rename, not ErrInstalled", err)
+	}
 }
 
 // TestWriteFileCreateTempError covers the temp-file creation failure: the
@@ -144,8 +147,12 @@ func TestWriteFileWriteError(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
-	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a failure before the rename, not ErrInstalled", err)
 	}
 	assertNoTempFiles(t, dir)
 }
@@ -162,8 +169,12 @@ func TestWriteFileCloseError(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
-	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a failure before the rename, not ErrInstalled", err)
 	}
 	assertNoTempFiles(t, dir)
 }
@@ -184,6 +195,9 @@ func TestWriteFileRenameError(t *testing.T) {
 	}
 	if _, ok := errors.AsType[*os.LinkError](err); !ok {
 		t.Errorf("WriteFile() error = %v, want the rename's *os.LinkError reachable", err)
+	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a failure before the rename, not ErrInstalled", err)
 	}
 	assertNoTempFiles(t, dir)
 }
@@ -295,8 +309,12 @@ func TestWriteFileSyncTempFileError(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
-	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a failure before the rename, not ErrInstalled", err)
 	}
 	assertNoTempFiles(t, dir)
 	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
@@ -315,8 +333,12 @@ func TestWriteFileOpenDirectoryError(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
-	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if !errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want ErrInstalled for a post-rename failure", err)
 	}
 	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "x" {
 		t.Errorf("destination content = %q, error = %v, want %q", content, readErr, "x")
@@ -334,13 +356,68 @@ func TestWriteFileSyncDirectoryError(t *testing.T) {
 
 	dir := t.TempDir()
 	path := filepath.Join(dir, "state.yaml")
-	if err := WriteFile(path, []byte("x")); !errors.Is(err, wantErr) {
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
 		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if !errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want ErrInstalled for a post-rename failure", err)
 	}
 	if content, readErr := os.ReadFile(path); readErr != nil || string(content) != "x" {
 		t.Errorf("destination content = %q, error = %v, want %q", content, readErr, "x")
 	}
 	assertNoTempFiles(t, dir)
+}
+
+// TestWriteFileFlushesParentOfEachCreatedDirectory pins the directory-tree
+// durability: creating a nested tree flushes the parent of every directory it
+// created, shallowest first, so the new entries — not only the leaf's that the
+// post-rename flush covers — survive a crash or power loss.
+func TestWriteFileFlushesParentOfEachCreatedDirectory(t *testing.T) {
+	base := t.TempDir()
+	path := filepath.Join(base, "a", "b", "state.yaml")
+
+	var flushed []string
+	orig := syncDirectory
+	syncDirectory = func(f *os.File) error {
+		flushed = append(flushed, f.Name())
+		return nil
+	}
+	t.Cleanup(func() { syncDirectory = orig })
+
+	if err := WriteFile(path, []byte("x")); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	// base persists the newly created a, base/a persists b, and base/a/b
+	// persists the renamed file. All three are needed for a durable first write.
+	want := []string{base, filepath.Join(base, "a"), filepath.Join(base, "a", "b")}
+	if !slices.Equal(flushed, want) {
+		t.Errorf("flushed directories = %v, want %v", flushed, want)
+	}
+}
+
+// TestWriteFileDirectoryTreeSyncErrorFailsBeforeRename covers a flush of a
+// directory created by MkdirAll: it runs before the temp file exists, so the
+// failure is not ErrInstalled and the destination is never touched.
+func TestWriteFileDirectoryTreeSyncErrorFailsBeforeRename(t *testing.T) {
+	wantErr := errors.New("sync ancestor boom")
+	orig := syncDirectory
+	syncDirectory = func(*os.File) error { return wantErr }
+	t.Cleanup(func() { syncDirectory = orig })
+
+	base := t.TempDir()
+	path := filepath.Join(base, "a", "b", "state.yaml")
+	err := WriteFile(path, []byte("x"))
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("WriteFile() error = %v, want %v", err, wantErr)
+	}
+	if errors.Is(err, ErrInstalled) {
+		t.Errorf("WriteFile() error = %v, want a pre-rename failure, not ErrInstalled", err)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Errorf("destination stat error = %v, want the write to have failed before touching it", statErr)
+	}
 }
 
 func assertNoTempFiles(t *testing.T, dir string) {

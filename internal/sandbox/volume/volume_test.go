@@ -12,6 +12,7 @@ import (
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
+	"github.com/inoio/agents-sandbox/internal/atomicwrite"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
@@ -1306,6 +1307,42 @@ func TestCleanupVolume_Failure(t *testing.T) {
 	}
 	if !strings.Contains(ui.WarnCalls[0], "failed to remove") {
 		t.Errorf("unexpected warning: %q", ui.WarnCalls[0])
+	}
+}
+
+// TestCleanupUncommittedVolume pins the post-rename contract: when the commit
+// error means the state rename already installed the volume's name, the new
+// volume must be kept (removing it would strand the saved state on a deleted
+// volume); a pre-rename failure still cleans it up.
+func TestCleanupUncommittedVolume(t *testing.T) {
+	tests := []struct {
+		name       string
+		commitErr  error
+		wantRemove bool
+	}{
+		{
+			name:       "installed write keeps the volume",
+			commitErr:  fmt.Errorf("write state file: %w: sync dir boom", atomicwrite.ErrInstalled),
+			wantRemove: false,
+		},
+		{
+			name:       "pre-rename failure removes the volume",
+			commitErr:  errors.New("write state file: rename boom"),
+			wantRemove: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &msb.MockMsbClient{}
+			vm := NewManager(&termio.Mock{})
+
+			vm.cleanupUncommittedVolume(context.Background(), mock, "new-vol", tt.commitErr, &termio.Mock{})
+
+			removed := len(mock.RemovedVolumes) == 1
+			if removed != tt.wantRemove {
+				t.Errorf("removed = %v (RemovedVolumes %v), want %v", removed, mock.RemovedVolumes, tt.wantRemove)
+			}
+		})
 	}
 }
 
