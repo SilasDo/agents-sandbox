@@ -390,34 +390,37 @@ func (m *MockMsbClient) SetGetVolumeErr(err error) *MockMsbClient {
 
 // MockSandboxHandle is a test double for SandboxHandle.
 type MockSandboxHandle struct {
-	Name_           string
-	ID_             string
-	Status_         msbSdk.SandboxStatus
-	UpdatedAt_      time.Time
-	CreatedAt_      time.Time
-	BackendKind_    msbSdk.BackendKind
-	Image_          string
-	ConnectSb       Sandbox
-	RefreshFn       func(context.Context) (SandboxHandle, error)
-	StartSb         Sandbox
-	StartFn         func(context.Context) (Sandbox, error)
-	DidRmv          bool
-	DidStop         bool
-	DidKill         bool
-	ConnectErr      error
-	StartErr        error
-	StopErr         error
-	KillErr         error
-	RemoveErr       error
-	DestroyErr      error
-	Destroyed       bool
-	Cfg             *msbSdk.SandboxConfig
-	ConfigErr       error
-	Mounts          map[string]msbSdk.MountConfig
-	MountsErr       error
-	ModifyErr       error
-	Plan            *msbSdk.SandboxModificationPlan
-	ModifiedOptions []msbSdk.ModifyOptions
+	Name_            string
+	ID_              string
+	Status_          msbSdk.SandboxStatus
+	UpdatedAt_       time.Time
+	CreatedAt_       time.Time
+	BackendKind_     msbSdk.BackendKind
+	Image_           string
+	ConnectSb        Sandbox
+	RefreshFn        func(context.Context) (SandboxHandle, error)
+	StartSb          Sandbox
+	StartFn          func(context.Context) (Sandbox, error)
+	DidRmv           bool
+	DidStop          bool
+	DidKill          bool
+	ConnectErr       error
+	StartErr         error
+	StopErr          error
+	KillErr          error
+	RemoveErr        error
+	DestroyErr       error
+	Destroyed        bool
+	Cfg              *msbSdk.SandboxConfig
+	ConfigErr        error
+	Mounts           map[string]msbSdk.MountConfig
+	MountsErr        error
+	ModifyErr        error
+	Plan             *msbSdk.SandboxModificationPlan
+	ModifiedOptions  []msbSdk.ModifyOptions
+	CompactResult    *msbSdk.DiskCompactionResult
+	CompactErr       error
+	CompactedOptions []msbSdk.DiskCompactionOptions
 }
 
 func (m *MockSandboxHandle) Name() string                    { return m.Name_ }
@@ -508,6 +511,13 @@ func (m *MockSandboxHandle) Modify(
 ) (*msbSdk.SandboxModificationPlan, error) {
 	m.ModifiedOptions = append(m.ModifiedOptions, opts)
 	return m.Plan, m.ModifyErr
+}
+func (m *MockSandboxHandle) Compact(
+	_ context.Context,
+	opts msbSdk.DiskCompactionOptions,
+) (*msbSdk.DiskCompactionResult, error) {
+	m.CompactedOptions = append(m.CompactedOptions, opts)
+	return m.CompactResult, m.CompactErr
 }
 
 // MockSandbox is a test double for Sandbox.
