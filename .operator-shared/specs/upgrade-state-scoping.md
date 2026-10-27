@@ -112,7 +112,8 @@ To close that gap, `resolveBuildVersion` recovers the baseline from the project'
 `org.agents-sandbox.identity.agent-version` label (a `docker inspect`, no network) and returns the release, or nothing
 for an absent image, a pre-label image, or a non-release sentinel (`none` / `user-provided`). When it returns a
 version, `recoverAgentVersion` records it to `HomeState.agent_version` and the normal check/prompt runs against it. The
-record is written only when a state file already exists (via `state.UpdateExistingHomeState`), because recovery runs
+record is written only when a state file already exists (a `WithHomeState` transaction that writes nothing when
+`exists` is false), because recovery runs
 before home resolution: creating a state here would leave a fingerprint-less partial state that the home-recovery step
 would adopt as a `prior` and copy empty fingerprints forward, spuriously detecting a config change (#183). A genuine
 first run (no image, no label) still returns `""` and resolves at build time.
@@ -121,58 +122,22 @@ The label is a *recovery fallback only*: `HomeState.agent_version` remains the s
 This does not resurrect the rejected "read the current version from the image label on every run" design; it only
 bridges the gap left by dropping the global version.
 
-### RootState writer serialization
+### State write serialization
 
-`RootState` now has two independent writers: `runtimemigration` (the `migrations` map) and the upgrade path (the
-`updates.agents` map). They share one file, so all `RootState` read-modify-write is serialized by a single host-only exclusive
-flock. `runtimemigration` adopts this shared lock (retiring its private `migration.lock`) and keeps holding it across
-its copy campaign; the upgrade path acquires it **non-blocking** and, if it is held, skips the whole upgrade step for
-this run (no check, no fold), retrying next run. `state.UpdateRootState` stays lock-free and documents that callers must
-hold the lock; this avoids the non-reentrant double-lock that a lock-inside-`UpdateRootState` design would cause for
-`runtimemigration` (flock is not reentrant).
-
-> **Superseded in part.** `state.UpdateRootState` and the standalone root lock are retired by the transaction API
-> (`WithRootState`) in [`project-state-transactions.md`](project-state-transactions.md); the upgrade path and the legacy
-> fold are `WithRootState` closures acquired non-blocking. The non-blocking-deferral intent still holds; read that spec
-> for the current mutation API.
-
-### HomeState write serialization
-
-> **Superseded.** The `UpdateHomeState` / `UpdateExistingHomeState` / `ReplaceHomeState` trio and `LockHomeState`
-> described in this section are replaced by the transaction API (`WithHomeState` / `RecoverHomeState`) in
-> [`project-state-transactions.md`](project-state-transactions.md). The serialization intent below still holds; read that
-> spec for the current contract.
-
-Every per-project `HomeState` read-modify-write is serialized by a single host-only flock per `(slug, agent)`
-(`state.LockHomeState`, at `<slug>/<agent>/home.lock`). This PR adds two HomeState writers (the upgrade offered set and
-`recordImageProvenance`) to a file the volume operations already read-modify-write, so without the lock a concurrent
-volume op could be clobbered — e.g. an upgrade write restoring an old `home_volume` after a volume op committed a new
-one, which with `--rm-old` points at a deleted volume. The lock makes each writer re-read under mutual exclusion, so no
-writer loses another's field.
-
-`state` exposes three locked writers, chosen by intent:
-
-- `UpdateHomeState(k, mutate)` — create-on-missing, for merge writers that run after home resolution (volume operations,
-  fingerprint persistence, `recordImageProvenance`). It mutates the freshly-read state, preserving fields the caller
-  does not touch; a present-but-unreadable file returns an error without writing.
-- `UpdateExistingHomeState(k, mutate)` — writes only when a state file already exists, for the pre-home-resolution
-  writers (baseline recovery, the offered set). It never creates a state, so those writers cannot leave a
-  fingerprint-less partial state that home recovery would adopt as a `prior` (#183).
-- `ReplaceHomeState(k, hs)` — lock plus a blind write, for recovery paths that rebuild a lost or malformed state
-  (`volume.Manager.recoverOrCreateHome`, `EnsureNewHome`). These must *replace* the document, so they cannot read it
-  first (a corrupt file would fail the read and leave the state broken).
-
-Lock ordering is **root lock (if held) → home lock**. `pendingUpgrade` holds the root lock across its step and then
-takes the home lock for the offered-set write; no holder of a home lock acquires the root lock (the volume operations
-do not touch `RootState`), so the order cannot cycle. flock is not reentrant, so no single call path may take the same
-key's home lock twice.
+> **Superseded by [`project-state-transactions.md`](project-state-transactions.md).** The `UpdateRootState` /
+> `UpdateHomeState` / `UpdateExistingHomeState` / `ReplaceHomeState` / `LockHomeState` seam and the standalone root and
+> home locks described here are retired by the transaction API (`WithRootState` / `WithHomeState` / `RecoverHomeState` /
+> `RemoveHomeState`). The intent is unchanged: every read-modify-write is serialized by one lock per document, the
+> upgrade path and the legacy fold acquire the root transaction non-blocking and defer when it is held, and a writer
+> preserves the fields it does not own. Read that spec for the current mutation API, the lock files, and the lock
+> ordering.
 
 ### Provenance (`vm.recordImageProvenance`)
 
 `setUpSandbox` threads the project `state.Key` into `recordImageProvenance` (the caller already holds `k`). On boot it
 reads `HomeState(k)`, sets `agent_source`/`docker_source`, and for a tool-installed agent detects the installed version
-via the agent's `VersionProvider` and writes it to `agent_version`. It is a read-modify-write (now via
-`state.UpdateHomeState`) so fingerprints and the offered set survive. Warnings remain non-fatal.
+via the agent's `VersionProvider` and writes it to `agent_version`. It is a `WithHomeState` transaction so fingerprints
+and the offered set survive. Warnings remain non-fatal.
 
 ## Migration (non-interactive, legacy-file-triggered, no registry entry)
 
@@ -206,18 +171,18 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
   check reuses the existing image (the recovered, non-empty `current` short-circuits release resolution).
 - **Migration never loses the cadence.** `last_checked` is folded only when unset; the legacy file is deleted only
   after a successful root-state write.
-- **Serialized HomeState writes.** Every `HomeState` read-modify-write holds the per-`(slug, agent)` home lock, so
-  concurrent writers (volume operations, upgrade bookkeeping, fingerprint persistence) cannot lose each other's fields.
-  Lock order is root → home; the home lock is never taken twice on one path (flock is not reentrant).
+- **Serialized HomeState writes.** Every `HomeState` read-modify-write goes through the locked transaction API and
+  preserves fields the caller does not own, so concurrent writers (volume operations, upgrade bookkeeping, fingerprint
+  persistence) cannot lose each other's fields (`project-state-transactions.md`).
 - **No partial state before home resolution.** Writers that run before the home volume is resolved (baseline recovery,
   the offered set) never create a state, so a state that exists at home resolution is never fingerprint-less by
   construction.
 - **Recovery repairs malformed state.** The home-recovery paths replace the state file wholesale under the lock, so a
   corrupt `state.yaml` is rewritten rather than left broken (which would repeat recovery and keep volume commands unable
   to read the home).
-- **Serialized RootState writes.** Every `RootState` read-modify-write holds the shared host-only flock;
-  `state.UpdateRootState` stays lock-free and requires the caller to hold it. `runtimemigration` and the upgrade path
-  share the one lock, so neither can clobber the other's map.
+- **Serialized RootState writes.** Every `RootState` read-modify-write goes through the shared locked transaction API,
+  so `runtimemigration` and the upgrade path cannot clobber each other's map; the upgrade path acquires it non-blocking
+  and defers when it is held (`project-state-transactions.md`).
 - **A RootState read failure never writes.** A `RootState` read error must warn and return no offer without persisting,
   never overwrite the file with a zero-value document that would discard the `migrations` registry.
 - **`--dry-run` skips the upgrade check.** Under it there is no upgrade network check, no state persistence, and no legacy

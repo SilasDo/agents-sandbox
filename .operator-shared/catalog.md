@@ -81,7 +81,7 @@
   - Description: Contract for decoupling the microsandbox runtime home from any user-installed msb — a private XDG home (`~/.local/share/agents-sandbox/msb`), no user-facing msb, retired version-matching recovery, and opt-in legacy home-volume copy tracked in the root `state.yaml` `migrations` registry; plus the one-time post-migration legacy-runtime notice.
   - Read If: Changing the private `MSB_HOME`/`EnsureRuntime` wiring, doctor/PATH, the legacy home-volume copy state model, the ambiguous-state offer, the post-migration legacy-runtime notice, or the `volume remove` cleanup command.
 - `runner-image-build.md`
-  - Description: Agent version selection precedence (`--agent-version`, upgrade check, user-provided), when the runner image is (re)built, when `BuildOptions.Force` bypasses the Docker layer cache, and the lazy msb load decision (`ImageInfo{Tag,Digest,DockerfileID,Env}`, digest-first with a legacy-only `dockerfile-id` label fallback, no host Docker inspect).
+  - Description: Agent version selection precedence (`--agent-version`, upgrade check, user-provided), when the runner image is (re)built, when `BuildOptions.Force` bypasses the Docker layer cache, and the lazy msb load decision (`ImageInfo{DockerTag, Ref, Digest, DockerfileID, Env}`, the content/name/legacy candidate set, digest-first with a legacy-only `dockerfile-id` label fallback, no host Docker inspect).
   - Read If: Changing image build/caching, `BuildOptions`, `--rebuild`, `--agent-version`, agent upgrade, volume subcommands' image handling, or the `EnsureLoaded`/`ImageInfo` load decision.
 - `reconfig-decision.md`
   - Description: Contract for the per-startup project-VM reconfiguration decision: fingerprint-backed detection of env/secret/network/mount changes, which changes recreate vs restart the daemon, the fingerprint-preservation invariant on state rewrites, order-stability of `ConfigFiles.Keys`, and the #183/#223 resolutions.
@@ -171,23 +171,8 @@
   - Description: Contract for the per-minor release branch `release/<major>.<minor>`: cut at the release commit, carries the line's patch releases, and takes the line's fixes while `main` keeps new work.
   - Read If: Deciding where a release tag or a fix lands, cutting a patch release for a released line, backporting a fix, or changing the release branch name or flow.
 
-### `product/` - Release and product framing for this partition
-
-- `release-0.6.0.md`
-  - Description: Product framing for the 0.6.0 release: the two headline stories in order (own your runtime; fast, small runner images), "no system-wide microsandbox required" as a selling point, and the renames demoted to a footnote.
-  - Read If: Writing or reviewing any user-facing 0.6.0 text, curating its changelog/release notes, or asking what the release's story is.
-
 ### `plans/` - TDD implementation plans
 
-- `2026-10-26-docs-link-integrity.md`
-  - Description: 6-task TDD plan for `specs/docs-link-integrity.md`: the `internal/docslink` leaf package, the doctor/image rewiring, and the `ci/check-docs.sh` kramdown slug mirror plus fragment resolution for rendered-HTML, docs in-page, `{% link %}#anchor`, and Go-source links.
-  - Read If: Implementing the documentation fragment gate (#296).
-- `2026-10-26-image-ref-content-addressing.md`
-  - Description: 4-task TDD plan for `specs/image-ref-content-addressing.md` (#322): the `naming` content ref + `ContentID` parse, the `image` content ref and widened load-candidate set, `pruning` retention by liveness and age, and the docs/CHANGELOG/spec amendments.
-  - Read If: Implementing the content-addressed msb runner-image reference (the `--docker` reimport fix).
-- `2026-10-22-artifact-naming.md`
-  - Description: 7-task TDD plan for `specs/artifact-naming.md`: the prefix-free and legacy name/reference constructors, the dual-scheme parsers, project VMs, task sandboxes, home volumes, the `ImageInfo` Docker-tag/msb-ref split, image discovery/reference scans, and the legacy foreign scan.
-  - Read If: Implementing the prefix-free artifact naming change.
 - `2026-10-10-buildkit-builder-vm.md`
-  - Description: TDD plan for `specs/buildkit-builder-vm.md` (#15): the `internal/sandbox/builder` package, BuildKit deps, rewiring `image`, VM creation, cache pruning, and removing `internal/sandbox/docker` + `doctor.CheckDocker`. Not yet implemented.
-  - Read If: Resuming the (unimplemented) BuildKit builder plan.
+  - Description: TDD plan for `specs/buildkit-builder-vm.md`: the `internal/sandbox/builder` package, BuildKit deps, rewiring `image`, VM creation, cache pruning, and removing `internal/sandbox/docker` + `doctor.CheckDocker`.
+  - Read If: Implementing the Docker-free BuildKit builder (#15) — `internal/sandbox/builder`, `buildkitd`, `ImageLoad`, or the image build/inspect/load pipeline and `doctor.CheckDocker` removal.

@@ -45,13 +45,13 @@ read_if: Navigating the codebase.
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `configfile/` — Comment/order-preserving launcher-config editor (`Config`, `Parse`, `LoadDir`, `WriteAtomic`); shared by `configmigration` and the setup wizard. *(Guided-onboarding work; not on `main` yet.)*
+- `cliout/` — Output rendering: the generic list/JSON rendering core (`PrintList`/`Mode`/`WriteJSON`) plus the domain printers for list/inspect/prune/`df`.
 - `configmerge/` — Merge config with precedence.
-- `configmigration/` — **See [configmigration subindex](configmigration.md)** (native agent config migration, guided onboarding, network plan). *(Guided-onboarding work; not on `main` yet.)*
 - `configpaths/` — Config/home path resolution and guards.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
 - `git/` — Git helpers (go-git wrapper) and project identity: `Identity`/`ResolveIdentity` with the repo slug (origin-derived; keys the per-slug user config dir and the grouping label) and the checkout slug (git common dir; keys state/VM/volume/locks/image tag), plus the bind-root rule (#144).
 - `homeconfig/` — Home config provisioning.
+- `hostlock/` — Advisory `flock` file locks, shared by the state transactions and the per-project VM lock.
 - `humanize/` — Human-readable formatting.
 - `notify/` — Desktop notifications (backend, dedup, events, watch).
 - `sandbox/` — **See [sandbox subindex](sandbox.md)** (VM lifecycle, docker, image, msb, volumes, pruning, sessions, state).
@@ -82,6 +82,10 @@ read_if: Navigating the codebase.
 
 - `Dockerfile`, `stubs/*.tbd` — Builder with macOS linker stubs.
 - `ci/check-docs.sh` — Docs build check script.
+
+### `ci/deadcodecheck/` — Dead-code gate helper
+
+- `main.go` — Pure `ParseReport`/`ScanMarkers`/`Check` behind one testable `run(args, stdin, stdout, stderr) int`; parses the `deadcode` analysis report, scans `//deadcode:ignore` markers, and returns the pass/fail verdict with distinct exit codes. Invoked by `ci/check-deadcode.sh`.
 
 ### `Formula/` — Homebrew formula
 
