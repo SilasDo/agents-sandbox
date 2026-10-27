@@ -24,6 +24,11 @@ cannot. Resolution order (`volume.Manager.ResolveHomeVolume`):
    via `liveHomeVolume` (`client.GetSandbox(projectVMName(k))`), because the volume package cannot import vm.
 3. **Fresh prefill** — otherwise `EnsureNewHome` creates a new volume, as before.
 
+Absence is only the SDK's `ErrVolumeNotFound` kind (`msb.IsVolumeNotFound`). Any other lookup error — daemon,
+timeout, permission, cancellation — **fails closed**: resolution returns an error and performs no create, prefill, or
+state rewrite, so a transient error can never be mistaken for a gone volume and orphan the real one (#331). Only a
+true not-found takes the recovery/fallback path below.
+
 A state written by a VM-only identity adoption (#144) records a pending `recovered_home_volume` and no
 `home_volume` yet. That field is recovered before the live-VM branch: the volume is reused and the state is
 rewritten with the current digest and seeded fingerprints. Unlike the live-VM branch it does not consult the

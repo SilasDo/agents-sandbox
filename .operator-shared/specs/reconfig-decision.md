@@ -27,6 +27,15 @@ Mounts are the exception: they are read live from the persisted config JSON (`sp
   profile and list order do not matter. Profile composition and its fingerprint-stability rule are in
   `specs/network-profiles.md`.
 
+A read of an existing VM's persisted config can fail (`msb.SandboxHandle.Config()`), and `findProjectVM` can fail to
+locate a VM it cannot confirm absent. Both are treated fail-closed by `resolveReconfigDecision`: a non-not-found
+lookup error is returned (the run aborts) rather than treated as "no VM"; and a `Config()` failure is surfaced as a
+warning and forces a recreate through the normal `ResolveReconfig` path (a `unreadable VM config` change label, so an
+attached client still gets the keep/quit prompt). Without this, `PlanReconfig` sees `cfg == nil`, returns an empty
+plan, and every image/env/secret/network/mount trigger is silently skipped — leaving the VM running stale config
+(#339). `PlanReconfig`'s `cfg == nil` early return stays for the genuine no-VM case only. A `ConfigMounts()` failure in
+`applyLiveMounts` is deliberately different: it degrades to pre-#223 detection rather than forcing a recreate.
+
 Fingerprints are written by `persistConfigHashes`, which runs only when the VM was created this run (`boot ==
 vmBootCreated`). A fresh home volume's state is additionally seeded with the desired fingerprints at creation
 (`volume.Manager.EnsureNewHome`), so a `HomeState` is never fingerprint-less while a VM exists (see Resolution below).

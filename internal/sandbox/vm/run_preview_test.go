@@ -378,6 +378,28 @@ func TestPreviewSandboxSurfacesAdoptionError(t *testing.T) {
 	}
 }
 
+// TestPreviewSandboxSurfacesHomeVolumeLookupError covers the home-volume
+// lookup-error arm: a recorded volume whose lookup fails transiently (not true
+// absence) must surface from PreviewHomeVolume rather than be reported as
+// "would create", matching the real run's fail-closed check.
+func TestPreviewSandboxSurfacesHomeVolumeLookupError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+	msb.WithMsbMock(t, &msb.MockMsbClient{
+		GetVolumeFn: func(context.Context, string) (msb.VolumeHandle, error) {
+			return nil, errors.New("daemon unavailable")
+		},
+	})
+	if err := seedHomeState(previewKey(), state.HomeState{HomeVolume: "vol-1"}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	ui := termio.NewTestMock(t)
+	if _, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+		t.Fatal("expected the home-volume lookup error to surface")
+	}
+}
+
 func TestPreviewSandboxForcedRebuildReportsBuild(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)

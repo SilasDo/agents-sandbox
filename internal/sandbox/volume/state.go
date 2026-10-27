@@ -48,6 +48,9 @@ func (vm *Manager) ResolveHomeVolume(
 	}
 
 	if _, err := client.GetVolume(ctx, st.HomeVolume); err != nil {
+		if !msb.IsVolumeNotFound(err) {
+			return "", state.HomeState{}, fmt.Errorf("checking home volume %q: %w", st.HomeVolume, err)
+		}
 		ui.Warnf("existing home volume %q not found, creating fresh", st.HomeVolume)
 		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
 	}
@@ -75,7 +78,10 @@ func (vm *Manager) recoverOrCreateHome(
 	recoveredVolume string,
 	ui termio.UI,
 ) (string, state.HomeState, error) {
-	recovered, ok := confirmedRecoveredVolume(ctx, client, recoveredVolume)
+	recovered, ok, err := confirmedRecoveredVolume(ctx, client, recoveredVolume)
+	if err != nil {
+		return "", state.HomeState{}, err
+	}
 	if !ok {
 		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
 		if err == nil {
@@ -139,14 +145,21 @@ func priorOrNil(cur *state.HomeState, exists bool) *state.HomeState {
 
 // confirmedRecoveredVolume returns the candidate volume when it is non-empty and
 // still exists, so recovery only adopts a volume that can actually be mounted.
-func confirmedRecoveredVolume(ctx context.Context, client msb.Client, candidate string) (string, bool) {
+// Absence (the SDK's volume-not-found error) reports "not confirmed" with a nil
+// error, falling back to a fresh prefill. Any other lookup error is a transient
+// failure and is returned so the caller fails closed rather than duplicating the
+// volume.
+func confirmedRecoveredVolume(ctx context.Context, client msb.Client, candidate string) (string, bool, error) {
 	if candidate == "" {
-		return "", false
+		return "", false, nil
 	}
 	if _, err := client.GetVolume(ctx, candidate); err != nil {
-		return "", false
+		if !msb.IsVolumeNotFound(err) {
+			return "", false, fmt.Errorf("checking recovered home volume %q: %w", candidate, err)
+		}
+		return "", false, nil
 	}
-	return candidate, true
+	return candidate, true, nil
 }
 
 // recoveredHomeState builds the state for a recovered volume. It carries forward
