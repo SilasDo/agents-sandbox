@@ -521,6 +521,31 @@ func TestIsNotFound(t *testing.T) {
 	}
 }
 
+func TestIsVolumeNotFound(t *testing.T) {
+	volumeNotFound := &msbSdk.Error{Kind: msbSdk.ErrVolumeNotFound, Message: "no such volume"}
+	sandboxNotFound := &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "no such sandbox"}
+	plain := errors.New("some other failure")
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"volume not found kind", volumeNotFound, true},
+		{"wrapped volume not found", fmt.Errorf("outer: %w", volumeNotFound), true},
+		{"sandbox not found kind", sandboxNotFound, false},
+		{"plain error", plain, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsVolumeNotFound(tt.err); got != tt.want {
+				t.Errorf("IsVolumeNotFound(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsReplaced(t *testing.T) {
 	replaced := &msbSdk.Error{Kind: msbSdk.ErrSandboxReplaced, Message: "handle was replaced"}
 	other := &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "no such sandbox"}
