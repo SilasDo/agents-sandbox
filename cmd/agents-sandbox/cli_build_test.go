@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
+	"github.com/moby/moby/client"
+
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/git"
@@ -164,7 +167,10 @@ func TestBuildCommandHasAgentVersionFlag(t *testing.T) {
 // TestBuildAgentVersionPrecedenceMatchesRun pins that build shares run's
 // agent-version precedence: a user-provided agent is not owned by the tool, so
 // --agent-version is ignored and the recorded version is baked, while a
-// tool-managed project honors the pin.
+// tool-managed project honors the pin. It also pins that build forwards the
+// user-provided signal to the image layer: with no recorded version the build
+// keeps a stable user-provided identity and defers release resolution past the
+// build decision instead of resolving one up front.
 func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 	tests := []struct {
 		name            string
@@ -172,6 +178,10 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 		recordedVersion string
 		pin             string
 		wantVersion     string
+		// wantDeferred pins whether release resolution must wait for the build
+		// decision: it may only be deferred when the user-provided signal
+		// reaches the image layer.
+		wantDeferred bool
 	}{
 		{
 			name:            "user-provided agent ignores the pin",
@@ -179,6 +189,14 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 			recordedVersion: "1.0.0",
 			pin:             "9.9.9",
 			wantVersion:     "1.0.0",
+		},
+		{
+			name:            "user-provided agent with no recorded version defers resolution",
+			agentSource:     "user",
+			recordedVersion: "",
+			pin:             "9.9.9",
+			wantVersion:     "",
+			wantDeferred:    true,
 		},
 		{
 			name:            "tool-managed agent honors the pin",
@@ -196,14 +214,33 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 
 			var resolvedVersion string
 			var resolverCalled bool
+			var buildDecisionRan bool
+			var resolvedBeforeBuildDecision bool
 			image.WithMockAgentVersionResolver(
 				t,
 				func(_ context.Context, _ agent.Agent, requested string) (string, error) {
 					resolvedVersion = requested
+					if !resolverCalled {
+						resolvedBeforeBuildDecision = !buildDecisionRan
+					}
 					resolverCalled = true
 					return "0.0.0-test", nil
 				},
 			)
+			// The build decision inspects the Docker image before deciding
+			// whether a rebuild is needed. Recording that inspect lets the test
+			// tell a deferred resolution (which only runs once the decision
+			// needs a rebuild) from resolution that happens up front.
+			docker.WithDockerMock(t, &docker.MockDockerClient{
+				ImageInspectFn: func(
+					_ context.Context, _ string, _ ...client.ImageInspectOption,
+				) (client.ImageInspectResult, error) {
+					buildDecisionRan = true
+					return client.ImageInspectResult{
+						Config: &dockerspec.DockerOCIImageConfig{},
+					}, nil
+				},
+			})
 
 			key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
 			if err := seedHomeState(key, state.HomeState{
@@ -221,6 +258,12 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 			}
 			if resolvedVersion != testCase.wantVersion {
 				t.Errorf("build resolved agent version %q, want %q", resolvedVersion, testCase.wantVersion)
+			}
+			if deferred := !resolvedBeforeBuildDecision; deferred != testCase.wantDeferred {
+				t.Errorf(
+					"deferred resolution = %v, want %v: build must forward the user-provided signal to the image layer",
+					deferred, testCase.wantDeferred,
+				)
 			}
 		})
 	}
