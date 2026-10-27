@@ -1,6 +1,6 @@
 ---
-description: Contract for the `fuzz` workflow (`.github/workflows/fuzz.yml`) — how it discovers targets from the sources (no hardcoded package list), its triggers and the budget each passes, why it is never a PR gate and not part of `make check`/`make verify`, how the corpus accumulates between runs, how a crasher leaves the runner, and the `make fuzz` knobs it drives.
-read_if: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.
+description: Contract for the `fuzz` workflow (`.github/workflows/fuzz.yml`) — how it discovers targets from the sources (no hardcoded list; one matrix job per target), its triggers and the budget each passes, why it is never a PR gate and not part of `make check`/`make verify`, how the corpus accumulates between runs, how a crasher leaves the runner, and the `make fuzz` knobs it drives.
+read_if: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG`/`FUZZTARGET` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.
 ---
 
 # Fuzz workflow
@@ -12,7 +12,8 @@ read_if: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `F
 (`options.FuzzParseOptions`), configured mount-target validation (`mounts.FuzzResolveMountTarget`), the retired
 `updater.yaml` (`vm.FuzzParseLegacyUpdaterState`), the project Dockerfile (`image.FuzzRenderDockerfile`), the `home:`
 manifest (`homeconfig.FuzzParseHomeSection`), `--older-than` durations (`viperconfig.FuzzParseHumanDuration`), and
-the naming package's artifact-name and image-reference round-trips (`naming.FuzzArtifactNameRoundTrip`,
+the naming package's artifact-name, content-image-reference, and runner-image-reference round-trips
+(`naming.FuzzArtifactNameRoundTrip`, `naming.FuzzContentImageRefRoundTrip`,
 `naming.FuzzRunnerImageRefRoundTrip`) — on `ubuntu-latest`. These targets are pure Go:
 no KVM, no docker daemon, no network. That is why they can run on a GitHub-hosted runner at all, unlike the `msb` smoke
 tests and the `integration` job.
@@ -25,26 +26,27 @@ tests and the `integration` job.
 
 ### Target discovery
 
-The list is derived, not hardcoded. A `discover` job lists the packages that contain a target
-(`grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u`), turns each package
-into `{name, path}` JSON, and the `fuzz` job builds its matrix from `fromJSON(needs.discover.outputs.pkgs)`. Adding a
-`func Fuzz...` in a package under those trees joins the matrix with no workflow edit — including a *second* target in an
-existing package, which `make fuzz` discovers and runs on its own. The merge `paths` filter names the same three trees,
-because a new target can only land under one of them. CI and the Makefile therefore agree on what a target is by
-construction. `name` is the package path with `/` flattened to `-` (e.g. `internal-sandbox-state`), unique across
-packages, so it keys both the per-target corpus cache and the concurrency group.
+The list is derived, not hardcoded. A `discover` job walks every `*_test.go` under `internal/`, `cmd/`, and `test/` that
+declares a `func Fuzz…`, emitting one entry per *target* — `{name, path, target}` — and the `fuzz` job builds its matrix
+from `fromJSON(needs.discover.outputs.targets)`. Adding a `func Fuzz...` joins the matrix with no workflow edit, including
+a second target in an existing package. The merge `paths` filter names the same three trees, because a new target can
+only land under one of them, so CI and the Makefile agree on what a target is by construction. `name` is the package path
+with `/` flattened to `-` plus the target (e.g. `internal-sandbox-naming-FuzzArtifactNameRoundTrip`), unique across the
+matrix, so it keys both the per-target corpus cache and the concurrency group.
 
-One matrix job per package, because `go test -fuzz` refuses more than one package per run. Within a package `make fuzz`
-enumerates each `func Fuzz...` and runs it alone with `-fuzz='^Name$'` (Go accepts exactly one target per run), continuing
-past a failure so a crasher in one target does not hide the others — the same intent as the workflow's `fail-fast: false`,
-which keeps one package's failure from hiding another's. `timeout-minutes: 45` bounds a job.
+One matrix job per target, because `go test -fuzz` accepts exactly one target per run and each target spends the full
+`FUZZTIME` budget on its own; the workflow passes `FUZZPKG=<path>` and `FUZZTARGET=<name>` to `make fuzz`, which runs
+that target alone with `-fuzz='^Name$'`. A job per target keeps the budget independent — a package with three targets
+(otherwise three times the budget in one job, which is what overran the job timeout) now runs them in parallel — and
+`fail-fast: false` keeps one target's failure from hiding another's, as `make fuzz` does when it sweeps a package
+locally. `timeout-minutes: 45` bounds a single target.
 
 ## Invariants
 
 - **Never a gate.** Fuzzing is not a PR check, not a step in `make check`/`make verify` (which mirrors PR CI), and not in
   `ci.yml`'s `release.needs`. A red run reports a crasher; it cannot block a merge or a release. What makes a finding
   durable is the committed corpus, not the run.
-- **Discovery can never yield an empty matrix.** The `discover` job exits non-zero when it finds no package, mirroring
+- **Discovery can never yield an empty matrix.** The `discover` job exits non-zero when it finds no target, mirroring
   `make fuzz FUZZPKG`, so GitHub's "matrix must contain at least one value" error can never be reached; a target the
   module genuinely lost is a loud failure, not a silent disappear.
 - **A cancelled run is a wasted run.** The job's concurrency group is `fuzz-<name>` with `cancel-in-progress: false`, so
@@ -56,14 +58,14 @@ which keeps one package's failure from hiding another's. `timeout-minutes: 45` b
   (GitHub caches are immutable, so a fixed key is written once and never updated), and the prefix restores the newest
   entry for that target. It must **not** rely on `setup-go`'s cache for this — that entry is keyed on `go.sum` and is
   never re-saved on an exact hit, so a run's discoveries would be thrown away, and other jobs sharing the key can save it
-  first. The corpus is small: a 3s run yields tens of inputs and ~128K. `name` changed from the bare basename to the
-  flattened path when discovery landed, so each pre-discovery target's corpus restarts once under its new key.
+  first. The corpus is small: a 3s run yields tens of inputs and ~128K. `name` widened from the flattened package path to
+  path-plus-target when discovery moved to one job per target, so each target's corpus restarts once under its new key.
 - **A crasher leaves the runner as an artifact.** Go writes a failing input to the package's `testdata/fuzz/<Target>/` and
-  prints it in the log; the failing job uploads `internal/**/testdata/fuzz/**` (a `cmd/` or `test/` target's corpus is
-  not under that glob and would need the upload path widened). CI does not commit the seed (that needs a push token,
-  which the workflow deliberately does not have) — a maintainer or agent commits it, and from then on it runs under
-  `make test`.
-- **`FUZZPKG` fails loudly.** `make fuzz FUZZPKG=<package path>` runs that package's targets and exits non-zero when
-  nothing matches, so a typo cannot read as a green run over zero targets.
+  prints it in the log; the failing job uploads `<path>/testdata/fuzz/<Target>/` for its own matrix entry, so a `cmd/` or
+  `test/` target's crasher is captured too. CI does not commit the seed (that needs a push token, which the workflow
+  deliberately does not have) — a maintainer or agent commits it, and from then on it runs under `make test`.
+- **`FUZZPKG`/`FUZZTARGET` fail loudly.** `make fuzz FUZZPKG=<package path>` narrows to a package and
+  `FUZZTARGET=<func name>` to one target; either exits non-zero when nothing matches, so a typo cannot read as a green
+  run over zero targets.
 - A schedule runs only from the default branch's copy of the workflow, and always against the default branch: this
   workflow is inert until it merges, and it never fuzzes a PR branch.

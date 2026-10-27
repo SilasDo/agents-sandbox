@@ -140,9 +140,13 @@ test-race:
 # to run against more than one package at once and accepts exactly one target
 # per run, so a package's targets are enumerated and each runs on its own. A
 # failing target does not stop the others. FUZZPKG=<package path> narrows the
-# run to one package's targets, which is how CI splits the work.
+# run to one package's targets and FUZZTARGET=<func name> to one target within
+# it, which is how CI splits the work: one job per target, so a package with
+# several targets does not multiply a single job's budget. A narrowed run that
+# matches nothing fails loudly rather than reading as a green sweep.
 FUZZTIME ?= 30s
 FUZZPKG ?=
+FUZZTARGET ?=
 fuzz:
 	@pkgs=$$(grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u); \
 	if [ -n "$(FUZZPKG)" ]; then pkgs=$$(printf '%s\n' "$$pkgs" | grep -x -F "$(FUZZPKG)" || true); fi; \
@@ -150,6 +154,8 @@ fuzz:
 	status=0; \
 	for pkg in $$pkgs; do \
 		targets=$$(grep -rhoE '^func Fuzz[A-Za-z0-9_]+' --include='*_test.go' "$$pkg" | awk '{print $$2}' | sort -u); \
+		if [ -n "$(FUZZTARGET)" ]; then targets=$$(printf '%s\n' "$$targets" | grep -x -F "$(FUZZTARGET)" || true); fi; \
+		if [ -z "$$targets" ]; then echo "no fuzz target '$(FUZZTARGET)' in package '$$pkg'"; exit 1; fi; \
 		for target in $$targets; do \
 			echo "== fuzz $$pkg $$target"; \
 			CGO_ENABLED=1 go test -run='^$$' -fuzz="^$$target$$" -fuzztime=$(FUZZTIME) "./$$pkg" || status=1; \

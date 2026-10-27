@@ -159,8 +159,11 @@
   - Description: Contract for #228: `--dry-run` is a true make-no-changes preview of a run/shell (build plan, image build decision, read-only home-volume probe) that returns before any build/volume/state/VM/network side effect; `--dry-run-vm` stays the KVM-less "prepare everything, skip the VM" flag.
   - Read If: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision / `resolveAgentVersion` / `resolveBaseDigest`, or the `vm.agentLatestVersion` test seam.
 - `ci-job-gating.md`
-  - Description: Contract for gating the costly integration jobs: `integration` (Docker Engine) and `integration-podman` (rootless podman) both run on `main`, release tags, manual dispatch, and on a PR a maintainer opted into with the matching `run-integration` / `run-integration-podman` label, plus the invariants keeping those conditions live, the release gate set (`lint`/`test`/`integration`/`integration-podman`, with `race`/`vulncheck` deliberately non-blocking), and the `fuzz`/`mutation` workflows kept outside this gating.
-  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `integration` or `integration-podman` gating, or the `run-integration`/`run-integration-podman` labels.
+  - Description: Contract for gating the costly integration jobs and the non-required `race`/`vulncheck`/`deadcode` jobs behind the `changes` code-free gate, the PR-only concurrency group, `lint`/`test` as the only required checks, and the integration jobs' opt-in labels.
+  - Read If: Changing CI triggers or job conditions in `.github/workflows/ci.yml`, the `changes` gate or PR concurrency, the integration/`race`/`vulncheck`/`deadcode` gating, or the `run-integration`/`run-integration-podman` labels.
+- `codeql-scanning.md`
+  - Description: Contract for the advanced-setup CodeQL workflow replacing GitHub's default setup: languages (`actions`/`go`/`ruby`), Go autobuild with CGO, the `paths-ignore` filter mirroring the `changes` gate, and why default setup must stay disabled.
+  - Read If: Changing `.github/workflows/codeql.yml`, the scanned languages or CodeQL path filter/schedule, or the repository's CodeQL default-setup state.
 - `fuzz-ci.md`
   - Description: Contract for the `fuzz` workflow: it discovers targets from sources the same way `make fuzz` does (a `discover` job feeding the matrix), is never a PR gate, and caches a per-target corpus keyed by the flattened package name.
   - Read If: Changing `.github/workflows/fuzz.yml`, the `make fuzz` target or its `FUZZTIME`/`FUZZPKG` knobs, adding a fuzz target and expecting CI to run it, or deciding whether a fuzzing session belongs in CI.

@@ -17,7 +17,43 @@ on:
 permissions:
   contents: read
 
+# A re-pushed PR cancels its superseded run: the newest commit is the one worth
+# checking, and the required `lint`/`test` checks re-report on it. Non-PR events
+# (main pushes, tags, dispatch) each get a unique group via the run id, so they
+# are never cancelled or serialized — a burst of merges to main all still run.
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # Whether a push to main changed anything that can affect the runner image or
+  # the tests. The costly integration jobs gate on this so a docs- or
+  # brain-only merge to main does not pay a ~16-minute image build. It always
+  # runs, so its output is available to every gated job on every event.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect code-affecting changes
+        id: filter
+        run: |
+          set -euo pipefail
+          base='${{ github.event.before }}'
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then base='HEAD^'; fi
+          files=$(git diff --name-only "$base" '${{ github.sha }}' || true)
+          # The complement of mutation.yml's paths-ignore: docs, the operator
+          # brain, the Homebrew formula, issue templates, and .gitignore.
+          if printf '%s\n' "$files" | grep -vqE '^(docs/|\.operator-shared/|Formula/|\.github/ISSUE_TEMPLATE/)|\.md$|^\.gitignore$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: lint
     runs-on: ubuntu-latest
@@ -64,6 +100,13 @@ jobs:
 
   race:
     name: race
+    # Not a required check, so a docs- or brain-only change can skip it; a PR,
+    # main push, tag, or dispatch with code still runs it.
+    needs: [changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -75,6 +118,12 @@ jobs:
 
   vulncheck:
     name: vulncheck
+    # Not a required check; skipped on a code-free change like `race`.
+    needs: [changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -86,6 +135,12 @@ jobs:
 
   deadcode:
     name: deadcode
+    # Not a required check; skipped on a code-free change like `race`.
+    needs: [changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -99,13 +154,15 @@ jobs:
     name: integration (docker build)
     # Costly full-image builds (~10 minutes): run on main, releases, manual
     # dispatch, and on a PR a maintainer opted in by adding the
-    # `run-integration` label — not on every PR.
+    # `run-integration` label — not on every PR. On a main push the `changes`
+    # gate skips it when the merge touched no code (docs/brain/formula only).
+    needs: [changes]
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/') ||
       (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'run-integration'))
+      contains(github.event.pull_request.labels.*.name, 'run-integration')) ||
+      (github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -121,13 +178,14 @@ jobs:
     # endpoint instead of Docker Engine: podman serves the Docker API, so it is
     # expected to work, and this job is what makes it a tested engine. Its own
     # opt-in label keeps a podman-only failure from blocking a PR a maintainer
-    # ran docker for.
+    # ran docker for. Gated by `changes` on a main push like `integration`.
+    needs: [changes]
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.ref == 'refs/heads/main' ||
       startsWith(github.ref, 'refs/tags/') ||
       (github.event_name == 'pull_request' &&
-      contains(github.event.pull_request.labels.*.name, 'run-integration-podman'))
+      contains(github.event.pull_request.labels.*.name, 'run-integration-podman')) ||
+      (github.ref == 'refs/heads/main' && needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

@@ -45,27 +45,33 @@ jobs:
     name: discover fuzz targets
     runs-on: ubuntu-latest
     outputs:
-      pkgs: ${{ steps.list.outputs.pkgs }}
+      targets: ${{ steps.list.outputs.targets }}
     steps:
       - uses: actions/checkout@v7
       - id: list
-        # One matrix entry per package, because `go test -fuzz` refuses more
-        # than one package per run; `make fuzz` runs each target in the package
-        # on its own, so a second target needs no entry here. `name` is the
-        # package path with slashes flattened, which is unique across packages
-        # and safe to reuse in the cache key and the concurrency group.
+        # One matrix entry per *target*, because `go test -fuzz` accepts exactly
+        # one target per run and each target spends the full FUZZTIME budget on
+        # its own. A job per target keeps that budget independent: a package
+        # with three targets would otherwise need three times the job timeout.
+        # `name` (flattened path + target) is unique across the matrix and safe
+        # to reuse in the cache key and the concurrency group.
         run: |
-          pkgs=$(grep -rl '^func Fuzz' --include='*_test.go' internal cmd test | xargs -n1 dirname | sort -u)
-          if [ -z "$pkgs" ]; then
+          entries=$(grep -rlE '^func Fuzz' --include='*_test.go' internal cmd test | while read -r file; do
+            pkg=$(dirname "$file")
+            grep -oE '^func Fuzz[A-Za-z0-9_]+' "$file" | awk '{print $2}' | while read -r target; do
+              printf '%s\t%s\n' "$pkg" "$target"
+            done
+          done | sort -u)
+          if [ -z "$entries" ]; then
             echo "no fuzz targets found" >&2
             exit 1
           fi
-          json=$(printf '%s\n' "$pkgs" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({name: (gsub("/"; "-")), path: .})')
-          echo "pkgs=$json" >> "$GITHUB_OUTPUT"
+          json=$(printf '%s\n' "$entries" | jq -R -s -c 'split("\n") | map(select(length > 0)) | map(split("\t") | {name: (.[0] | gsub("/"; "-")) + "-" + .[1], path: .[0], target: .[1]})')
+          echo "targets=$json" >> "$GITHUB_OUTPUT"
 
   fuzz:
     needs: discover
-    name: fuzz (${{ matrix.pkg.name }})
+    name: fuzz (${{ matrix.target.path }} ${{ matrix.target.target }})
     runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
@@ -73,12 +79,12 @@ jobs:
       fail-fast: false
       # The target list comes from the `discover` job, not a static list.
       matrix:
-        pkg: ${{ fromJSON(needs.discover.outputs.pkgs) }}
+        target: ${{ fromJSON(needs.discover.outputs.targets) }}
     concurrency:
       # Never cancel a run in progress: a cancelled run spends its budget
       # without exploring, so a busy merge rate could starve exploration down to
       # nothing. A superseded pending job is dropped; the running one finishes.
-      group: fuzz-${{ matrix.pkg.name }}
+      group: fuzz-${{ matrix.target.name }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
@@ -98,13 +104,14 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/go-build/fuzz
-          key: fuzz-corpus-${{ matrix.pkg.name }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: fuzz-corpus-${{ matrix.pkg.name }}-
-      - name: Fuzz ${{ matrix.pkg.path }}
+          key: fuzz-corpus-${{ matrix.target.name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: fuzz-corpus-${{ matrix.target.name }}-
+      - name: Fuzz ${{ matrix.target.path }} ${{ matrix.target.target }}
         # A merge only needs the hint that nothing new broke; the nightly is
         # where depth comes from, and a dispatch says what it wants.
         env:
-          FUZZPKG: ${{ matrix.pkg.path }}
+          FUZZPKG: ${{ matrix.target.path }}
+          FUZZTARGET: ${{ matrix.target.target }}
           FUZZTIME: ${{ github.event_name == 'workflow_dispatch' && inputs.fuzztime || github.event_name == 'schedule' && '15m' || '60s' }}
         run: make fuzz
       - name: Upload the crasher
@@ -114,7 +121,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: fuzz-crasher-${{ matrix.pkg.name }}
-          path: internal/**/testdata/fuzz/**
+          name: fuzz-crasher-${{ matrix.target.name }}
+          path: ${{ matrix.target.path }}/testdata/fuzz/${{ matrix.target.target }}/
           if-no-files-found: ignore
           retention-days: 30
