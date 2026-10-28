@@ -41,6 +41,9 @@
 - `operator-brain-maintenance.md`
   - Description: Conventions for keeping this brain small and findable: one-line catalog Descriptions, anchor-first `Read If` lines, and retiring a plan (fold into the owning spec, then delete) once its work lands.
   - Read If: Adding or editing a catalog entry, spec, plan, or guide; writing a new freeform document; or curating/retiring the brain.
+- `branch-worktree-cleanup.md`
+  - Description: How `scripts/cleanup-merged-branches.sh` (via `make cleanup-branches`) removes merged worktrees/branches and reports the rest; the three merge-detection tiers (with the merge-commit guard on the `git cherry` tier and the gh tip-match requirement), the fresh-session worktree guard (`--fresh`, default 30m, not overridable by `--force`, keeps an unknown-creation-time worktree), dry-run skipping the remote refresh, the noninteractive-abort rule, the `--force-with-lease` origin deletion, and the prunable-worktree host/VM and idle-agents safety rules.
+  - Read If: Running or changing local repository maintenance, cleaning up worktrees or merged branches, or debugging a branch the sweep kept or removed.
 
 ### `specs/` - System contracts for this partition
 

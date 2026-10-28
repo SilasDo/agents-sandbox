@@ -21,6 +21,7 @@ read_if: Navigating the codebase.
 - `GLOSSARY.md` — Project terminology.
 - `CHANGELOG.md`, `ROADMAP.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `LICENSE.md`, `SECURITY.md` — Project metadata and policy.
 - `Makefile` — fmt/lint/test/build targets.
+- `scripts/` — Repo-maintenance shell scripts; `cleanup-merged-branches.sh` prunes merged worktrees and branches (`make cleanup-branches`).
 - `go.mod`, `go.sum` — Module deps (cobra, viper, go-git, msb SDK, docker/moby, testify).
 - `opencode.jsonc` — opencode config for this repo.
 - `.golangci.yml`, `.gitignore` — Lint config and ignore rules.
