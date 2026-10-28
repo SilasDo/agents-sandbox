@@ -148,6 +148,10 @@ command reports the bare version (e.g. `0.1.0`).
   key it moves — each legacy slug's agents under both the legacy and the checkout slug — across the destroy and the state
   move, so a concurrent per-key state write or VM creation can no longer interleave and lose a write or orphan a legacy
   VM (#333).
+- State: a `state.yaml` string value written as a folded block scalar with a leading blank line (e.g.
+  `home_volume: >`) no longer loses that leading newline when the launcher rewrites the file. The launcher now parses
+  and writes YAML through the maintained `go.yaml.in/yaml/v3` instead of the unmaintained `gopkg.in/yaml.v3` v3.0.1,
+  whose emitter dropped the blank line on write so a re-read no longer matched what was written.
 
 ## [0.6.0] - 2026-10-25
 
