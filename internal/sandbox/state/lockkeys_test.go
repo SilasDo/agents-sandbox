@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -107,6 +108,42 @@ func TestWithKeyLocksReleasesEarlierKeysOnLaterFailure(t *testing.T) {
 	}
 
 	// The first key's locks were released: re-acquiring them must succeed.
+	releaseHome, _, err := lockHomeState(first, true)
+	if err != nil {
+		t.Fatalf("first key's home lock leaked: %v", err)
+	}
+	releaseHome()
+	releaseVM, _, err := lockProjectVM(first, true)
+	if err != nil {
+		t.Fatalf("first key's project-VM lock leaked: %v", err)
+	}
+	releaseVM()
+}
+
+// TestWithKeyLocksReleasesEarlierKeysOnHomeFailure pins the home-acquire failure
+// path's release: when a later key's home acquire fails, the earlier key's locks
+// are released rather than leaked.
+func TestWithKeyLocksReleasesEarlierKeysOnHomeFailure(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	first := Key{Slug: "a", Agent: "opencode"}
+	second := Key{Slug: "b", Agent: "opencode"}
+	wantErr := errors.New("mkdir boom")
+	orig := mkdirHomeLock
+	mkdirHomeLock = func(dir string, mode os.FileMode) error {
+		if dir == filepath.Dir(homeLockPath(second)) {
+			return wantErr
+		}
+		return os.MkdirAll(dir, mode)
+	}
+	t.Cleanup(func() { mkdirHomeLock = orig })
+
+	if err := WithKeyLocks([]Key{first, second}, func() error {
+		t.Fatal("fn must not run when an acquire fails")
+		return nil
+	}); !errors.Is(err, wantErr) {
+		t.Fatalf("WithKeyLocks() = %v, want %v", err, wantErr)
+	}
+
 	releaseHome, _, err := lockHomeState(first, true)
 	if err != nil {
 		t.Fatalf("first key's home lock leaked: %v", err)

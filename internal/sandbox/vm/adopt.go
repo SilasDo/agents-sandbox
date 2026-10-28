@@ -395,7 +395,7 @@ func adoptLegacyIdentity(
 
 	keys, err := adoptionLockKeys(slugs, checkoutKey.Slug, checkoutKey.Agent)
 	if err != nil {
-		return err
+		return fmt.Errorf("derive adoption lock set: %w", err)
 	}
 	// Serialize the destroy and the directory move against every per-key state
 	// writer and VM creator for the keys the move touches: the root lock (held

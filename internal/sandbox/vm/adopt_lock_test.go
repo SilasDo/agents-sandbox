@@ -5,7 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -17,6 +19,43 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
+
+// TestLegacyAgentsToMigrateIncludesCommandAgentOnce pins that the command's own
+// agent is not duplicated when it already has legacy state: the early return
+// keeps the enumerated names rather than appending the agent a second time.
+func TestLegacyAgentsToMigrateIncludesCommandAgentOnce(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := seedHomeState(adoptRepoKey(), state.HomeState{HomeVolume: adoptLegacyVolume}); err != nil {
+		t.Fatal(err)
+	}
+
+	agents, err := legacyAgentsToMigrate(adoptRepoSlug, adoptAgentName)
+	if err != nil {
+		t.Fatalf("legacyAgentsToMigrate: %v", err)
+	}
+	if !slices.Equal(agents, []string{adoptAgentName}) {
+		t.Fatalf("legacyAgentsToMigrate() = %v, want exactly [%s]", agents, adoptAgentName)
+	}
+}
+
+// TestLegacyAgentsToMigrateAppendsMissingCommandAgent pins the other arm: an
+// agent with no legacy state (e.g. a VM whose state file was lost, #219) is
+// appended to the enumerated names.
+func TestLegacyAgentsToMigrateAppendsMissingCommandAgent(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	sibling := state.Key{Slug: adoptRepoSlug, Agent: "pi"}
+	if err := seedHomeState(sibling, state.HomeState{HomeVolume: "vol-pi"}); err != nil {
+		t.Fatal(err)
+	}
+
+	agents, err := legacyAgentsToMigrate(adoptRepoSlug, adoptAgentName)
+	if err != nil {
+		t.Fatalf("legacyAgentsToMigrate: %v", err)
+	}
+	if want := []string{"pi", adoptAgentName}; !slices.Equal(agents, want) {
+		t.Fatalf("legacyAgentsToMigrate() = %v, want %v", agents, want)
+	}
+}
 
 // TestAdoptionLockKeysCoversSiblingAndCheckoutKeys pins the lock set to what the
 // directory move actually touches: every agent with legacy state, under both the
@@ -75,7 +114,7 @@ func TestAdoptLegacyIdentityFailsWhenALaterLegacySlugIsUnreadable(t *testing.T) 
 	testutil.WritePath(t, state.SlugDir(badSlug), "not a directory")
 
 	identity := adoptIdentity()
-	identity.LegacyRepoSlugs = []string{badSlug}
+	identity.LegacyRepoSlugs = []string{adoptRepoSlug, badSlug}
 
 	client := &msb.MockMsbClient{GetSandboxFn: func(context.Context, string) (msb.SandboxHandle, error) {
 		return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
@@ -86,8 +125,11 @@ func TestAdoptLegacyIdentityFailsWhenALaterLegacySlugIsUnreadable(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected an unreadable later legacy slug to abort adoption")
 	}
-	if !strings.Contains(err.Error(), "list legacy state") {
-		t.Errorf("error = %v, want the enumeration failure", err)
+	if !strings.Contains(err.Error(), "derive adoption lock set") {
+		t.Errorf("error = %v, want the lock-set derivation failure", err)
+	}
+	if !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf("error = %v, want the wrapped unreadable-slug cause preserved", err)
 	}
 	if statePresent(t, adoptCheckoutKey()) {
 		t.Error("state moved despite the failed lock-set derivation")
@@ -119,9 +161,9 @@ func TestAdoptLegacyIdentityHoldsKeyLocksAcrossTheMove(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	probed := false
+	var lockedCalls int
 	adoptKeysLockedHook = func() {
-		probed = true
+		lockedCalls++
 		// The sibling's home lock is held: re-entering WithKeyLocks fails fast.
 		if err := state.WithKeyLocks([]state.Key{sibling}, func() error { return nil }); err == nil ||
 			!strings.Contains(err.Error(), "already held") {
@@ -147,8 +189,8 @@ func TestAdoptLegacyIdentityHoldsKeyLocksAcrossTheMove(t *testing.T) {
 	); err != nil {
 		t.Fatalf("AdoptLegacyIdentity: %v", err)
 	}
-	if !probed {
-		t.Fatal("the locked-region hook was not invoked")
+	if lockedCalls != 2 {
+		t.Fatalf("locked-region hook invoked %d times, want 2 (before the destroy and after the move)", lockedCalls)
 	}
 	// Every lock is released once adoption returns.
 	if err := state.WithKeyLocks([]state.Key{adoptCheckoutKey(), sibling}, func() error { return nil }); err != nil {

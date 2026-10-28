@@ -81,7 +81,7 @@ recovery as the only wholesale writer.
    (`vm.AdoptLegacyIdentity`) is its consumer — it holds every moved key's locks across the destroy and the
    directory move (#333). The lock set covers per-`(slug, agent)` keys only: the agent-less legacy key
    (`Key{Slug, Agent: ""}`, whose `state.yaml` the directory move also relocates and whose lock is
-   `locks/<slug>/legacy.lock`, taken by prune's `RemoveHomeState`) is deliberately not locked — no current path
+   `locks/<slug>/legacy.lock`, taken by prune's `RemoveHomeStateIf`) is deliberately not locked — no current path
    writes the agent-less `HomeState`, so the only outcomes are a benign ENOENT or adoption's existing loud
    arrival failure.
 7. **`--dry-run` side-effect-freedom is spread across call paths** (`vm/run_orchestrate.go:206`, `:313`), not one guard.
