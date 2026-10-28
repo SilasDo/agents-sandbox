@@ -91,11 +91,11 @@ The prompt (`promptUpgrade`) then names both `latest` and this project's `curren
 `"Upgrade <agent> <current> → <latest>"`). Because that `current` is read from the project's own file, it cannot name
 another project's version.
 
-Under `--dry-run` (`opts.DryRun`, which implies `--dry-run-vm`), `resolveBuildVersion` is not called at all:
-`PrepareSandbox` uses the project's recorded `HomeState.agent_version` as the build arg (no network check, no prompt)
-and emits a verbose `dry-run: would resolve build version`. This is the upgrade-check half of `--dry-run`'s
-side-effect-freedom, matching the home-migration offer gate; the legacy fold below is likewise skipped under
-`--dry-run`. The full `--dry-run` contract (no image build, no volume create, no state write, no network request) is
+Under `--dry-run` (`ModePreview`, resolved by `runoptions.ResolveMode`), `resolveBuildVersion` is never reached: the
+session returns from the preview before it calls the setup hub, and the hub has no dry-run gate of its own. There is
+likewise no recorded-version substitution and no verbose dry-run line. This is the upgrade-check half of `--dry-run`'s
+side-effect-freedom, matching the home-migration offer; the legacy fold below is unreached on the preview path
+too. The full `--dry-run` contract (no image build, no volume create, no state write, no network request) is
 [dry-run-preview.md](dry-run-preview.md).
 
 ### Baseline recovery from the image label
@@ -189,8 +189,8 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
   and defers when it is held (`project-state-transactions.md`).
 - **A RootState read failure never writes.** A `RootState` read error must warn and return no offer without persisting,
   never overwrite the file with a zero-value document that would discard the `migrations` registry.
-- **`--dry-run` skips the upgrade check.** Under it there is no upgrade network check, no state persistence, and no legacy
-  fold; `resolveBuildVersion` is replaced by a verbose "would resolve build version" message. (Its broader
+- **`--dry-run` skips the upgrade check.** The preview returns before the setup hub, so there is no upgrade network check,
+  no state persistence, and no legacy fold, and `resolveBuildVersion` is never reached. (The broader
   no-side-effects contract lives in [dry-run-preview.md](dry-run-preview.md).)
 
 ## Edge cases

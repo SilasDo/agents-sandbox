@@ -73,6 +73,9 @@ command reports the bare version (e.g. `0.1.0`).
   present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
   with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
   `docs/runner-image.md`.
+- `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
+  (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
+  `dry-run-vm: auto-enabled` verbose line (#344).
 
 ### Fixed
 
@@ -125,6 +128,8 @@ command reports the bare version (e.g. `0.1.0`).
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
 - Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
   a run with no config file; the deprecated `--dind` alias already survived.
+- VM reconfiguration: the per-project VM creation lock now also covers a config-change VM recreate's teardown, so a
+  concurrent run cannot race the destroy while a new create is starting (#397).
 
 ## [0.6.0] - 2026-10-25
 

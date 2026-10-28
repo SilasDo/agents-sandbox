@@ -75,7 +75,7 @@ recovery as the only wholesale writer.
    (`root.go:146`) enforce correctness by comment only.
 6. **No reentrancy / lock-order guard.** flock is not reentrant and `UpdateHomeState` blocks, so a nested call
    self-deadlocks; root→home is intended but unchecked.
-7. **`--dry-run` side-effect-freedom is spread across call paths** (`vm/run_orchestrate.go:206`, `:313`), not one guard.
+7. **`--dry-run` side-effect-freedom was spread across call paths** (`vm/run_orchestrate.go`), not one guard.
    It is now a genuine read-only preview (no image build, volume create, or state write); see
    [dry-run-preview.md](dry-run-preview.md).
 
@@ -191,10 +191,9 @@ rather than an error, because it cannot deadlock and is the contention-deferral 
 
 ### `--dry-run` guard
 
-Keep `determineAgentVersion` as the single branch that skips `resolveBuildVersion` and the legacy fold, and
-`prepareHomeVolume` as the single branch that skips the migration offer. These in-`PrepareSandbox` gates remain the
-mechanism; the full `--dry-run` contract — a read-only preview that returns before `PrepareSandbox` — lives in
-[dry-run-preview.md](dry-run-preview.md). No new mechanism here.
+The execution mode lives at the session/CLI boundary (`options.Mode`, resolved by `runoptions.ResolveMode`), and the
+preview returns before `PrepareSandbox`, so that hub needs no dry-run gates. The full `--dry-run` contract — a read-only
+preview that returns before `PrepareSandbox` — lives in [dry-run-preview.md](dry-run-preview.md). No new mechanism here.
 
 ### API after this change
 
