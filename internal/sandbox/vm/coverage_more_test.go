@@ -414,8 +414,8 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 }
 
 // TestAgentLatestVersionDefaultClosureNoChecker covers the default
-// agentLatestVersion closure branch for an agent that is not an UpgradeChecker:
-// it returns an empty version without error.
+// agentLatestVersion branch for an agent that is not an UpgradeChecker: it
+// returns an empty version without error.
 func TestAgentLatestVersionDefaultClosureNoChecker(t *testing.T) {
 	orig := agentLatestVersion
 	defer func() { agentLatestVersion = orig }()
