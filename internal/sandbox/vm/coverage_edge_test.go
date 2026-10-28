@@ -99,6 +99,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 		"/workspace",
 		k,
 		k.Slug,
+		false,
 		envsecret.EnvSecrets{},
 		&ui,
 	)

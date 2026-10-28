@@ -274,6 +274,7 @@ func TestEnsureProjectVM_CreatePath(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -327,6 +328,7 @@ func TestEnsureProjectVMAppliesLabels(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -364,6 +366,7 @@ func TestEnsureProjectVM_ReconnectPath(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -413,6 +416,7 @@ func TestEnsureProjectVM_ConnectOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
@@ -443,6 +447,7 @@ func TestEnsureProjectVM_StartOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
@@ -477,6 +482,7 @@ func TestEnsureProjectVM_CreateOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
@@ -513,6 +519,7 @@ func TestEnsureProjectVM_ReconnectWhenImageUnchanged(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -671,6 +678,7 @@ func TestEnsureProjectVM_NoReplacementWhenExistingImageUnknown(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -723,6 +731,7 @@ func TestEnsureProjectVMRecreatesWhenFlagged(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)
@@ -769,6 +778,7 @@ func TestEnsureProjectVMReusesWhenNotFlagged(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		envsecret.EnvSecrets{},
 		ui,
 	)

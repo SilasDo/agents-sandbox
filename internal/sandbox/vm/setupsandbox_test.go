@@ -257,9 +257,10 @@ func TestRestartDaemonsRestartsServe(t *testing.T) {
 		&ui,
 	)
 
-	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
+	if len(*calls) != 1 {
 		t.Errorf("expected one opencode serve launch, got %+v", *calls)
 	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 }
 
 func TestSetUpSandboxRestartsDaemonsOnReuseDecision(t *testing.T) {
@@ -292,9 +293,10 @@ func TestSetUpSandboxRestartsDaemonsOnReuseDecision(t *testing.T) {
 	if target == "" {
 		t.Error("expected a resolved target")
 	}
-	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
+	if len(*calls) != 1 {
 		t.Errorf("expected opencode serve restart on restartDaemons=true, got %+v", *calls)
 	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 }
 
 // TestSetUpSandboxSkipsRestartOnProvisionError verifies that when a daemon

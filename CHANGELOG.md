@@ -10,6 +10,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- CI: `main` merges through a **merge queue**. A queued PR is built on top of the current `main` plus the pull requests
+  ahead of it, and the required checks — `lint`, `test`, `race`, `deadcode` — run on that combined tree before it
+  merges, so two independently-green PRs can no longer combine into a broken `main`. `race` and `deadcode` are now
+  required and always run, since a gated required check would report success without running; the `integration` suites
+  still run after the merge. See `CONTRIBUTING.md`.
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
@@ -50,6 +55,8 @@ command reports the bare version (e.g. `0.1.0`).
 - Docs integrity: `ci/check-docs.sh` now verifies that every documentation fragment landing on the published site —
   rendered-HTML links, `docs/` in-page and cross-page anchors, and the launcher's printed links — resolves to a
   heading that slugs to it. The launcher composes its links through the new `internal/docslink` package (#296).
+- Docs: the roadmap now lists the `priority:medium` label alongside `priority:critical`/`high`/`low`, matching the
+  issue tracker.
 - Maintenance: updated the microsandbox Go SDK and managed `msb` runtime to v0.7.11.
 - Internal: `dockerd` and the agent `serve` daemon now run as microsandbox runtime-owned detached jobs
   (`ExecDetached`), replacing shell-backgrounded `nohup` processes, logfile polling, and `pkill` start/stop plumbing.
@@ -66,6 +73,13 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Internal: the notify watcher's entry point (`notify.Watch`) now depends on a two-method `notify.StreamOpener` seam
+  (`ShellStream`, `Shell`) instead of the whole `msb.Sandbox`, so a fake with those two operations can drive it; the run
+  path adapts the sandbox with `notify.SandboxStreamOpener` (#358).
+- Internal: the pre-lock and post-lock VM start/connect transitions are one function, so a connect failure recovers
+  through refresh-and-resume on both instead of only on the fast path — the post-lock re-check (the path every first
+  boot and concurrent start takes) no longer falls through to a bare start — and the post-lock re-check reports its
+  connect/start outcome like the fast path (#340).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
@@ -73,6 +87,9 @@ command reports the bare version (e.g. `0.1.0`).
   present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
   with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
   `docs/runner-image.md`.
+- `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
+  (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
+  `dry-run-vm: auto-enabled` verbose line (#344).
 
 ### Fixed
 
@@ -90,6 +107,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Env and secrets: the host `env` and `env.secret`/`env.secret.yaml` files are read once per run instead of three
   times, so a malformed entry is warned about once instead of up to three times. The fingerprints a run persists and
   the host env and secrets baked into a newly created VM now come from that one read and cannot disagree (#342).
+- Runner image: the microsandbox load decision now trusts only the content digest. A cached image that records no
+  digest is treated as unknown content and reloaded instead of being matched by its `dockerfile-id` label — a source
+  signature that can match while the layers differ, so a stale image could previously pass as current. The reload
+  happens once, because a load records a digest (#351).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
@@ -142,6 +163,8 @@ command reports the bare version (e.g. `0.1.0`).
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
 - Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
   a run with no config file; the deprecated `--dind` alias already survived.
+- VM reconfiguration: the per-project VM creation lock now also covers a config-change VM recreate's teardown, so a
+  concurrent run cannot race the destroy while a new create is starting (#397).
 - Agent upgrade check: the launcher-global root lock is no longer held across the release-endpoint request, so one
   project's egress check no longer blocks unrelated projects (adoption, the runtime-home copy campaign) or makes them
   silently skip their step. The check reads the cached window under the lock, performs the request with the lock
@@ -155,6 +178,11 @@ command reports the bare version (e.g. `0.1.0`).
   `home_volume: >`) no longer loses that leading newline when the launcher rewrites the file. The launcher now parses
   and writes YAML through the maintained `go.yaml.in/yaml/v3` instead of the unmaintained `gopkg.in/yaml.v3` v3.0.1,
   whose emitter dropped the blank line on write so a re-read no longer matched what was written.
+- Detached jobs: dockerd and the agent serve daemon are launched with a command-line identity marker
+  (`env AGENTS_SANDBOX_DETACHED_JOB=<helper> …`), and a stale helper is killed by that identity instead of by its exact
+  command line. After a release changes a helper's flags (dockerd's storage driver, the daemon's serve hostname or health
+  format), the old process was no longer matched and both raced for the socket or port, so the run failed with
+  "exited before becoming ready" (#343).
 
 ## [0.6.0] - 2026-10-25
 
@@ -330,8 +358,8 @@ command reports the bare version (e.g. `0.1.0`).
 - `--dry-run` is now a read-only preview. It reports the agent version (or that the version resolves at build time),
   whether the runner image would build (with the same reasons a real build logs) or be reused, and whether the home
   volume would be created or reused — without building the runner image, creating a home volume, writing project state,
-  starting a sandbox, attaching, or making any network request. The `volume migrate`/`reset`/`edit` `--dry-run`
-  operations likewise no longer ensure the image.
+  starting a sandbox, attaching, or making any network request (`shell --dry-run` still runs its prerequisite check
+  first). The `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image.
 - `--rebuild` on `run`/`shell` now only forces a clean rebuild; it no longer suppresses the agent upgrade check. A
   pinned `--agent-version` is ignored for a user-provided agent, matching the documented contract.
 - Bare checkouts (a bare `.git` with worktrees inside it) now read project config — `.agents-sandbox/Dockerfile`,

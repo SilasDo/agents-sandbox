@@ -42,8 +42,9 @@ tests never execute is the failure mode this catches.
   second upload (`report_type: test_results`, `junit.xml`) feeds Codecov Test Analytics, whose PR comment the
   `comment:` block does not govern.
 - **codecov is not a required status check on `main`.** The required checks come from the repository ruleset
-  `protect main`, which lists only `lint` and `test`; classic branch protection has no required contexts, so consult the
-  ruleset, not `branches/main/protection`. A failing `codecov/patch` therefore leaves a PR `MERGEABLE` with
+  `protect main`, which requires `lint`, `test`, `race`, and `deadcode` (see `ci-job-gating.md`); classic branch
+  protection has no required contexts, so consult the ruleset, not `branches/main/protection`. A failing
+  `codecov/patch` therefore leaves a PR `MERGEABLE` with
   `mergeStateStatus: UNSTABLE` — mergeable with a failing non-required check; while a required check is still running the
   status is `BLOCKED` instead. Do not read `UNSTABLE` as "nothing is wrong".
 - **Observed behaviour (PR #271, 2026-10-22):** `codecov/patch` failed at 93.88% (6 of 98 patch lines missing) and

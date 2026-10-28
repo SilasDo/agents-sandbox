@@ -93,10 +93,12 @@ older version) is reported as a generic content change.
 
 ### Content-verified load
 
-Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content — the config digest (compared against
-the Docker image ID) or the `dockerfile-id` label. If the cached content no longer matches, the image is reloaded so the
-VM always boots from the correct image. At verbose level the load states whether the image was absent from the cache or
-its cached content was stale.
+Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content by comparing its config digest against the
+Docker image ID. If the cached content no longer matches, the image is reloaded so the VM always boots from the correct
+image. A cached image that records no digest is treated as unknown content and reloaded rather than matched by the
+`dockerfile-id` label, which is a source signature that can match while the bytes differ; the reload happens once,
+because a load records a digest. At verbose level the load states whether the image was absent from the cache or its
+cached content was stale.
 
 The load tries three candidate references and reuses the first that already holds the current content: the new content
 reference, the prefix-free name reference (`<slug>:<agent>-latest`, a 0.6.0 cache), and the legacy prefixed reference

@@ -103,30 +103,29 @@ func SetRuntimeHomeMigrationOffer(
 // PrepareSandbox builds (or reuses) the project VM, provisions config, and
 // returns a ready-to-attach Session. It is the setup half of a run:
 // Run and Shell in the session package call it and then attach to the result.
+//
+// skipVM prepares everything except the VM lifecycle (the --dry-run-vm
+// contract), leaving Session.Sandbox nil. A --dry-run preview never reaches
+// here: session.Run and session.Shell render the preview and return before this
+// call, so the hub has no preview mode of its own.
 func PrepareSandbox(
 	ctx context.Context,
 	opts options.RunOptions,
+	skipVM bool,
 	ui termio.UI,
 ) (*Session, error) {
 	cwd, err := resolveWorkspaceDir()
 	if err != nil {
 		return nil, err
 	}
-	a, identity, adoption, err := resolveSessionIdentity(ctx, cwd, opts.Agent, opts, ui)
+	a, identity, adoption, err := resolveSessionIdentity(ctx, cwd, opts.Agent, skipVM, ui)
 	if err != nil {
 		return nil, err
 	}
 	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
-	guestCWD := guestWorkspacePath(identity.BindRoot, cwd)
-	// --dry-run is a read-only preview rendered by the session layer: session.Run
-	// and session.Shell call vm.PreviewSandbox and return before reaching here.
-	// These in-PrepareSandbox gates are therefore only reached by direct callers
-	// or tests that pass opts.DryRun: determineAgentVersion (skips the upgrade
-	// check and legacy fold) and prepareHomeVolume (skips the migration offer),
-	// plus volume.ApplyHomeAction (skips the migrate/reset action) and
-	// session.Run/Shell (skip the attach). See
-	// .operator-shared/specs/dry-run-preview.md.
-	//
+	bindRoot := identity.BindRoot
+	repoSlug := identity.RepoSlug
+	guestCWD := guestWorkspacePath(bindRoot, cwd)
 	// Decide the agent version to bake before touching the image: this may offer
 	// an upgrade up front, so a normal run never rebuilds the image twice. See
 	// resolveBuildVersion for the decision rules.
@@ -152,17 +151,9 @@ func PrepareSandbox(
 
 	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Ref, imageInfo.Digest)
 
-	// Read the host env and secret files once and thread the loaded value down:
-	// the same value seeds a fresh home volume's state (issue #183), drives the
-	// reconfig change detection, and is baked into a newly created VM, so the
-	// files are read (and warned about) once per run.
-	env := envsecret.LoadEnvAndSecrets(ui)
-
-	// Compute the desired config fingerprints once: they seed a fresh home
-	// volume's state (issue #183) and are what persistConfigHashes records.
-	fingerprints := desiredFingerprints(opts, env)
+	env, fingerprints := loadEnvFingerprints(opts, ui)
 	client, vm, homeVol, vs, err := prepareHomeVolume(
-		ctx, k, imageInfo, opts, fingerprints, ui,
+		ctx, k, imageInfo, skipVM, fingerprints, ui,
 	)
 	if err != nil {
 		return nil, err
@@ -183,7 +174,7 @@ func PrepareSandbox(
 	if err != nil {
 		return nil, err
 	}
-	homeVol, err = applyReconfigHomeAction(ctx, client, vm, k, homeVol, imageInfo, opts, decision, ui)
+	homeVol, err = applyReconfigHomeAction(ctx, client, vm, k, homeVol, imageInfo, skipVM, decision, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -191,14 +182,13 @@ func PrepareSandbox(
 	opts.Recreate = decision.Recreate
 	opts.ServeHostPort = resolveServeHostPort(opts, decision.ServeHostPort)
 
-	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, env, ui)
+	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, bindRoot, k, repoSlug, skipVM, env, ui)
 	if err != nil {
 		return nil, err
 	}
 	if boot == vmBootCreated {
 		persistConfigHashes(k, fingerprints, ui)
 	}
-	name := projectVMName(k)
 	var sandboxTarget string
 	var sandboxErr error
 	if sb == nil {
@@ -215,7 +205,7 @@ func PrepareSandbox(
 
 	return &Session{
 		sb:            sb,
-		name:          name,
+		name:          projectVMName(k),
 		target:        sandboxTarget,
 		cwd:           cwd,
 		guestCWD:      guestCWD,
@@ -228,7 +218,7 @@ func PrepareSandbox(
 // resolveSessionIdentity looks up the agent and derives the workspace identity
 // for cwd, then adopts a legacy origin-keyed identity (#144). Adoption runs
 // before any other work so its notice explains the pause and the runner image
-// builds under the effective (checkout-scoped) tag; both dry-run gates make it
+// builds under the effective (checkout-scoped) tag; a skipVM prepare makes it
 // read-only, so the rest of the run keeps resolving against the legacy location.
 // It returns the adoption so the caller can use the effective slug; a home
 // volume a VM-only adoption preserved is recorded in the checkout state, not in
@@ -236,7 +226,7 @@ func PrepareSandbox(
 func resolveSessionIdentity(
 	ctx context.Context,
 	cwd, agentName string,
-	opts options.RunOptions,
+	skipVM bool,
 	ui termio.UI,
 ) (agent.Agent, git.Identity, IdentityAdoption, error) {
 	a, ok := agent.Lookup(agentName)
@@ -247,18 +237,16 @@ func resolveSessionIdentity(
 	if err != nil {
 		return nil, git.Identity{}, IdentityAdoption{}, err
 	}
-	apply := !opts.DryRun && !opts.DryRunVM
-	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), apply, ui)
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), !skipVM, ui)
 	if err != nil {
 		return nil, git.Identity{}, IdentityAdoption{}, err
 	}
 	return a, identity, adoption, nil
 }
 
-// determineAgentVersion decides the agent version for the run. A side-effect-free
-// --dry-run never prompts or hits the network: it uses the explicit pin, falling
-// back to this project's recorded version. Otherwise the full upgrade decision
-// runs.
+// determineAgentVersion decides the agent version for the run: the upgrade
+// decision, which may offer a rebuild up front and fold the legacy updater
+// state.
 func determineAgentVersion(
 	ctx context.Context,
 	k state.Key,
@@ -266,14 +254,6 @@ func determineAgentVersion(
 	ui termio.UI,
 	opts options.RunOptions,
 ) (string, bool, string, error) {
-	if opts.DryRun {
-		ui.Verbosef("dry-run: would resolve build version")
-		version := opts.AgentVersion
-		if version == "" {
-			version = currentAgentVersion(k)
-		}
-		return version, false, "", nil
-	}
 	migrateLegacyUpdaterState(ui)
 	return resolveBuildVersion(ctx, k, a, ui, opts)
 }
@@ -335,10 +315,9 @@ func resolveServeHostPort(opts options.RunOptions, planned int) int {
 	return planned
 }
 
-// prepareHomeVolume offers the opt-in legacy home-volume copy (unless this is a
-// side-effect-free --dry-run), then resolves the project's home volume and its
-// state. It returns the msb client and volume manager for the caller's
-// subsequent reconfig/VM steps.
+// prepareHomeVolume offers the opt-in legacy home-volume copy, then resolves the
+// project's home volume and its state. It returns the msb client and volume
+// manager for the caller's subsequent reconfig/VM steps.
 //
 // A home volume preserved by a VM-only identity adoption (#144) is not passed
 // here: adoption records it in the checkout state's RecoveredHomeVolume, which
@@ -348,28 +327,24 @@ func prepareHomeVolume(
 	ctx context.Context,
 	k state.Key,
 	imageInfo image.ImageInfo,
-	opts options.RunOptions,
+	skipVM bool,
 	fingerprints state.Fingerprints,
 	ui termio.UI,
 ) (msb.Client, *volume.Manager, string, state.HomeState, error) {
 	client := msb.Get()
-	// --dry-run is documented as side-effect-free, so it must not prompt or
-	// copy volumes. DryRunVM is unaffected: it still runs the offer.
-	if !opts.DryRun {
-		if err := offerRuntimeHomeMigration(ctx, client, ui); err != nil {
-			// A pending migration is a deliberate block, not an offer failure:
-			// return it as-is so the user sees the guidance, not a wrapper.
-			if errors.Is(err, runtimemigration.ErrMigrationPending) {
-				return nil, nil, "", state.HomeState{}, err
-			}
-			return nil, nil, "", state.HomeState{}, fmt.Errorf("runtime home migration offer failed: %w", err)
+	if err := offerRuntimeHomeMigration(ctx, client, ui); err != nil {
+		// A pending migration is a deliberate block, not an offer failure:
+		// return it as-is so the user sees the guidance, not a wrapper.
+		if errors.Is(err, runtimemigration.ErrMigrationPending) {
+			return nil, nil, "", state.HomeState{}, err
 		}
+		return nil, nil, "", state.HomeState{}, fmt.Errorf("runtime home migration offer failed: %w", err)
 	}
 
 	vm := volume.NewManager(ui)
 	recovered := liveHomeVolume(ctx, client, k, ui)
 	homeVol, vs, err := vm.ResolveHomeVolume(
-		ctx, client, k, imageInfo, opts.DryRunVM, fingerprints, recovered, ui,
+		ctx, client, k, imageInfo, skipVM, fingerprints, recovered, ui,
 	)
 	if err != nil {
 		return nil, nil, "", state.HomeState{}, fmt.Errorf("volume setup failed: %w", err)
@@ -446,6 +421,15 @@ func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui term
 		return ""
 	}
 	return volume
+}
+
+// loadEnvFingerprints reads the host env and secret files once per run and
+// derives the VM-config fingerprints from that single read, so the persisted
+// fingerprints and the env/secrets baked into a newly created VM cannot
+// disagree (#342).
+func loadEnvFingerprints(opts options.RunOptions, ui termio.UI) (envsecret.EnvSecrets, state.Fingerprints) {
+	env := envsecret.LoadEnvAndSecrets(ui)
+	return env, desiredFingerprints(opts, env)
 }
 
 // desiredFingerprints builds the VM-config fingerprints for the current run:

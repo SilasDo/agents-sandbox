@@ -13,7 +13,7 @@ import (
 func TestResolveSessionIdentityErrorsWhenIdentityUnresolvable(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	_, _, _, err := resolveSessionIdentity(
-		context.Background(), unresolvableIdentityDir(t), "opencode", options.RunOptions{}, &ui,
+		context.Background(), unresolvableIdentityDir(t), "opencode", false, &ui,
 	)
 	if err == nil {
 		t.Fatal("resolveSessionIdentity succeeded with an unresolvable identity, want an error")

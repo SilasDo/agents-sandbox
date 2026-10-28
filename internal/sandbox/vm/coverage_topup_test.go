@@ -349,7 +349,7 @@ func TestApplyReconfigHomeActionError(t *testing.T) {
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		"vol",
 		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
-		options.RunOptions{Agent: "opencode"},
+		false,
 		decision,
 		ui,
 	)

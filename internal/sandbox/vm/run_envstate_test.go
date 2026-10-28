@@ -777,7 +777,7 @@ func TestResolveReconfigDecision_HomePromptDeferredWhenRebuildDeferred(t *testin
 	}
 	homeVol, err := applyReconfigHomeAction(
 		context.Background(), mock, vm, key, "vol", imageInfo,
-		options.RunOptions{Agent: "opencode"}, decision, ui,
+		false, decision, ui,
 	)
 	if err != nil {
 		t.Fatalf("applyReconfigHomeAction: %v", err)
@@ -857,7 +857,7 @@ func TestResolveReconfigDecision_HomePromptAskedWhenRebuildConfirmed(t *testing.
 	}
 	homeVol, err := applyReconfigHomeAction(
 		context.Background(), mock, vm, state.Key{Slug: slug, Agent: "opencode"}, "vol", imageInfo,
-		options.RunOptions{Agent: "opencode"}, decision, ui,
+		false, decision, ui,
 	)
 	if err != nil {
 		t.Fatalf("applyReconfigHomeAction: %v", err)

@@ -1,4 +1,4 @@
-package termio
+package mocks
 
 import (
 	"context"

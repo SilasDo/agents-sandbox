@@ -691,8 +691,9 @@ func TestEnsureImageReadsVersionFromDocker(t *testing.T) {
 }
 
 // TestEnsureLoadedDecision pins the load decision table: the content digest is
-// authoritative, the dockerfile-id label is only a fallback for a legacy cached
-// image with no digest, and host Docker is never inspected.
+// authoritative, and a cached image that records no digest is unknown content
+// that must be reloaded. The dockerfile-id label is never trusted as a
+// substitute for the digest, and host Docker is never inspected.
 func TestEnsureLoadedDecision(t *testing.T) {
 	cases := []struct {
 		name          string
@@ -723,11 +724,11 @@ func TestEnsureLoadedDecision(t *testing.T) {
 			wantLoadCount: 1,
 		},
 		{
-			name:          "no digest, equal label skips",
+			name:          "no digest must reload even when the label matches",
 			cached:        true,
 			msbLabels:     map[string]string{dockerfileIDLabelKey: "abc"},
 			info:          ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new", DockerfileID: "abc"},
-			wantLoadCount: 0,
+			wantLoadCount: 1,
 		},
 		{
 			name:          "no digest, different label loads",
@@ -847,8 +848,18 @@ func TestEnsureLoadedSkipsWhenCachedContentMatches(t *testing.T) {
 	}
 }
 
-func TestEnsureLoadedSkipsLegacyImageByDockerfileIDLabel(t *testing.T) {
+// TestEnsureLoadedReloadsLegacyImageWithoutDigest pins the cost of treating a
+// missing digest as unknown content: a legacy cached image whose dockerfile-id
+// label matches is still reloaded, so the fallback can never let a label match
+// stand in for a content comparison. The load records a digest, so the reload
+// happens at most once.
+func TestEnsureLoadedReloadsLegacyImageWithoutDigest(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageSaveFn: func(_ context.Context, _ []string, _ ...client.ImageSaveOption) (client.ImageSaveResult, error) {
+			return io.NopCloser(strings.NewReader("tar-data")), nil
+		},
+	})
 	labels := map[string]string{dockerfileIDLabelKey: "abc123"}
 	msbClient := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -860,8 +871,8 @@ func TestEnsureLoadedSkipsLegacyImageByDockerfileIDLabel(t *testing.T) {
 	if _, err := EnsureLoaded(context.Background(), msbClient, info, &termio.Mock{}); err != nil {
 		t.Fatalf("EnsureLoaded: %v", err)
 	}
-	if len(msbClient.LoadedImages) != 0 {
-		t.Errorf("expected no reload when labels match, got %v", msbClient.LoadedImages)
+	if len(msbClient.LoadedImages) != 1 {
+		t.Errorf("expected a reload when the cached image records no digest, got %v", msbClient.LoadedImages)
 	}
 }
 
