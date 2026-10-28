@@ -263,10 +263,21 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 				state.Key{Slug: adoption.Slug, Agent: a.Name()},
 				openCodeVersion,
 			)
-			_, err = image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
+			info, err := image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: agentVersion, UserProvided: userProvided, Docker: resolveBuildDocker(cmd),
 			}, ui)
-			return err
+			if err != nil {
+				return err
+			}
+			// Record the release the built image reports so an explicit
+			// --agent-version pin persists for later unpinned runs. A failure
+			// only warns: the next run reconciles from the image label.
+			if err := state.RecordAgentVersion(
+				state.Key{Slug: adoption.Slug, Agent: a.Name()}, info.AgentVersion,
+			); err != nil {
+				ui.Warnf("could not persist the agent version: %v (continuing)", err)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolP(flagRebuild, flagRebuild[:1], false, "Force a clean rebuild")

@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -267,6 +269,80 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBuildCommandRecordsPinnedAgentVersion pins that the standalone build is a
+// writer of record for the project's agent-version baseline: the release the
+// built image reports is recorded, so an explicit --agent-version pin survives
+// later unpinned runs.
+func TestBuildCommandRecordsPinnedAgentVersion(t *testing.T) {
+	initTestProjectDir(t)
+	cmd, _ := setupCommandFixtures(t, cmdBuild, "--agent-version", "9.9.9")
+
+	// The fixture's resolver returns its own build version, so the recorded
+	// value can only come from the built image's agent-version label. No label
+	// matches the dockerfile-id, so the build genuinely runs and inspects.
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{
+						"org.agents-sandbox.identity.agent-version": "9.9.9",
+					},
+				},
+			}, nil
+		},
+	})
+
+	key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	if err := seedHomeState(key, state.HomeState{HomeVolume: "home-vol"}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.AgentVersion != "9.9.9" {
+		t.Errorf("AgentVersion = %q, want the pinned 9.9.9 recorded", st.AgentVersion)
+	}
+}
+
+// TestBuildCommandWarnsWhenRecordingAgentVersionFails verifies that a failed
+// baseline write only warns: recording must never fail a build.
+func TestBuildCommandWarnsWhenRecordingAgentVersionFails(t *testing.T) {
+	initTestProjectDir(t)
+	cmd, ui := setupCommandFixtures(t, cmdBuild, "--agent-version", "9.9.9")
+
+	// A directory at the state file's path makes the baseline write fail.
+	key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	if err := os.MkdirAll(filepath.Join(state.KeyDir(key), "state.yaml"), 0o700); err != nil {
+		t.Fatalf("make state path unwritable: %v", err)
+	}
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{
+						"org.agents-sandbox.identity.agent-version": "9.9.9",
+					},
+				},
+			}, nil
+		},
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("build must not fail on a state write error: %v", err)
+	}
+	assertWarnContains(t, ui, "could not persist the agent version")
 }
 
 func TestRunAndShellHaveAgentVersionFlag(t *testing.T) {
