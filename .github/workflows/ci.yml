@@ -9,6 +9,11 @@ on:
     # and `run-integration-podman` labels; the other three are the default
     # pull_request types.
     types: [opened, synchronize, reopened, labeled]
+  # The merge queue re-runs the required checks on the temporary
+  # `gh-readonly-queue/main/...` ref, which holds `main` plus the queued PRs.
+  # Without this trigger the required checks never report there, so every
+  # queue entry waits out the check-response timeout and is dropped.
+  merge_group:
   workflow_dispatch:
 
 # Least privilege for every job. The release pipeline's `publish` job raises this
@@ -18,9 +23,10 @@ permissions:
   contents: read
 
 # A re-pushed PR cancels its superseded run: the newest commit is the one worth
-# checking, and the required `lint`/`test` checks re-report on it. Non-PR events
-# (main pushes, tags, dispatch) each get a unique group via the run id, so they
-# are never cancelled or serialized — a burst of merges to main all still run.
+# checking, and the required checks re-report on it. Non-PR events (main pushes,
+# tags, dispatch, merge groups) each get a unique group via the run id, so they
+# are never cancelled or serialized — a burst of merges to main all still run,
+# and a rebuilt queue ref is a fresh run rather than a cancellation.
 concurrency:
   group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -45,10 +51,13 @@ jobs:
           set -euo pipefail
           # A push carries the previous tip in `before`. A pull_request payload
           # has no `before`, so diff against the base branch's merge base, which
-          # is exactly the PR's changeset.
+          # is exactly the PR's changeset. A merge_group names its base directly,
+          # since its ref is the throwaway `gh-readonly-queue/...` branch.
           if [ '${{ github.event_name }}' = 'pull_request' ]; then
             git fetch --no-tags origin "refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"
             base=$(git merge-base "origin/${{ github.base_ref }}" '${{ github.sha }}')
+          elif [ '${{ github.event_name }}' = 'merge_group' ]; then
+            base='${{ github.event.merge_group.base_sha }}'
           else
             base='${{ github.event.before }}'
             if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then base='HEAD^'; fi
@@ -108,13 +117,11 @@ jobs:
 
   race:
     name: race
-    # Not a required check, so a docs- or brain-only change can skip it; a PR,
-    # main push, tag, or dispatch with code still runs it.
-    needs: [changes]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      needs.changes.outputs.code == 'true'
+    # A required check (see the `protect main` ruleset), so it is not gated and
+    # runs on every event. GitHub reports a job skipped by its `if` as Success,
+    # which would satisfy the required check without running it — a gated
+    # required check can go green untested. It runs in parallel with lint/test,
+    # so always-on costs the queue no extra wall-clock.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -126,12 +133,15 @@ jobs:
 
   vulncheck:
     name: vulncheck
-    # Not a required check; skipped on a code-free change like `race`.
+    # Not a required check; skipped on a code-free change, and never run on a
+    # merge group — a network-dependent red must not appear on the queue's
+    # throwaway ref, where it could only be noise.
     needs: [changes]
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'merge_group' &&
+      (github.event_name == 'workflow_dispatch' ||
       startsWith(github.ref, 'refs/tags/') ||
-      needs.changes.outputs.code == 'true'
+      needs.changes.outputs.code == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -143,12 +153,8 @@ jobs:
 
   deadcode:
     name: deadcode
-    # Not a required check; skipped on a code-free change like `race`.
-    needs: [changes]
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.ref, 'refs/tags/') ||
-      needs.changes.outputs.code == 'true'
+    # A required check (see the `protect main` ruleset), so it always runs, like
+    # race.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
