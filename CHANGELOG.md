@@ -105,6 +105,9 @@ command reports the bare version (e.g. `0.1.0`).
   parsed slug to embed the launcher's 14-character hash, matching `image list`, so a manually loaded single-segment image
   in the private runtime home is neither listed nor removable — and `--force` does not override the ownership refusal
   (#350).
+- Runner image: the recorded agent-version baseline is kept in sync with the runner image, so an accepted agent upgrade no
+  longer reverts to the previous release on a later run, a `--agent-version` pin persists across unpinned runs, and a
+  deleted baseline is re-recorded. Fixes opencode2, whose image has no in-VM version probe.
 
 ## [0.6.0] - 2026-10-25
 
