@@ -81,7 +81,7 @@ func runVolumeOpScenario(t *testing.T, tc volumeOpScenario) {
 		}
 	}
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	if tc.withStopped {
 		mock.Sandboxes = append(mock.Sandboxes, mkStoppedVM(slug))
 	}
@@ -181,7 +181,7 @@ func TestVolumeOpsDryRunDoesNotEnsureImage(t *testing.T) {
 			doctor.MockedCheckAll(t, true)
 			image.WithMockAgentVersion(t, "0.0.0-test")
 
-			slug := git.CheckoutSlug()
+			slug := git.MustCheckoutSlug()
 			homeVolume := fmt.Sprintf("agents-sandbox-home-%s-20260814T132349", slug)
 			if err := seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 				HomeVolume: homeVolume,

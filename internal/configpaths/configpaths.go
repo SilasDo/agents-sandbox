@@ -158,11 +158,13 @@ func (c *realConfigPaths) ProjectConfigDir() string { return c.projectConfigBase
 // directory within the worktree, not just its root. Everywhere else the base is
 // the relative constant, resolved against the CWD by the callers.
 func resolveProjectConfig(cwd string) (string, string) {
-	physical, err := filepath.EvalSymlinks(cwd)
+	identity, err := git.ResolveIdentity(cwd)
 	if err != nil {
-		physical = cwd
+		// An unresolvable cwd degrades to the relative base: the project config
+		// directory is not identity-keyed, so it must not fail the read. The
+		// slug-deriving callers refuse instead (#354).
+		return projectConfigDir, ""
 	}
-	identity := git.ResolveIdentity(physical)
 	if !identity.Bare || identity.OutsideWorktree {
 		return projectConfigDir, ""
 	}

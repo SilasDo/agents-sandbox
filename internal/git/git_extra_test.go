@@ -23,7 +23,7 @@ func TestIsBare(t *testing.T) {
 // rejected even when the candidate carries a commondir marker, so a malformed
 // gitdir cannot strip to a shared dir.
 func TestWorktreeRegistrationRejectsMalformedNames(t *testing.T) {
-	base := resolvePath(t.TempDir())
+	base := mustResolvePath(t, t.TempDir())
 	marker := func(dir string) string {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s): %v", dir, err)
@@ -43,11 +43,15 @@ func TestWorktreeRegistrationRejectsMalformedNames(t *testing.T) {
 	}
 }
 
-func TestResolvePathReturnsAbsForMissingPath(t *testing.T) {
-	dir := resolvePath(t.TempDir())
+// TestResolvePathErrorsForMissingPath pins that resolvePath no longer
+// substitutes the unresolved absolute path for a path it cannot resolve: a
+// missing path is an error, so no caller can hash a degraded path into a
+// project identity (#354).
+func TestResolvePathErrorsForMissingPath(t *testing.T) {
+	dir := mustResolvePath(t, t.TempDir())
 	missing := filepath.Join(dir, "does-not-exist")
-	if got := resolvePath(missing); got != missing {
-		t.Errorf("resolvePath(%q) = %q, want the absolute path", missing, got)
+	if _, err := resolvePath(missing); err == nil {
+		t.Fatalf("resolvePath(%q) succeeded, want an error", missing)
 	}
 }
 

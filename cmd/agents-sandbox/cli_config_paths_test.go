@@ -26,7 +26,7 @@ func TestConfigPathsPrintsLayersToStdout(t *testing.T) {
 	// A file in the generic user layer proves Present is read per layer: that
 	// line must not be flagged (missing) while the empty layers are.
 	testutil.WriteFile(t, cp.UserConfigDir(), "config.yaml", "cpus: 2\n")
-	slug := git.RepoSlug()
+	slug := git.MustRepoSlug()
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("config paths: %v", err)
@@ -89,7 +89,7 @@ func TestConfigPathsIsQuietAware(t *testing.T) {
 }
 
 // TestConfigPathsResolvesOutsideRepo pins that config paths works from a
-// directory that is not in a repository: git.RepoSlug() falls back to the
+// directory that is not in a repository: git.MustRepoSlug() falls back to the
 // non-repo identity, so the command must still print the layers and a slug.
 func TestConfigPathsResolvesOutsideRepo(t *testing.T) {
 	t.Chdir(t.TempDir())
@@ -99,9 +99,9 @@ func TestConfigPathsResolvesOutsideRepo(t *testing.T) {
 		t.Fatalf("config paths outside a repo: %v", err)
 	}
 
-	slug := git.RepoSlug()
+	slug := git.MustRepoSlug()
 	if slug == "" {
-		t.Fatal("git.RepoSlug() outside a repo returned an empty slug")
+		t.Fatal("git.MustRepoSlug() outside a repo returned an empty slug")
 	}
 	if out := strings.Join(ui.OutCalls, "\n"); !strings.Contains(out, "repo slug:  "+slug) {
 		t.Errorf("config paths must report the non-repo slug %q, got:\n%s", slug, out)
