@@ -366,6 +366,25 @@ func TestResolverJSON5Config(t *testing.T) {
 	}
 }
 
+func TestResolverJSONCConfig(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	testutil.WriteFile(t, cp.UserConfigDir(), "config.jsonc", `{
+		// a comment
+		"cpus": 3,
+		"memory": "256M",
+		"yes": true
+	}`)
+
+	r, err := NewResolver(nil, "")
+	if err != nil {
+		t.Fatalf("NewResolver: %v", err)
+	}
+	if r.cfg.CPUs != 3 || r.cfg.Memory != "256M" || !r.Yes() {
+		t.Errorf("unexpected config: cpus=%d memory=%q yes=%v", r.cfg.CPUs, r.cfg.Memory, r.Yes())
+	}
+}
+
 func TestResolverDiskSizeConfig(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()

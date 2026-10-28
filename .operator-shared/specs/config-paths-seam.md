@@ -15,6 +15,9 @@ returns a `ConfigPaths`; production code obtains host paths through it, never by
   user's home, the root the home-relative agent config and `home:` manifests resolve against.
 - `MSBHome()` is a free function (not a method) so the low-level `sandbox/msb` adapter can resolve the private
   microsandbox home without importing the higher-level runtime package.
+- Config-file discovery (`FindConfigFile`, with `ExtJSONC`/`ExtJSON5`) is a free function here too: the launcher-config
+  and home-manifest loaders both call it, so the extension order and the first-existing-file lookup have one definition
+  and the two loaders cannot silently read different `config.<ext>` files from one directory.
 - Guest/VM config paths (e.g., `agent.VMConfigPath(home)`, `reprovision.AgentConfigPath`) are sandbox paths, derived
   from the VM home, and deliberately do **not** use this seam.
 

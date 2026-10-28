@@ -14,18 +14,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
-// TestFindConfigFileEmptyDirIgnoresCwdConfig pins that an empty dir is rejected
-// before any relative lookup: even with a config.yaml in the process CWD, an
-// empty dir must not resolve one.
-func TestFindConfigFileEmptyDirIgnoresCwdConfig(t *testing.T) {
-	cwd := t.TempDir()
-	testutil.WriteFile(t, cwd, "config.yaml", "home: {}\n")
-	t.Chdir(cwd)
-	if _, _, ok := findConfigFile(""); ok {
-		t.Error("findConfigFile(\"\") must not resolve a config file")
-	}
-}
-
 func TestParseHomeSectionErrorKeepsPresentFalse(t *testing.T) {
 	if _, has, err := ParseHomeSection([]byte("a: ["), "config.yaml"); err == nil || has {
 		t.Errorf("unmarshal error: has=%v err=%v, want has=false with an error", has, err)
