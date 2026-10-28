@@ -245,7 +245,8 @@ func resolveReconfigDecision(
 // applyReconfigHomeAction applies the home-volume action the decision resolved
 // and returns the home volume to mount. A nil HomeAction means no home-volume
 // change applies, so the current volume is returned unchanged. A "quit" action
-// aborts the run with an ExitError.
+// aborts the run with an ExitError. A skipVM prepare leaves the action
+// uncommitted, because applying it would spawn a throwaway VM.
 func applyReconfigHomeAction(
 	ctx context.Context,
 	client msb.Client,
@@ -253,7 +254,7 @@ func applyReconfigHomeAction(
 	k state.Key,
 	homeVol string,
 	imageInfo image.ImageInfo,
-	opts options.RunOptions,
+	skipVM bool,
 	decision reconfigDecision,
 	ui termio.UI,
 ) (string, error) {
@@ -264,7 +265,7 @@ func applyReconfigHomeAction(
 		ui.Infof("exiting as requested by user")
 		return "", &ExitError{Code: 1}
 	}
-	newVol, err := vm.ApplyHomeAction(ctx, client, k, homeVol, imageInfo, *decision.HomeAction, opts, ui)
+	newVol, err := vm.ApplyHomeAction(ctx, client, k, homeVol, imageInfo, *decision.HomeAction, skipVM, ui)
 	if err != nil {
 		return "", fmt.Errorf("apply home action: %w", err)
 	}

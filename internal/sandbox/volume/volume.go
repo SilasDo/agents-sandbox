@@ -8,7 +8,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
-	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 
@@ -70,22 +69,18 @@ func (vm *Manager) PrefillVolume(
 // State is only written when the action actually executes successfully; a real
 // run creates the new volume, prefills it (spawning a VM), copies files for
 // migrate (spawning another VM), and then records the new volume and current
-// digest. Both --dry-run and --dry-run-vm simulate the action without changing
-// state: --dry-run performs no writes at all, and --dry-run-vm additionally
-// never spawns a VM, so the chosen action is left uncommitted.
+// digest. A skipVM prepare leaves the action uncommitted, because both the
+// prefill and the copy would spawn a VM.
 func (vm *Manager) ApplyHomeAction(
 	ctx context.Context,
 	client msb.Client,
 	k state.Key, oldVolume string,
 	info image.ImageInfo,
 	action VolumeAction,
-	opts options.RunOptions,
+	skipVM bool,
 	ui termio.UI,
 ) (string, error) {
 	if action == ActionKeep {
-		if opts.DryRun {
-			return oldVolume, nil
-		}
 		if err := vm.RecordHomeImage(k, info.Digest, ui); err != nil {
 			ui.Warnf("failed to record image digest: %v", err)
 		}
@@ -93,11 +88,7 @@ func (vm *Manager) ApplyHomeAction(
 	}
 
 	label := actionLabel(action)
-	if opts.DryRun {
-		ui.Infof("dry-run: Would %s home volume (old %q kept)", label, oldVolume)
-		return oldVolume, nil
-	}
-	if opts.DryRunVM {
+	if skipVM {
 		ui.Infof("dry-run-vm: %s deferred; not applied without running a VM (old %q kept)", label, oldVolume)
 		return oldVolume, nil
 	}

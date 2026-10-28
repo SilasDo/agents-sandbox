@@ -342,7 +342,7 @@ func TestRunDryRunDoesNotPrepareSandbox(t *testing.T) {
 	ui := &termio.Mock{}
 	stubPreviewSandbox(t, sandbox.Preview{AgentVersion: "1.0.0", ImageTag: "tag", HomeVolume: "vol"})
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		t.Error("prepareSandbox must not run in dry-run mode")
 		return &fakePrepared{}, nil
 	}
@@ -371,8 +371,10 @@ func TestRunDryRunPropagatesPreviewError(t *testing.T) {
 func TestRunDryRunVM(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
+	var gotSkipVM bool
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(_ context.Context, _ options.RunOptions, skipVM bool, _ termio.UI) (preparedSandbox, error) {
+		gotSkipVM = skipVM
 		return &fakePrepared{}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -380,6 +382,9 @@ func TestRunDryRunVM(t *testing.T) {
 	err := Run(context.Background(), options.RunOptions{DryRunVM: true}, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run-vm: %v", err)
+	}
+	if !gotSkipVM {
+		t.Error("prepareSandbox got skipVM=false under --dry-run-vm, want true")
 	}
 	if len(ui.InfoCalls) == 0 || ui.InfoCalls[0] != "dry-run: Would start agent session in VM" {
 		t.Errorf("info = %v, want dry-run-vm message", ui.InfoCalls)
@@ -390,7 +395,7 @@ func TestRunServeOnlyPath(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: msb.NewMockSandbox(msb.SandboxOpts{})}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -421,7 +426,7 @@ func TestRunServeOnlyUsesSessionServeHostPort(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{
 			sb:            msb.NewMockSandbox(msb.SandboxOpts{}),
 			serveHostPort: 4099,
@@ -457,7 +462,7 @@ func TestRunPrepareSandboxError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return nil, errors.New("prepare boom")
 	}
 	defer func() { prepareSandbox = orig }()
@@ -474,7 +479,7 @@ func TestRunServeOnlyReapFailureWarns(t *testing.T) {
 	sb := &msb.MockSandbox{Name_: "test-vm"}
 	sb.ShellErr = errors.New("shell failed")
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -519,7 +524,7 @@ func TestShellPrepareSandboxError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return nil, errors.New("prepare boom")
 	}
 	defer func() { prepareSandbox = orig }()
@@ -543,7 +548,9 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 		"sleep 1h": msb.NewTestResult(true, 0, "", "", nil),
 	}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	var gotSkipVM bool
+	prepareSandbox = func(_ context.Context, _ options.RunOptions, skipVM bool, _ termio.UI) (preparedSandbox, error) {
+		gotSkipVM = skipVM
 		return &fakePrepared{sb: sb, target: "/workspace"}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -554,6 +561,9 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 	}, ui)
 	if err != nil {
 		t.Fatalf("Run normal: %v", err)
+	}
+	if gotSkipVM {
+		t.Error("prepareSandbox got skipVM=true on a real run, want false")
 	}
 	found := false
 	for _, v := range ui.VerboseCalls {
@@ -597,7 +607,7 @@ func TestShellDryRunDoesNotPrepareSandbox(t *testing.T) {
 	ui := &termio.Mock{}
 	stubPreviewSandbox(t, sandbox.Preview{AgentVersion: "1.0.0", ImageTag: "tag", HomeVolume: "vol"})
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		t.Error("prepareSandbox must not run in dry-run mode")
 		return &fakePrepared{}, nil
 	}
@@ -626,8 +636,10 @@ func TestShellDryRunPropagatesPreviewError(t *testing.T) {
 func TestShellDryRunVM(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
+	var gotSkipVM bool
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(_ context.Context, _ options.RunOptions, skipVM bool, _ termio.UI) (preparedSandbox, error) {
+		gotSkipVM = skipVM
 		return &fakePrepared{}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -635,6 +647,9 @@ func TestShellDryRunVM(t *testing.T) {
 	err := Shell(context.Background(), options.RunOptions{DryRunVM: true}, ui)
 	if err != nil {
 		t.Fatalf("Shell dry-run-vm: %v", err)
+	}
+	if !gotSkipVM {
+		t.Error("prepareSandbox got skipVM=false under --dry-run-vm, want true")
 	}
 	if len(ui.InfoCalls) == 0 || ui.InfoCalls[0] != "dry-run: Would start interactive shell session" {
 		t.Errorf("info = %v, want dry-run shell message", ui.InfoCalls)
@@ -654,7 +669,7 @@ func TestShellNormalCallsRunAttach(t *testing.T) {
 		"sleep 1h": msb.NewTestResult(true, 0, "", "", nil),
 	}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb, target: "/workspace"}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -678,7 +693,7 @@ func TestShellUsesGuestCWD(t *testing.T) {
 		"sleep 1h": msb.NewTestResult(true, 0, "", "", nil),
 	}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb, target: "/workspace", guestCWD: "/workspace/sub"}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -770,7 +785,7 @@ func TestRunStartsNotifyWatcher(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	origPrepare := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: msb.NewMockSandbox(msb.SandboxOpts{AttachCode: 0})}, nil
 	}
 	defer func() { prepareSandbox = origPrepare }()
@@ -804,7 +819,7 @@ func TestRunDoesNotStartNotifyWatcherWhenInactive(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	origPrepare := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: msb.NewMockSandbox(msb.SandboxOpts{AttachCode: 0})}, nil
 	}
 	defer func() { prepareSandbox = origPrepare }()
@@ -906,7 +921,7 @@ func TestRunLogsNotifyWatcherErrorAfterStop(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	origPrepare := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: msb.NewMockSandbox(msb.SandboxOpts{AttachCode: 0})}, nil
 	}
 	defer func() { prepareSandbox = origPrepare }()
@@ -942,7 +957,7 @@ func TestRunDoesNotStartNotifyWatcherWithoutEventStreamProvider(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
 	origPrepare := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: msb.NewMockSandbox(msb.SandboxOpts{AttachCode: 0})}, nil
 	}
 	defer func() { prepareSandbox = origPrepare }()

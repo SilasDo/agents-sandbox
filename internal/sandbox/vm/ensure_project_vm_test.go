@@ -50,6 +50,7 @@ func TestEnsureProjectVMFlockDirError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -80,6 +81,7 @@ func TestEnsureProjectVMDecideActionError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -116,6 +118,7 @@ func TestEnsureProjectVMWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -163,6 +166,7 @@ func TestEnsureProjectVMStartingReconcileWarning(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -195,6 +199,7 @@ func TestEnsureProjectVMStartingStatusError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -230,6 +235,7 @@ func TestEnsureProjectVMStartsAfterConcurrentBootFails(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -276,6 +282,7 @@ func TestEnsureProjectVMConvergesCreatedStartRace(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -312,6 +319,7 @@ func TestEnsureProjectVMConnectRetryRejectsRefreshedPausedVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -354,6 +362,7 @@ func TestEnsureProjectVMConnectRetryWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil || sb == nil || boot != vmBootConnected {
@@ -396,6 +405,7 @@ func TestEnsureProjectVMPostLockWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -436,6 +446,7 @@ func TestEnsureProjectVMPostLockWaitError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -480,6 +491,7 @@ func TestEnsureProjectVMPostLockWaitReconcileWarning(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -634,6 +646,7 @@ func TestEnsureProjectVMStartError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -661,6 +674,7 @@ func TestEnsureProjectVMEnsureInstalledError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -691,6 +705,7 @@ func TestEnsureProjectVMConnectRetryReconnectError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -729,6 +744,7 @@ func TestEnsureProjectVMConnectRetryStartAfterRefresh(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -767,6 +783,7 @@ func TestEnsureProjectVMPostLockRecheckConnect(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -811,6 +828,7 @@ func TestEnsureProjectVMPostLockRecheckStart(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -858,6 +876,7 @@ func TestEnsureProjectVMRecreateStopError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -894,6 +913,7 @@ func TestEnsureProjectVMStartSucceedsWithReconcile(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -932,6 +952,7 @@ func TestEnsureProjectVMConnectReconcileWarn(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -972,6 +993,7 @@ func TestEnsureProjectVMStartReconcileWarn(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -1010,6 +1032,7 @@ func TestEnsureProjectVMRecheckNonNotFoundError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1036,6 +1059,7 @@ func TestEnsureProjectVMCreateError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1073,6 +1097,7 @@ func TestEnsureProjectVMRecreateDestroyError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1120,6 +1145,7 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -1184,6 +1210,7 @@ func TestEnsureProjectVMRecreateReplacedIdentityFailsClosed(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1226,6 +1253,7 @@ func TestEnsureProjectVMCreateEnsureLoadedError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {

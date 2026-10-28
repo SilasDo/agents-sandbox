@@ -160,7 +160,7 @@ func TestShellAndRunServeHostOpenerWhileAttached(t *testing.T) {
 			}
 			sb.ExecOut = map[string]msb.ShellResult{"sleep 1h": msb.NewTestResult(true, 0, "", "", nil)}
 			original := prepareSandbox
-			prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+			prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 				return &fakePrepared{sb: sb, target: "/workspace", homeVolume: "home-vol"}, nil
 			}
 			t.Cleanup(func() { prepareSandbox = original })

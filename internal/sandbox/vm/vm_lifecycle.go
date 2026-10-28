@@ -85,18 +85,19 @@ func decideVMAction(notFoundErr error, status msbSdk.SandboxStatus) (vmAction, e
 // ensureProjectVM returns a live *msb.Sandbox for the project VM and how it
 // entered the running state this run: vmBootCreated on first boot or
 // recreation, vmBootStarted when this invocation booted an existing VM, or
-// vmBootConnected when an already-running VM was merely attached to. A
-// per-project host-side flock guards the first-boot race between concurrent
-// invocations.
+// vmBootConnected when an already-running VM was merely attached to (and when
+// skipVM leaves the lifecycle alone). A per-project host-side flock guards the
+// first-boot race between concurrent invocations.
 func ensureProjectVM(
 	ctx context.Context,
 	opts options.RunOptions,
 	info image.ImageInfo, homeVol, repoPath string,
 	k state.Key,
 	repoSlug string,
+	skipVM bool,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
-	if opts.DryRunVM {
+	if skipVM {
 		ui.Verbosef("dry-run: VM lifecycle skipped")
 		return nil, vmBootConnected, nil
 	}

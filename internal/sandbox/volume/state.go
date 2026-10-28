@@ -21,12 +21,15 @@ import (
 // VM's mounted volume (recoveredVolume) is adopted if it still exists, so a lost
 // state file does not mint a duplicate volume and orphan the previous one (issue
 // #219). When none is available it falls back to EnsureNewHome.
+//
+// skipVM passes through to EnsureNewHome: a fresh volume is still created and
+// recorded, but its prefill (which spawns a VM) is deferred.
 func (vm *Manager) ResolveHomeVolume(
 	ctx context.Context,
 	client msb.Client,
 	k state.Key,
 	info image.ImageInfo,
-	dryRunVM bool,
+	skipVM bool,
 	fingerprints state.Fingerprints,
 	recoveredVolume string,
 	ui termio.UI,
@@ -36,7 +39,7 @@ func (vm *Manager) ResolveHomeVolume(
 		if !errors.Is(err, state.ErrStateNotFound) {
 			ui.Warnf("could not read state file for project %q: %v", k.Slug, err)
 		}
-		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
+		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, ui)
 	}
 
 	// A VM-only identity adoption (#144) destroyed the legacy VM and recorded its
@@ -44,7 +47,7 @@ func (vm *Manager) ResolveHomeVolume(
 	// Finish that recovery so the volume becomes the project's HomeVolume with
 	// the current digest and fingerprints.
 	if st.RecoveredHomeVolume != "" {
-		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, st.RecoveredHomeVolume, ui)
+		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, st.RecoveredHomeVolume, ui)
 	}
 
 	if _, err := client.GetVolume(ctx, st.HomeVolume); err != nil {
@@ -52,7 +55,7 @@ func (vm *Manager) ResolveHomeVolume(
 			return "", state.HomeState{}, fmt.Errorf("checking home volume %q: %w", st.HomeVolume, err)
 		}
 		ui.Warnf("existing home volume %q not found, creating fresh", st.HomeVolume)
-		return vm.recoverOrCreateHome(ctx, client, k, info, dryRunVM, fingerprints, recoveredVolume, ui)
+		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, ui)
 	}
 
 	return st.HomeVolume, *st, nil
@@ -73,7 +76,7 @@ func (vm *Manager) recoverOrCreateHome(
 	client msb.Client,
 	k state.Key,
 	info image.ImageInfo,
-	dryRunVM bool,
+	skipVM bool,
 	fingerprints state.Fingerprints,
 	recoveredVolume string,
 	ui termio.UI,
@@ -83,7 +86,7 @@ func (vm *Manager) recoverOrCreateHome(
 		return "", state.HomeState{}, err
 	}
 	if !ok {
-		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, dryRunVM, fingerprints, ui)
+		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, skipVM, fingerprints, ui)
 		if err == nil {
 			clearAdoptionClaim(k, recoveredVolume, ui)
 		}
@@ -189,13 +192,14 @@ func recoveredHomeState(
 
 // EnsureNewHome creates a fresh home volume from the image and writes the state.
 // It seeds the state with the desired config fingerprints so a fresh state is
-// never fingerprint-less while its VM exists (issue #183).
+// never fingerprint-less while its VM exists (issue #183). Under skipVM the
+// prefill is deferred, since it spawns a throwaway VM.
 func (vm *Manager) EnsureNewHome(
 	ctx context.Context,
 	client msb.Client,
 	k state.Key,
 	info image.ImageInfo,
-	dryRunVM bool,
+	skipVM bool,
 	fingerprints state.Fingerprints,
 	ui termio.UI,
 ) (string, state.HomeState, error) {
@@ -207,7 +211,7 @@ func (vm *Manager) EnsureNewHome(
 		return "", state.HomeState{}, fmt.Errorf("create volume %s: %w", volName, err)
 	}
 
-	if !dryRunVM {
+	if !skipVM {
 		if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
 			return "", state.HomeState{}, err
 		}

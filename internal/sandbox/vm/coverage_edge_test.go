@@ -98,6 +98,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 		"/workspace",
 		k,
 		k.Slug,
+		false,
 		&ui,
 	)
 	if err == nil {

@@ -31,8 +31,8 @@ type preparedSandbox interface {
 }
 
 // prepareSandbox is a test seam swapped in tests to avoid real VM setup.
-var prepareSandbox = func(ctx context.Context, opts options.RunOptions, ui termio.UI) (preparedSandbox, error) {
-	return sandbox.PrepareSandbox(ctx, opts, ui)
+var prepareSandbox = func(ctx context.Context, opts options.RunOptions, skipVM bool, ui termio.UI) (preparedSandbox, error) {
+	return sandbox.PrepareSandbox(ctx, opts, skipVM, ui)
 }
 
 // previewSandbox is a test seam swapped in tests to avoid real host inspection.
@@ -177,7 +177,7 @@ func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 		return previewAndRender(ctx, opts, ui, false)
 	}
 
-	ses, err := prepareSandbox(ctx, opts, ui)
+	ses, err := prepareSandbox(ctx, opts, opts.DryRunVM, ui)
 	if err != nil {
 		return err
 	}
@@ -256,7 +256,7 @@ func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
 		return previewAndRender(ctx, opts, ui, true)
 	}
 
-	ses, err := prepareSandbox(ctx, opts, ui)
+	ses, err := prepareSandbox(ctx, opts, opts.DryRunVM, ui)
 	if err != nil {
 		return err
 	}
