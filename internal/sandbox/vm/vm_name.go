@@ -27,12 +27,14 @@ func legacyProjectVMName(k state.Key) string {
 // maximum length by shortening the slug, never the agent suffix.
 func truncateProjectVMName(prefix string, k state.Key) string {
 	name := prefix + k.Slug + "-" + k.Agent
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="at exactly the maximum a fall-through rebuilds the identical name (over == 0 keeps the whole slug) and returns it, so the two boundaries cannot differ"
 	if len(name) <= options.MaxSandboxNameLen {
 		return name
 	}
 	over := len(name) - options.MaxSandboxNameLen
 	slugLen := max(len(k.Slug)-over, 0)
 	name = prefix + k.Slug[:slugLen] + "-" + k.Agent
+	// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="the fall-through only slices a name whose length is already >= the maximum; an exactly-maximum name is unchanged by name[:Max]"
 	if len(name) > options.MaxSandboxNameLen { // extreme case: agent itself too long
 		return name[:options.MaxSandboxNameLen]
 	}

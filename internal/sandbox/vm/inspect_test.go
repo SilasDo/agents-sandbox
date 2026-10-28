@@ -70,30 +70,38 @@ func TestInspectSandboxPopulatesDetail(t *testing.T) {
 }
 
 func TestInspectSandboxConfigError(t *testing.T) {
+	configErr := errors.New("config boom")
 	mock := &msb.MockMsbClient{}
 	mock.Sandboxes = []msb.SandboxHandle{
-		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-abc", ConfigErr: errors.New("config boom")},
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-abc", ConfigErr: configErr},
 	}
 	msb.WithMsbMock(t, mock)
 	_, err := InspectSandbox(context.Background(), "agents-sandbox-vm-abc")
 	if err == nil || !strings.Contains(err.Error(), "read config") {
 		t.Fatalf("InspectSandbox() error = %v, want read config error", err)
 	}
+	if !errors.Is(err, configErr) {
+		t.Errorf("error = %v, want it to wrap the config cause", err)
+	}
 }
 
 func TestInspectSandboxMountsError(t *testing.T) {
+	mountsErr := errors.New("mounts boom")
 	mock := &msb.MockMsbClient{}
 	mock.Sandboxes = []msb.SandboxHandle{
 		&msb.MockSandboxHandle{
 			Name_:     "agents-sandbox-vm-abc",
 			Cfg:       &msbSdk.SandboxConfig{Image: "img:tag"},
-			MountsErr: errors.New("mounts boom"),
+			MountsErr: mountsErr,
 		},
 	}
 	msb.WithMsbMock(t, mock)
 	_, err := InspectSandbox(context.Background(), "agents-sandbox-vm-abc")
 	if err == nil || !strings.Contains(err.Error(), "read mounts") {
 		t.Fatalf("InspectSandbox() error = %v, want read mounts error", err)
+	}
+	if !errors.Is(err, mountsErr) {
+		t.Errorf("error = %v, want it to wrap the mounts cause", err)
 	}
 }
 

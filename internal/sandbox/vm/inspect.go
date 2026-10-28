@@ -89,8 +89,14 @@ func mountDetails(volumes map[string]msbSdk.MountConfig) []MountDetail {
 			Readonly:  mount.Readonly,
 		})
 	}
-	sort.Slice(mounts, func(i, j int) bool { return mounts[i].GuestPath < mounts[j].GuestPath })
+	sort.Slice(mounts, func(i, j int) bool { return lessMountByGuestPath(mounts[i], mounts[j]) })
 	return mounts
+}
+
+// lessMountByGuestPath orders two mount details by guest path, a strict weak
+// ordering: a path never precedes itself.
+func lessMountByGuestPath(a, b MountDetail) bool {
+	return a.GuestPath < b.GuestPath
 }
 
 // mountKindString names a mount kind for display, or "unknown" for an
