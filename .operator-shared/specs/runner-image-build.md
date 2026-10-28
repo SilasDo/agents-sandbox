@@ -50,11 +50,11 @@ candidate references in reuse-preference order and reuses the first that already
 2. the prefix-free name ref `info.Identity.NameRef()` (`<slug>:<agent>-latest`; a 0.6.0 install cached under it);
 3. the legacy prefixed Docker-tag ref `info.DockerTag` (`agents-sandbox/runner-<slug>:<agent>-latest`, a pre-0.6 cache).
 
-A candidate is reused only when its cached content matches: with a digest, the digest must equal `info.Digest`; a legacy
-image with no digest falls back to comparing the `dockerfile-id` label against `info.DockerfileID`. A digest mismatch is
-never overridden by a matching `dockerfile-id` label — the label is a source signature and can match while the bytes
-differ (base tag move + `--rebuild`). When no candidate matches, the Docker image is loaded under `info.Ref`; a load
-never removes a cached image first, because an existing VM may still reference it. The build/load split is deliberate:
+A candidate is reused only when its cached digest equals `info.Digest`; a cached image with no digest is unknown content
+and is reloaded, never matched by the `dockerfile-id` label. A digest mismatch is never overridden by a matching label —
+the label is a source signature and can match while the bytes differ (base tag move + `--rebuild`). When no candidate
+matches, the Docker image is loaded under `info.Ref`; a load never removes a cached image first, because an existing VM
+may still reference it. The build/load split is deliberate:
 `run`/`shell` build eagerly via `EnsureImage` but load lazily, only when a VM is actually created or recreated.
 
 Pruning keeps a candidate reference while a kept VM holds it, or its `(slug, agent)` is a live project key and the image

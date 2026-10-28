@@ -16,7 +16,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
-	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -554,38 +553,6 @@ func TestRecordHomeImage_WriteStateFails(t *testing.T) {
 	}
 }
 
-func TestApplyHomeAction_KeepDryRun_ReturnsOldVolume(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-
-	mock := &msb.MockMsbClient{}
-	var createdVols int
-	mock.CreateVolumeFn = func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
-		createdVols++
-		return &msb.MockVolumeHandle{}, nil
-	}
-	vm := NewManager(&termio.Mock{})
-
-	vol, err := vm.ApplyHomeAction(
-		context.Background(),
-		mock,
-		state.Key{Slug: "myproj", Agent: "opencode"},
-		"old-vol",
-		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
-		ActionKeep,
-		options.RunOptions{DryRun: true},
-		&termio.Mock{},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if vol != "old-vol" {
-		t.Errorf("volume = %q, want old-vol", vol)
-	}
-	if createdVols != 0 {
-		t.Errorf("expected no volumes created, got %d", createdVols)
-	}
-}
-
 func TestApplyHomeAction_KeepRecordImageFails_Warns(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
@@ -606,7 +573,7 @@ func TestApplyHomeAction_KeepRecordImageFails_Warns(t *testing.T) {
 		"old-vol",
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionKeep,
-		options.RunOptions{},
+		false,
 		ui,
 	)
 	if err != nil {
@@ -642,7 +609,7 @@ func TestApplyHomeAction_CreateVolumeFails(t *testing.T) {
 		"old-vol",
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err == nil || !strings.Contains(err.Error(), "create volume") {
@@ -689,7 +656,7 @@ func TestApplyHomeAction_WriteStateFails_ReturnsError(t *testing.T) {
 		"old-vol",
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		ui,
 	)
 	if err == nil {

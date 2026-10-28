@@ -1,6 +1,6 @@
 ---
-description: Contract for the per-startup project-VM reconfiguration decision: how changed settings are detected via persisted fingerprints, which changes recreate the VM vs restart the daemon, the fingerprint-preservation invariant, and the #183 seeding fix that closes the state-write race.
-read_if: Changing resolveReconfigDecision/applyReconfigHomeAction/PlanReconfig, the env/secret/network/mount fingerprints, the reconfig prompt, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
+description: Contract for the per-startup project-VM reconfiguration decision: how changed settings are detected via persisted fingerprints, which changes recreate the VM vs restart the daemon, the fingerprint-preservation invariant, and the #183 seeding fix that closes the state-write race, plus the per-project creation lock that also covers the recreate destroy (#397).
+read_if: Changing resolveReconfigDecision/applyReconfigHomeAction/PlanReconfig, the env/secret/network/mount fingerprints, the reconfig prompt, the ensure-vm.lock scope, or diagnosing a spurious VM rebuild or "network policy changed" prompt.
 ---
 
 # Project-VM reconfiguration decision
@@ -81,6 +81,9 @@ The trade-off: the seed write briefly asserts "applied" before the VM exists. If
 what is baked in, which is harmless because with no VM `PlanReconfig` short-circuits to no recreate. Recreated VMs (a
 genuine config change against an existing home) still refresh fingerprints via `persistConfigHashes` after creation; the
 state is never fingerprint-less on that path, so the change detected there is real.
+
+The per-`(slug, agent)` creation flock (`ensure-vm.lock`) now also covers a recreate's teardown (#397); the identity
+contract governing that destroy is in [sandbox-identity.md](sandbox-identity.md).
 
 ## Live mounts and the size/quota/home detectors (issue #223)
 

@@ -51,13 +51,15 @@ candidate references expands so an upgrade reimports nothing:
 3. The legacy prefixed Docker-tag ref `info.DockerTag` (`<DockerImagePrefix><slug>:<agent>-latest`): the reference a
    pre-0.6 install cached under.
 
-A candidate is reused only when its cached content matches (`cachedImageMatches`, digest-first with the `dockerfile-id`
-label fallback for a legacy image with no digest), never overridden by a label match alone. `ImageInfo` carries the
-image's structured identity (`naming.ImageIdentity{Slug, Agent, ContentID}`) alongside its rendered references, set by
-`EnsureImageWithClient` in the same expression that renders `Ref`; `EnsureLoaded` derives the name-ref candidate from
-it, so a reference the launcher itself constructed is never parsed back. Parsing (`naming.ParseImageTag`) remains only
-where a reference arrives from outside this process's own construction: the microsandbox image list (pruning,
-`image list`/`remove`) and CLI arguments.
+A candidate is reused only when its cached content matches (`cachedImageMatches`): the microsandbox config digest must
+equal `info.Digest`. A cached image that records no digest is unknown content and is reloaded — the `dockerfile-id`
+label is a source signature, not a content identity, and must not stand in for the digest (a floating base tag can move
+the bytes under a matching label). Reloading is the deliberate cost: a load records a digest, so such an image matches
+on the next run instead. `ImageInfo` carries the image's structured identity (`naming.ImageIdentity{Slug, Agent,
+ContentID}`) alongside its rendered references, set by `EnsureImageWithClient` in the same expression that renders
+`Ref`; `EnsureLoaded` derives the name-ref candidate from it, so a reference the launcher itself constructed is never
+parsed back. Parsing (`naming.ParseImageTag`) remains only where a reference arrives from outside this process's own
+construction: the microsandbox image list (pruning, `image list`/`remove`) and CLI arguments.
 
 ### Reconfig tolerance
 
@@ -131,8 +133,9 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
   reference that actually holds the content, so it can be a legacy candidate `EnsureLoaded` reused. Identity is set by
   the same call that renders the initial `Ref`, so no caller has to parse a reference it constructed.
 - Ownership/liveness resolve from `(slug, agent)` alone; `ContentID` never participates in a `state.Key`.
-- No legacy msb image is reimported by this change: the name ref and the prefixed ref are still reused when their content
-  matches.
+- No legacy msb image with a recorded digest is reimported by this change: the name ref and the prefixed ref are still
+  reused when their content matches. An image that records no digest is reloaded once (a load records a digest), because
+  a missing digest is unknown content and the source-signature label cannot vouch for it.
 
 ## Non-goals / limitations
 

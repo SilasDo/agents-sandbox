@@ -107,8 +107,8 @@ This project defaults to **test-driven development**:
   point), record the reason where it lives with `//deadcode:ignore reason="..."`: in the declaration's doc comment (or as
   a trailing comment on it), or in the comment block above its `package` clause to excuse a whole file. The reason is
   required, and a marker that excuses nothing fails the gate, so markers cannot rot. `PKG=./cmd/...` narrows the analysis
-  for inspection and skips the stale-marker pass; the analysis needs cgo. It runs on every PR but is deliberately not a
-  release prerequisite, and `make check` runs only the gate's own script test (`make deadcode-test`).
+  for inspection and skips the stale-marker pass; the analysis needs cgo. It is a required merge check, but deliberately
+  not a release prerequisite, and `make check` runs only the gate's own script test (`make deadcode-test`).
 - `make fuzz` drives the fuzz targets for a bounded `FUZZTIME` per target (`FUZZPKG` narrows it to one package,
   `FUZZTARGET` to one target). The seed corpus
   and any committed crasher run under `make test`, so a crasher is a regression test first; the `fuzz` workflow explores
@@ -150,6 +150,19 @@ If you change a CLI command or flag, update the relevant docs in the same PR.
 4. Run `make check` and make sure it passes.
 5. Open a pull request and fill out the template.
 6. Address review feedback; keep the commit history clean.
+
+### Merging
+
+`main` merges through a **merge queue**. Once a PR is approved and its required checks (`lint`, `test`, `race`,
+`deadcode`) pass, add it to the queue (a maintainer can, and anyone with write access can in the PR's merge box). The
+queue builds your branch on top of the current `main` **plus the PRs ahead of you**, re-runs the required checks on that
+combined tree, and merges it only if they pass. This is what stops two independently-green PRs from breaking `main`
+together, without anyone hand-rebasing before merging.
+
+If a required check fails on that combined build, the queue drops your PR and leaves the reason on the timeline; fix it
+and re-add the PR. `race` and `deadcode` are required and always run — a gated required check would report success
+without running — so a docs-only change runs them too. The `integration` suites are not in the queue: they still run on
+`main` after the merge (and on releases).
 
 ## Changelog & versioning
 
