@@ -80,6 +80,10 @@ command reports the bare version (e.g. `0.1.0`).
   through refresh-and-resume on both instead of only on the fast path — the post-lock re-check (the path every first
   boot and concurrent start takes) no longer falls through to a bare start — and the post-lock re-check reports its
   connect/start outcome like the fast path (#340).
+- Internal: `internal/cliout` no longer depends on the sandbox domain. It keeps only the generic renderer
+  (`PrintList`/`Mode`/`WriteJSON` and the report-mode renderer), and the sandbox/image/volume `Printer`
+  implementations plus the prune/compact report JSON DTOs moved to `internal/view`; an import-boundary test
+  keeps the separation (#357).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,

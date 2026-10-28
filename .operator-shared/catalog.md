@@ -134,6 +134,9 @@
 - `runtime-management-commands.md`
   - Description: Contract for the CLI's microsandbox management surface: `volume`/`image`/`sandbox inspect`, `image remove`/`sandbox remove`, a top-level `df` plus a `storage` alias, and uniform `-q`/`--format json`/`--yes`/`--older-than` conventions; delivered in ordered slices (#168–#172, #155).
   - Read If: Adding or reviewing volume/image/sandbox inspect and removal, the `df`/`storage` commands, prune confirmation/format flags, or command-surface consistency conventions.
+- `cliout-package-boundary.md`
+  - Description: Contract for the CLI output package boundary (#357): `internal/cliout` stays domain-free (generic mode/list/JSON rendering plus `RenderPruneReport`), while the sandbox-shaped `Printer` implementations and prune/compact report JSON DTOs live in `internal/view`, enforced by an import-boundary test.
+  - Read If: Moving a Printer, report-JSON DTO, or renderer between `internal/cliout` and the launcher's view package, or deciding where new list/inspect/report rendering belongs.
 - `sandbox-identity.md`
   - Description: Contract distinguishing a sandbox's mutable *name* from its stable *identity*: removal/attach fail closed via the SDK's identity-aware operations and `ErrSandboxReplaced` (via `msb.IsReplaced`), handled per path, replacing the name-based `RemoveSandbox`.
   - Read If: Working on the msb seam's sandbox removal/attach paths, prune, the reaper, reconfig-replace, or reasoning about name-vs-identity safety, `ErrSandboxReplaced`, or #144 vs #158.
