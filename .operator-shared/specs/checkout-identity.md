@@ -64,7 +64,13 @@ slugs keep the `<folder>-<hash>` shape they already parse.
 
 `ResolveIdentity` folds the former `ResolveWorkspaceLayout` and `projectSlugAt` into one pass and exposes
 `WorktreeRoot` and `Bare` (read from the common git dir's `core.bare`) so the bare project-config resolver
-(`configpaths.resolveProjectConfig`, #247) can consume it.
+(`configpaths.resolveProjectConfig`, #247) can consume it. It returns `(Identity, error)` and refuses an
+unresolvable cwd or git dir instead of hashing a fallback path — the raw input or the unresolved absolute
+path — which would silently mint a new checkout identity (state, VM, home volume) for the same physical
+project (#354). The cwd-derived test accessors `MustRepoSlug`/`MustCheckoutSlug` panic rather than return
+such a slug; production reads the `Identity` fields. `configpaths.resolveProjectConfig` is the one caller
+that stays tolerant: it degrades to the relative base on that error, because the project config directory
+is not identity-keyed.
 
 ## Which artifact uses which slug
 
@@ -192,7 +198,10 @@ permanently un-match the trigger, and orphan the legacy auth and home volume.
 I/O (`internal/sandbox/runtimemigration/copy.go`), so two concurrent first-post-upgrade runs cannot
 both destroy and move. The trigger is re-checked while the lock is held: a run that loses the race to
 another checkout sees the state already moved and continues under the checkout identity instead of tripping
-the incomplete-migration failure on a source that is already gone.
+the incomplete-migration failure on a source that is already gone. Beyond the root lock, adoption holds
+`WithKeyLocks` for every key the move touches — each legacy slug's enumerated agents plus the command's agent,
+under both the legacy and the checkout slug — across the destroy and the move, so a concurrent per-key state
+write or VM creation cannot interleave with them (#333).
 
 **Actions**
 
@@ -315,9 +324,10 @@ The six questions this section used to leave open, settled 2026-10-20. The
 adoption, dry-run, prune and outside-worktree refinements from the same design review live in their topical
 sections above.
 
-- **Identity API.** `git.ProjectSlug()` retires. `internal/git` gains `ResolveIdentity(cwd)` returning the
-  bind root, checkout root, worktree root, outside-worktree flag, bare flag, repo slug, checkout slug and
-  `LegacyRepoSlugs`, plus the accessors `RepoSlug()` and `CheckoutSlug()`. Explicit names, because after the
+- **Identity API.** `git.ProjectSlug()` retires. `internal/git` gains `ResolveIdentity(cwd) (Identity, error)`
+  returning the bind root, checkout root, worktree root, outside-worktree flag, bare flag, repo slug,
+  checkout slug and `LegacyRepoSlugs`, plus the cwd-derived test accessors `MustRepoSlug()` and
+  `MustCheckoutSlug()` (they panic on an unresolvable cwd). Explicit names, because after the
   split every call site is a judgement call. `internal/git` stays a leaf — hashing and layout inspection
   only, no knowledge of state paths or config dirs — which is what keeps `cmd`/`session`/`vm` cycle-free.
 - **One git-inspection pass.** `ResolveIdentity` folds the former `ResolveWorkspaceLayout` and `projectSlugAt`

@@ -13,7 +13,7 @@ import (
 
 // TestProjectVMLockSurvivesStateRemoval is the #330 regression: the project's
 // VM-creation lock lives under state's never-deleted locks tree (not the
-// removable key dir), so a prune's RemoveHomeState cannot unlink the lock a
+// removable key dir), so a prune's state removal cannot unlink the lock a
 // concurrent creation holds and let a second invocation create a duplicate VM.
 func TestProjectVMLockSurvivesStateRemoval(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
@@ -30,8 +30,8 @@ func TestProjectVMLockSurvivesStateRemoval(t *testing.T) {
 	}
 	defer release()
 
-	if err := state.RemoveHomeState(k); err != nil {
-		t.Fatalf("RemoveHomeState: %v", err)
+	if err := state.RemoveHomeStateIf(k, func(*state.HomeState) bool { return true }); err != nil {
+		t.Fatalf("RemoveHomeStateIf: %v", err)
 	}
 
 	lockPath := filepath.Join(lockDir, "ensure-vm.lock")

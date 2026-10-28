@@ -24,8 +24,10 @@ type ImageReport struct {
 // needs, then asks microsandbox to reclaim unreferenced image data. Retained are
 // the refs a kept sandbox still holds and a live project's cached variants used
 // within the prune age, plus host-side dangling Docker images. Ownership is
-// positional (see ListImages), so a reference is a runner image when
-// ParseImageTag resolves it to a single-segment slug.
+// positional (see ListImages) and applies the same name-shape predicate as list
+// and remove: a reference is a runner image only when its parsed slug embeds the
+// launcher's 14-character slug hash (naming.IsRunnerImageRef). A manually loaded
+// single-segment image in the private runtime home is foreign and never removed.
 func PruneImages(
 	ctx context.Context,
 	pruneState PruneState,
@@ -41,10 +43,10 @@ func PruneImages(
 	keptImageRefs := referencedImages(pruneState.ToKeep)
 	for _, imageHandle := range handles {
 		ref := imageHandle.Reference()
-		imageArtifact := naming.ParseImageTag(ref)
-		if imageArtifact.Slug == "" {
+		if !naming.IsRunnerImageRef(ref) {
 			continue
 		}
+		imageArtifact := naming.ParseImageTag(ref)
 		if keepImage(imageHandle, pruneState, keptImageRefs) {
 			continue
 		}

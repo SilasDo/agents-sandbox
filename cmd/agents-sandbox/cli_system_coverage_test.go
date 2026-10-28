@@ -59,8 +59,8 @@ func newOriginClone(t *testing.T) string {
 func TestBuildUsesCheckoutSlug(t *testing.T) {
 	firstClone := newOriginClone(t)
 	secondClone := newOriginClone(t)
-	firstIdentity := git.ResolveIdentity(firstClone)
-	secondIdentity := git.ResolveIdentity(secondClone)
+	firstIdentity := mustIdentity(t, firstClone)
+	secondIdentity := mustIdentity(t, secondClone)
 	if firstIdentity.RepoSlug != secondIdentity.RepoSlug {
 		t.Fatalf("repo slugs differ for one origin: %q vs %q", firstIdentity.RepoSlug, secondIdentity.RepoSlug)
 	}
@@ -103,7 +103,7 @@ func TestBuildUsesCheckoutSlug(t *testing.T) {
 // the op ensured through a docker inspect mock.
 func TestBuildDryRunPrintsMigrationNoticeAndMovesNothing(t *testing.T) {
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 
 	cmd, ui := setupCommandFixtures(t, cmdBuild, "--dry-run")
@@ -141,7 +141,7 @@ func TestBuildDryRunPrintsMigrationNoticeAndMovesNothing(t *testing.T) {
 // and the volume ops, which all check their prerequisites before adopting.
 func TestBuildChecksDockerBeforeAdoption(t *testing.T) {
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 
 	cmd, _ := setupCommandFixtures(t, cmdBuild)
@@ -187,8 +187,8 @@ func TestBuildChecksDockerBeforeAdoption(t *testing.T) {
 func TestVolumeOpsUseCheckoutSlug(t *testing.T) {
 	firstClone := newOriginClone(t)
 	secondClone := newOriginClone(t)
-	firstIdentity := git.ResolveIdentity(firstClone)
-	secondIdentity := git.ResolveIdentity(secondClone)
+	firstIdentity := mustIdentity(t, firstClone)
+	secondIdentity := mustIdentity(t, secondClone)
 	if firstIdentity.CheckoutSlug == secondIdentity.CheckoutSlug {
 		t.Fatalf("checkout slugs collide across clones: %q", firstIdentity.CheckoutSlug)
 	}
@@ -225,7 +225,7 @@ func TestVolumeOpsUseCheckoutSlug(t *testing.T) {
 // the op resolves against the legacy repo slug.
 func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 
 	cmd, ui := setupCommandFixtures(t, cmdVolume, cmdReset, "--dry-run")
@@ -282,7 +282,7 @@ func TestVolumeOpsKeepLegacySlugWhileMigrationPending(t *testing.T) {
 // directory and as the runner image the op ensured.
 func TestVolumeOpAppliesLegacyIdentity(t *testing.T) {
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 
 	cmd, _ := setupCommandFixtures(t, cmdVolume, cmdReset)
@@ -327,7 +327,7 @@ func TestVolumeOpAppliesLegacyIdentity(t *testing.T) {
 // before it ensures an image or touches a volume.
 func TestVolumeOpAdoptionFailureFailsClosed(t *testing.T) {
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 
 	cmd, _ := setupCommandFixtures(t, cmdVolume, cmdReset)
@@ -365,7 +365,7 @@ func TestVolumeOpRecordsBakedAgentVersion(t *testing.T) {
 		},
 	})
 
-	checkoutKey := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	checkoutKey := state.Key{Slug: git.MustCheckoutSlug(), Agent: defaultAgentName}
 	if err := seedHomeState(checkoutKey, state.HomeState{HomeVolume: "home-vol"}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestVolumeOpWarnsWhenRecordingAgentVersionFails(t *testing.T) {
 	}
 	cmd.SetContext(context.Background())
 
-	checkoutKey := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	checkoutKey := state.Key{Slug: git.MustCheckoutSlug(), Agent: defaultAgentName}
 	// A directory at the state file's path makes the baseline write fail.
 	if err := os.MkdirAll(filepath.Join(state.KeyDir(checkoutKey), "state.yaml"), 0o700); err != nil {
 		t.Fatalf("make state path unwritable: %v", err)
@@ -442,7 +442,7 @@ func TestVolumeMigrateWithPositionalArg(t *testing.T) {
 	doctor.MockedCheckAll(t, true)
 	image.WithMockAgentVersion(t, "0.0.0-test")
 	docker.WithNoopDockerMock(t)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	seedHomeState(state.Key{Slug: slug, Agent: defaultAgentName}, state.HomeState{
 		HomeVolume: fmt.Sprintf("agents-sandbox-home-%s-20260101T000000", slug),
 	})

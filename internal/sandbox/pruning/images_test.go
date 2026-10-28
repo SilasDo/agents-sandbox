@@ -229,6 +229,41 @@ func TestPruneImagesSkipsNonRunnerReferences(t *testing.T) {
 	}
 }
 
+// TestPruneImagesSkipsHashlessSingleSegmentImage pins the ownership boundary on
+// the prune path (#383): a single-segment image in the private runtime home that
+// lacks the launcher's 14-character slug hash — a manually loaded image — is
+// never considered, let alone removed. Prune, list and remove must agree on
+// ownership (naming.IsRunnerImageRef), so the documented "never arbitrary cached
+// images" guarantee is global.
+func TestPruneImagesSkipsHashlessSingleSegmentImage(t *testing.T) {
+	for _, ref := range []string{"manually-loaded:latest", "agents-sandbox/runner-manual:latest"} {
+		t.Run(ref, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			client := &msb.MockMsbClient{
+				Images: []msb.ImageHandle{
+					&msb.MockImageHandle{
+						Reference_:  ref,
+						CreatedAt_:  time.Now().Add(-30 * 24 * time.Hour),
+						LastUsedAt_: time.Now().Add(-30 * 24 * time.Hour),
+					},
+				},
+			}
+			msb.WithMsbMock(t, client)
+			docker.WithNoopDockerMock(t)
+			r, err := PruneImages(context.Background(), PruneState{Age: time.Hour}, false, &termio.Mock{})
+			if err != nil {
+				t.Fatalf("PruneImages: %v", err)
+			}
+			if r.MSBImagesPruned != 0 {
+				t.Errorf("MSBImagesPruned = %d, want 0 (hashless image is foreign)", r.MSBImagesPruned)
+			}
+			if len(client.RemovedImages) != 0 {
+				t.Errorf("RemovedImages = %v, want none", client.RemovedImages)
+			}
+		})
+	}
+}
+
 func TestKeepImageNotReferencedWhenKeyAlsoPruned(t *testing.T) {
 	key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
 	pruneState := PruneState{
@@ -339,7 +374,7 @@ func TestPruneImagesRunsNativePruneAfterReferenceCleanup(t *testing.T) {
 		events := make([]string, 0, 2)
 		client := &msb.MockMsbClient{
 			Images: []msb.ImageHandle{
-				&msb.MockImageHandle{Reference_: "agents-sandbox/runner-project:old"},
+				&msb.MockImageHandle{Reference_: "agents-sandbox/runner-project-1mjusbm3wikhb0:old"},
 			},
 			ImageRemoveFn: func(_ context.Context, _ string, _ bool) error {
 				events = append(events, "remove")

@@ -71,7 +71,10 @@ func buildConfigPathsCmd(ui termio.UI) *cobra.Command {
 		Args:  cobra.NoArgs,
 		Short: "Print the config layers in precedence order",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			identity := git.ResolveIdentity(".")
+			identity, err := git.ResolveIdentity(".")
+			if err != nil {
+				return err
+			}
 			// The layer block goes through Outf, which the quiet printer
 			// suppresses; the hint goes through Infof so it survives --quiet.
 			if !ui.Quiet() {

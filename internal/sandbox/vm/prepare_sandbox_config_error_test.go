@@ -69,7 +69,7 @@ func TestPrepareSandboxLoadConfigFilesError(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{
 			HomeVolume:   "home-vol",
 			ImageDigest:  "sha256:abc123",

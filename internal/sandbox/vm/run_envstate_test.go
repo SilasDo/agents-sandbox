@@ -818,7 +818,7 @@ func TestResolveReconfigDecision_HomePromptAskedWhenRebuildConfirmed(t *testing.
 		HomeVolume:  "vol",
 		ImageDigest: "sha256:old",
 	}
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, persisted)
 
 	cfs, err := reprovision.LoadConfigFilesForHost(opencodeAgent(t), t.TempDir(), reprovision.VMHomeDir, ui, true)
@@ -880,7 +880,7 @@ func TestResolveReconfigDecision_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 
 	// Desired opencode config: a snippet producing {"model":"y"} (new config).
 	testutil.WriteFile(t,
-		configpaths.Get().UserAgentConfigDir(opencodeAgent(t)),
+		configpaths.MustDir(configpaths.Get().UserAgentConfigDir(opencodeAgent(t))),
 		"a.json",
 		`{"model":"y"}`,
 	)
