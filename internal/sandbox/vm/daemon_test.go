@@ -45,6 +45,24 @@ func healthQueue(t *testing.T, responses ...mockShellResp) {
 func unhealthy() mockShellResp { return mockShellResp{stdout: "", exitCode: 1} }
 func healthy() mockShellResp   { return mockShellResp{stdout: `{"healthy":true}`, exitCode: 0} }
 
+// assertDetachedHelperLaunch fails the test unless the recorded detached calls
+// are exactly one launch of binary under the helper marker; the marker shape is
+// what the kill path matches on, so the callers (dockerd, the daemon) are pinned
+// to it.
+func assertDetachedHelperLaunch(t *testing.T, calls []msb.MockDetachedCall, marker, binary string) {
+	t.Helper()
+	if len(calls) != 1 {
+		t.Fatalf("detached calls = %+v, want one", calls)
+	}
+	if calls[0].Cmd != "env" {
+		t.Errorf("launch binary = %q, want %q", calls[0].Cmd, "env")
+	}
+	args := calls[0].Args
+	if len(args) < 2 || args[0] != "AGENTS_SANDBOX_DETACHED_JOB="+marker || args[1] != binary {
+		t.Errorf("launch args = %v, want the %s marker then %q", args, marker, binary)
+	}
+}
+
 type mockShellResp struct {
 	stdout   string
 	exitCode int
@@ -86,9 +104,7 @@ func TestEnsureDaemonStartsWhenUnhealthy(t *testing.T) {
 	if err := ensureDaemon(context.Background(), opencodeAgent(t), false, false, sb, &testUI); err != nil {
 		t.Fatalf("EnsureDaemon failed: %v", err)
 	}
-	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
-		t.Fatalf("ExecDetached calls = %+v, want one opencode", *calls)
-	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 	if !slices.Contains(testUI.VerboseCalls, "opencode daemon is healthy") {
 		t.Errorf("expected a verbose healthy note, got %v", testUI.VerboseCalls)
 	}
@@ -112,9 +128,13 @@ func TestEnsureDaemonStartsServeOnlyOnExternalInterface(t *testing.T) {
 	if err := ensureDaemon(context.Background(), opencodeAgent(t), true, false, sb, &testUI); err != nil {
 		t.Fatalf("EnsureDaemon failed: %v", err)
 	}
-	if len(*calls) != 1 || !strings.Contains(strings.Join((*calls)[0].Args, " "), "--hostname 0.0.0.0") {
+	if len(*calls) != 1 {
+		t.Fatalf("detached calls = %+v, want one", *calls)
+	}
+	if !strings.Contains(strings.Join((*calls)[0].Args, " "), "--hostname 0.0.0.0") {
 		t.Fatalf("serve-only daemon was not started with external-interface binding: %+v", *calls)
 	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 }
 
 // TestEnsureDaemonProbesBeforeWaiting verifies that after launching the daemon
@@ -201,16 +221,17 @@ func TestEnsureDaemonForceRestartsHealthy(t *testing.T) {
 	}
 }
 
-func TestEnsureDaemonKillsStaleJobByCommand(t *testing.T) {
+func TestEnsureDaemonKillsStaleJobByChangedArgs(t *testing.T) {
 	testUI := termio.NewTestMock(t)
 	fastDaemonPoll(t)
 	healthQueue(t, unhealthy(), healthy())
 
 	stale := &msb.MockJob{ID_: "stale-daemon"}
-	command := opencodeProvider(t).DaemonCommand(false)
+	// The stale daemon was launched by a release that bound the previous
+	// serve hostname, so matching the current command missed it (#343).
 	sb := &msb.MockSandbox{
 		Jobs: []msbSdk.JobInfo{
-			{ID: "stale-daemon", Command: append([]string{command.Binary}, command.Args...)},
+			{ID: "stale-daemon", Command: []string{"opencode", "serve", "--hostname", "0.0.0.0", "--port", "4096"}},
 		},
 		GetJobFn: func(context.Context, string) (msb.Job, error) { return stale, nil },
 	}
