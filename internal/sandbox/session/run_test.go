@@ -204,7 +204,7 @@ func (f *fakePrepared) HomeVolume() string   { return f.homeVolume }
 // --- Run: dry-run ---
 
 // stubPreviewSandbox swaps the preview seam for a fixed preview and restores it
-// on cleanup. Tests that call Run/Shell with DryRun must use it so the real
+// on cleanup. Tests that run with options.ModePreview must use it so the real
 // PreviewSandbox never touches host state.
 func stubPreviewSandbox(t *testing.T, preview sandbox.Preview) {
 	t.Helper()

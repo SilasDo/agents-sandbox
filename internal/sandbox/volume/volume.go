@@ -69,8 +69,8 @@ func (vm *Manager) PrefillVolume(
 // State is only written when the action actually executes successfully; a real
 // run creates the new volume, prefills it (spawning a VM), copies files for
 // migrate (spawning another VM), and then records the new volume and current
-// digest. A skipVM prepare leaves the action uncommitted, because both the
-// prefill and the copy would spawn a VM.
+// digest. A skipVM prepare leaves a migrate or reset action uncommitted, because
+// the prefill and the copy would spawn a VM; ActionKeep still records the digest.
 func (vm *Manager) ApplyHomeAction(
 	ctx context.Context,
 	client msb.Client,

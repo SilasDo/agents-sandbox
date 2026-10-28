@@ -1,7 +1,7 @@
 package options
 
 // Mode is how far a run should go, separate from RunOptions (which describes the
-// sandbox to build): at the boundary, whether to build it at all.
+// sandbox to build): at the boundary, whether to bring up the sandbox at all.
 type Mode uint8
 
 const (
