@@ -114,8 +114,8 @@ func TestResolveDockerAliasWithoutAnySource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.Docker() {
-		t.Error("Docker() = true, want false with no source")
+	if r.Config().Docker {
+		t.Error("Config().Docker = true, want false with no source")
 	}
 	if got := r.DockerLegacyAlias(); got != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty", got)
@@ -131,8 +131,8 @@ func TestDindConfigFalseDoesNotEnableDocker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.Docker() {
-		t.Error("Docker() = true, want false for dind: false")
+	if r.Config().Docker {
+		t.Error("Config().Docker = true, want false for dind: false")
 	}
 }
 
@@ -146,8 +146,8 @@ func TestDockerExplicitEnvFalseBeatsDindConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.Docker() {
-		t.Error("Docker() = true, want the explicit docker=false to win")
+	if r.Config().Docker {
+		t.Error("Config().Docker = true, want the explicit docker=false to win")
 	}
 	if got := r.DockerLegacyAlias(); got != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty for the explicit docker env", got)
@@ -169,8 +169,8 @@ func TestDockerFlagExplicitBeatsDindConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want the explicit --docker to win")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want the explicit --docker to win")
 	}
 	if got := r.DockerLegacyAlias(); got != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty for the explicit --docker flag", got)
@@ -192,8 +192,8 @@ func TestDockerFlagUnchangedDoesNotBeatDind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want the dind config to win when --docker is unset")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want the dind config to win when --docker is unset")
 	}
 	if got := r.DockerLegacyAlias(); got != "the dind config key" {
 		t.Errorf("DockerLegacyAlias() = %q, want the dind config key", got)

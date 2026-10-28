@@ -35,6 +35,15 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `true && p == "!"`, which is the original. A same-line or `disable-next-line` directive is **type-scoped** (it cannot
   name a stable-id), so recording that one also suppresses the *killable* sibling. Delete the redundant operand — the
   mutant ceases to exist — and let the surviving condition be killed normally.
+- **An `&&` operand that is not itself redundant can still have an equivalent removal mutant, when the code it guards
+  feeds a consumer that discards the mutant's effect.** `runoptions.ResolveDockerSetting` guarded an `append` of
+  `{Source: cfg.DockerSource(), Value: cfg.Docker}` with `cfg != nil && cfg.DockerExplicit()`; a config with no explicit
+  source appends `viperconfig.DockerSourceNone`, which `viperconfig.EffectiveDockerSource` drops, so `cfg != nil && true`
+  resolved identically and one of the two operand mutants survived. Deleting the operand was not available — it would
+  have made `viperconfig.Config.DockerExplicit` test-only and tripped the dead-code gate — and a line-scoped directive
+  would also suppress the killable `cfg != nil` sibling, so **nest the guards** (`if cfg != nil { if cfg.DockerExplicit()
+  { … } }`): the `&&` mutant family ceases to exist, the inner body stays load-bearing, and the predicate stays
+  production-reachable.
 - **A selector argument that every caller ORs across calls is redundant — drop the parameter.** `hasDockerMarker(data,
   want)` had exactly two callers, each `OR`-ing the current and legacy forms (`... dockerMarker`) `|| (... legacyDockerMarker)`,
   so its `ok && marker == want` was equivalent to `marker != ""`: any match satisfied both calls' `OR`. Returning "any

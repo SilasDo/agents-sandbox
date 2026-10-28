@@ -115,6 +115,10 @@ command reports the bare version (e.g. `0.1.0`).
   an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
   slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
   read stays tolerant and degrades to its relative base, since it is not identity-keyed.
+- Docker: the canonical `docker` setting now beats the deprecated `dind` alias whichever layer each came from, so
+  `--dind` no longer overrides an explicit `docker` config key or `AGENTS_SANDBOX_DOCKER` (and vice versa) — the
+  deprecation policy's "replacement wins" rule held across the config and env layers but not across the flags. The
+  run/shell and build paths resolve the capability through one shared precedence, so they can no longer disagree (#363).
 - Runner image: the microsandbox load decision now trusts only the content digest. A cached image that records no
   digest is treated as unknown content and reloaded instead of being matched by its `dockerfile-id` label — a source
   signature that can match while the layers differ, so a stale image could previously pass as current. The reload

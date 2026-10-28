@@ -858,8 +858,8 @@ func TestDockerFromConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from config")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from config")
 	}
 	if r.DockerLegacyAlias() != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty for the canonical key", r.DockerLegacyAlias())
@@ -884,8 +884,8 @@ func TestDindConfigAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from the deprecated dind key")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from the deprecated dind key")
 	}
 	if got := r.DockerLegacyAlias(); got != "the dind config key" {
 		t.Errorf("DockerLegacyAlias() = %q, want the dind config key", got)
@@ -909,8 +909,8 @@ func TestDockerConfigWinsOverDindAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.Docker() {
-		t.Error("Docker() = true, want the canonical docker key to win")
+	if r.Config().Docker {
+		t.Error("Config().Docker = true, want the canonical docker key to win")
 	}
 }
 
@@ -923,8 +923,8 @@ func TestDockerExplicitFromEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from AGENTS_SANDBOX_DOCKER")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from AGENTS_SANDBOX_DOCKER")
 	}
 	if r.DockerLegacyAlias() != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty when docker is explicit", r.DockerLegacyAlias())
@@ -943,11 +943,11 @@ func TestDockerExplicitFromLegacyEnv(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewResolver: %v", err)
 			}
-			if !r.DockerExplicit() {
-				t.Error("DockerExplicit() = false, want true from OPENCODE_SANDBOX_DOCKER")
+			if !r.Config().DockerExplicit() {
+				t.Error("Config().DockerExplicit() = false, want true from OPENCODE_SANDBOX_DOCKER")
 			}
-			if got, want := r.Docker(), value == "true"; got != want {
-				t.Errorf("Docker() = %v, want %v from OPENCODE_SANDBOX_DOCKER", got, want)
+			if got, want := r.Config().Docker, value == "true"; got != want {
+				t.Errorf("Config().Docker = %v, want %v from OPENCODE_SANDBOX_DOCKER", got, want)
 			}
 			if r.DockerLegacyAlias() != "" {
 				t.Errorf("DockerLegacyAlias() = %q, want empty when docker is explicit", r.DockerLegacyAlias())
@@ -969,8 +969,8 @@ func TestDockerExplicitFromFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from --docker")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from --docker")
 	}
 	if r.DockerLegacyAlias() != "" {
 		t.Errorf("DockerLegacyAlias() = %q, want empty for the --docker flag", r.DockerLegacyAlias())
@@ -990,10 +990,10 @@ func TestDockerExplicit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewResolver: %v", err)
 		}
-		if !r.DockerExplicit() {
+		if !r.Config().DockerExplicit() {
 			t.Error("docker key present must be explicit")
 		}
-		if r.Docker() {
+		if r.Config().Docker {
 			t.Error("docker key false must resolve off")
 		}
 	})
@@ -1003,7 +1003,7 @@ func TestDockerExplicit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewResolver: %v", err)
 		}
-		if !r.DockerExplicit() {
+		if !r.Config().DockerExplicit() {
 			t.Error("dind key present must be explicit")
 		}
 	})
@@ -1013,7 +1013,7 @@ func TestDockerExplicit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewResolver: %v", err)
 		}
-		if r.DockerExplicit() {
+		if r.Config().DockerExplicit() {
 			t.Error("no docker source must not be explicit")
 		}
 	})
@@ -1024,41 +1024,10 @@ func TestDockerExplicit(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewResolver: %v", err)
 		}
-		if !r.DockerExplicit() {
+		if !r.Config().DockerExplicit() {
 			t.Error("AGENTS_SANDBOX_DIND must be explicit")
 		}
 	})
-}
-
-// TestConfigDockerExplicitMirrorsResolver pins the Config accessor that
-// runoptions reads (Resolver.Config().DockerExplicit()) to the Resolver one the
-// CLI reads, for both the explicit and non-explicit values.
-func TestConfigDockerExplicitMirrorsResolver(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		value string
-		want  bool
-	}{
-		{name: "explicit", value: "true", want: true},
-		{name: "not explicit", value: "", want: false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			configpaths.WithMockConfigPaths(t)
-			if tc.value != "" {
-				t.Setenv("AGENTS_SANDBOX_DOCKER", tc.value)
-			}
-			r, err := NewResolver(nil, "")
-			if err != nil {
-				t.Fatalf("NewResolver: %v", err)
-			}
-			if got := r.Config().DockerExplicit(); got != tc.want {
-				t.Errorf("Config().DockerExplicit() = %v, want %v", got, tc.want)
-			}
-			if got := r.DockerExplicit(); got != tc.want {
-				t.Errorf("Resolver.DockerExplicit() = %v, want %v", got, tc.want)
-			}
-		})
-	}
 }
 
 // TestDindFromEnvAlias verifies AGENTS_SANDBOX_DIND enables docker and is
@@ -1070,8 +1039,8 @@ func TestDindFromEnvAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from AGENTS_SANDBOX_DIND")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from AGENTS_SANDBOX_DIND")
 	}
 	if got := r.DockerLegacyAlias(); got != "AGENTS_SANDBOX_DIND" {
 		t.Errorf("DockerLegacyAlias() = %q, want AGENTS_SANDBOX_DIND", got)
@@ -1087,8 +1056,8 @@ func TestDindFromLegacyEnvAlias(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if !r.Docker() {
-		t.Error("Docker() = false, want true from OPENCODE_SANDBOX_DIND")
+	if !r.Config().Docker {
+		t.Error("Config().Docker = false, want true from OPENCODE_SANDBOX_DIND")
 	}
 	if got := r.DockerLegacyAlias(); got != "dind" {
 		t.Errorf("DockerLegacyAlias() = %q, want the generic dind source for the legacy env prefix", got)
@@ -1097,8 +1066,8 @@ func TestDindFromLegacyEnvAlias(t *testing.T) {
 
 func TestDockerDefaultsFalse(t *testing.T) {
 	r := NewResolverWithConfig(Config{})
-	if r.Docker() {
-		t.Error("Docker() = true, want default false")
+	if r.Config().Docker {
+		t.Error("Config().Docker = true, want default false")
 	}
 }
 
