@@ -540,12 +540,13 @@ func TestRenderVolumeReport(t *testing.T) {
 // back by the exists guard does not stop later keys from being processed: the
 // iteration visits keys in a stable order, so "gone" is removed though "kept"
 // is skipped.
-// TestPruneVolumesKeepsStateNamingAConcurrentlyCreatedVolume reproduces #335: a
-// home volume created after the prune snapshot is invisible to the pre-prune
-// counts, so the old removed >= exists decision removed the state that now
-// names it, orphaning the volume. The state is read under the home lock and
-// kept whenever it names a home volume, so the state survives.
-func TestPruneVolumesKeepsStateNamingAConcurrentlyCreatedVolume(t *testing.T) {
+// TestPruneVolumesKeepsStateCommittedAfterTheSnapshot reproduces #335
+// deterministically: prune snapshots the volumes and references, sweeps, and
+// only afterwards removes state. A concurrent run that commits a freshly created
+// home volume to the state in that window must not have its state removed. The
+// volume listing never contains the new volume, so the old removed >= exists
+// decision deleted the state that named it and orphaned the volume.
+func TestPruneVolumesKeepsStateCommittedAfterTheSnapshot(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	const (
 		slug          = "stale-1mjusbm3wikhb0"
@@ -553,14 +554,22 @@ func TestPruneVolumesKeepsStateNamingAConcurrentlyCreatedVolume(t *testing.T) {
 		concurrentVol = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143099"
 	)
 	key := state.Key{Slug: slug, Agent: ""}
-	// The state names a volume absent from the client's listing, standing in for
-	// one created after the snapshot: only the state-content guard can keep the
-	// state, since the volume cannot protect itself through the referenced-volume
-	// guard.
-	if err := seedHomeState(key, state.HomeState{HomeVolume: concurrentVol}); err != nil {
+	// The snapshot sees a key whose state records no volume and one reclaimable
+	// volume, exactly the shape the race begins from.
+	if err := seedHomeState(key, state.HomeState{}); err != nil {
 		t.Fatalf("seedHomeState: %v", err)
 	}
-	client := &msb.MockMsbClient{Volumes: []msb.VolumeHandle{staleHomeHandle(staleVolume)}}
+	client := &msb.MockMsbClient{
+		Volumes: []msb.VolumeHandle{staleHomeHandle(staleVolume)},
+		RemoveVolumeFn: func(_ context.Context, name string) error {
+			if name != staleVolume {
+				return nil
+			}
+			// A concurrent run commits a fresh home volume to state after prune's
+			// snapshots but before its state removal.
+			return seedHomeState(key, state.HomeState{HomeVolume: concurrentVol})
+		},
+	}
 	msb.WithMsbMock(t, client)
 	ui := &termio.Mock{}
 	r, err := PruneVolumes(context.Background(), PruneState{
@@ -572,8 +581,12 @@ func TestPruneVolumesKeepsStateNamingAConcurrentlyCreatedVolume(t *testing.T) {
 	if r.VolumesPruned != 1 || len(client.RemovedVolumes) != 1 || client.RemovedVolumes[0] != staleVolume {
 		t.Fatalf("expected only the stale volume removed: report=%+v removed=%v", r, client.RemovedVolumes)
 	}
-	if _, err := state.ReadState(key); err != nil {
-		t.Errorf("state naming the concurrently created volume %s must survive, got err=%v", concurrentVol, err)
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("state committed after the snapshot must survive, got err=%v", err)
+	}
+	if st.HomeVolume != concurrentVol {
+		t.Errorf("state HomeVolume = %q, want %q", st.HomeVolume, concurrentVol)
 	}
 }
 
