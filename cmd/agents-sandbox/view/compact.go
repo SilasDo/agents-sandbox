@@ -1,4 +1,4 @@
-package cliout
+package view
 
 import "github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
+	"github.com/inoio/agents-sandbox/cmd/agents-sandbox/view"
 	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -43,7 +44,7 @@ func buildSandboxCompactCmd(ui termio.UI) *cobra.Command {
 			}
 			cliout.RenderPruneReport(ui, mode,
 				func() { pruning.RenderCompactReport(ui, report) },
-				cliout.NewCompactReportJSON(report))
+				view.NewCompactReportJSON(report))
 			return nil
 		},
 	}

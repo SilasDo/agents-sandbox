@@ -37,16 +37,23 @@ read_if: Navigating the codebase.
 - `commands_system.go` — doctor/list/config/home/agent/build/dockerfile/image/volume/sandbox/prune commands, including `config paths` (the config layers in precedence order, driven by `viperconfig.ConfigLayers`).
 - `commands_inspect.go` — `volume inspect`/`image inspect`/`sandbox inspect` command builders.
 - `commands_storage.go` — `df` command and the `storage` group alias (`storage df`/`storage prune`).
-- `list_output.go`, `inspect_output.go`, `prune_output.go`, `storage_output.go` — shared table/JSON/quiet list rendering, single-object inspect rendering, prune report JSON, and the msb-shaped `df` report.
+- `inspect_output.go`, `storage_output.go` — single-object inspect rendering and the msb-shaped `df` report.
 - `cli_storage_test.go` — CLI tests for `df` (table/JSON/verbose/quiet/degradation) and the `storage` group.
 - `constants.go`, `tree.go` — command name/flag constants and `tree` output.
 - `cli_*_test.go` — Extensive CLI integration tests (one per command/area).
+
+#### `cmd/agents-sandbox/view/` — Domain-shaped output renderers (#357)
+
+- `printers.go` — `SandboxPrinter`/`ImagePrinter`/`VolumePrinter` (`cliout.Printer` implementations) plus digest truncation and the volume SIZE-column rules.
+- `prune.go` — Prune report JSON DTOs and constructors (`PruneReportJSON`/`ImageReportJSON`/`VolumeReportJSON`/`SandboxReportJSON`).
+- `compact.go` — `CompactReportJSON` and its constructor.
+- `*_test.go`, `main_test.go` — Unit tests and the fail-fast seam `TestMain`.
 
 ### `internal/` — Core packages (non-sandbox)
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + fsync + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `cliout/` — Output rendering: the generic list/JSON rendering core (`PrintList`/`Mode`/`WriteJSON`) plus the domain printers for list/inspect/prune/`df`.
+- `cliout/` — Output rendering core, domain-free: the generic list/JSON rendering (`PrintList`/`Mode`/`WriteJSON`) and the report-mode renderer (`RenderPruneReport`). A `boundary_test.go` pins the no-domain-import rule; the domain printers live in `cmd/agents-sandbox/view` (see `specs/cliout-package-boundary.md`).
 - `configmerge/` — Merge config with precedence.
 - `configpaths/` — Config/home path resolution and guards, plus the shared config-file discovery (`FindConfigFile`, the single extension order) that both config loaders call.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
