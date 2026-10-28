@@ -938,6 +938,31 @@ func TestDockerExplicitFromEnv(t *testing.T) {
 	}
 }
 
+// TestDockerExplicitFromLegacyEnv verifies the deprecated OPENCODE_SANDBOX_
+// prefix is surfaced as explicit too, so a legacy value overrides a project
+// Dockerfile in both directions instead of being read by viper then ignored.
+func TestDockerExplicitFromLegacyEnv(t *testing.T) {
+	for _, value := range []string{"true", "false"} {
+		t.Run(value, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			t.Setenv("OPENCODE_SANDBOX_DOCKER", value)
+			r, err := NewResolver(nil, "some-slug")
+			if err != nil {
+				t.Fatalf("NewResolver: %v", err)
+			}
+			if !r.DockerExplicit() {
+				t.Error("DockerExplicit() = false, want true from OPENCODE_SANDBOX_DOCKER")
+			}
+			if got, want := r.Docker(), value == "true"; got != want {
+				t.Errorf("Docker() = %v, want %v from OPENCODE_SANDBOX_DOCKER", got, want)
+			}
+			if r.DockerLegacyAlias() != "" {
+				t.Errorf("DockerLegacyAlias() = %q, want empty when docker is explicit", r.DockerLegacyAlias())
+			}
+		})
+	}
+}
+
 // TestDockerExplicitFromFlag verifies the --docker flag marks docker as
 // explicitly set.
 func TestDockerExplicitFromFlag(t *testing.T) {

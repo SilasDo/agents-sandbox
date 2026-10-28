@@ -147,9 +147,14 @@ func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, s
 
 // dockerExplicit reports whether the canonical docker setting is explicitly set
 // via env, config file, or the --docker flag, so it takes precedence over the
-// deprecated dind alias.
+// deprecated dind alias. The deprecated OPENCODE_SANDBOX_ prefix counts too:
+// NewResolver still reads it, so it must also be surfaced as explicit rather
+// than ignored by the project-Dockerfile decision.
 func dockerExplicit(v *viper.Viper, cmd *cobra.Command) bool {
 	if os.Getenv(envVarName(EnvPrefix, KeyDocker)) != "" {
+		return true
+	}
+	if os.Getenv(envVarName(LegacyEnvPrefix, KeyDocker)) != "" {
 		return true
 	}
 	if v.InConfig(KeyDocker) {
