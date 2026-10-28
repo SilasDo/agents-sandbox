@@ -380,7 +380,7 @@ func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
 // TestRenderDockerfileNoGuestToolsForDaemonlessAgents guards that agents which
 // run no daemon in the VM declare no guest tools, so no check is emitted.
 func TestRenderDockerfileNoGuestToolsForDaemonlessAgents(t *testing.T) {
-	for _, name := range []string{"pi", "claude-code"} {
+	for _, name := range []string{"pi", "claude-code", "codex"} {
 		a, _ := agent.Lookup(name)
 		final := finalStage(t, mustRender(t, a, nil, false))
 		if strings.Contains(final, "agent runtime tool missing") {
@@ -518,6 +518,29 @@ func TestRenderDockerfileClaudeCodeNodeFree(t *testing.T) {
 	}
 	if strings.Contains(s, "AS "+nodeStageAlias) || strings.Contains(s, "nodejs.org/dist") {
 		t.Errorf("claude-code must not emit the node stage; got:\n%s", s)
+	}
+}
+
+// TestRenderDockerfileCodexNodeFree guards that codex renders its GitHub
+// release download into the tool bin and emits no node stage.
+func TestRenderDockerfileCodexNodeFree(t *testing.T) {
+	a, ok := agent.Lookup("codex")
+	if !ok {
+		t.Fatal("codex agent not registered")
+	}
+	s := mustRender(t, a, nil, false)
+	for _, want := range []string{
+		"ARG CODEX_VERSION",
+		"https://github.com/openai/codex/releases/download/",
+		"/opt/agents-sandbox/codex",
+		"/opt/agents-sandbox/bin/codex",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("rendered codex Dockerfile missing %q; got:\n%s", want, s)
+		}
+	}
+	if strings.Contains(s, "AS "+nodeStageAlias) || strings.Contains(s, "nodejs.org/dist") {
+		t.Errorf("codex must not emit the node stage; got:\n%s", s)
 	}
 }
 

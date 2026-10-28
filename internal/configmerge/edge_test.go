@@ -15,7 +15,7 @@ func TestBuildMergedRecursivelyMergesNestedMaps(t *testing.T) {
 	writeSnippet(t, dir, "opencode-a.json", `{"models": {"a": 1}}`)
 	writeSnippet(t, dir, "opencode-b.json", `{"models": {"b": 2}}`)
 
-	data, _, has, err := BuildMerged("opencode*.json*", dir, "")
+	data, _, has, err := BuildMerged("", "opencode*.json*", dir, "")
 	if err != nil || !has {
 		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
@@ -33,7 +33,7 @@ func TestBuildMergedNonMapOverrideReplacesNestedMap(t *testing.T) {
 	writeSnippet(t, dir, "opencode-a.json", `{"models": {"a": 1}}`)
 	writeSnippet(t, dir, "opencode-b.json", `{"models": 5}`)
 
-	data, _, has, err := BuildMerged("opencode*.json*", dir, "")
+	data, _, has, err := BuildMerged("", "opencode*.json*", dir, "")
 	if err != nil || !has {
 		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
@@ -50,7 +50,7 @@ func TestBuildMergedSkipsMissingDirectory(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "opencode-a.json", `{"a": 1}`)
 
-	data, sources, has, err := BuildMerged("opencode*.json*", dir, filepath.Join(t.TempDir(), "missing"))
+	data, sources, has, err := BuildMerged("", "opencode*.json*", dir, filepath.Join(t.TempDir(), "missing"))
 	if err != nil || !has {
 		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
@@ -72,7 +72,7 @@ func TestBuildMergedScansDirectoryAfterMissingDirectory(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")
 
 	// The missing dir is first: a broken skip must not abandon the dirs loop.
-	data, sources, has, err := BuildMerged("opencode*.json*", missing, dir)
+	data, sources, has, err := BuildMerged("", "opencode*.json*", missing, dir)
 	if err != nil || !has {
 		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
@@ -133,7 +133,7 @@ func TestBuildMergedSkipsUnreadableSnippet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	data, sources, has, err := BuildMerged("opencode*.json*", dir, "")
+	data, sources, has, err := BuildMerged("", "opencode*.json*", dir, "")
 	if err != nil || !has {
 		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
 	}
@@ -157,7 +157,7 @@ func TestBuildMergedSkipsUnreadableYAMLSnippet(t *testing.T) {
 
 	// The only match is unreadable; an empty YAML document would otherwise
 	// parse to a nil config and falsely report a merge.
-	data, sources, has, err := BuildMerged("pi-*.{json,yaml}", dir, "")
+	data, sources, has, err := BuildMerged("", "pi-*.{json,yaml}", dir, "")
 	if err != nil {
 		t.Fatalf("BuildMerged: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestBuildMergedMarshalError(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "opencode-inf.yaml", "v: !!float .inf\n")
 
-	data, sources, has, err := BuildMerged("opencode-*", dir, "")
+	data, sources, has, err := BuildMerged("", "opencode-*", dir, "")
 	if err == nil {
 		t.Fatal("expected marshal error for a non-finite float, got nil")
 	}

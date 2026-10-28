@@ -9,7 +9,7 @@
 [![Docs](https://img.shields.io/badge/docs-github--pages-blue)](https://inoio.github.io/agents-sandbox/)
 
 agents-sandbox allows you to isolate your coding agents from the rest of your dev environment. You are put in control over what parts of your host machine and network environment are available to each agent. agents-sandbox acts as a launcher for [opencode](https://opencode.ai), [opencode2](https://opencode.ai),
-[pi](https://pi.dev), and [Claude Code](https://claude.com/product/claude-code). It builds or reuses a dedicated [microsandbox](https://microsandbox.dev/) VM per
+[pi](https://pi.dev), [Claude Code](https://claude.com/product/claude-code), and [Codex](https://github.com/openai/codex). It builds or reuses a dedicated [microsandbox](https://microsandbox.dev/) VM per
 project and agent, then attaches the selected agent inside that VM. A system-wide microsandbox installation is not
 required: agents-sandbox provisions its own isolated runtime under its data directory, never uses `~/.microsandbox` as
 its runtime, and never writes to it (the one-time migration reads it only to copy your old volumes).
@@ -99,6 +99,8 @@ Four agents ship as built-in profiles:
   needs node), run interactively, with upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, installed from its native installer, run interactively, with upgrade
   checks via the npm registry.
+- **`codex`** — OpenAI's Codex CLI, installed from its GitHub release package, run interactively, with upgrade checks via
+  GitHub releases.
 
 ## Documentation
 
