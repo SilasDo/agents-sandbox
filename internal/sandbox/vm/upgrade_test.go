@@ -412,6 +412,23 @@ func TestPersistOfferedVersionWarnsOnError(t *testing.T) {
 	}
 }
 
+// TestPersistAgentVersionWarnsOnError verifies that a failure to record the
+// baked agent version only warns: recording must never fail a run.
+func TestPersistAgentVersionWarnsOnError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	if err := os.MkdirAll(filepath.Join(state.KeyDir(k), "state.yaml"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	ui := &termio.Mock{}
+	persistAgentVersion(k, "2.0.0", ui)
+
+	if !contains(joinStrings(ui.WarnCalls), "could not persist the agent version") {
+		t.Errorf("expected a persist warning, got %v", ui.WarnCalls)
+	}
+}
+
 // TestDeferredOfferedPersistedAfterStateRecreated is the regression test for the
 // "don't remind again" choice being forgotten when the project state was
 // missing: the offered release returned by resolveBuildVersion is persisted
