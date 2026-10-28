@@ -45,7 +45,7 @@ func TestLauncherAndHomeLoadersSelectTheSameConfigFile(t *testing.T) {
 	if !has {
 		t.Fatal("LoadLayers reported no home manifest")
 	}
-	if _, ok := layers[0].Manifest[".sandbox/from-yaml"]; !ok {
+	if got := layers[0].Manifest[".sandbox/from-yaml"].Source; got != "/tmp/from-yaml" {
 		t.Errorf("home manifest %v is not the config.yaml layer", layers[0].Manifest)
 	}
 	if _, ok := layers[0].Manifest[".sandbox/from-json"]; ok {

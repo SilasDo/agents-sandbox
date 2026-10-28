@@ -581,7 +581,7 @@ func configType(ext string) string {
 	switch strings.ToLower(ext) {
 	case ".yaml", ".yml":
 		return ctYAML
-	case ".json", ".jsonc", ".json5":
+	case ".json", configpaths.ExtJSONC, configpaths.ExtJSON5:
 		return ctJSON
 	}
 	return ""
