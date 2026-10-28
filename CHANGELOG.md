@@ -76,6 +76,7 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
 - An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of
   a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
   error, so a malformed profile fails at the config-resolution boundary with a message naming the agent rather than
