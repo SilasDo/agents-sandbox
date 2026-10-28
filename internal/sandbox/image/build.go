@@ -51,12 +51,15 @@ const userProvidedImageIdentity = "user-provided"
 // carries in the microsandbox cache, resolved by EnsureLoaded. It is the
 // content-addressed reference when the built image has an ID, otherwise the
 // prefix-free name reference; EnsureLoaded may resolve it to whichever cached
-// candidate already holds the content. Digest is the content identity (Docker's
-// image ID); DockerfileID is the source signature carried as the dockerfile-id
-// label.
+// candidate already holds the content. Identity is the image's structured
+// (slug, agent, contentID) identity — what the initial Ref is rendered from —
+// so a caller never has to parse the reference it already knows the parts of.
+// Digest is the content identity (Docker's image ID); DockerfileID is the
+// source signature carried as the dockerfile-id label.
 type ImageInfo struct {
 	DockerTag    string
 	Ref          string
+	Identity     naming.ImageIdentity
 	Digest       string
 	DockerfileID string
 	Env          map[string]string
@@ -476,13 +479,15 @@ func EnsureImageWithClient(
 	if err != nil {
 		return ImageInfo{}, fmt.Errorf("inspect built image: %w", err)
 	}
-	ref := naming.RunnerImageRef(projectSlug, a.Name())
-	if contentID := imageContentID(imageDigest); contentID != "" {
-		ref = naming.ContentImageRef(projectSlug, a.Name(), contentID)
+	identity := naming.ImageIdentity{
+		Slug:      projectSlug,
+		Agent:     a.Name(),
+		ContentID: imageContentID(imageDigest),
 	}
 	return ImageInfo{
 		DockerTag:    rTag,
-		Ref:          ref,
+		Ref:          identity.Ref(),
+		Identity:     identity,
 		Digest:       imageDigest,
 		DockerfileID: plan.dockerfileID,
 		Env:          env,
@@ -503,31 +508,15 @@ func imageContentID(imageID string) string {
 	return id
 }
 
-// nameRefFromDockerTag returns the prefix-free name reference the Docker tag
-// names, so EnsureLoaded can reuse an image a 0.6.0 install cached under it. It
-// is empty when the tag does not name a (slug, agent) pair.
-func nameRefFromDockerTag(dockerTag string) string {
-	info := naming.ParseImageTag(dockerTag)
-	if !hasNameIdentity(info) {
-		return ""
-	}
-	return naming.RunnerImageRef(info.Slug, info.Agent)
-}
-
-// hasNameIdentity reports whether info parsed to a usable (slug, agent) name
-// pair, i.e. the Docker tag names a project runner image rather than a foreign
-// or digest reference.
-func hasNameIdentity(info naming.ArtifactInfo) bool {
-	return info.Slug != "" && info.Agent != ""
-}
-
 // imageRefCandidates returns the microsandbox references that may already hold
 // info's content, in reuse-preference order: the content ref, the prefix-free
 // name ref a 0.6.0 install cached under, and the legacy prefixed Docker-tag ref a
-// pre-0.6 install cached under. Empty and duplicate refs are dropped.
+// pre-0.6 install cached under. The name ref comes from the image's structured
+// identity, so a reference the launcher rendered is never parsed back; the
+// Docker tag is carried as-is. Empty and duplicate refs are dropped.
 func imageRefCandidates(info ImageInfo) []string {
 	var candidates []string
-	for _, ref := range []string{info.Ref, nameRefFromDockerTag(info.DockerTag), info.DockerTag} {
+	for _, ref := range []string{info.Ref, info.Identity.NameRef(), info.DockerTag} {
 		if ref == "" || slices.Contains(candidates, ref) {
 			continue
 		}
@@ -647,11 +636,12 @@ func logBuildDecision(
 // content. It is idempotent: it reuses the first candidate reference whose cache
 // content matches (see imageRefCandidates for the content, name, and legacy
 // prefixed refs), otherwise it loads the Docker image under info.Ref. The
-// comparison uses the content digest microsandbox records for the image, the
-// same value as Docker's image ID; a cached image that records no digest is
-// unknown content and is reloaded, never trusted via the source-signature
-// dockerfile-id label. Loading directly avoids removing a manifest that an
-// existing VM may still reference.
+// candidate set is derived from info.Identity, so a reference the launcher
+// rendered is never parsed back. The comparison uses the content digest
+// microsandbox records for the image, the same value as Docker's image ID; a
+// cached image that records no digest is unknown content and is reloaded, never
+// trusted via the source-signature dockerfile-id label. Loading directly avoids
+// removing a manifest that an existing VM may still reference.
 func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui termio.UI) (ImageInfo, error) {
 	anyCandidateCached := false
 	for _, candidate := range imageRefCandidates(info) {

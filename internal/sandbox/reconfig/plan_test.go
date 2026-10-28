@@ -10,6 +10,24 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
+// planSlug and planContentID identify the runner image the plan tests compare
+// their persisted VM image against.
+const planSlug = "proj-1mjusbm3wikhb0"
+const planContentID = "9f2c1a7b4d6e0f31"
+
+// planImage is the launcher-side structured identity most tests compare a
+// persisted VM image against: the fixture project and agent, pinned to one
+// content id (the spelling a rebuilt image resolves to).
+func planImage() naming.ImageIdentity {
+	return naming.ImageIdentity{Slug: planSlug, Agent: "opencode", ContentID: planContentID}
+}
+
+// planNameImage is the same project and agent with no content id: the spelling
+// for an image whose content id the launcher does not know.
+func planNameImage() naming.ImageIdentity {
+	return naming.ImageIdentity{Slug: planSlug, Agent: "opencode"}
+}
+
 func TestPlanReconfigServeOnly(t *testing.T) {
 	desired := options.ServeOnlyBindings(options.ServeOnlyBasePort)
 	tests := []struct {
@@ -36,7 +54,7 @@ func TestPlanReconfigServeOnly(t *testing.T) {
 			}
 			plan := PlanReconfig(
 				cfg,
-				"img",
+				planImage(),
 				options.RunOptions{ServeOnly: tt.serveOnly},
 				ChangeFlags{},
 				"",
@@ -60,29 +78,33 @@ func TestPlanReconfigServeOnly(t *testing.T) {
 	}
 }
 
+// TestPlanReconfigTriggersRecreateOnImageChange pins the genuine image switch: a
+// persisted content reference whose content id differs from the desired identity
+// recreates the VM, while the same content id does not.
 func TestPlanReconfigTriggersRecreateOnImageChange(t *testing.T) {
-	cfg := &msbSdk.SandboxConfig{Image: "agents-sandbox/runner-proj:oldhash"}
+	const persistedContentID = "4b8d0e6f2a1c3b57"
+	cfg := &msbSdk.SandboxConfig{Image: naming.ContentImageRef(planSlug, "opencode", persistedContentID)}
 
 	planSame := PlanReconfig(
 		cfg,
-		"agents-sandbox/runner-proj:oldhash",
+		naming.ImageIdentity{Slug: planSlug, Agent: "opencode", ContentID: persistedContentID},
 		options.RunOptions{},
 		ChangeFlags{},
 		"",
 	)
 	if planSame.Recreate {
-		t.Error("expected no recreate when image reference is unchanged")
+		t.Error("expected no recreate when the persisted image is the desired content")
 	}
 
 	planNew := PlanReconfig(
 		cfg,
-		"agents-sandbox/runner-proj:newhash",
+		planImage(),
 		options.RunOptions{},
 		ChangeFlags{},
 		"",
 	)
 	if !planNew.Recreate {
-		t.Error("expected recreate when image reference changes after a rebuild")
+		t.Error("expected recreate when the desired content id differs from the persisted one")
 	}
 	if len(planNew.Changes) == 0 || planNew.Changes[0].Label != "image" {
 		t.Errorf("expected an 'image' change label, got %+v", planNew.Changes)
@@ -92,60 +114,68 @@ func TestPlanReconfigTriggersRecreateOnImageChange(t *testing.T) {
 // TestPlanReconfigToleratesLegacyImageRef covers Review Focus 1's "VM not
 // recreated": a VM booted from the legacy prefixed microsandbox reference must
 // not be recreated just because the launcher now computes the prefix-free one.
+// The desired side is the name identity, the spelling an install that records no
+// content id resolves; every spelling of the same project and agent is tolerated.
 func TestPlanReconfigToleratesLegacyImageRef(t *testing.T) {
 	const legacyRef = "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest"
-	cfg := &msbSdk.SandboxConfig{Image: legacyRef}
 
 	cases := []struct {
-		ref          string
+		name         string
+		persisted    string
 		wantRecreate bool
 	}{
-		{"proj-1mjusbm3wikhb0:opencode-latest", false}, // prefix-free spelling of the same image
-		{legacyRef, false},                                                 // identical
-		{"proj-1mjusbm3wikhb0:pi-latest", true},                            // different agent
-		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:4e8oeqohbmalok", true}, // pinned digest ref
-		{"proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31", false},           // content ref, same image
+		{"prefix-free name ref", naming.RunnerImageRef(planSlug, "opencode"), false},
+		{"identical legacy ref", legacyRef, false},
+		{"different agent", naming.RunnerImageRef(planSlug, "pi"), true},
+		{"pinned digest ref", "agents-sandbox/runner-proj-1mjusbm3wikhb0:4e8oeqohbmalok", true},
+		// content ref, same image
+		{"content ref, same image", naming.ContentImageRef(planSlug, "opencode", planContentID), false},
 		// prefixed content ref, same image
-		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31", false},
-		{"proj-1mjusbm3wikhb0:pi.9f2c1a7b4d6e0f31", true}, // content ref, different agent
+		{"prefixed content ref, same image", naming.DockerImagePrefix + planSlug + ":opencode." + planContentID, false},
+		{"content ref, different agent", naming.ContentImageRef(planSlug, "pi", planContentID), true},
 	}
 	for _, tc := range cases {
-		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
+		cfg := &msbSdk.SandboxConfig{Image: tc.persisted}
+		plan := PlanReconfig(cfg, planNameImage(), options.RunOptions{}, ChangeFlags{}, "")
 		if plan.Recreate != tc.wantRecreate {
-			t.Errorf("PlanReconfig(%q) recreate = %v, want %v", tc.ref, plan.Recreate, tc.wantRecreate)
+			t.Errorf(
+				"%s: PlanReconfig(persisted %q) recreate = %v, want %v",
+				tc.name, tc.persisted, plan.Recreate, tc.wantRecreate,
+			)
 		}
 	}
 }
 
 // TestPlanReconfigToleratesContentImageRef covers the upgrade from a VM that was
-// booted from a content ref: it is not recreated when the launcher resolves the
-// same slug+agent under the name or legacy prefixed spelling, but IS recreated
-// for a different content id (a genuine image switch whose persisted digest may
-// already match — the home action records the new digest before the VM is
-// replaced), a different agent, or a digest-pinned ref.
+// booted from a content ref: it is not recreated when the persisted reference
+// names the same slug+agent under the name or legacy prefixed spelling, but IS
+// recreated for a different content id (a genuine image switch whose persisted
+// digest may already match — the home action records the new digest before the
+// VM is replaced), a different agent, or a digest-pinned ref.
 func TestPlanReconfigToleratesContentImageRef(t *testing.T) {
-	const contentRef = "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31"
-	cfg := &msbSdk.SandboxConfig{Image: contentRef}
-
 	cases := []struct {
-		ref          string
+		name         string
+		persisted    string
 		wantRecreate bool
 	}{
-		{contentRef, false},                            // identical content ref
-		{"proj-1mjusbm3wikhb0:opencode-latest", false}, // its prefix-free name ref
-		// its legacy prefixed name ref
-		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest", false},
-		{"proj-1mjusbm3wikhb0:pi.9f2c1a7b4d6e0f31", true}, // different agent
-		{"proj-1mjusbm3wikhb0:4e8oeqohbmalok", true},      // digest-pinned ref
+		{"identical content ref", naming.ContentImageRef(planSlug, "opencode", planContentID), false},
+		{"its prefix-free name ref", naming.RunnerImageRef(planSlug, "opencode"), false},
+		{"its legacy prefixed name ref", naming.DockerImageRef(planSlug, "opencode"), false},
+		{"different agent", naming.ContentImageRef(planSlug, "pi", planContentID), true},
+		{"pinned digest ref", planSlug + ":4e8oeqohbmalok", true},
 		// different content id: a real image switch, not a spelling change
-		{"proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
+		{"different content id", naming.ContentImageRef(planSlug, "opencode", "4b8d0e6f2a1c3b57"), true},
 		// prefixed spelling of a different content id
-		{"agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode.4b8d0e6f2a1c3b57", true},
+		{"prefixed different content id", naming.DockerImagePrefix + planSlug + ":opencode.4b8d0e6f2a1c3b57", true},
 	}
 	for _, tc := range cases {
-		plan := PlanReconfig(cfg, tc.ref, options.RunOptions{}, ChangeFlags{}, "")
+		cfg := &msbSdk.SandboxConfig{Image: tc.persisted}
+		plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{}, "")
 		if plan.Recreate != tc.wantRecreate {
-			t.Errorf("PlanReconfig(%q) recreate = %v, want %v", tc.ref, plan.Recreate, tc.wantRecreate)
+			t.Errorf(
+				"%s: PlanReconfig(persisted %q) recreate = %v, want %v",
+				tc.name, tc.persisted, plan.Recreate, tc.wantRecreate,
+			)
 		}
 	}
 }
@@ -183,7 +213,7 @@ func TestDesiredPublishBindingsNilWhenNotServeOnly(t *testing.T) {
 func TestPlanReconfigNetworkChangeTriggersRecreate(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{}
 	opts := options.RunOptions{}
-	plan := PlanReconfig(cfg, "img", opts, ChangeFlags{Network: true}, "")
+	plan := PlanReconfig(cfg, planImage(), opts, ChangeFlags{Network: true}, "")
 	if !plan.Recreate {
 		t.Fatal("expected Recreate when network policy changes")
 	}
@@ -192,7 +222,7 @@ func TestPlanReconfigNetworkChangeTriggersRecreate(t *testing.T) {
 func TestPlanReconfigNetworkSameNoRecreate(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{}
 	opts := options.RunOptions{}
-	plan := PlanReconfig(cfg, "img", opts, ChangeFlags{}, "")
+	plan := PlanReconfig(cfg, planImage(), opts, ChangeFlags{}, "")
 	if plan.Recreate {
 		t.Fatal("expected no Recreate when network policy is unchanged")
 	}
@@ -200,12 +230,12 @@ func TestPlanReconfigNetworkSameNoRecreate(t *testing.T) {
 
 func TestPlanReconfigHomeVolumeChangeTriggersRecreate(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{
-		Image: "img",
+		Image: naming.RunnerImageRef(planSlug, "opencode"),
 		Volumes: map[string]msbSdk.MountConfig{
 			mounts.VMHomeDir: {Named: "agents-sandbox-home-proj-old"},
 		},
 	}
-	plan := PlanReconfig(cfg, "img", options.RunOptions{}, ChangeFlags{},
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{},
 		"agents-sandbox-home-proj-new")
 	if !plan.Recreate {
 		t.Fatal("expected Recreate when the desired home volume differs from the mounted one")
@@ -224,12 +254,12 @@ func TestPlanReconfigHomeVolumeChangeTriggersRecreate(t *testing.T) {
 
 func TestPlanReconfigHomeVolumeSameNoRecreate(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{
-		Image: "img",
+		Image: naming.RunnerImageRef(planSlug, "opencode"),
 		Volumes: map[string]msbSdk.MountConfig{
 			mounts.VMHomeDir: {Named: "agents-sandbox-home-proj-vol"},
 		},
 	}
-	plan := PlanReconfig(cfg, "img", options.RunOptions{}, ChangeFlags{},
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{},
 		"agents-sandbox-home-proj-vol")
 	if plan.Recreate {
 		t.Fatal("expected no Recreate when the mounted home volume matches the desired one")
@@ -237,7 +267,7 @@ func TestPlanReconfigHomeVolumeSameNoRecreate(t *testing.T) {
 }
 
 func TestPlanReconfigNilCfgHomeVolumeSafe(t *testing.T) {
-	plan := PlanReconfig(nil, "img", options.RunOptions{}, ChangeFlags{},
+	plan := PlanReconfig(nil, planImage(), options.RunOptions{}, ChangeFlags{},
 		"agents-sandbox-home-proj-vol")
 	if plan.Recreate {
 		t.Fatal("expected no Recreate for a nil config (fresh VM creation)")
@@ -246,7 +276,7 @@ func TestPlanReconfigNilCfgHomeVolumeSafe(t *testing.T) {
 
 func TestPlanReconfigMountsChangeTriggersRecreate(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{}
-	plan := PlanReconfig(cfg, "img", options.RunOptions{}, ChangeFlags{Mounts: true}, "")
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{Mounts: true}, "")
 	if !plan.Recreate {
 		t.Fatal("expected Recreate when host bind mounts change")
 	}
@@ -270,7 +300,7 @@ func TestPlanReconfigMountsUnchangedNoRecreate(t *testing.T) {
 	opts := options.RunOptions{Mounts: mounts.Mounts{
 		"/home/dev/.m2": {Source: "/host/.m2"},
 	}}
-	plan := PlanReconfig(cfg, "img", opts, ChangeFlags{}, "")
+	plan := PlanReconfig(cfg, planImage(), opts, ChangeFlags{}, "")
 	if plan.Recreate {
 		t.Fatalf("expected no Recreate for unchanged mounts, got %+v", plan.Changes)
 	}
@@ -320,25 +350,30 @@ func TestConfigChangeList(t *testing.T) {
 
 func TestImageRecreateEmptyImageRef(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{Image: "old:1"}
-	if imageRecreate(cfg, "", false) {
-		t.Error("an empty desired imageRef must not trigger a recreate")
+	if imageRecreate(cfg, naming.ImageIdentity{}, false) {
+		t.Error("an empty desired image identity must not trigger a recreate")
 	}
-	if !imageRecreate(cfg, "new:2", false) {
-		t.Error("a differing imageRef must trigger a recreate")
+	if !imageRecreate(cfg, planImage(), false) {
+		t.Error("a differing desired image identity must trigger a recreate")
 	}
-	if !imageRecreate(cfg, "", true) {
+	if !imageRecreate(cfg, naming.ImageIdentity{}, true) {
 		t.Error("the Image flag alone must trigger a recreate")
 	}
 }
 
-func TestImageRecreateForeignRefs(t *testing.T) {
-	const foreign = "docker.io/library/foreign:1"
-	cfg := &msbSdk.SandboxConfig{Image: foreign}
-	if imageRecreate(cfg, foreign, false) {
-		t.Error("an identical foreign image reference must not trigger a recreate")
-	}
-	if !imageRecreate(cfg, "docker.io/library/other:1", false) {
-		t.Error("two different foreign image references must trigger a recreate")
+// TestImageRecreateNonRunnerRefs pins that a persisted reference the launcher
+// never computes — a foreign repository reference, or a digest-pinned runner ref
+// — is never the same image as the desired identity, so the VM is recreated
+// rather than reused.
+func TestImageRecreateNonRunnerRefs(t *testing.T) {
+	for _, persisted := range []string{
+		"docker.io/library/foreign:1",
+		planSlug + ":4e8oeqohbmalok",
+	} {
+		cfg := &msbSdk.SandboxConfig{Image: persisted}
+		if !imageRecreate(cfg, planImage(), false) {
+			t.Errorf("persisted %q must trigger a recreate against the desired identity", persisted)
+		}
 	}
 }
 
@@ -362,33 +397,69 @@ func TestIsNameImage(t *testing.T) {
 	}
 }
 
-// TestSameImageIdentitySlugAndAgent pins that two name refs are the same image
-// only when both their slug and agent match, and that a differing slug is not
-// masked by an equal agent.
-func TestSameImageIdentitySlugAndAgent(t *testing.T) {
-	const slug = "proj-1mjusbm3wikhb0"
-	if !sameImageIdentity(slug+":opencode-latest", naming.DockerImageRef(slug, "opencode")) {
-		t.Error("the prefix-free and prefixed spellings of one slug+agent must be the same image")
+// TestSameImageRefNonNameRefs pins that the persisted ref must name a (slug,
+// agent) pair before any comparison happens: a digest-pinned runner ref sharing
+// the desired slug, and a foreign ref, are never the same image even when the
+// desired identity is incomplete (a slug-only or empty one). The pair comparison
+// alone would accept the digest-pinned row, whose parsed agent is empty like the
+// identity's.
+func TestSameImageRefNonNameRefs(t *testing.T) {
+	cases := []struct {
+		name      string
+		persisted string
+		image     naming.ImageIdentity
+	}{
+		{"digest-pinned ref, same slug", planSlug + ":4e8oeqohbmalok", naming.ImageIdentity{Slug: planSlug}},
+		{"foreign ref, empty identity", "docker.io/library/foreign:1", naming.ImageIdentity{}},
 	}
-	if sameImageIdentity(slug+":opencode-latest", "other-1mjusbm3wikhb0:opencode-latest") {
-		t.Error("a different slug with the same agent must not be the same image")
+	for _, tc := range cases {
+		if sameImageRef(tc.persisted, tc.image) {
+			t.Errorf("%s: sameImageRef(%q, %+v) = true, want false", tc.name, tc.persisted, tc.image)
+		}
 	}
 }
 
-// TestSameImageIdentityContentID pins the content-addressed rule: two content
-// refs are the same image only when their content ids match, even across the
-// prefix-free and prefixed spellings.
-func TestSameImageIdentityContentID(t *testing.T) {
-	const slug = "proj-1mjusbm3wikhb0"
-	const contentID = "9f2c1a7b4d6e0f31"
-	prefixFree := slug + ":opencode." + contentID
-	prefixed := naming.DockerImagePrefix + slug + ":opencode." + contentID
-	if !sameImageIdentity(prefixFree, prefixed) {
-		t.Error("two content refs with the same content id must be the same image")
+// TestSameImageRefSlugAndAgent pins that a persisted name ref is the same image
+// as a desired name identity only when both their slug and agent match, and that
+// a differing slug is not masked by an equal agent.
+func TestSameImageRefSlugAndAgent(t *testing.T) {
+	nameImage := naming.ImageIdentity{Slug: planSlug, Agent: "opencode"}
+	if !sameImageRef(naming.RunnerImageRef(planSlug, "opencode"), nameImage) {
+		t.Error("the prefix-free name ref must be the same image as its name identity")
 	}
-	other := slug + ":opencode.0123456789abcdef"
-	if sameImageIdentity(prefixFree, other) {
-		t.Error("two content refs with different content ids must not be the same image")
+	if !sameImageRef(naming.DockerImageRef(planSlug, "opencode"), nameImage) {
+		t.Error("the prefixed spelling of one slug+agent must be the same image")
+	}
+	if sameImageRef(naming.RunnerImageRef("other-1mjusbm3wikhb0", "opencode"), nameImage) {
+		t.Error("a different slug with the same agent must not be the same image")
+	}
+	if sameImageRef(naming.RunnerImageRef(planSlug, "pi"), nameImage) {
+		t.Error("a different agent must not be the same image")
+	}
+}
+
+// TestSameImageRefContentID pins the content-addressed rule: a persisted content
+// ref is the same image as a desired content identity only when their content
+// ids match, across the prefix-free and prefixed spellings, while a name
+// identity tolerates any content id (the upgrade spelling).
+func TestSameImageRefContentID(t *testing.T) {
+	contentImage := planImage()
+	prefixFree := naming.ContentImageRef(planSlug, "opencode", planContentID)
+	prefixed := naming.DockerImagePrefix + planSlug + ":opencode." + planContentID
+	if !sameImageRef(prefixFree, contentImage) {
+		t.Error("the prefix-free content ref must be the same image as its content identity")
+	}
+	if !sameImageRef(prefixed, contentImage) {
+		t.Error("the prefixed content ref must be the same image as its content identity")
+	}
+	if !sameImageRef(naming.RunnerImageRef(planSlug, "opencode"), contentImage) {
+		t.Error("the name spelling of one slug+agent must be the same image as its content identity")
+	}
+	if sameImageRef(naming.ContentImageRef(planSlug, "opencode", "0123456789abcdef"), contentImage) {
+		t.Error("a different content id must not be the same image")
+	}
+	if !sameImageRef(naming.ContentImageRef(planSlug, "opencode", "0123456789abcdef"), planNameImage()) {
+		t.Error("any content spelling must be the same image as its name identity")
 	}
 }
 
@@ -480,8 +551,10 @@ func TestResourceModificationMaxCPUsOne(t *testing.T) {
 }
 
 func TestPlanReconfigAgentConfigSuppressedByRecreate(t *testing.T) {
-	cfg := &msbSdk.SandboxConfig{Image: "old:1", CPUs: 4, MemoryMiB: 4096}
-	plan := PlanReconfig(cfg, "new:2", options.RunOptions{}, ChangeFlags{AgentConfig: true}, "")
+	cfg := &msbSdk.SandboxConfig{
+		Image: naming.ContentImageRef(planSlug, "opencode", "4b8d0e6f2a1c3b57"), CPUs: 4, MemoryMiB: 4096,
+	}
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{AgentConfig: true}, "")
 	if !plan.Recreate {
 		t.Fatal("expected a recreate on the image change")
 	}
@@ -536,8 +609,10 @@ func TestResourceModificationNilWhenUnchanged(t *testing.T) {
 // into an already-decided recreate: they must not be appended as extra change
 // lines, which would misreport why the VM is rebuilt.
 func TestPlanReconfigRecreateSuppressesEnvChange(t *testing.T) {
-	cfg := &msbSdk.SandboxConfig{Image: "old:1", CPUs: 4, MemoryMiB: 4096}
-	plan := PlanReconfig(cfg, "new:2", options.RunOptions{}, ChangeFlags{Env: true, Secrets: true}, "")
+	cfg := &msbSdk.SandboxConfig{
+		Image: naming.ContentImageRef(planSlug, "opencode", "4b8d0e6f2a1c3b57"), CPUs: 4, MemoryMiB: 4096,
+	}
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{}, ChangeFlags{Env: true, Secrets: true}, "")
 	if !plan.Recreate {
 		t.Fatal("expected a recreate on the image change")
 	}
@@ -549,8 +624,10 @@ func TestPlanReconfigRecreateSuppressesEnvChange(t *testing.T) {
 }
 
 func TestPlanReconfigAgentConfigAppendsChange(t *testing.T) {
-	cfg := &msbSdk.SandboxConfig{Image: "a", CPUs: 4, MemoryMiB: 4096}
-	plan := PlanReconfig(cfg, "a", options.RunOptions{}, ChangeFlags{AgentConfig: true}, "")
+	cfg := &msbSdk.SandboxConfig{
+		Image: naming.RunnerImageRef(planSlug, "opencode"), CPUs: 4, MemoryMiB: 4096,
+	}
+	plan := PlanReconfig(cfg, planNameImage(), options.RunOptions{}, ChangeFlags{AgentConfig: true}, "")
 	if !plan.RestartDaemons {
 		t.Fatal("expected a daemon restart for an agent config change")
 	}

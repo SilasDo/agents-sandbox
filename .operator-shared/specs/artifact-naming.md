@@ -50,7 +50,8 @@ ref.
 
 New artifacts are created under the new scheme; lookups accept either scheme, so existing artifacts keep working and
 are neither renamed, reimported nor rebuilt. `naming` owns the production constructors (`TaskSandboxName`,
-`HomeVolumeName`, `RunnerImageRef`, `ContentImageRef`, `DockerImageRef`) and its parsers accept both shapes; the project-VM name is built
+`HomeVolumeName`, `RunnerImageRef`, `ContentImageRef`, `DockerImageRef`, and `ImageIdentity`, whose `Ref`/`NameRef`
+render the image references for a structured `(slug, agent, contentID)`) and its parsers accept both shapes; the project-VM name is built
 in `vm` (it needs truncation) and legacy names are only ever parsed, never constructed in production. Tests build
 scheme-shaped fixtures from the exported prefixes.
 

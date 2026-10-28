@@ -34,9 +34,21 @@ type reconfigFixture struct {
 // than Cfg.Volumes, because that is how a live VM's mounts reach the decision.
 func newReconfigFixture(t *testing.T, liveMounts map[string]msbSdk.MountConfig, mountsErr error) reconfigFixture {
 	t.Helper()
+	return newReconfigFixtureForImage(t, "img:tag", liveMounts, mountsErr)
+}
+
+// newReconfigFixtureForImage is newReconfigFixture with an explicit persisted
+// runner-image reference, so a test can drive the image-identity comparison.
+func newReconfigFixtureForImage(
+	t *testing.T,
+	cfgImage string,
+	liveMounts map[string]msbSdk.MountConfig,
+	mountsErr error,
+) reconfigFixture {
+	t.Helper()
 
 	handle := &msb.MockSandboxHandle{
-		Cfg:       &msbSdk.SandboxConfig{Image: "img:tag", CPUs: 4, MemoryMiB: 4096},
+		Cfg:       &msbSdk.SandboxConfig{Image: cfgImage, CPUs: 4, MemoryMiB: 4096},
 		Mounts:    liveMounts,
 		MountsErr: mountsErr,
 	}

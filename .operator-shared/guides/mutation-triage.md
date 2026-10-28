@@ -158,7 +158,13 @@ This is the field guide for doing it. It was distilled from the first full sweep
   that ref, pull the guard into a predicate (`isNameImage`/`hasNameIdentity`) returning `Slug != "" && Agent != "" [&&
   Digest == ""]` and table-test it directly: one row per field makes that field's removal change the result (`{Agent:
   "opencode"}` with no slug fails the `Slug` row), and the `&&`→`||` inversion fails too. Asserting the *predicate*
-  keeps the caller's guard intact instead of deleting a check for good.
+  keeps the caller's guard intact instead of deleting a check for good. The predicate's rows do **not** kill the
+  caller's own `if !isNameImage(parsed) { return false }` (`sameImageRef`, #412): the following `parsed.Slug !=
+  image.Slug || parsed.Agent != image.Agent` subsumes it for every complete desired identity, because `ParseImageTag`
+  never yields a digest together with an agent, so a digest-pinned parse is rejected by the pair comparison too. Only a
+  direct call with an *incomplete* identity — a slug-only or empty `ImageIdentity`, which the sole production caller's
+  `image.Ref() != ""` precondition excludes — makes removing the guard observable; assert that row rather than deleting
+  a check that is not redundant as a total function.
 - **`if len(x) > N { x = x[:N] }`: only one of the condition's integer mutants is observable.** `>N`↔`>=N` and `N`→`N-1`
   differ only when `len==N`, where both branches leave the same `N` characters, so they are equivalent — record them
   with `disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT`. Only `N`→`N+1` changes behaviour (an `N+1`-length

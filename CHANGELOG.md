@@ -94,6 +94,10 @@ command reports the bare version (e.g. `0.1.0`).
   present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
   with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
   `docs/runner-image.md`.
+- Internal: the runner image's identity is now a structured value instead of a re-parsed string. `image.ImageInfo`
+  carries `naming.ImageIdentity` (slug, agent, content id) beside its rendered references, so the microsandbox load
+  decision and the VM reconfig comparison use the identity the launcher built rather than parsing its own reference;
+  only a reference read back from the VM or the microsandbox cache is still parsed (#349).
 - `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
   (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
   `dry-run-vm: auto-enabled` verbose line (#344).

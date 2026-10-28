@@ -1,6 +1,6 @@
 ---
 description: Contract for deciding which agent version is baked into the runner image, when it is (re)built, and when the Docker layer cache is bypassed.
-read_if: Changing image build/caching, BuildOptions, `--rebuild`, `--agent-version`, agent upgrade, or the volume subcommands' image handling.
+read_if: Changing image build/caching, `ImageInfo`/the load decision, BuildOptions, `--rebuild`, `--agent-version`, agent upgrade, or the volume subcommands' image handling.
 ---
 # Runner image build and cache contract
 
@@ -34,8 +34,10 @@ same way (see `specs/image-composition.md`).
 
 ## Load decision
 
-`EnsureImageWithClient` returns an `ImageInfo{DockerTag, Ref, Digest, DockerfileID, Env, AgentVersion}`. `DockerTag` is the stable
+`EnsureImageWithClient` returns an `ImageInfo{DockerTag, Ref, Identity, Digest, DockerfileID, Env, AgentVersion}`. `DockerTag` is the stable
 Docker tag; `Ref` is the content-addressed microsandbox reference (`<slug>:<agent>.<contentid>`, derived from `Digest`);
+`Identity` is the structured `naming.ImageIdentity{Slug, Agent, ContentID}` `Ref` is rendered from, so no caller has to
+parse a reference the launcher built;
 `Digest` is Docker's image ID, i.e. the same content identity microsandbox computes for an image it holds
 (`config.digest = sha256(config_bytes)`), `DockerfileID` is the source signature above, and `AgentVersion` is the release
 the image reports through its `agent-version` label (empty for a missing or non-release sentinel label). Loading into
@@ -45,8 +47,7 @@ microsandbox is deferred to a separate `EnsureLoaded` call, so reconnecting to a
 candidate references in reuse-preference order and reuses the first that already holds the content:
 
 1. the content ref `info.Ref` (`<slug>:<agent>.<contentid>`);
-2. the prefix-free name ref `naming.RunnerImageRef(slug, agent)` (`<slug>:<agent>-latest`), derived by parsing
-   `info.DockerTag` for its `(slug, agent)` (a 0.6.0 install cached under it);
+2. the prefix-free name ref `info.Identity.NameRef()` (`<slug>:<agent>-latest`; a 0.6.0 install cached under it);
 3. the legacy prefixed Docker-tag ref `info.DockerTag` (`agents-sandbox/runner-<slug>:<agent>-latest`, a pre-0.6 cache).
 
 A candidate is reused only when its cached digest equals `info.Digest`; a cached image with no digest is unknown content

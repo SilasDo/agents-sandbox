@@ -194,7 +194,7 @@ func resolveReconfigDecision(
 
 	plan := reconfig.PlanReconfig(
 		curCfg,
-		imageInfo.Ref,
+		imageInfo.Identity,
 		opts,
 		reconfig.ChangeFlags{
 			Image:       imageChanged,
