@@ -238,7 +238,7 @@ func TestRunDryRunRendersPreview(t *testing.T) {
 		CreateHome:   true,
 	})
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
@@ -259,7 +259,7 @@ func TestRunDryRunRendersReusePreview(t *testing.T) {
 		HomeVolume:   "agents-sandbox-home-abc",
 	})
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestRunDryRunRendersUpgradeCheckSkippedSuffix(t *testing.T) {
 		HomeVolume:          "agents-sandbox-home-abc",
 	})
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestRunDryRunResolveAtBuildMessage(t *testing.T) {
 		HomeVolume:            "agents-sandbox-home-abc",
 	})
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
@@ -325,7 +325,7 @@ func TestRunDryRunJoinsMultipleBuildReasons(t *testing.T) {
 		HomeVolume:   "agents-sandbox-home-abc",
 	})
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestRunDryRunDoesNotPrepareSandbox(t *testing.T) {
 	}
 	t.Cleanup(func() { prepareSandbox = orig })
 
-	if err := Run(context.Background(), options.RunOptions{DryRun: true}, ui); err != nil {
+	if err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui); err != nil {
 		t.Fatalf("Run dry-run: %v", err)
 	}
 }
@@ -362,7 +362,7 @@ func TestRunDryRunPropagatesPreviewError(t *testing.T) {
 	}
 	t.Cleanup(func() { previewSandbox = orig })
 
-	err := Run(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err == nil || !strings.Contains(err.Error(), "preview boom") {
 		t.Errorf("err = %v, want preview error", err)
 	}
@@ -379,7 +379,7 @@ func TestRunDryRunVM(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Run(context.Background(), options.RunOptions{DryRunVM: true}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModeSkipVM, ui)
 	if err != nil {
 		t.Fatalf("Run dry-run-vm: %v", err)
 	}
@@ -404,7 +404,7 @@ func TestRunServeOnlyPath(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, options.ModeRun, ui)
 	}()
 	cancel()
 	var err error
@@ -438,7 +438,7 @@ func TestRunServeOnlyUsesSessionServeHostPort(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, options.ModeRun, ui)
 	}()
 	cancel()
 	select {
@@ -467,7 +467,7 @@ func TestRunPrepareSandboxError(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Run(context.Background(), options.RunOptions{}, ui)
+	err := Run(context.Background(), options.RunOptions{}, options.ModeRun, ui)
 	if err == nil || !strings.Contains(err.Error(), "prepare boom") {
 		t.Errorf("err = %v, want prepareSandbox error", err)
 	}
@@ -492,7 +492,7 @@ func TestRunServeOnlyReapFailureWarns(t *testing.T) {
 			Agent:      "opencode",
 			ServeOnly:  true,
 			ReapPolicy: options.NewReapPolicy(false, 5),
-		}, ui)
+		}, options.ModeRun, ui)
 	}()
 	cancel()
 	var err error
@@ -529,7 +529,7 @@ func TestShellPrepareSandboxError(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Shell(context.Background(), options.RunOptions{}, ui)
+	err := Shell(context.Background(), options.RunOptions{}, options.ModeRun, ui)
 	if err == nil || !strings.Contains(err.Error(), "prepare boom") {
 		t.Errorf("err = %v, want prepareSandbox error", err)
 	}
@@ -558,7 +558,7 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 	err := Run(context.Background(), options.RunOptions{
 		Agent:      "opencode",
 		ReapPolicy: options.NewReapPolicy(true, 5),
-	}, ui)
+	}, options.ModeRun, ui)
 	if err != nil {
 		t.Fatalf("Run normal: %v", err)
 	}
@@ -590,7 +590,7 @@ func TestShellDryRunRendersPreview(t *testing.T) {
 		HomeVolume:   "agents-sandbox-home-abc",
 	})
 
-	err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Shell(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err != nil {
 		t.Fatalf("Shell dry-run: %v", err)
 	}
@@ -613,7 +613,7 @@ func TestShellDryRunDoesNotPrepareSandbox(t *testing.T) {
 	}
 	t.Cleanup(func() { prepareSandbox = orig })
 
-	if err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui); err != nil {
+	if err := Shell(context.Background(), options.RunOptions{}, options.ModePreview, ui); err != nil {
 		t.Fatalf("Shell dry-run: %v", err)
 	}
 }
@@ -627,7 +627,7 @@ func TestShellDryRunPropagatesPreviewError(t *testing.T) {
 	}
 	t.Cleanup(func() { previewSandbox = orig })
 
-	err := Shell(context.Background(), options.RunOptions{DryRun: true}, ui)
+	err := Shell(context.Background(), options.RunOptions{}, options.ModePreview, ui)
 	if err == nil || !strings.Contains(err.Error(), "preview boom") {
 		t.Errorf("err = %v, want preview error", err)
 	}
@@ -644,7 +644,7 @@ func TestShellDryRunVM(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Shell(context.Background(), options.RunOptions{DryRunVM: true}, ui)
+	err := Shell(context.Background(), options.RunOptions{}, options.ModeSkipVM, ui)
 	if err != nil {
 		t.Fatalf("Shell dry-run-vm: %v", err)
 	}
@@ -674,7 +674,12 @@ func TestShellNormalCallsRunAttach(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Shell(context.Background(), options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+	err := Shell(
+		context.Background(),
+		options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
+		ui,
+	)
 	if err != nil {
 		t.Fatalf("Shell normal: %v", err)
 	}
@@ -698,7 +703,12 @@ func TestShellUsesGuestCWD(t *testing.T) {
 	}
 	defer func() { prepareSandbox = orig }()
 
-	err := Shell(context.Background(), options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+	err := Shell(
+		context.Background(),
+		options.RunOptions{ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
+		ui,
+	)
 	if err != nil {
 		t.Fatalf("Shell: %v", err)
 	}
@@ -804,7 +814,7 @@ func TestRunStartsNotifyWatcher(t *testing.T) {
 			Desktop: true, Audio: notify.AudioOff,
 			OnInput: true, OnDone: true, OnError: true,
 		},
-	}, ui)
+	}, options.ModeRun, ui)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -834,7 +844,7 @@ func TestRunDoesNotStartNotifyWatcherWhenInactive(t *testing.T) {
 
 	err := Run(context.Background(), options.RunOptions{
 		ReapPolicy: options.NewReapPolicy(true, 5),
-	}, ui)
+	}, options.ModeRun, ui)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -938,7 +948,7 @@ func TestRunLogsNotifyWatcherErrorAfterStop(t *testing.T) {
 			Desktop: true, Audio: notify.AudioOff,
 			OnInput: true, OnDone: true, OnError: true,
 		},
-	}, ui)
+	}, options.ModeRun, ui)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -977,7 +987,7 @@ func TestRunDoesNotStartNotifyWatcherWithoutEventStreamProvider(t *testing.T) {
 			Desktop: true, Audio: notify.AudioOff,
 			OnInput: true, OnDone: true, OnError: true,
 		},
-	}, ui)
+	}, options.ModeRun, ui)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}

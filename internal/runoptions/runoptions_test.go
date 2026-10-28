@@ -1014,34 +1014,20 @@ func TestBuildNotifyConfigOnlyWarnsForInteractiveAgent(t *testing.T) {
 	}
 }
 
-// --dry-run auto-enables --dry-run-vm so a dry run exercises the full VM boot.
-func TestBuildDryRunAutoEnablesDryRunVM(t *testing.T) {
-	ui := &termio.Mock{}
-	r := viperconfig.NewResolverWithConfig(viperconfig.Config{})
-	cmd := newRunCommand()
-	if err := cmd.Flags().Set(FlagDryRun, "true"); err != nil {
-		t.Fatalf("set dry-run: %v", err)
-	}
-
-	opts, err := Build(r.Config(), cmd, ui)
+func TestBuildLeavesDryRunToTheMode(t *testing.T) {
+	// Build no longer carries DryRun/DryRunVM; the mode is resolved separately.
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool(FlagDryRun, false, "")
+	cmd.Flags().Bool(FlagDryRunVM, false, "")
+	_ = cmd.Flags().Set(FlagDryRun, "true")
+	ui := termio.NewTestMock(t)
+	opts, err := Build(nil, cmd, &ui)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.DryRun {
-		t.Error("DryRun = false; want true")
-	}
-	if !opts.DryRunVM {
-		t.Error("DryRunVM = false; want auto-enabled true by --dry-run")
-	}
-	found := false
-	for _, v := range ui.VerboseCalls {
-		if strings.Contains(v, "dry-run-vm: auto-enabled") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected a verbose note about auto-enabling dry-run-vm, got %v", ui.VerboseCalls)
+	_ = opts // RunOptions has no dry-run fields left to assert; this pins that Build no longer reads them
+	if got := ResolveMode(cmd); got != options.ModePreview {
+		t.Errorf("ResolveMode() = %v, want ModePreview", got)
 	}
 }
 

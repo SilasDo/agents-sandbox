@@ -128,7 +128,8 @@ func runFunc(ui termio.UI) func(cmd *cobra.Command, args []string) error {
 		if opts.ServeOnly {
 			ctx, _ = serveOnlyContext(ctx)
 		}
-		isDryRun, _ := cmd.Flags().GetBool(flagDryRun)
+		mode := runoptions.ResolveMode(cmd)
+		isDryRun := mode.Previews()
 		if !isDryRun {
 			if !doctor.CheckAll(cmd.Context(), ui) {
 				return errors.New("preflight failed")
@@ -144,7 +145,7 @@ func runFunc(ui termio.UI) func(cmd *cobra.Command, args []string) error {
 		if r != nil {
 			pruning.AutoPrune(cmd.Context(), r.AutoPruneAge(), isDryRun, &autoPruneOutToVerboseRedirect{UI: ui})
 		}
-		return session.Run(ctx, opts, ui)
+		return session.Run(ctx, opts, mode, ui)
 	}
 }
 
@@ -211,8 +212,8 @@ func buildShellCmd(ui termio.UI) *cobra.Command {
 			if !doctor.CheckAll(cmd.Context(), ui) {
 				return errors.New("preflight failed")
 			}
-			isDryRun, _ := cmd.Flags().GetBool(flagDryRun)
-			if !isDryRun {
+			mode := runoptions.ResolveMode(cmd)
+			if !mode.Previews() {
 				exit, err := checkForUpgrade(cmd.Context(), resolverFromContext(cmd.Context()), ui)
 				if err != nil {
 					return err
@@ -225,7 +226,7 @@ func buildShellCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return session.Shell(cmd.Context(), opts, ui)
+			return session.Shell(cmd.Context(), opts, mode, ui)
 		},
 	}
 	registerSharedRunShellFlags(cmd)

@@ -149,7 +149,7 @@ func TestResolveHomeVolumePathUsesVolumeHandle(t *testing.T) {
 func TestShellAndRunServeHostOpenerWhileAttached(t *testing.T) {
 	for _, session := range []struct {
 		name  string
-		start func(context.Context, options.RunOptions, termio.UI) error
+		start func(context.Context, options.RunOptions, options.Mode, termio.UI) error
 	}{{"shell", Shell}, {"run", Run}} {
 		t.Run(session.name, func(t *testing.T) {
 			configpaths.WithMockConfigPaths(t)
@@ -166,7 +166,7 @@ func TestShellAndRunServeHostOpenerWhileAttached(t *testing.T) {
 			t.Cleanup(func() { prepareSandbox = original })
 
 			opts := options.RunOptions{OpenLinks: true, ReapPolicy: options.NewReapPolicy(true, 5)}
-			if err := session.start(context.Background(), opts, &termio.Mock{}); err != nil {
+			if err := session.start(context.Background(), opts, options.ModeRun, &termio.Mock{}); err != nil {
 				t.Fatalf("%s: %v", session.name, err)
 			}
 			if len(*watched) != 1 {

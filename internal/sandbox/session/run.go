@@ -172,19 +172,19 @@ func runServeOnly(ctx context.Context, a agent.Agent, sb msb.Sandbox, ui termio.
 // serve daemon, and attaches a TUI client.
 //
 // Note: Run is called from cli.go after all flags are resolved.
-func Run(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
-	if opts.DryRun {
+func Run(ctx context.Context, opts options.RunOptions, mode options.Mode, ui termio.UI) error {
+	if mode.Previews() {
 		return previewAndRender(ctx, opts, ui, false)
 	}
 
-	ses, err := prepareSandbox(ctx, opts, opts.DryRunVM, ui)
+	ses, err := prepareSandbox(ctx, opts, mode.SkipsVM(), ui)
 	if err != nil {
 		return err
 	}
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if opts.DryRunVM && sb == nil {
+	if mode.SkipsVM() && sb == nil {
 		ui.Infof("dry-run: Would start agent session in VM")
 		return nil
 	}
@@ -251,19 +251,19 @@ func runServeOnlySession(
 
 // Shell creates (or reuses) the project VM and drops the user into an
 // interactive shell session, without starting the agent serve daemon.
-func Shell(ctx context.Context, opts options.RunOptions, ui termio.UI) error {
-	if opts.DryRun {
+func Shell(ctx context.Context, opts options.RunOptions, mode options.Mode, ui termio.UI) error {
+	if mode.Previews() {
 		return previewAndRender(ctx, opts, ui, true)
 	}
 
-	ses, err := prepareSandbox(ctx, opts, opts.DryRunVM, ui)
+	ses, err := prepareSandbox(ctx, opts, mode.SkipsVM(), ui)
 	if err != nil {
 		return err
 	}
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if opts.DryRunVM && sb == nil {
+	if mode.SkipsVM() && sb == nil {
 		ui.Infof("dry-run: Would start interactive shell session")
 		return nil
 	}

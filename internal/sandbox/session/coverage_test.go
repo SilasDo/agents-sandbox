@@ -164,7 +164,7 @@ func TestRunServeOnlyClientLeaseFailureWarns(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, options.ModeRun, ui)
 	}()
 	cancel()
 
@@ -222,6 +222,7 @@ func TestRunUsesSessionKeyForLease(t *testing.T) {
 	if err := Run(
 		context.Background(),
 		options.RunOptions{Agent: "opencode", ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
 		ui,
 	); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -256,7 +257,12 @@ func TestRunServeOnlyReturnsDeadlineExceeded(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(100*time.Millisecond))
 	defer cancel()
 
-	err := Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+	err := Run(
+		ctx,
+		options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
+		ui,
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
