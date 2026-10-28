@@ -75,10 +75,13 @@ func checkProfileCombination(profiles []Profile) error {
 // accepts a single name, a comma-separated string, or a YAML list; viperconfig's
 // string-to-slice decode hook normalizes the scalar forms into Profiles.
 type Policy struct {
-	Profiles    []Profile `mapstructure:"profile"`
-	EgressAllow []string  `mapstructure:"egress-allow"`
-	EgressDeny  []string  `mapstructure:"egress-deny"`
-	DNSServers  []string  `mapstructure:"dns-servers"`
+	Profiles []Profile `mapstructure:"profile"`
+	// EgressAllow and EgressDeny have no env var and no CLI flag: they are set
+	// in the config file only (see docs/configuration/networking.md). The
+	// env:"-" tag keeps viperconfig's derived env list from binding them.
+	EgressAllow []string `mapstructure:"egress-allow" env:"-"`
+	EgressDeny  []string `mapstructure:"egress-deny"  env:"-"`
+	DNSServers  []string `mapstructure:"dns-servers"`
 }
 
 // Empty reports whether the policy is unset (zero value).
