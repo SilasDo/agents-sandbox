@@ -80,6 +80,13 @@ This is the field guide for doing it. It was distilled from the first full sweep
   skipped, so it binds to the next code line). A `BRANCH_IF` reports its line at the body's `{`, i.e. the `if` line, not
   the body line. A mis-placed directive is a **silent no-op**: after adding one, re-run the tool and confirm the
   package's `mutants_lived` drops and its suppressed count rises.
+- **A formatter can move an inline `disable` off the mutant's line and silently un-suppress it.** `golangci-lint fmt`
+  wraps a call whose inline `// gomutants:disable …` pushes it past the width, so the directive lands on the closing `)`
+  line while gomutants reports the mutant (e.g. an argument literal like `64`) on an earlier line; the directive then
+  matches nothing and the mutant survives. Prefer a `// gomutants:disable-next-line <TYPE> reason="…"` on its own line
+  above the statement, which the formatter leaves intact — then re-sweep and confirm the suppressed count rose and
+  `Lived` dropped. (A wrapped `if f(x) {` is the exception: `BRANCH_IF` reports at the `{`, which stays on the `) {`
+  line, so an inline directive there can still bind.)
 - **A `disable` reason must argue the mutation cannot change behaviour, not that the condition is hard to reach.** A
   suppressed branch whose body is removed can still be observable through a caller-supplied input or predicate:
   `filewalk.Walk`'s `rel == "."` root skip looked unreachable until a filter that rejects `"."` was considered — the
