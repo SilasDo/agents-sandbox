@@ -66,6 +66,13 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
+  / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
+  managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
+  `--docker`/`--dind`, or the matching environment variable now overrides that declaration in both directions, a
+  present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
+  with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
+  `docs/runner-image.md`.
 
 ### Fixed
 
@@ -116,6 +123,8 @@ command reports the bare version (e.g. `0.1.0`).
   older release — so an accepted agent upgrade no longer reverts to the previous release on a later run, a
   `--agent-version` pin persists across unpinned runs, a deleted baseline is re-recorded, and the `volume` subcommands
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
+- Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
+  a run with no config file; the deprecated `--dind` alias already survived.
 
 ## [0.6.0] - 2026-10-25
 

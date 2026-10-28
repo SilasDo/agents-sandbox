@@ -54,7 +54,7 @@ func TestPreviewImageNeverResolvesVersion(t *testing.T) {
 // build and yields no reasons.
 func TestPreviewImageReportsReuseWhenDockerfileIDMatches(t *testing.T) {
 	a := agentOpencode(t)
-	rendered, err := RenderDockerfile(a, testAgentVersion, nil, false)
+	rendered, err := RenderDockerfile(a, testAgentVersion, nil, dockerOff)
 	if err != nil {
 		t.Fatalf("RenderDockerfile: %v", err)
 	}
@@ -135,11 +135,11 @@ func TestRunnerDockerfileIDMatchesTheRenderedPlan(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	a := agentOpencode(t)
 
-	id, err := RunnerDockerfileID(a, testAgentVersion, false)
+	id, err := RunnerDockerfileID(a, testAgentVersion, dockerOff)
 	if err != nil {
 		t.Fatalf("RunnerDockerfileID: %v", err)
 	}
-	rendered, err := RenderProjectDockerfile(a, testAgentVersion, false)
+	rendered, err := RenderProjectDockerfile(a, testAgentVersion, dockerOff)
 	if err != nil {
 		t.Fatalf("RenderProjectDockerfile: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestRunnerDockerfileIDSurfacesRenderError(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
-	if _, err := RunnerDockerfileID(a, testAgentVersion, false); err == nil {
+	if _, err := RunnerDockerfileID(a, testAgentVersion, dockerOff); err == nil {
 		t.Fatal("expected a render error for a reserved stage alias")
 	}
 }

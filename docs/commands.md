@@ -65,7 +65,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--agent`      | —     | `opencode2` | Coding-agent profile to run: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`.                                                                |
 | `--notify`     | —     | `off`     | Notify on session status: `on`, `off`, `desktop`, or `audio` (bare `--notify` = `on`). Overridable via `AGENTS_SANDBOX_NOTIFY`. Only applies to the `opencode` and `opencode2` agents (the only agents with a session event stream). |
 | `--open-links` | —    | `true`   | Open links from the VM (`xdg-open`) in the host's browser; `--open-links=false` turns it off. Overridable via `AGENTS_SANDBOX_OPEN_LINKS`. See [Opening links]({% link configuration/opening-links.md %}). |
-| `--docker`     | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias)                                                               |
+| `--docker`     | —     | `false`  | Bake the Docker engine into the runner image; overrides the project Dockerfile's declaration in both directions (`--dind` is a deprecated alias)                                                               |
 
 **Aliases:** `sandbox run`
 
@@ -85,7 +85,7 @@ agents-sandbox shell -w bugfix-fix-thing
 | Flag       | Short | Default | Purpose                                                          |
 |------------|-------|---------|------------------------------------------------------------------|
 | `--root`   | —     | `false` | Attach the shell as root (debug/maintenance). Only available on shell. |
-| `--docker` | —     | `false` | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
+| `--docker` | —     | `false` | Bake the Docker engine into the runner image; overrides the project Dockerfile's declaration in both directions (`--dind` is a deprecated alias) |
 
 **Aliases:** `sh`, `sandbox shell`
 
@@ -93,7 +93,7 @@ agents-sandbox shell -w bugfix-fix-thing
 
 ### build
 
-Build or rebuild the runner Docker image. If `.agents-sandbox/Dockerfile` exists in the project directory, it's layered on top of the base image. In a bare checkout the project directory is the bare root next to `.git`, so the Dockerfile is read from there; a worktree-level `.agents-sandbox/` is ignored, with a warning.
+Build or rebuild the runner Docker image. If `.agents-sandbox/Dockerfile` exists in the project directory, it's layered on top of the base image. In a bare checkout the project directory is the bare root next to `.git`, so the Dockerfile is read from there; a worktree-level `.agents-sandbox/` is ignored, with a warning. The Docker engine is included when the project Dockerfile declares it — a final-stage `# agents-sandbox:docker` marker or a `runner-base-docker`/`runner-base-dind` base — or when explicit `docker` config, `--docker`, or `AGENTS_SANDBOX_DOCKER` asks for it. Explicit config overrides the Dockerfile declaration in both directions, so `docker: false` turns the engine off even for a Dockerfile that asks for it. The precedence is explicit config > Dockerfile content > off. See [Runner Image]({% link runner-image.md %}#docker-in-docker).
 
 ```console
 agents-sandbox build        # build or update if needed
@@ -109,7 +109,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 | `--dry-run`          | `-n`  | `false`  | Dry run without building                                        |
 | `--agent`            | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`. |
 | `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest). Ignored for a user-provided agent |
-| `--docker`           | —     | `false`  | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
+| `--docker`           | —     | `false`  | Bake the Docker engine into the runner image; overrides the project Dockerfile's declaration in both directions (`--dind` is a deprecated alias) |
 
 > The deprecated `--opencode-version` flag remains as an alias for `--agent-version`.
 > The version flag does not replace an agent already supplied by a custom base or project Dockerfile.
@@ -118,7 +118,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 
 #### build dockerfile
 
-Print the runner Dockerfile exactly as it would be built for the current project, without invoking docker. The output reflects the selected agent profile and the docker switch, and layers the project's `.agents-sandbox/Dockerfile` (if any) on top of the base image. In a bare checkout the project Dockerfile is read from the bare root next to `.git`, not the launched worktree.
+Print the runner Dockerfile exactly as it would be built for the current project, without invoking docker. The output reflects the selected agent profile and the docker setting, and layers the project's `.agents-sandbox/Dockerfile` (if any) on top of the base image. The docker setting follows the same precedence as `build` (explicit config > Dockerfile content > off). Diagnostics — a legacy or near-miss marker, an ignored earlier-stage marker, or a config override of a Dockerfile signal — are printed to stderr, so stdout stays a clean, pasteable Dockerfile. In a bare checkout the project Dockerfile is read from the bare root next to `.git`, not the launched worktree.
 
 ```console
 agents-sandbox build dockerfile            # default agent, no docker
@@ -132,7 +132,7 @@ agents-sandbox build dockerfile --agent claude-code
 |-------------------|-------|------------|-------------------------------------------------------------|
 | `--agent`         | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2`, `pi`, `claude-code`, or `codex`. |
 | `--agent-version` | —     | `""`       | Pin the agent version rendered into the preview (default: no pinned default) |
-| `--docker`        | —     | `false`    | Bake the Docker engine into the runner image (`--dind` is a deprecated alias) |
+| `--docker`        | —     | `false`    | Bake the Docker engine into the runner image; overrides the project Dockerfile's declaration in both directions (`--dind` is a deprecated alias) |
 
 **Aliases:** `image build dockerfile`
 

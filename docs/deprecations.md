@@ -53,9 +53,16 @@ change that drops one without a deprecation cycle is not accepted.
 
 ## Project Dockerfiles
 
-A project Dockerfile can still reference the managed docker base or place the injection marker with the legacy `dind`
-spelling. agents-sandbox accepts both and warns whenever the project Dockerfile is used to ensure the runner image
-(including when the cached image is reused). Prefer the `docker` spelling:
+A project Dockerfile enables the Docker engine by itself: a final-stage `# agents-sandbox:docker` marker or a `FROM
+agents-sandbox/runner-base-docker` base turns it on with no launcher config, for a custom base and a managed base alike.
+Explicit `docker` config, `--docker`, or `AGENTS_SANDBOX_DOCKER` overrides that declaration in both directions, including
+turning the engine off when the Dockerfile asks for it. See [Runner Image]({% link runner-image.md %}#docker-in-docker)
+for the precedence and the marker's final-stage scope.
+
+The legacy `dind` spellings still work as deprecated aliases. A project Dockerfile can reference the managed docker base
+or place the injection marker with the legacy `dind` spelling; agents-sandbox accepts both, enables the engine, and warns
+whenever the project Dockerfile is used to ensure the runner image (including when the cached image is reused). Prefer
+the `docker` spelling:
 
 ```dockerfile
 FROM agents-sandbox/runner-base-docker

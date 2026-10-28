@@ -9,11 +9,12 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
 var runnerStageFromLine = regexp.MustCompile(`(?m)^FROM \S+ AS ` + regexp.QuoteMeta(runnerStageAlias) + `$`)
 
-func mustRender(t *testing.T, a agent.Agent, project []byte, docker bool) string {
+func mustRender(t *testing.T, a agent.Agent, project []byte, docker options.DockerSetting) string {
 	t.Helper()
 	return string(renderBytes(t, a, project, docker))
 }
@@ -54,7 +55,7 @@ func stageBlock(t *testing.T, rendered, alias string) string {
 
 func TestRenderDockerfileManagedComposition(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base",
 		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase",
@@ -91,7 +92,7 @@ func TestRenderDockerfileManagedComposition(t *testing.T) {
 // configuration.
 func TestRenderDockerfileQualifiesDistroBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"FROM " + distroBaseRef + " AS " + baseStageAlias,
 		"FROM " + distroBaseRef + " AS " + toolbaseStageAlias,
@@ -111,7 +112,7 @@ func TestRenderDockerfileQualifiesDistroBase(t *testing.T) {
 // /opt/agents-sandbox/bin itself since it no longer inherits the node stage.
 func TestRenderDockerfileOmitsNodeStageForNodeFreeAgent(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	if strings.Contains(s, "AS "+nodeStageAlias) || strings.Contains(s, "nodejs.org/dist") {
 		t.Errorf("a node-free agent must not emit the node stage; got:\n%s", s)
 	}
@@ -131,7 +132,7 @@ func TestRenderDockerfileEmitsNodeStageForPi(t *testing.T) {
 	if !ok {
 		t.Fatal("pi agent not registered")
 	}
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"FROM agents-sandbox-toolbase AS " + nodeStageAlias,
 		"FROM " + nodeStageAlias + " AS " + agentStageAlias,
@@ -154,7 +155,7 @@ func TestRenderDockerfileEmitsNodeStageForPi(t *testing.T) {
 // tracks the version build arg.
 func TestRenderDockerfileToolVersionsInContent(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, true)
+	s := mustRender(t, a, nil, dockerOn)
 	for _, want := range []string{
 		"ARG OPENCODE_VERSION=" + testAgentVersion,
 		"ARG DOCKER_VERSION=" + dockerVersion,
@@ -171,8 +172,8 @@ func TestRenderDockerfileToolVersionsInContent(t *testing.T) {
 // builder does not put the OPENCODE_VERSION build arg into the cache key.
 func TestRenderDockerfileAgentVersionChangesContent(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	first := string(renderBytesVersion(t, a, "1.0.0", nil, false))
-	second := string(renderBytesVersion(t, a, "2.0.0", nil, false))
+	first := string(renderBytesVersion(t, a, "1.0.0", nil, dockerOff))
+	second := string(renderBytesVersion(t, a, "2.0.0", nil, dockerOff))
 	if first == second {
 		t.Error("changing the agent version must change the rendered Dockerfile content")
 	}
@@ -183,7 +184,7 @@ func TestRenderDockerfileAgentVersionChangesContent(t *testing.T) {
 
 func TestRenderDockerfileAgentConfigInFinalStage(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	final := finalStage(t, s)
 	spec := a.ImageSpec()
 	for _, want := range []string{
@@ -212,7 +213,7 @@ func TestRenderDockerfileAgentConfigInFinalStage(t *testing.T) {
 // precedence. The node stage may still prepend internally.
 func TestRenderDockerfileFinalStageUsesAppendingPath(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	final := finalStage(t, s)
 	if !strings.Contains(final, `ENV PATH="${PATH}:/opt/agents-sandbox/bin"`) {
 		t.Errorf("final runner stage must append toolBin to PATH; got:\n%s", final)
@@ -227,7 +228,7 @@ func TestRenderDockerfileFinalStageUsesAppendingPath(t *testing.T) {
 // captures every ENV PATH contribution.
 func TestRenderDockerfileSetsAuthoritativeImagePath(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	pathIdx := strings.Index(final, `ENV PATH="/home/dev/.local/bin:${PATH}"`)
 	imgIdx := strings.Index(final, `ENV AGENTS_SANDBOX_IMAGE_PATH="${PATH}"`)
 	if imgIdx < 0 {
@@ -243,7 +244,7 @@ func TestRenderDockerfileSetsAuthoritativeImagePath(t *testing.T) {
 // reset) pick up the image's entries.
 func TestRenderDockerfileInstallsProfilePathScript(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	if !strings.Contains(final, "COPY "+pathMergeAsset+" "+pathMergeDest) {
 		t.Errorf("final stage must COPY %s to %s; got:\n%s", pathMergeAsset, pathMergeDest, final)
 	}
@@ -251,7 +252,7 @@ func TestRenderDockerfileInstallsProfilePathScript(t *testing.T) {
 
 func TestRenderDockerfileStageOrder(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, true)
+	s := mustRender(t, a, nil, dockerOn)
 	order := []string{
 		"FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase",
 		"FROM agents-sandbox-toolbase AS agents-sandbox-agent",
@@ -274,7 +275,7 @@ func TestRenderDockerfileStageOrder(t *testing.T) {
 
 func TestRenderDockerfileDockerStage(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, true)
+	s := mustRender(t, a, nil, dockerOn)
 	for _, want := range []string{
 		"FROM agents-sandbox-toolbase AS agents-sandbox-docker",
 		"ARG DOCKER_VERSION=29.7.2",
@@ -298,7 +299,7 @@ func TestRenderDockerfileDockerStage(t *testing.T) {
 // root:docker 0660 socket leaves dev unable to run `docker info`.
 func TestRenderDockerfileDockerAdoptionAddsDevToGroup(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, true)
+	s := mustRender(t, a, nil, dockerOn)
 	final := finalStage(t, s)
 	if !strings.Contains(final, "usermod -aG docker dev") {
 		t.Errorf("final runner stage must add dev to the docker group; got:\n%s", final)
@@ -314,7 +315,7 @@ func TestRenderDockerfileDockerAdoptionAddsDevToGroup(t *testing.T) {
 func TestRenderDockerfileDockerPrereqsCheckedInFinalStage(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM fedora:latest\nRUN dnf install -y iptables git procps-ng xz curl tar\n")
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 
 	docker := stageBlock(t, s, dockerStageAlias)
 	if strings.Contains(docker, "docker prerequisite missing") {
@@ -343,7 +344,7 @@ func TestRenderDockerfileDockerPrereqsCheckedInFinalStage(t *testing.T) {
 // by the download (now in the tool base), not at runtime.
 func TestRenderDockerfileDockerPrereqsExcludeDownloadTools(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	if !strings.Contains(final, "iptables git ps xz") {
 		t.Errorf("the docker prerequisite check must keep the runtime prerequisites; got:\n%s", final)
 	}
@@ -359,7 +360,7 @@ func TestRenderDockerfileDockerPrereqsExcludeDownloadTools(t *testing.T) {
 func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM debian:trixie-slim\nRUN apt-get update && apt-get install -y curl procps\n")
-	final := finalStage(t, mustRender(t, a, project, false))
+	final := finalStage(t, mustRender(t, a, project, dockerOff))
 
 	checkIdx := strings.Index(final, "agent runtime tool missing")
 	if checkIdx < 0 {
@@ -382,7 +383,7 @@ func TestRenderDockerfileChecksGuestRuntimeTools(t *testing.T) {
 func TestRenderDockerfileNoGuestToolsForDaemonlessAgents(t *testing.T) {
 	for _, name := range []string{"pi", "claude-code", "codex"} {
 		a, _ := agent.Lookup(name)
-		final := finalStage(t, mustRender(t, a, nil, false))
+		final := finalStage(t, mustRender(t, a, nil, dockerOff))
 		if strings.Contains(final, "agent runtime tool missing") {
 			t.Errorf("%s runs no daemon and must not emit a guest-tool check; got:\n%s", name, final)
 		}
@@ -414,7 +415,7 @@ func TestRenderDockerfileChecksLauncherTools(t *testing.T) {
 		if !ok {
 			t.Fatalf("agent %q not registered", name)
 		}
-		final := finalStage(t, mustRender(t, a, nil, false))
+		final := finalStage(t, mustRender(t, a, nil, dockerOff))
 		if !strings.Contains(final, "for p in curl;") {
 			t.Errorf("%s: the final stage must verify the launcher's curl; got:\n%s", name, final)
 		}
@@ -436,7 +437,7 @@ func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {
 	// from the body would pick up docker's own USER root and make the agent
 	// assertion vacuous.
 	t.Run("agent block with docker enabled", func(t *testing.T) {
-		s := mustRender(t, a, project, true)
+		s := mustRender(t, a, project, dockerOn)
 		agentCopyIdx := strings.Index(s, "COPY --from="+agentStageAlias)
 		agentIdx := strings.Index(s, "> /etc/agents-sandbox/agent-source")
 		if agentCopyIdx < 0 || agentIdx < 0 || agentCopyIdx > agentIdx {
@@ -449,7 +450,7 @@ func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {
 	})
 
 	t.Run("agent block with docker disabled", func(t *testing.T) {
-		s := mustRender(t, a, project, false)
+		s := mustRender(t, a, project, dockerOff)
 		bodyIdx := strings.Index(s, "RUN echo custom")
 		agentIdx := strings.Index(s, "> /etc/agents-sandbox/agent-source")
 		if bodyIdx < 0 || agentIdx < 0 || bodyIdx > agentIdx {
@@ -466,7 +467,7 @@ func TestRenderDockerfilePostBodyBlocksResetUserRoot(t *testing.T) {
 
 	// The docker adoption block follows the docker merge COPY, which is the
 	// nearest preceding reset; slice from the body through the docker-source RUN.
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 	bodyIdx := strings.Index(s, "RUN echo custom")
 	dockerIdx := strings.Index(s, "> /etc/agents-sandbox/docker-source")
 	if bodyIdx < 0 || dockerIdx < 0 || bodyIdx > dockerIdx {
@@ -483,7 +484,7 @@ func TestRenderDockerfileOpencode2(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode2 agent not registered")
 	}
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"ARG OPENCODE2_VERSION",
 		"LABEL org.agents-sandbox.agent=opencode2",
@@ -506,7 +507,7 @@ func TestRenderDockerfileClaudeCodeNodeFree(t *testing.T) {
 	if !ok {
 		t.Fatal("claude-code agent not registered")
 	}
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"ARG CLAUDE_CODE_VERSION",
 		"https://claude.ai/install.sh",
@@ -546,7 +547,7 @@ func TestRenderDockerfileCodexNodeFree(t *testing.T) {
 
 func TestRenderDockerfileOpencodeInstallTargetsOpt(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	if !strings.Contains(s, "cp /root/.opencode/bin/opencode /opt/agents-sandbox/bin") {
 		t.Errorf("opencode installer must land the binary under /opt/agents-sandbox/bin; got:\n%s", s)
 	}
@@ -558,7 +559,7 @@ func TestRenderDockerfileOpencodeInstallTargetsOpt(t *testing.T) {
 func TestRenderDockerfileToolStagesBuildOnToolbase(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04\n")
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 
 	if !strings.Contains(s, "FROM docker.io/library/debian:trixie-slim AS agents-sandbox-toolbase") {
 		t.Errorf("render must emit the tool-owned tool base; got:\n%s", s)
@@ -588,7 +589,7 @@ func TestRenderDockerfileToolStagesInstallUnconditionally(t *testing.T) {
 	if !ok {
 		t.Fatal("pi agent not registered")
 	}
-	s := mustRender(t, a, nil, true)
+	s := mustRender(t, a, nil, dockerOn)
 	for _, stage := range []string{nodeStageAlias, agentStageAlias, dockerStageAlias} {
 		block := stageBlock(t, s, stage)
 		if strings.Contains(block, "command -v") {
@@ -600,7 +601,7 @@ func TestRenderDockerfileToolStagesInstallUnconditionally(t *testing.T) {
 func TestRenderDockerfileCustomBase(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04\nRUN apt-get update && apt-get install -y curl bash\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if !strings.Contains(s, "FROM ubuntu:24.04 AS agents-sandbox-base") {
 		t.Errorf("custom base must be given the reserved base alias; got:\n%s", s)
 	}
@@ -630,7 +631,7 @@ func TestRenderDockerfileCustomBaseReusesAlias(t *testing.T) {
 	project := []byte(
 		"FROM golang:1.24 AS build\nRUN go build -o /app .\nFROM debian:trixie-slim AS final\nCOPY --from=build /app /app\n",
 	)
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	for _, want := range []string{
 		"FROM golang:1.24 AS build",
 		"FROM debian:trixie-slim AS final",
@@ -650,7 +651,7 @@ func TestRenderDockerfileCustomBaseReusesAlias(t *testing.T) {
 func TestRenderDockerfileManagedBaseFrom(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM agents-sandbox/runner-base:latest\nRUN apt-get install -y tree\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if !strings.Contains(s, "FROM docker.io/library/debian:trixie-slim AS agents-sandbox-base") {
 		t.Error("managed FROM must be replaced with the embedded base tools block")
 	}
@@ -665,7 +666,7 @@ func TestRenderDockerfileManagedBaseFrom(t *testing.T) {
 func TestRenderDockerfileDindFromImpliesDocker(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM agents-sandbox/runner-base-dind:latest\nRUN echo hi\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if !strings.Contains(s, "agents-sandbox-docker") {
 		t.Error("a runner-base-dind FROM must imply docker")
 	}
@@ -674,7 +675,7 @@ func TestRenderDockerfileDindFromImpliesDocker(t *testing.T) {
 func TestRenderDockerfileDockerFromImpliesDocker(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM agents-sandbox/runner-base-docker:latest\nRUN echo hi\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if !strings.Contains(s, "agents-sandbox-docker") {
 		t.Error("a runner-base-docker FROM must imply docker")
 	}
@@ -688,7 +689,7 @@ func TestRenderDockerfileDockerMarkerInjection(t *testing.T) {
 			"# agents-sandbox:docker\n" +
 			"RUN echo post-docker\n",
 	)
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 	if strings.Contains(s, "# agents-sandbox:docker") {
 		t.Error("the docker marker must be replaced in the rendered Dockerfile")
 	}
@@ -711,7 +712,7 @@ func TestRenderDockerfileLegacyDindMarkerInjection(t *testing.T) {
 			"# agents-sandbox:dind\n" +
 			"RUN echo post-dind\n",
 	)
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 	if strings.Contains(s, "# agents-sandbox:dind") {
 		t.Error("the legacy dind marker must be replaced in the rendered Dockerfile")
 	}
@@ -723,7 +724,7 @@ func TestRenderDockerfileLegacyDindMarkerInjection(t *testing.T) {
 func TestRenderDockerfileDockerMarkerAbsent(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04\nRUN echo custom\n")
-	s := mustRender(t, a, project, true)
+	s := mustRender(t, a, project, dockerOn)
 	bodyIdx := strings.Index(s, "RUN echo custom")
 	copyIdx := strings.Index(s, "COPY --from=agents-sandbox-docker")
 	if bodyIdx < 0 || copyIdx < 0 || copyIdx < bodyIdx {
@@ -737,7 +738,7 @@ func TestRenderDockerfileReservedAliasCollision(t *testing.T) {
 		baseStageAlias, toolbaseStageAlias, nodeStageAlias, agentStageAlias, dockerStageAlias, runnerStageAlias,
 	} {
 		project := []byte("FROM ubuntu:24.04 AS " + alias + "\nRUN echo hi\n")
-		if _, err := RenderDockerfile(a, testAgentVersion, project, false); err == nil {
+		if _, err := RenderDockerfile(a, testAgentVersion, project, dockerOff); err == nil {
 			t.Errorf("declaring reserved alias %q must be a hard error", alias)
 		}
 	}
@@ -748,7 +749,7 @@ func TestRenderDockerfileReservedAliasCollision(t *testing.T) {
 func TestRenderDockerfileReservedAliasCaseInsensitive(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04 AS AGENTS-SANDBOX-BASE\nRUN echo hi\n")
-	_, err := RenderDockerfile(a, testAgentVersion, project, false)
+	_, err := RenderDockerfile(a, testAgentVersion, project, dockerOff)
 	if err == nil {
 		t.Fatal("declaring reserved alias AGENTS-SANDBOX-BASE must be a hard error")
 	}
@@ -763,7 +764,7 @@ func TestRenderDockerfileReservedAliasCaseInsensitive(t *testing.T) {
 func TestRenderDockerfileReservedAliasLowercaseFrom(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("from ubuntu:24.04 as agents-sandbox-base\nRUN echo hi\n")
-	_, err := RenderDockerfile(a, testAgentVersion, project, false)
+	_, err := RenderDockerfile(a, testAgentVersion, project, dockerOff)
 	if err == nil {
 		t.Fatal("declaring reserved alias agents-sandbox-base with a lowercase FROM must be a hard error")
 	}
@@ -775,8 +776,8 @@ func TestRenderDockerfileReservedAliasLowercaseFrom(t *testing.T) {
 func TestRenderDockerfileDeterministic(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04\n# agents-sandbox:docker\nRUN echo hi\n")
-	first := mustRender(t, a, project, true)
-	second := mustRender(t, a, project, true)
+	first := mustRender(t, a, project, dockerOn)
+	second := mustRender(t, a, project, dockerOn)
 	if first != second {
 		t.Error("rendered Dockerfile must be deterministic")
 	}
@@ -904,7 +905,7 @@ func TestSplitFinalStageIgnoresFromage(t *testing.T) {
 func TestRenderDockerfileLowercaseFrom(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("from debian:trixie-slim\nRUN echo hi\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if !strings.Contains(s, "from debian:trixie-slim AS "+baseStageAlias) {
 		t.Errorf("rendered Dockerfile must alias the lowercase base FROM; got:\n%s", s)
 	}
@@ -937,7 +938,7 @@ func TestCustomBaseStageReusesDeclaredAlias(t *testing.T) {
 func TestRenderDockerfileCRLFProjectDockerfile(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	project := []byte("FROM ubuntu:24.04 AS base\r\nRUN echo hi\r\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if strings.Contains(s, "\r AS "+runnerStageAlias) {
 		t.Errorf("runner stage must not reference an alias with a trailing CR; got:\n%s", s)
 	}
@@ -956,7 +957,7 @@ func TestRenderDockerfileHeredocBodyIsNotAStage(t *testing.T) {
 		"from pathlib import Path\n" +
 		"print(Path.cwd())\n" +
 		"PY\n")
-	s := mustRender(t, a, project, false)
+	s := mustRender(t, a, project, dockerOff)
 	if strings.Contains(s, "from pathlib import Path AS ") {
 		t.Errorf("a heredoc body must not be rewritten as a stage header; got:\n%s", s)
 	}
@@ -965,6 +966,25 @@ func TestRenderDockerfileHeredocBodyIsNotAStage(t *testing.T) {
 	}
 	if !strings.Contains(s, "FROM debian:trixie-slim AS "+baseStageAlias) {
 		t.Errorf("the real base FROM must be composed; got:\n%s", s)
+	}
+}
+
+// TestRenderDockerfileHeredocMarkerIsInert pins that a docker marker inside a
+// heredoc body neither enables docker nor is replaced: it is text copied into a
+// file, not a marker.
+func TestRenderDockerfileHeredocMarkerIsInert(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM debian:trixie-slim\n" +
+		"COPY <<EOF /tmp/example.Dockerfile\n" +
+		"# agents-sandbox:docker\n" +
+		"EOF\n" +
+		"RUN echo hi\n")
+	s := mustRender(t, a, project, dockerOff)
+	if strings.Contains(s, "agents-sandbox-docker") {
+		t.Errorf("a heredoc marker must not enable docker; got:\n%s", s)
+	}
+	if !strings.Contains(s, "COPY <<EOF /tmp/example.Dockerfile\n# agents-sandbox:docker\nEOF\n") {
+		t.Errorf("the heredoc must be preserved verbatim; got:\n%s", s)
 	}
 }
 
@@ -1007,6 +1027,20 @@ func TestInjectDockerBlockAppendsWithoutMarker(t *testing.T) {
 	}
 }
 
+// TestInjectDockerBlockSkipsHeredocMarker pins that marker text inside a
+// heredoc body is not an injection point: the block is appended after the body
+// instead of overwriting the copied file.
+func TestInjectDockerBlockSkipsHeredocMarker(t *testing.T) {
+	body := "COPY <<EOF /tmp/example.Dockerfile\n# agents-sandbox:docker\nEOF\n"
+	got, injected := injectDockerBlock(body, true)
+	if injected {
+		t.Error("a marker inside a heredoc body must not be an injection point")
+	}
+	if got != body {
+		t.Errorf("injectDockerBlock = %q, want the body unchanged", got)
+	}
+}
+
 func TestInjectDockerBlockNoopWhenDisabled(t *testing.T) {
 	got, injected := injectDockerBlock("RUN x\n", false)
 	if injected || got != "RUN x\n" {
@@ -1030,19 +1064,19 @@ func TestJoinBlocksSkipsEmpty(t *testing.T) {
 // label's familiar spelling is applied by resolveBaseDigest, covered separately.
 func TestBaseImageRefComposition(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
-	if got := baseImageRef(renderBytes(t, a, nil, false)); got != distroBaseRef {
+	if got := baseImageRef(renderBytes(t, a, nil, dockerOff)); got != distroBaseRef {
 		t.Errorf("managed baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {
+	if got := baseImageRef(renderBytes(t, a, custom, dockerOff)); got != "ubuntu:24.04" {
 		t.Errorf("custom baseImageRef = %q, want ubuntu:24.04", got)
 	}
 	aliased := []byte("FROM fedora:latest AS base\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, aliased, false)); got != "fedora:latest" {
+	if got := baseImageRef(renderBytes(t, a, aliased, dockerOff)); got != "fedora:latest" {
 		t.Errorf("aliased baseImageRef = %q, want fedora:latest", got)
 	}
 	private := []byte("FROM company/base:latest\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, private, false)); got != "company/base:latest" {
+	if got := baseImageRef(renderBytes(t, a, private, dockerOff)); got != "company/base:latest" {
 		t.Errorf("private baseImageRef = %q, want the token the engine resolves, company/base:latest", got)
 	}
 }
@@ -1095,7 +1129,7 @@ func TestRenderProjectDockerfileReadsProjectFile(t *testing.T) {
 	configpaths.Get = func() configpaths.ConfigPaths { return &projectDockerfilePaths{dir: dir} }
 	t.Cleanup(func() { configpaths.Get = orig })
 
-	out, err := RenderProjectDockerfile(a, testAgentVersion, false)
+	out, err := RenderProjectDockerfile(a, testAgentVersion, dockerOff)
 	if err != nil {
 		t.Fatalf("RenderProjectDockerfile: %v", err)
 	}
@@ -1117,7 +1151,7 @@ func TestRenderProjectDockerfileNoProjectFile(t *testing.T) {
 	configpaths.Get = func() configpaths.ConfigPaths { return &projectDockerfilePaths{dir: dir} }
 	t.Cleanup(func() { configpaths.Get = orig })
 
-	out, err := RenderProjectDockerfile(a, testAgentVersion, false)
+	out, err := RenderProjectDockerfile(a, testAgentVersion, dockerOff)
 	if err != nil {
 		t.Fatalf("RenderProjectDockerfile: %v", err)
 	}

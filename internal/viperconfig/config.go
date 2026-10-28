@@ -49,6 +49,11 @@ type Config struct {
 	// hasHome reports whether any config file declared a home key.
 	hasHome bool
 
+	// dockerExplicit reports whether a canonical docker or deprecated dind
+	// source was set (config, env, or flag), so the value overrides any
+	// project-Dockerfile content signal. A present-but-false value is explicit.
+	dockerExplicit bool
+
 	// Upgrade controls checking for and installing newer agents-sandbox
 	// releases. Only Mode, Interval and Channel are settable via env.
 	Upgrade UpgradeConfig `mapstructure:"upgrade"`

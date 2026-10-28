@@ -35,6 +35,11 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `true && p == "!"`, which is the original. A same-line or `disable-next-line` directive is **type-scoped** (it cannot
   name a stable-id), so recording that one also suppresses the *killable* sibling. Delete the redundant operand — the
   mutant ceases to exist — and let the surviving condition be killed normally.
+- **A selector argument that every caller ORs across calls is redundant — drop the parameter.** `hasDockerMarker(data,
+  want)` had exactly two callers, each `OR`-ing the current and legacy forms (`... dockerMarker`) `|| (... legacyDockerMarker)`,
+  so its `ok && marker == want` was equivalent to `marker != ""`: any match satisfied both calls' `OR`. Returning "any
+  marker" and dropping `want` deleted four unfalsifiable mutants (the `ok` removal, `&&`→`||`, `marker == want`→`true`, and
+  the `==`→`!=` negation) instead of recording them.
 - **A later strip or short-circuit can make an earlier one unobservable, so hand-apply before recording.** In
   `internal/git`, `lastPathSegment`'s `://` strip, its `>= 0` bounds, and its `+3` arithmetic are all masked by the
   following `LastIndex("/")` strip: for any URL containing `://` the scheme is discarded either way, so those mutants
@@ -158,6 +163,10 @@ This is the field guide for doing it. It was distilled from the first full sweep
   coverage pass are package-scoped, so the module-wide floor the CI job pays is larger than this single-package one. The
   CI `mutation` workflow already scopes a PR to `SINCE=origin/<base_ref>`; use `SINCE=origin/main` locally to match, and
   reserve the bare default for the release sweep.
+- **A mutant that removes loop progress hangs; it reports `TIMED OUT`, not `LIVED`.** `STATEMENT_REMOVE` on a loop's
+  `i++` or `i = f(...)` never advances, so the package's test run never returns (locally the worker hits the 2048 MiB
+  cap and is killed — same symptom). No assertion can catch it; leave it and read `LIVED`, not `TIMED OUT`, as the
+  survivor count.
 - `make mutation FULL=1 PKG=./internal/agent/` writes `mutation-report.json` (gitignored) plus the cache into the
   worktree. Read the result with `jq`:
   `jq -r '[.files[] as $f | $f.mutations[] | select(.status=="LIVED") | "\($f.file_name):\(.line) \(.type)"] | .[]'`.

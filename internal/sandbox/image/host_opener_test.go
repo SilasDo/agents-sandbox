@@ -44,7 +44,7 @@ func TestRenderDockerfileInstallsHostOpenerShim(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode agent not registered")
 	}
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	for _, want := range []string{
 		"COPY " + hostOpenerShimAsset + " /usr/local/bin/xdg-open",
 		"RUN ln -sf xdg-open /usr/local/bin/x-www-browser",

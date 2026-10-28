@@ -15,6 +15,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/testutil"
 	"github.com/inoio/agents-sandbox/internal/viperconfig"
 )
 
@@ -394,8 +395,25 @@ func TestBuildPropagatesDocker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.Docker {
-		t.Error("opts.Docker = false, want true from resolver")
+	if !opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = false, want true from resolver")
+	}
+}
+
+// A user config `docker: false` is an explicit source: the setting must reach the
+// boundary as Explicit, so it overrides any project-Dockerfile content signal.
+func TestResolveDockerSettingFromConfigExplicitOff(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{"docker": false})
+
+	cmd := newRunCommand()
+	r := mustResolver(t, cmd)
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if want := (options.DockerSetting{Enabled: false, Explicit: true}); opts.Docker != want {
+		t.Errorf("opts.Docker = %+v, want %+v", opts.Docker, want)
 	}
 }
 
@@ -408,8 +426,8 @@ func TestBuildDeprecatedDindFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.Docker {
-		t.Error("opts.Docker = false, want true from the deprecated --dind flag")
+	if !opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = false, want true from the deprecated --dind flag")
 	}
 }
 
@@ -425,8 +443,8 @@ func TestBuildDockerFlagWinsOverDind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if opts.Docker {
-		t.Error("opts.Docker = true, want --docker to win over --dind")
+	if opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = true, want --docker to win over --dind")
 	}
 }
 
@@ -1088,20 +1106,20 @@ func TestBuildPropagatesConfigResourceLimits(t *testing.T) {
 	}
 }
 
-// applyDeprecatedDindFlag tolerates a command that never registered --dind.
-func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
+// resolveDockerSetting tolerates a command that never registered --dind.
+func TestResolveDockerSettingWithoutDindFlag(t *testing.T) {
 	opts := options.RunOptions{}
 
-	applyDeprecatedDindFlag(&cobra.Command{Use: "run"}, &opts)
+	resolveDockerSetting(&cobra.Command{Use: "run"}, nil, &opts)
 
-	if opts.Docker {
-		t.Error("Docker = true; want the missing --dind flag to be ignored")
+	if opts.Docker.Enabled {
+		t.Error("Docker.Enabled = true; want the missing --dind flag to be ignored")
 	}
 }
 
-// applyDeprecatedDindFlag tolerates a command that registered --dind but not
-// the canonical --docker flag.
-func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
+// resolveDockerSetting tolerates a command that registered --dind but not the
+// canonical --docker flag.
+func TestResolveDockerSettingWithoutDockerFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "run"}
 	cmd.Flags().Bool("dind", false, "")
 	if err := cmd.Flags().Set("dind", "true"); err != nil {
@@ -1109,10 +1127,24 @@ func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
 	}
 	opts := options.RunOptions{}
 
-	applyDeprecatedDindFlag(cmd, &opts)
+	resolveDockerSetting(cmd, nil, &opts)
 
-	if !opts.Docker {
-		t.Error("Docker = false; want true from the deprecated --dind flag")
+	if !opts.Docker.Enabled {
+		t.Error("Docker.Enabled = false; want true from the deprecated --dind flag")
+	}
+}
+
+func TestBuildDockerSettingFromFlagsWithoutConfig(t *testing.T) {
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("docker", "true"); err != nil {
+		t.Fatal(err)
+	}
+	opts, err := Build(nil, cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !opts.Docker.Enabled || !opts.Docker.Explicit {
+		t.Errorf("got %+v, want enabled and explicit from --docker with nil config", opts.Docker)
 	}
 }
 

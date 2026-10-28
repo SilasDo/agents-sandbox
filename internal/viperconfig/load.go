@@ -121,32 +121,40 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 	}
 	cfg.Home = homeLayers
 	cfg.hasHome = hasHome
-	docker, dockerLegacy := resolveDockerAlias(v, cmd, cfg.Docker)
+	docker, dockerLegacy, dockerExplicit := resolveDockerAlias(v, cmd, cfg.Docker)
 	cfg.Docker = docker
+	cfg.dockerExplicit = dockerExplicit
 	return &Resolver{cfg: cfg, legacyEnv: legacyEnvVarsInUse(), dockerLegacy: dockerLegacy}, nil
 }
 
 // resolveDockerAlias folds the deprecated dind alias into the docker setting.
 // The canonical docker value wins whenever it is explicitly set; otherwise a
 // deprecated dind value (config key or AGENTS_SANDBOX_DIND) is used. It returns
-// the effective value and the deprecated source name, if any.
-func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, string) {
+// the effective value, the deprecated source name (if any), and whether a
+// canonical or dind source is present (making the value explicit, so it
+// overrides any project-Dockerfile content signal).
+func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, string, bool) {
 	if dockerExplicit(v, cmd) {
-		return value, ""
+		return value, "", true
 	}
 	if !v.IsSet(KeyDind) {
 		// value is always false here: any non-empty docker source makes
 		// dockerExplicit true above.
-		return value, "" // gomutants:disable RETURN_FALSE reason="value is always false when docker is not explicit"
+		return value, "", false // gomutants:disable RETURN_FALSE reason="value is always false when docker is not explicit"
 	}
-	return v.GetBool(KeyDind), dockerLegacySource(v)
+	return v.GetBool(KeyDind), dockerLegacySource(v), true
 }
 
 // dockerExplicit reports whether the canonical docker setting is explicitly set
 // via env, config file, or the --docker flag, so it takes precedence over the
-// deprecated dind alias.
+// deprecated dind alias. The deprecated OPENCODE_SANDBOX_ prefix counts too:
+// NewResolver still reads it, so it must also be surfaced as explicit rather
+// than ignored by the project-Dockerfile decision.
 func dockerExplicit(v *viper.Viper, cmd *cobra.Command) bool {
 	if os.Getenv(envVarName(EnvPrefix, KeyDocker)) != "" {
+		return true
+	}
+	if os.Getenv(envVarName(LegacyEnvPrefix, KeyDocker)) != "" {
 		return true
 	}
 	if v.InConfig(KeyDocker) {
