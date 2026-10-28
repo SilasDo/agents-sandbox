@@ -18,6 +18,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
+	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -1224,6 +1225,50 @@ func TestEnsureProjectVMRecreateReplacedIdentityFailsClosed(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("GetSandbox calls = %d, want 1 (must not re-look-up the replacement)", callCount)
+	}
+}
+
+// TestEnsureProjectVMRecreateHoldsCreationLock is the #397 regression: the
+// recreate destroy must run while the per-project creation lock is held, so a
+// concurrent invocation cannot clobber a VM another client just created.
+func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+	ui := termio.NewTestMock(t)
+
+	locked := false
+	origLock := acquireProjectVMLock
+	acquireProjectVMLock = func(state.Key) (func(), error) {
+		locked = true
+		return func() { locked = false }, nil
+	}
+	t.Cleanup(func() { acquireProjectVMLock = origLock })
+
+	handle := &msb.MockSandboxHandle{
+		Name_:   "vm-test-opencode",
+		Status_: msbSdk.SandboxStatusRunning,
+		DestroyFn: func(context.Context) error {
+			if !locked {
+				t.Error("recreate destroyed the VM outside the creation lock")
+			}
+			return nil
+		},
+	}
+	client := &msb.MockMsbClient{}
+	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) { return handle, nil }
+	client.CreateSandboxFn = func(_ context.Context, name string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
+		return &msb.MockSandbox{Name_: name}, nil
+	}
+	client.EnsureInstalledFn = func(context.Context) error { return nil }
+	msb.WithMsbMock(t, client)
+
+	if _, _, err := ensureProjectVM(
+		context.Background(),
+		options.RunOptions{Recreate: true, CPUs: 1, Memory: "2G"},
+		image.ImageInfo{DockerTag: "new:tag", Ref: "new:tag"},
+		"homevol", "/workspace", testVMKey(), testVMKey().Slug, false, &ui,
+	); err != nil {
+		t.Fatalf("ensureProjectVM recreate: %v", err)
 	}
 }
 
