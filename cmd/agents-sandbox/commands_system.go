@@ -263,9 +263,10 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 				state.Key{Slug: adoption.Slug, Agent: a.Name()},
 				openCodeVersion,
 			)
-			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
+			_, err = image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: agentVersion, UserProvided: userProvided, Docker: resolveBuildDocker(cmd),
 			}, ui)
+			return err
 		},
 	}
 	cmd.Flags().BoolP(flagRebuild, flagRebuild[:1], false, "Force a clean rebuild")

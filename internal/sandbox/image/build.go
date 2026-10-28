@@ -58,6 +58,9 @@ type ImageInfo struct {
 	Digest       string
 	DockerfileID string
 	Env          map[string]string
+	// AgentVersion is the agent release the image reports via its
+	// agent-version label; empty for a missing or non-release label.
+	AgentVersion string
 }
 
 // referencesImage reports whether the Dockerfile uses the given image
@@ -464,6 +467,11 @@ func EnsureImageWithClient(
 	imageDigest := inspect.ID
 	ui.Verbosef("image %s (digest %s)", rTag, imageDigest)
 
+	var bakedVersion string
+	if inspect.Config != nil {
+		bakedVersion = agentReleaseFromLabels(inspect.Config.Labels)
+	}
+
 	env, err := readImageInfoFromDocker(ctx, rTag)
 	if err != nil {
 		return ImageInfo{}, fmt.Errorf("inspect built image: %w", err)
@@ -478,6 +486,7 @@ func EnsureImageWithClient(
 		Digest:       imageDigest,
 		DockerfileID: plan.dockerfileID,
 		Env:          env,
+		AgentVersion: bakedVersion,
 	}, nil
 }
 
@@ -712,22 +721,22 @@ func EnsureImage(
 
 // Build ensures the runner image is built and loaded into the microsandbox
 // cache, so it can be used to create VMs. It composes EnsureImageWithClient
-// (build/inspect) and EnsureLoaded (load into microsandbox). Preflight checks
-// (e.g., docker availability) and dry-run handling are the caller's concern.
+// (build/inspect) and EnsureLoaded (load into microsandbox) and returns the
+// resulting ImageInfo. Preflight checks (e.g., docker availability) and dry-run
+// handling are the caller's concern.
 func Build(
 	ctx context.Context,
 	a agent.Agent,
 	projectSlug string,
 	buildOpts BuildOptions,
 	ui termio.UI,
-) error {
+) (ImageInfo, error) {
 	WarnIgnoredProjectConfig(ui)
 	info, err := EnsureImageWithClient(ctx, a, readProjectDockerfile(), projectSlug, buildOpts, ui)
 	if err != nil {
-		return err
+		return ImageInfo{}, err
 	}
-	_, err = EnsureLoaded(ctx, msb.Get(), info, ui)
-	return err
+	return EnsureLoaded(ctx, msb.Get(), info, ui)
 }
 
 // baseImageRef returns the image reference the rendered Dockerfile's final stage

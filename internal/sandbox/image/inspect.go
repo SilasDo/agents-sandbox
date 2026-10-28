@@ -41,11 +41,18 @@ func ExistingAgentVersion(ctx context.Context, projectSlug, agentName string) (s
 	if !state.Present {
 		return "", false
 	}
-	version := state.Labels[agentVersionLabelKey]
-	if version == "" || version == identityNone || version == userProvidedImageIdentity {
-		return "", false
+	version := agentReleaseFromLabels(state.Labels)
+	return version, version != ""
+}
+
+// agentReleaseFromLabels returns the release the image labels report, or "" for
+// a missing or non-release sentinel.
+func agentReleaseFromLabels(labels map[string]string) string {
+	version := labels[agentVersionLabelKey]
+	if version == identityNone || version == userProvidedImageIdentity {
+		return ""
 	}
-	return version, true
+	return version
 }
 
 // buildDecision decides whether the runner image must be rebuilt, and when it
