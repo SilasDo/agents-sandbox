@@ -113,7 +113,7 @@ func startNotifyWatcher(
 	go func() {
 		defer close(done)
 		ui.Verbosef("starting notify watcher, project %s, active %v, spec %+v", projectSlug, cfg.Active(), spec)
-		watchErr = notifyWatch(watchCtx, sb, *spec, backend)
+		watchErr = notifyWatch(watchCtx, notify.SandboxStreamOpener{Sandbox: sb}, *spec, backend)
 	}()
 	return func() error {
 		cancel()

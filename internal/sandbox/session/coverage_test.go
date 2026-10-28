@@ -121,7 +121,7 @@ func TestStartNotifyWatcherReturnsWatchError(t *testing.T) {
 	ui := &termio.Mock{}
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		return errors.New("watch boom")
 	}
 	spec := agent.EventStreamSpec{

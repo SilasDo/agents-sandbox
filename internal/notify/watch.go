@@ -108,12 +108,40 @@ func (s *dropSummary) err() error {
 		s.count, over, strings.Join(parts, "; "))
 }
 
+// StreamOpener opens the sandbox's agent event stream and runs the one-shot
+// commands the watcher needs. It is the watcher's whole dependency on the
+// sandbox: a fake carrying only these two operations drives Watch, without an
+// msb.Sandbox, and production adapts one with SandboxStreamOpener.
+type StreamOpener interface {
+	// ShellStream starts a long-running command in the sandbox and returns the
+	// handle for its output and exit events.
+	ShellStream(ctx context.Context, command string) (msb.StreamHandle, error)
+	// Shell runs a command to completion in the sandbox.
+	Shell(ctx context.Context, command string) (msb.ShellResult, error)
+}
+
+// SandboxStreamOpener adapts an msb.Sandbox to StreamOpener, narrowing it to the
+// two operations the watcher uses and dropping the exec options it never passes.
+type SandboxStreamOpener struct {
+	Sandbox msb.Sandbox
+}
+
+// ShellStream delegates to the sandbox.
+func (s SandboxStreamOpener) ShellStream(ctx context.Context, command string) (msb.StreamHandle, error) {
+	return s.Sandbox.ShellStream(ctx, command)
+}
+
+// Shell delegates to the sandbox.
+func (s SandboxStreamOpener) Shell(ctx context.Context, command string) (msb.ShellResult, error) {
+	return s.Sandbox.Shell(ctx, command)
+}
+
 // Watch relays the in-VM SSE stream to the tracker and backend until ctx is
 // cancelled. When the stream drops (clean end, exit, or connection failure) it
 // reconnects with a fast-then-backoff policy (see watchReconnectPolicy). It
 // returns a compound error summarizing the drops, or nil if the stream never
 // dropped.
-func Watch(ctx context.Context, sb msb.Sandbox, spec agent.EventStreamSpec, sink Backend) error {
+func Watch(ctx context.Context, streams StreamOpener, spec agent.EventStreamSpec, sink Backend) error {
 	if sink == nil {
 		return nil
 	}
@@ -124,7 +152,7 @@ func Watch(ctx context.Context, sb msb.Sandbox, spec agent.EventStreamSpec, sink
 loop:
 	for attempt := 1; ; attempt++ {
 		start := time.Now()
-		reason := watchOnce(ctx, sb, tracker, sink, spec)
+		reason := watchOnce(ctx, streams, tracker, sink, spec)
 		if ctx.Err() != nil {
 			break loop
 		}
@@ -151,12 +179,12 @@ loop:
 // and parsed one block at a time.
 func watchOnce(
 	ctx context.Context,
-	sb msb.Sandbox,
+	streams StreamOpener,
 	tracker *Tracker,
 	sink Backend,
 	spec agent.EventStreamSpec,
 ) error {
-	handle, err := sb.ShellStream(ctx, spec.StreamCommand)
+	handle, err := streams.ShellStream(ctx, spec.StreamCommand)
 	if err != nil {
 		return fmt.Errorf("opening stream: %w", err)
 	}
@@ -166,7 +194,7 @@ func watchOnce(
 	// Best-effort: an error, non-success, or unparsable body is ignored and the
 	// stream proceeds, since session.created still teaches new children.
 	if spec.SessionList != nil {
-		if res, err := sb.Shell(ctx, spec.SessionList.Command()); err == nil && res.Success() {
+		if res, err := streams.Shell(ctx, spec.SessionList.Command()); err == nil && res.Success() {
 			tracker.SeedChildren(spec.SessionList.Parse([]byte(res.Stdout())))
 		}
 	}

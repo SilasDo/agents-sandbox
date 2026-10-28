@@ -66,6 +66,9 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Internal: the notify watcher's entry point (`notify.Watch`) now depends on a two-method `notify.StreamOpener` seam
+  (`ShellStream`, `Shell`) instead of the whole `msb.Sandbox`, so a fake with those two operations can drive it; the run
+  path adapts the sandbox with `notify.SandboxStreamOpener` (#358).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
