@@ -313,6 +313,7 @@ func (invalidConfigDirAgent) ImageSpec() agent.ImageSpec { return agent.ImageSpe
 // name validation is exercised through the candidate accessors.
 type invalidAliasConfigDirAgent struct{ invalidConfigDirAgent }
 
+func (invalidAliasConfigDirAgent) ConfigDirName() string { return "valid-primary" }
 func (invalidAliasConfigDirAgent) ConfigDirAliases() []string { return []string{"ok", ".."} }
 
 func TestAgentConfigDirAccessorsErrorOnInvalidName(t *testing.T) {
