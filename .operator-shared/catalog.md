@@ -53,6 +53,9 @@
 - `self-upgrade-channels.md`
   - Description: Design for the launcher's self-upgrade release channels: `upgrade.channel` (`stable` default, `canary`), canary = newest channel-eligible release, a tag-addressed download, no downgrade path, the undocumented `AGENTS_SANDBOX_UPGRADE_ANY` dev lever, the release CI's prerelease classification / Homebrew skip, and the docs workflow's prerelease guard.
   - Read If: Changing `upgrade.channel`, canary resolution/eligibility, the tag-pinned release download, `AGENTS_SANDBOX_UPGRADE_ANY`, the `publish` job's prerelease/Homebrew handling, or the Pages prerelease guard.
+- `release-asset-integrity.md`
+  - Description: Contract for verifying a downloaded release asset before the self-update installs it (#338): one published `checksums.txt` in `sha256sum` format, the download → verify → replace path in `installRelease`, fail-closed handling of a mismatch/missing/malformed entry, and the same-channel-checksum limitation (cosign is the follow-up).
+  - Read If: Changing the self-update download/verify/replace path, the release job's asset or checksums publishing, or `internal/upgrade`'s checksum handling.
 - `test-coverage.md`
   - Description: Contract for coverage on added and changed lines: every added line must be executed by a test (error/transport/status branches included); an unreachable-by-construction branch must be removed, not left uncovered; match the sibling you mirror.
   - Read If: Adding or changing production code and deciding what to test, reviewing a diff for coverage gaps, or triaging a failing `codecov/patch` or `codecov/project` check on a PR.

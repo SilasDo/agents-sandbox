@@ -59,6 +59,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Self-update: the downloaded release binary is verified against the SHA-256 published in the release's
+  `checksums.txt` before it replaces the running executable. A mismatched digest, a missing `checksums.txt`, or a
+  missing or malformed entry aborts the install, removes the downloaded temp file, and leaves the running binary
+  untouched, so a download that differs from the release's published digest can no longer be installed (#338).
 - State: pruning a project's state no longer removes the project-VM creation lock. The lock moved from the
   removable per-key state directory to the never-deleted `locks/` tree, still keyed per agent, so `prune` concurrent
   with `run` can no longer unlink a held lock and let a second invocation create a duplicate or clobbering VM, and

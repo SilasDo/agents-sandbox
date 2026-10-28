@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -444,12 +443,37 @@ func updateExecutable(ctx context.Context, latest string) error {
 	if err != nil {
 		return err
 	}
-	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exe), latest)
+	return installRelease(ctx, latest, exe)
+}
+
+// installRelease downloads the release binary for version and installs it at
+// exePath, verifying its SHA-256 against the release's published checksums
+// before the replacement. The replacement is unreachable unless verification
+// passes, so a tampered, truncated, or missing-metadata download leaves the
+// installed binary untouched.
+func installRelease(ctx context.Context, version, exePath string) error {
+	asset := assetName()
+	assetPath, err := downloadAssetToDir(ctx, filepath.Dir(exePath), version)
 	if err != nil {
 		return err
 	}
 	defer os.Remove(assetPath)
-	return replaceExecutable(assetPath, exe)
+	if err := verifyAssetChecksum(ctx, version, assetPath, asset); err != nil {
+		return fmt.Errorf("refusing to install %s: %w", asset, err)
+	}
+	return replaceExecutable(assetPath, exePath)
+}
+
+// newAssetRequest builds the GET request the updater uses to fetch a release
+// asset, carrying the User-Agent the GitHub release endpoints expect. Callers
+// address the specific asset; this keeps request construction in one place.
+func newAssetRequest(ctx context.Context, url string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "agents-sandbox")
+	return req, nil
 }
 
 // downloadAssetToDir downloads the release binary for the given version and the
@@ -459,13 +483,12 @@ func updateExecutable(ctx context.Context, latest string) error {
 // which GitHub never serves for a prerelease; the tag is "v" + version by this
 // repository's tagging convention (every release tag is v<version>).
 func downloadAssetToDir(ctx context.Context, dir string, version string) (string, error) {
-	asset := fmt.Sprintf("agents-sandbox-%s-%s", runtime.GOOS, runtime.GOARCH)
+	asset := assetName()
 	url := fmt.Sprintf("%s/v%s/%s", downloadBase, version, asset)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := newAssetRequest(ctx, url)
 	if err != nil {
 		return "", fmt.Errorf("build download request: %w", err)
 	}
-	req.Header.Set("User-Agent", "agents-sandbox")
 	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {

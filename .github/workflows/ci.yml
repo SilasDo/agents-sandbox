@@ -334,6 +334,19 @@ jobs:
           else
             echo "IS_PRERELEASE=false" >> "$GITHUB_ENV"
           fi
+      - name: Write checksums.txt
+        run: |
+          set -euo pipefail
+          # One sha256sum-format line per release asset, keyed on the flat asset
+          # name the updater looks up: `<64-hex><two spaces><asset-name>`.
+          cd artifacts
+          : > checksums.txt
+          for asset in agents-sandbox-*/agents-sandbox-*; do
+            sha="$(sha256sum "$asset" | cut -d' ' -f1)"
+            printf '%s  %s\n' "$sha" "$(basename "$asset")"
+          done >> checksums.txt
+          cat checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -341,7 +354,9 @@ jobs:
           name: "agents-sandbox ${{ github.ref_name }}"
           generate_release_notes: true
           prerelease: ${{ env.IS_PRERELEASE }}
-          files: artifacts/*/*
+          files: |
+            artifacts/*/*
+            artifacts/checksums.txt
 
       - name: Bump Homebrew formula
         if: env.IS_PRERELEASE != 'true'
