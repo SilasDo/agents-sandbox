@@ -117,9 +117,10 @@ and `opencode v1.19.3` (installed to a temp HOME for this exercise).
 - `internal/agent/capabilities.go` — `EventStreamSpec{StreamCommand, BusyEvents, AwaitingInput,
   IdleEvents, ErrorEvents, Name}` and `AsEventStreamProvider`.
 - `internal/notify/watch.go` — `Watch` (reconnect loop), `watchOnce` (one SSE stream),
-  `parseSSEBlock` (v1 shape only), `handleEvent`, `streamReader`. `Watch`/`watchOnce` take the local
-  two-method `StreamOpener` seam (`ShellStream`/`Shell`) rather than `msb.Sandbox`; `SandboxStreamOpener`
-  adapts a sandbox to it at the call site (#358).
+  `parseSSEBlock` (v1 shape only), `handleEvent`, `streamReader`.
+- **Invariant:** `notify.Watch`'s whole dependency on the sandbox is the two-method `StreamOpener`
+  seam (`ShellStream`/`Shell`); it never demands `msb.Sandbox`. `SandboxStreamOpener` adapts a sandbox
+  to the seam at the call site, so a fake carrying those two operations drives the watcher (#358).
 - `internal/notify/event.go` — `Tracker{spec, states}`; `Handle` maps event types to
   bus/aparse input/idle/error transitions.
 - `internal/notify/dedup.go` — cross-client claim keyed on (session, trigger, and for input the

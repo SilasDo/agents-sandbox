@@ -111,7 +111,9 @@ func (s *dropSummary) err() error {
 // StreamOpener opens the sandbox's agent event stream and runs the one-shot
 // commands the watcher needs. It is the watcher's whole dependency on the
 // sandbox: a fake carrying only these two operations drives Watch, without an
-// msb.Sandbox, and production adapts one with SandboxStreamOpener.
+// msb.Sandbox, and production adapts one with SandboxStreamOpener. It is
+// exported because it is Watch's parameter and the session package's tests
+// substitute their own; an unexported interface would be unnameable there.
 type StreamOpener interface {
 	// ShellStream starts a long-running command in the sandbox and returns the
 	// handle for its output and exit events.
