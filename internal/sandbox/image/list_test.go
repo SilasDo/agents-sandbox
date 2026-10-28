@@ -77,6 +77,37 @@ func TestListImagesExcludesRepositoryRefs(t *testing.T) {
 	}
 }
 
+// TestListImagesOmitsSingleSegmentRefsWithoutHash pins the tightened ownership
+// filter: a single-segment reference without the launcher's slug hash (a
+// manually loaded image) is not reported, while a hash-bearing runner image is.
+func TestListImagesOmitsSingleSegmentRefsWithoutHash(t *testing.T) {
+	mockClient := &msb.MockMsbClient{
+		Images: []msb.ImageHandle{
+			msb.MockImageHandle{Reference_: "manualimage:opencode-latest", ManifestDigest_: "sha256:manual"},
+			msb.MockImageHandle{
+				Reference_:      "agents-sandbox/runner-manualimage:latest",
+				ManifestDigest_: "sha256:legacy-manual",
+			},
+			msb.MockImageHandle{Reference_: "proj-1mjusbm3wikhb0:opencode-latest", ManifestDigest_: "sha256:owned"},
+		},
+	}
+	msb.WithMsbMock(t, mockClient)
+
+	result, err := ListImages(context.Background())
+	if err != nil {
+		t.Fatalf("ListImages() = %v", err)
+	}
+	want := []Info{{
+		Reference: "proj-1mjusbm3wikhb0:opencode-latest",
+		Digest:    "sha256:owned",
+		Size:      unknownSize,
+		CreatedAt: "",
+	}}
+	if !reflect.DeepEqual(result, want) {
+		t.Errorf("ListImages() = %+v, want only the hash-bearing runner image %+v", result, want)
+	}
+}
+
 func TestListImagesReturnsErrorFromMsB(t *testing.T) {
 	wantMsg := "connection refused"
 	mockClient := &msb.MockMsbClient{

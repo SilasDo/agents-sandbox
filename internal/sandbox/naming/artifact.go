@@ -146,6 +146,23 @@ func looksLikeProjectSlug(s string) bool {
 	return s != "" && !strings.Contains(s, "/")
 }
 
+// IsRunnerImageRef reports whether name is an agents-sandbox runner image
+// reference under either scheme. Ownership requires the parsed slug to embed the
+// 14-character base36 hash a launcher-built project slug ends with, so a
+// single-segment reference without that hash — a manually loaded image in the
+// private runtime home — is foreign.
+func IsRunnerImageRef(name string) bool {
+	return slugEmbedsHash(ParseImageTag(name).Slug)
+}
+
+// slugEmbedsHash reports whether slug ends in the base36 project-slug hash every
+// launcher-built slug carries. A slug without a '-' cuts to an empty hash, which
+// isBase36Hash rejects, so the cut's found result is implied.
+func slugEmbedsHash(slug string) bool {
+	_, hash, _ := strings.CutLast(slug, "-")
+	return isBase36Hash(hash)
+}
+
 // isBase36Hash reports whether s is a 14-character lowercase-alphanumeric hash
 // such as the ones embedded in project slugs.
 func isBase36Hash(s string) bool {

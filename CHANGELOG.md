@@ -85,6 +85,10 @@ command reports the bare version (e.g. `0.1.0`).
   (#346).
 - Secret specs: merging the user and project secret-spec maps returns a fresh map instead of writing into the first
   map passed in, so both merge helpers in `internal/sandbox/envsecret` now share one non-mutating contract (#352).
+- Runner image: `image remove` no longer treats any single-segment reference as a runner image. Ownership now requires the
+  parsed slug to embed the launcher's 14-character hash, matching `image list`, so a manually loaded single-segment image
+  in the private runtime home is neither listed nor removable — and `--force` does not override the ownership refusal
+  (#350).
 
 ## [0.6.0] - 2026-10-25
 

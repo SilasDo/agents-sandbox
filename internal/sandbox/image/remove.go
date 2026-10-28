@@ -40,14 +40,16 @@ func RemoveImages(ctx context.Context, refs []string, force bool, ui termio.UI) 
 	return nil
 }
 
-// refuseNonRunnerRefs fails closed on a reference that does not resolve to a
-// runner image under either scheme. Unlike the in-use guard, this ownership
-// boundary is not overridable by --force: the command removes only the objects
-// agents-sandbox builds, never arbitrary cached images.
+// refuseNonRunnerRefs fails closed on a reference that is not a runner image
+// under either scheme. Ownership requires the parsed slug to embed the
+// launcher's 14-character slug hash, so a manually loaded single-segment image
+// in the private runtime home is foreign. Unlike the in-use guard, this
+// ownership boundary is not overridable by --force: the command removes only
+// the objects agents-sandbox builds, never arbitrary cached images.
 func refuseNonRunnerRefs(refs []string) error {
 	var foreign []string
 	for _, ref := range refs {
-		if naming.ParseImageTag(ref).Slug == "" {
+		if !naming.IsRunnerImageRef(ref) {
 			foreign = append(foreign, ref)
 		}
 	}

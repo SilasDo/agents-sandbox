@@ -19,7 +19,7 @@ import (
 
 func TestRemoveImagesRefusesReferenced(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	key := state.Key{Slug: "proj-aBc1234D", Agent: "opencode"}
+	key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
 	if err := seedHomeState(key, state.HomeState{}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestRemoveImagesRefusesReferenced(t *testing.T) {
 	if err == nil {
 		t.Fatal("RemoveImages() error = nil, want a refusal for a referenced image")
 	}
-	if !strings.Contains(err.Error(), "proj-aBc1234D/opencode") {
+	if !strings.Contains(err.Error(), "proj-1mjusbm3wikhb0/opencode") {
 		t.Errorf("error %q does not name the referencing project", err.Error())
 	}
 	if len(client.RemovedImages) != 0 {
@@ -61,7 +61,7 @@ func TestRemoveImagesRefusesImageHeldByLiveSandbox(t *testing.T) {
 
 func TestRemoveImagesForceSkipsGuard(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	key := state.Key{Slug: "proj-aBc1234D", Agent: "opencode"}
+	key := state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}
 	if err := seedHomeState(key, state.HomeState{}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRemoveImagesForceSkipsGuard(t *testing.T) {
 
 func TestRemoveImagesFailsClosedOnCorruptState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	dir := state.KeyDir(state.Key{Slug: "proj-aBc1234D", Agent: "opencode"})
+	dir := state.KeyDir(state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"})
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRemoveImagesFailsClosedOnCorruptState(t *testing.T) {
 
 	if err := RemoveImages(
 		context.Background(),
-		[]string{naming.RunnerImageRef("proj-aBc1234D", "opencode")},
+		[]string{naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")},
 		false,
 		&termio.Mock{},
 	); err == nil {
@@ -109,10 +109,10 @@ func TestRemoveImagesFailsClosedOnCorruptState(t *testing.T) {
 }
 
 func TestRefuseReferencedImagesNamesProjects(t *testing.T) {
-	ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+	ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 	references := map[string][]state.Key{
 		ref: {
-			{Slug: "proj-aBc1234D", Agent: "opencode"},
+			{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"},
 			{Slug: "proj-bCd2345E", Agent: "pi"},
 		},
 	}
@@ -121,7 +121,7 @@ func TestRefuseReferencedImagesNamesProjects(t *testing.T) {
 	if err == nil {
 		t.Fatal("refuseReferencedImages() error = nil, want a refusal")
 	}
-	for _, want := range []string{"proj-aBc1234D/opencode", "proj-bCd2345E/pi"} {
+	for _, want := range []string{"proj-1mjusbm3wikhb0/opencode", "proj-bCd2345E/pi"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %q", err.Error(), want)
 		}
@@ -133,7 +133,7 @@ func TestRefuseReferencedImagesNamesProjects(t *testing.T) {
 
 func TestRefuseReferencedImagesAllowsUnreferenced(t *testing.T) {
 	if err := refuseReferencedImages(
-		[]string{naming.RunnerImageRef("proj-aBc1234D", "opencode")},
+		[]string{naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")},
 		map[string][]state.Key{},
 	); err != nil {
 		t.Fatalf("refuseReferencedImages() error = %v, want nil for unreferenced refs", err)
@@ -172,6 +172,68 @@ func TestRemoveImagesForceDoesNotBypassOwnershipGuard(t *testing.T) {
 	}
 }
 
+// TestRemoveImagesRefusesSingleSegmentRefWithoutHash pins the tightened
+// ownership check: a single-segment reference whose slug lacks the launcher's
+// 14-character hash is a manually loaded image, not a runner image.
+func TestRemoveImagesRefusesSingleSegmentRefWithoutHash(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	client := &msb.MockMsbClient{
+		ListSandboxesFn: func(context.Context, map[string]string) ([]msb.SandboxHandle, error) {
+			return nil, errors.New("the ownership guard must run before the reference scan")
+		},
+	}
+	msb.WithMsbMock(t, client)
+
+	ui := &termio.Mock{}
+	ui.SetAssumeYes(true)
+	err := RemoveImages(context.Background(), []string{"manualimage:opencode-latest"}, false, ui)
+	if err == nil || !strings.Contains(err.Error(), "not managed by agents-sandbox") {
+		t.Fatalf("RemoveImages(hashless single segment) = %v, want an ownership refusal", err)
+	}
+	if len(client.RemovedImages) != 0 {
+		t.Errorf("RemovedImages = %v, want none removed", client.RemovedImages)
+	}
+}
+
+// TestRemoveImagesForceDoesNotBypassHashOwnershipGuard pins that the tightened
+// guard, like the repository-reference guard, is not overridable by --force.
+func TestRemoveImagesForceDoesNotBypassHashOwnershipGuard(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	client := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, client)
+
+	ui := &termio.Mock{}
+	ui.SetAssumeYes(true)
+	err := RemoveImages(context.Background(), []string{"manualimage:opencode-latest"}, true, ui)
+	if err == nil || !strings.Contains(err.Error(), "not managed by agents-sandbox") {
+		t.Fatalf("RemoveImages(hashless single segment, force) = %v, want a hard ownership refusal", err)
+	}
+	if len(client.RemovedImages) != 0 {
+		t.Errorf("RemovedImages = %v, want none removed", client.RemovedImages)
+	}
+}
+
+// TestRemoveImagesAcceptsHashBearingRefsEitherScheme pins that a slug carrying
+// the launcher hash keeps both reference shapes removable.
+func TestRemoveImagesAcceptsHashBearingRefsEitherScheme(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	client := &msb.MockMsbClient{}
+	msb.WithMsbMock(t, client)
+
+	ui := &termio.Mock{}
+	ui.SetAssumeYes(true)
+	refs := []string{
+		naming.RunnerImageRef("myproj-1mjusbm3wikhb0", "opencode"),
+		naming.DockerImageRef("myproj-1mjusbm3wikhb0", "opencode"),
+	}
+	if err := RemoveImages(context.Background(), refs, false, ui); err != nil {
+		t.Fatalf("RemoveImages(hash-bearing refs) = %v, want both removed", err)
+	}
+	if len(client.RemovedImages) != len(refs) {
+		t.Fatalf("RemovedImages = %v, want %d", client.RemovedImages, len(refs))
+	}
+}
+
 func TestRemoveImagesGuardSurfacesScanError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	client := &msb.MockMsbClient{
@@ -183,7 +245,7 @@ func TestRemoveImagesGuardSurfacesScanError(t *testing.T) {
 
 	err := RemoveImages(
 		context.Background(),
-		[]string{naming.RunnerImageRef("proj-aBc1234D", "opencode")},
+		[]string{naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")},
 		false,
 		&termio.Mock{},
 	)
@@ -194,8 +256,8 @@ func TestRemoveImagesGuardSurfacesScanError(t *testing.T) {
 
 func TestInUseImageReferencesKeepsPositionalSandbox(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
-	handle := &msb.MockSandboxHandle{Name_: "proj-aBc1234D-opencode", Cfg: &msbSdk.SandboxConfig{Image: ref}}
+	ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
+	handle := &msb.MockSandboxHandle{Name_: "proj-1mjusbm3wikhb0-opencode", Cfg: &msbSdk.SandboxConfig{Image: ref}}
 	client := &msb.MockMsbClient{Sandboxes: []msb.SandboxHandle{handle}}
 	msb.WithMsbMock(t, client)
 
@@ -219,7 +281,7 @@ func TestRemoveImagesNonInteractiveRequiresConfirmation(t *testing.T) {
 
 	err := RemoveImages(
 		context.Background(),
-		[]string{naming.RunnerImageRef("proj-aBc1234D", "opencode")},
+		[]string{naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")},
 		false,
 		&termio.Mock{},
 	)
@@ -243,7 +305,7 @@ func TestRemoveImagesSurfacesRemoveError(t *testing.T) {
 	ui.SetAssumeYes(true)
 	err := RemoveImages(
 		context.Background(),
-		[]string{naming.RunnerImageRef("proj-aBc1234D", "opencode")},
+		[]string{naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")},
 		false,
 		ui,
 	)

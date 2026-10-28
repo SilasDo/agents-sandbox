@@ -75,11 +75,16 @@ protects whatever ref a kept sandbox holds via its `config.Image`.
 
 ## Ownership vs classification
 
-Ownership **is not** a per-object property anymore. The private runtime home (`configpaths.MSBHome()`) is ours alone
-and the external-runtime escape hatch was removed (`runtime-home-decoupling.md`), so every object in it was written
-by us. The prefix-based "is this ours?" filters in `vm/list.go`, `volume/list.go`, `image/list.go` and
-`pruning/images.go` are dropped, and `image/remove.go`'s `refuseNonRunnerRefs` refuses a ref that does not parse to a
-runner slug (`naming.ParseImageTag(ref).Slug == ""`) rather than a ref without the naming prefix.
+Ownership is positional for sandboxes and volumes: the private runtime home (`configpaths.MSBHome()`) is ours alone and
+the external-runtime escape hatch was removed (`runtime-home-decoupling.md`), so their prefix-based "is this ours?"
+filters in `vm/list.go` and `volume/list.go` are dropped. **Runner-image ownership is deliberately a per-object
+name-shape predicate**: the parsed slug must embed the 14-character base36 hash every launcher-built slug ends with
+(`naming.IsRunnerImageRef`, reusing `isBase36Hash`). A prefix test cannot stand in for it — a manually loaded
+single-segment image can live in the private runtime home, and the list seam (`msb.ImageList`) exposes no image labels,
+so neither the prefix nor the label route can tell it apart. Both `image/list.go` and `image/remove.go` apply that one
+predicate so list and remove agree, and `image/remove.go`'s `refuseNonRunnerRefs` refuses a hashless ref without
+`--force` overriding it. Do not "simplify" this back to `naming.ParseImageTag(ref).Slug == ""`. `pruning/images.go`
+still uses that weaker slug test (a known residual).
 
 Classification and identity **are** still needed, and both come from labels on anything the launcher creates:
 

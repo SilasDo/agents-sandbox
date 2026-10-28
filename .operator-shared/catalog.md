@@ -45,7 +45,7 @@
 ### `specs/` - System contracts for this partition
 
 - `artifact-naming.md`
-  - Description: Contract for the prefix-free artifact naming strategy: project VMs, task sandboxes, home volumes and microsandbox image refs drop the `agents-sandbox-` prefix while Docker images keep it (the `ImageInfo` Docker-tag/msb-ref split), new artifacts follow the new scheme while legacy ones stay discoverable without reimport or rebuild, ownership is positional in the private runtime home, and project-vs-task classification is label-based.
+  - Description: Contract for the prefix-free artifact naming strategy: project VMs, task sandboxes, home volumes and microsandbox image refs drop the `agents-sandbox-` prefix while Docker images keep it (the `ImageInfo` Docker-tag/msb-ref split), new artifacts follow the new scheme while legacy ones stay discoverable without reimport or rebuild, ownership is positional for sandboxes/volumes while runner-image ownership requires the slug's embedded 14-char base36 hash, and project-vs-task classification is label-based.
   - Read If: Changing `internal/sandbox/naming`, the VM/home-volume/runner-image name or reference constructors or parsers, artifact discovery (list/remove/prune/reference scans), the sandbox or volume labels, or the Docker-vs-msb image reference split.
 - `image-ref-content-addressing.md`
   - Description: Contract for keying the msb runner-image cache by content (`<slug>:<agent>.<contentid>`) instead of the constant name ref, so a project's variants (docker on/off, agent bumps, body edits) coexist and toggling reimports nothing; the stable Docker tag, the ParseImageTag/ownership round-trip, the expanded load-candidate set, and prune retention by liveness + age (#322).

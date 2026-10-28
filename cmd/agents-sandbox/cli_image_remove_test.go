@@ -14,7 +14,7 @@ import (
 
 func TestImageRemove(t *testing.T) {
 	t.Run("removes an unreferenced image", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", "--yes", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
@@ -27,7 +27,7 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("rm alias removes", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "rm", "--yes", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
@@ -40,18 +40,18 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("refuses a referenced image naming the project", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", "--yes", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
 		if err := seedHomeState(
-			state.Key{Slug: "proj-aBc1234D", Agent: "opencode"},
+			state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"},
 			state.HomeState{},
 		); err != nil {
 			t.Fatalf("seed state: %v", err)
 		}
 		err := cmd.Execute()
-		if err == nil || !strings.Contains(err.Error(), "proj-aBc1234D/opencode") {
+		if err == nil || !strings.Contains(err.Error(), "proj-1mjusbm3wikhb0/opencode") {
 			t.Fatalf("expected refusal naming the project, got %v", err)
 		}
 		if len(m.RemovedImages) != 0 {
@@ -60,12 +60,12 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("force overrides the reference", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", "--force", "--yes", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
 		if err := seedHomeState(
-			state.Key{Slug: "proj-aBc1234D", Agent: "opencode"},
+			state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"},
 			state.HomeState{},
 		); err != nil {
 			t.Fatalf("seed state: %v", err)
@@ -79,7 +79,7 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("fails fast without --yes in non-interactive mode", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
@@ -93,12 +93,12 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("refuses a referenced image before prompting", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, ui := setupCommandFixtures(t, "image", "remove", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
 		if err := seedHomeState(
-			state.Key{Slug: "proj-aBc1234D", Agent: "opencode"},
+			state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"},
 			state.HomeState{},
 		); err != nil {
 			t.Fatalf("seed state: %v", err)
@@ -113,7 +113,7 @@ func TestImageRemove(t *testing.T) {
 	})
 
 	t.Run("missing ref surfaces the msb error", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", "--yes", ref)
 		m := &msb.MockMsbClient{
 			ImageRemoveFn: func(_ context.Context, _ string, _ bool) error {
@@ -150,12 +150,12 @@ func TestImageRemoveOwnershipAndShorthand(t *testing.T) {
 	})
 
 	t.Run("-f shorthand forces removal", func(t *testing.T) {
-		ref := naming.RunnerImageRef("proj-aBc1234D", "opencode")
+		ref := naming.RunnerImageRef("proj-1mjusbm3wikhb0", "opencode")
 		cmd, _ := setupCommandFixtures(t, "image", "remove", "-f", "--yes", ref)
 		m := &msb.MockMsbClient{}
 		msb.WithMsbMock(t, m)
 		if err := seedHomeState(
-			state.Key{Slug: "proj-aBc1234D", Agent: "opencode"},
+			state.Key{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"},
 			state.HomeState{},
 		); err != nil {
 			t.Fatalf("seed state: %v", err)

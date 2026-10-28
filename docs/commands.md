@@ -462,7 +462,9 @@ agents-sandbox img
 
 #### image list
 
-List cached runner Docker images with reference, digest, size, and creation time. The
+List cached runner Docker images with reference, digest, size, and creation time. Only
+references whose parsed slug embeds the launcher's 14-character hash are listed, so a
+manually loaded single-segment image in the private runtime home is omitted. The
 reference ends in the short content hash the image is keyed under in microsandbox; the
 digest column shows the short form (`sha256:` followed by 12 hex chars) as microsandbox
 reports it.
@@ -488,7 +490,7 @@ entrypoint, working dir, user, labels, stop signal), and every layer (diff ID,
 blob digest, media type, compressed and erofs sizes).
 
 ```console
-agents-sandbox image inspect myproj-aBc1234D:opencode-latest
+agents-sandbox image inspect myproj-1mjusbm3wikhb0:opencode-latest
 agents-sandbox image inspect <ref> --format json   # structured output
 agents-sandbox image inspect <ref> --quiet         # reference only
 ```
@@ -504,7 +506,9 @@ Remove one or more cached runner images by reference. Only runner images are
 accepted — the content-addressed microsandbox reference (`<slug>:<agent>.<contentid>`), the
 prefix-free name reference (`<slug>:<agent>-latest`), or a
 reference created by an earlier version (`agents-sandbox/runner-<slug>:<agent>-latest`);
-any other reference is refused, and `--force` does not override that ownership
+the parsed slug must embed the launcher's 14-character hash, so any other reference — a
+registry image, or a manually loaded single-segment image without that hash — is refused,
+and `--force` does not override that ownership
 boundary. Refuses when a runner
 image is still in use — recorded by a project's state file or held by a live
 project/task sandbox — naming the referencing projects, so an in-use image is
@@ -513,7 +517,7 @@ confirmation unless the global `--yes` is set; non-interactively, `--yes` is
 required.
 
 ```console
-agents-sandbox image remove myproj-aBc1234D:opencode-latest
+agents-sandbox image remove myproj-1mjusbm3wikhb0:opencode-latest
 agents-sandbox image remove <ref>... --force   # remove even when still in use
 ```
 
