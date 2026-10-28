@@ -125,6 +125,11 @@ command reports the bare version (e.g. `0.1.0`).
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
 - Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
   a run with no config file; the deprecated `--dind` alias already survived.
+- Agent upgrade check: the launcher-global root lock is no longer held across the release-endpoint request, so one
+  project's egress check no longer blocks unrelated projects (adoption, the runtime-home copy campaign) or makes them
+  silently skip their step. The check reads the cached window under the lock, performs the request with the lock
+  released, and re-checks the window before persisting, so two concurrent checks still record at most one refresh
+  (#334).
 
 ## [0.6.0] - 2026-10-25
 
