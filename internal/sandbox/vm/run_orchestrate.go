@@ -164,6 +164,7 @@ func PrepareSandbox(
 	// The home volume is resolved (state exists), so a deferred offered mark can
 	// now be recorded.
 	persistOfferedVersion(k, offeredVersion, ui)
+	persistAgentVersion(k, imageInfo.AgentVersion, ui)
 
 	// Load the merged agent config and home files exactly once per startup;
 	// the result is shared by the reconfig decision and the provisioning step.
@@ -366,6 +367,17 @@ func prepareHomeVolume(
 	}
 	ui.Verbosef("home volume: %s", homeVol)
 	return client, vm, homeVol, vs, nil
+}
+
+// persistAgentVersion records the release baked into the runner image as this
+// project's upgrade baseline, once the home volume is resolved so a fresh state
+// exists. It is the writer of record: unlike boot-time provenance it does not
+// depend on the profile implementing a VersionProvider. A failure only warns;
+// the next run reconciles from the image label.
+func persistAgentVersion(k state.Key, version string, ui termio.UI) {
+	if err := state.RecordAgentVersion(k, version); err != nil {
+		ui.Warnf("could not persist the agent version: %v (continuing)", err)
+	}
 }
 
 // persistOfferedVersion records that the given release's upgrade prompt has been

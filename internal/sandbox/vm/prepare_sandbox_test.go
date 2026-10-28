@@ -813,6 +813,82 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 	}
 }
 
+// TestPrepareSandboxRecordsBakedAgentVersion verifies that a run records the
+// release baked into the runner image as this project's upgrade baseline. The
+// image label is the authority: the resolver's own release deliberately differs,
+// so a baseline taken from the build resolution would record the wrong value.
+// This is the writer of record for profiles without an in-VM version probe
+// (opencode2), whose boot-time provenance cannot fill the baseline.
+func TestPrepareSandboxRecordsBakedAgentVersion(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	sandboximage.WithMockAgentVersionResolver(t, func(_ context.Context, _ agent.Agent, _ string) (string, error) {
+		return "9.9.9", nil
+	})
+	origUpgradeInfo := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "", nil }
+	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID: "sha256:abc123",
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{"org.agents-sandbox.identity.agent-version": "2.0.0"},
+				},
+			}, nil
+		},
+	})
+
+	slug := git.CheckoutSlug()
+	vmFS := msb.NewTestFS(nil, nil)
+	createdSb := &msb.MockSandbox{
+		Name_:    projectVMName(state.Key{Slug: slug, Agent: "opencode"}),
+		FSValue_: vmFS,
+		ShellOut: map[string]msb.ShellResult{
+			dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
+		},
+	}
+	mock := &msb.MockMsbClient{
+		ImageGetFn:     func(_ context.Context, _ string) error { return nil },
+		CreatedSandbox: createdSb,
+		Volumes:        []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "home-vol"}},
+	}
+	msb.WithMsbMock(t, mock)
+
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	// No agent_version recorded: recording must fill it from the baked image.
+	if err := seedHomeState(k, state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	origDaemon := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+		if command == opencodeProvider(t).DaemonHealthCmd() {
+			return `{"healthy":true,"version":"test"}`, 0, nil
+		}
+		return "", 0, nil
+	})
+	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
+
+	ui := termio.NewTestMock(t)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox: %v", err)
+	}
+	defer sess.Cleanup()
+
+	st, err := state.ReadState(k)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.AgentVersion != "2.0.0" {
+		t.Errorf("AgentVersion = %q, want the baked 2.0.0 recorded", st.AgentVersion)
+	}
+}
+
 // TestPrepareSandboxRecreatesVMOnLiveMountChange is the end-to-end counterpart of
 // the resolveReconfigDecision live-mount tests: a project VM whose persisted mounts no
 // longer match the requested tmp size is destroyed and recreated, proving the
