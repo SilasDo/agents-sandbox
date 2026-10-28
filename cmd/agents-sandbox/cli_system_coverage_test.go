@@ -342,6 +342,89 @@ func TestVolumeOpAdoptionFailureFailsClosed(t *testing.T) {
 	}
 }
 
+// TestVolumeOpRecordsBakedAgentVersion pins that a volume op is a writer of
+// record for the project's agent-version baseline: whatever release the ensured
+// image bakes is recorded, so the spec's "whatever they bake is recorded" holds
+// even though these ops resolve latest rather than the recorded baseline.
+func TestVolumeOpRecordsBakedAgentVersion(t *testing.T) {
+	initTestProjectDir(t)
+	cmd, _ := setupCommandFixtures(t, cmdVolume, cmdReset)
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{
+						"org.agents-sandbox.identity.agent-version": "3.3.3",
+					},
+				},
+			}, nil
+		},
+	})
+
+	checkoutKey := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	if err := seedHomeState(checkoutKey, state.HomeState{HomeVolume: "home-vol"}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("volume reset: %v", err)
+	}
+
+	st, err := state.ReadState(checkoutKey)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if st.AgentVersion != "3.3.3" {
+		t.Errorf("AgentVersion = %q, want the baked 3.3.3 recorded", st.AgentVersion)
+	}
+}
+
+// TestVolumeOpWarnsWhenRecordingAgentVersionFails verifies that a failed
+// baseline write only warns: recording must never fail the volume op. It drives
+// prepareVolumeOp directly: the full command re-reads the same state file right
+// after (volumeOp's ReadState and its final commit), so a directory at the state
+// path would fail those steps too; the recording step under test is
+// prepareVolumeOp's.
+func TestVolumeOpWarnsWhenRecordingAgentVersionFails(t *testing.T) {
+	initTestProjectDir(t)
+	root, ui := setupCommandFixtures(t, cmdVolume, cmdReset)
+	cmd, _, err := root.Find([]string{cmdVolume, cmdReset})
+	if err != nil {
+		t.Fatalf("find volume reset: %v", err)
+	}
+	cmd.SetContext(context.Background())
+
+	checkoutKey := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	// A directory at the state file's path makes the baseline write fail.
+	if err := os.MkdirAll(filepath.Join(state.KeyDir(checkoutKey), "state.yaml"), 0o700); err != nil {
+		t.Fatalf("make state path unwritable: %v", err)
+	}
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{
+						"org.agents-sandbox.identity.agent-version": "3.3.3",
+					},
+				},
+			}, nil
+		},
+	})
+
+	if _, _, err := prepareVolumeOp(cmd, ui, false); err != nil {
+		t.Fatalf("prepareVolumeOp must not fail on a state write error: %v", err)
+	}
+	assertWarnContains(t, ui, "could not persist the agent version")
+}
+
 func TestVolumeMigrateUnknownAgent(t *testing.T) {
 	initTestProjectDir(t)
 	cmd, _ := setupCommandFixtures(t, "volume", "migrate", "--agent", "bogus")
