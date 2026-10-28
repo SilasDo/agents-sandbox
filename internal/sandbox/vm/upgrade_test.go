@@ -412,6 +412,23 @@ func TestPersistOfferedVersionWarnsOnError(t *testing.T) {
 	}
 }
 
+// TestPersistAgentVersionWarnsOnError verifies that a failure to record the
+// baked agent version only warns: recording must never fail a run.
+func TestPersistAgentVersionWarnsOnError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	if err := os.MkdirAll(filepath.Join(state.KeyDir(k), "state.yaml"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	ui := &termio.Mock{}
+	persistAgentVersion(k, "2.0.0", ui)
+
+	if !contains(joinStrings(ui.WarnCalls), "could not persist the agent version") {
+		t.Errorf("expected a persist warning, got %v", ui.WarnCalls)
+	}
+}
+
 // TestDeferredOfferedPersistedAfterStateRecreated is the regression test for the
 // "don't remind again" choice being forgotten when the project state was
 // missing: the offered release returned by resolveBuildVersion is persisted
@@ -501,6 +518,88 @@ func TestResolveOpenCodeVersionRecoveredBaselineReusedOffline(t *testing.T) {
 	}
 	if upgraded {
 		t.Error("expected upgraded=false when the check is offline")
+	}
+}
+
+// TestResolveBuildVersionReconcilesStaleBaselineWithImage pins that a recorded
+// baseline which disagrees with the present image is stale: the image label wins
+// (it is what is actually installed) and the cache is rewritten, so the stale
+// value can never select an older build.
+func TestResolveBuildVersionReconcilesStaleBaselineWithImage(t *testing.T) {
+	origLatest := agentLatestVersion
+	defer func() { agentLatestVersion = origLatest }()
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.0.0", nil }
+
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	seedAgentState(t, k, "0.9.0", agentSourceTool) // stale: the image holds 1.0.0
+	withExistingAgentVersion(t)                    // seam returns "1.0.0", true
+
+	got, upgraded, _, err := resolveBuildVersion(
+		context.Background(), k, opencodeAgent(t), &termio.Mock{}, options.RunOptions{Agent: "opencode"},
+	)
+	if err != nil {
+		t.Fatalf("resolveBuildVersion: %v", err)
+	}
+	if got != "1.0.0" {
+		t.Errorf("resolveBuildVersion = %q, want the image's 1.0.0, not the stale 0.9.0", got)
+	}
+	if upgraded {
+		t.Error("expected upgraded=false: 1.0.0 is not newer than the image's 1.0.0")
+	}
+	hs, err := state.ReadState(k)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if hs.AgentVersion != "1.0.0" {
+		t.Errorf("recorded agent_version = %q, want the image's 1.0.0", hs.AgentVersion)
+	}
+}
+
+// TestResolveBuildVersionPinWinsOverImageLabel pins that reconciliation never
+// reaches an explicit pin: the pin returns before the recovery block.
+func TestResolveBuildVersionPinWinsOverImageLabel(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	seedAgentState(t, k, "0.9.0", agentSourceTool)
+	withExistingAgentVersion(t) // image reports 1.0.0
+
+	got, _, _, err := resolveBuildVersion(
+		context.Background(), k, opencodeAgent(t), &termio.Mock{},
+		options.RunOptions{Agent: "opencode", AgentVersion: "3.0.0"},
+	)
+	if err != nil {
+		t.Fatalf("resolveBuildVersion: %v", err)
+	}
+	if got != "3.0.0" {
+		t.Errorf("resolveBuildVersion = %q, want the explicit pin 3.0.0", got)
+	}
+}
+
+// TestResolveBuildVersionKeepsBaselineWhenImageAbsent pins the offline-reuse
+// fallback: with no image label to reconcile against, the recorded value stays
+// authoritative.
+func TestResolveBuildVersionKeepsBaselineWhenImageAbsent(t *testing.T) {
+	origLatest := agentLatestVersion
+	defer func() { agentLatestVersion = origLatest }()
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "2.0.0", nil }
+
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	seedAgentState(t, k, "1.0.0", agentSourceTool) // no withExistingAgentVersion: seam defaults to absent
+
+	ui := &termio.Mock{SelectFn: func(string, []termio.Choice, string) (string, error) { return "k", nil }}
+	got, upgraded, _, err := resolveBuildVersion(
+		context.Background(), k, opencodeAgent(t), ui, options.RunOptions{Agent: "opencode"},
+	)
+	if err != nil {
+		t.Fatalf("resolveBuildVersion: %v", err)
+	}
+	if got != "1.0.0" {
+		t.Errorf("resolveBuildVersion = %q, want the recorded 1.0.0 kept for offline reuse", got)
+	}
+	if upgraded {
+		t.Error("expected upgraded=false for a keep choice")
 	}
 }
 

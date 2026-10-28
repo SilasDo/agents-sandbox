@@ -87,8 +87,10 @@ func buildVolumeOpsCmd(ui termio.UI, op volumeOp) *cobra.Command {
 }
 
 // prepareVolumeOp resolves the agent, adopts a legacy project identity, and
-// ensures the runner image a volume op seeds from. It adopts like
-// PrepareSandbox does and uses the adopted slug for both the image and the
+// ensures the runner image a volume op seeds from, recording the release the
+// ensured image bakes (these ops resolve latest, not the recorded baseline, but
+// whatever they bake must still be the project's recorded release). It adopts
+// like PrepareSandbox does and uses the adopted slug for both the image and the
 // state key, never re-deriving it from git: adoption may have just moved the
 // state, and a dry run deliberately returns the legacy repo slug while the
 // migration stays pending. A dry run only reports the state-derived old
@@ -118,6 +120,12 @@ func prepareVolumeOp(c *cobra.Command, ui termio.UI, dryRun bool) (state.Key, im
 	)
 	if err != nil {
 		return state.Key{}, image.ImageInfo{}, fmt.Errorf("ensure image: %w", err)
+	}
+	// Record the release the ensured image bakes so the volume subcommands are
+	// writers of record too, whatever release they resolve. A failure only warns:
+	// the next run reconciles from the image label.
+	if err := state.RecordAgentVersion(key, info.AgentVersion); err != nil {
+		ui.Warnf("could not persist the agent version: %v (continuing)", err)
 	}
 	return key, info, nil
 }
@@ -263,9 +271,21 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 				state.Key{Slug: adoption.Slug, Agent: a.Name()},
 				openCodeVersion,
 			)
-			return image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
+			info, err := image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
 				Force: force, AgentVersion: agentVersion, UserProvided: userProvided, Docker: resolveBuildDocker(cmd),
 			}, ui)
+			if err != nil {
+				return err
+			}
+			// Record the release the built image reports so an explicit
+			// --agent-version pin persists for later unpinned runs. A failure
+			// only warns: the next run reconciles from the image label.
+			if err := state.RecordAgentVersion(
+				state.Key{Slug: adoption.Slug, Agent: a.Name()}, info.AgentVersion,
+			); err != nil {
+				ui.Warnf("could not persist the agent version: %v (continuing)", err)
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolP(flagRebuild, flagRebuild[:1], false, "Force a clean rebuild")

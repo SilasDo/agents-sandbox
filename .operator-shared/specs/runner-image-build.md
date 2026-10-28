@@ -34,11 +34,12 @@ same way (see `specs/image-composition.md`).
 
 ## Load decision
 
-`EnsureImageWithClient` returns an `ImageInfo{DockerTag, Ref, Digest, DockerfileID, Env}`. `DockerTag` is the stable
+`EnsureImageWithClient` returns an `ImageInfo{DockerTag, Ref, Digest, DockerfileID, Env, AgentVersion}`. `DockerTag` is the stable
 Docker tag; `Ref` is the content-addressed microsandbox reference (`<slug>:<agent>.<contentid>`, derived from `Digest`);
 `Digest` is Docker's image ID, i.e. the same content identity microsandbox computes for an image it holds
-(`config.digest = sha256(config_bytes)`), and `DockerfileID` is the source signature above. Loading into microsandbox is
-deferred to a separate `EnsureLoaded` call, so reconnecting to a running VM never pays the import cost.
+(`config.digest = sha256(config_bytes)`), `DockerfileID` is the source signature above, and `AgentVersion` is the release
+the image reports through its `agent-version` label (empty for a missing or non-release sentinel label). Loading into
+microsandbox is deferred to a separate `EnsureLoaded` call, so reconnecting to a running VM never pays the import cost.
 
 `EnsureLoaded(ctx, client, info, ui)` decides from the msb cache only, never by inspecting host Docker. It tries three
 candidate references in reuse-preference order and reuses the first that already holds the content:
@@ -70,15 +71,21 @@ user-provided agent (`agent-source=user`) ignores the requested version and retu
    does not own the agent, so a pin cannot change what is baked).
 2. **`--agent-version <v>` pin** → `v`, no upgrade check.
 3. **No upgrade checker** → recorded version, no check.
-4. **No recorded baseline** → recover the version from the existing image's `agent-version` label
-   (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`), then continue to the upgrade check below;
-   only when that also yields nothing, empty (resolved to latest at build time).
-5. **Recorded or recovered baseline** → upgrade check; may prompt to rebuild with a newer release.
+4. **No recorded baseline, or one that disagrees with the existing image's label** → take the release the image reports
+   through its `agent-version` label (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`) and rewrite the cache,
+   then continue to the upgrade check below. The image is the authority; a disagreeing record is stale and never drives
+   a build. Only when no image (or no release label) yields a version does an empty record resolve to latest at build
+   time.
+5. **Recorded (or label-reconciled) baseline** → upgrade check; may prompt to rebuild with a newer release.
 
 `--agent-version` is available on `build`, `run`, and `shell`. `--rebuild` is orthogonal: it only forces a clean rebuild of
 whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check, but it is not
 always a fresh version: for a user-provided agent it, like `run`, ignores the pin and reuses the recorded version
 (`UserProvided=true`), resolving a release only if a rebuild later needs one.
+
+The image-ensuring paths are the writers of record for the baseline: `image.EnsureImage` (via `ImageInfo.AgentVersion`)
+and `image.Build` (which returns the `ImageInfo` from `EnsureLoaded`) surface the baked release so the caller records it
+in `HomeState.agent_version`. See `specs/agent-version-sync.md`.
 
 ### Latest-version sources
 

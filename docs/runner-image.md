@@ -325,14 +325,19 @@ Each runner image carries these labels:
 - `org.agents-sandbox.managed=true`
 - `org.agents-sandbox.agent=<name>`
 - `org.agents-sandbox.base=<ref>@sha256:<digest>`
+- `org.agents-sandbox.identity.agent-version=<release>`
 
-There is no tool-version label.
+The `agent-version` label records the agent release baked into the image. The Upgrades section reads it to compare that
+release against the new releases it finds.
 
 ## Upgrades
 
 The agent version is pinned at image build time and the agent's runtime autoupdate is disabled per agent, so the agent
-binary in a sandbox is stable across runs. Instead of reading the version from an image label, the version is detected
-on first boot and recorded for upgrade checks.
+binary in a sandbox is stable across runs. The release baked into an image is recorded as the project's upgrade baseline
+on every run and build, whether or not the image was rebuilt. Later runs therefore compare new releases against the
+version your image actually holds: an accepted upgrade sticks instead of reverting to the previous release, and a
+`--agent-version` pin survives unpinned runs. The recorded version comes from the image's `agent-version` label, which is
+read locally and adds no network call to the prompt path.
 
 By default the latest release available at build time is used for agents installed by agents-sandbox. Pin an explicit
 version on the `build` command with `--agent-version`:
@@ -346,11 +351,12 @@ agents-sandbox build          # uses the latest release
 release. On `run`/`shell`, when a newer agent release exists than the version baked into the image, the launcher offers to
 rebuild the image (interactive) or prints a notice advising `agents-sandbox build` (non-interactive). The prompt names both
 the available release and the version currently baked into this project's image, so you can tell exactly what a rebuild
-would change. When no version has been recorded for the project yet (for example after upgrading agents-sandbox), the
-launcher reads it once from the project's existing image, so an unpinned run still asks before changing the image and an
-offline check keeps the existing image instead of rebuilding. `--rebuild` forces a clean
-rebuild but still offers the upgrade; it only bypasses the build cache, it does not pin the version. When `agent-source=user`, the
-tool never checks for upgrades.
+would change. The recorded version is only a cache of that label: whenever the image is present, the launcher reconciles
+it with the label before deciding whether to build, so a recorded version never pulls the image backwards and an offline
+check keeps the existing image instead of rebuilding. Only when the image itself is missing (for example after pruning)
+does the recorded version stand on its own, so an unpinned run still sees the version last used and asks before changing
+the image. `--rebuild` forces a clean rebuild but still offers the upgrade; it only bypasses the build cache, it does not
+pin the version. When `agent-source=user`, the tool never checks for upgrades.
 
 `--agent-version` applies when agents-sandbox installs the selected agent. It does not replace an agent already supplied
 by a custom base or project Dockerfile — for a user-provided agent the pin is ignored. If a user-provided agent has no recorded
