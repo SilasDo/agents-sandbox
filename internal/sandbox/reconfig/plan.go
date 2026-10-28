@@ -108,11 +108,14 @@ type ChangeFlags struct {
 }
 
 // PlanReconfig computes the reconfiguration plan given the current VM config
-// and the desired state. Returns a nil Plan when there is no existing config
-// (first creation) or nothing needs to change.
+// and the desired state. image is the structured identity of the runner image
+// this run wants, so the comparison never parses a reference the launcher itself
+// rendered; only the persisted cfg.Image is parsed, because it is read back from
+// the VM. Returns a nil Plan when there is no existing config (first creation)
+// or nothing needs to change.
 func PlanReconfig(
 	cfg *msbSdk.SandboxConfig,
-	imageRef string,
+	image naming.ImageIdentity,
 	opts options.RunOptions,
 	flags ChangeFlags,
 	homeVol string,
@@ -123,7 +126,7 @@ func PlanReconfig(
 	}
 
 	// Recreation triggers (cannot be changed live).
-	if imageRecreate(cfg, imageRef, flags.Image) {
+	if imageRecreate(cfg, image, flags.Image) {
 		d.addRecreate(Change{Label: changeLabelImage})
 	}
 	if change, ok := tmpSizeChange(cfg, opts); ok {
@@ -189,38 +192,34 @@ func (d *Plan) applyEnvSecretRecreate(flags ChangeFlags) {
 }
 
 // imageRecreate reports whether the runner image differs from the configured one.
-func imageRecreate(cfg *msbSdk.SandboxConfig, imageRef string, flag bool) bool {
+func imageRecreate(cfg *msbSdk.SandboxConfig, image naming.ImageIdentity, flag bool) bool {
 	if flag {
 		return true
 	}
-	return imageRef != "" && cfg.Image != "" && !sameImageIdentity(cfg.Image, imageRef)
+	return image.Ref() != "" && cfg.Image != "" && !sameImageRef(cfg.Image, image)
 }
 
-// sameImageIdentity reports whether two references name the same runner image,
-// tolerating the legacy prefixed, prefix-free, and content-addressed spellings
-// of one slug+agent so a VM created under one spelling is not recreated merely
-// because the launcher now computes another. A digest-pinned or non-runner
-// reference only ever equals itself. Two content-addressed references are the
-// same image only when their content ids match: the persisted image digest that
-// normally gates a switch is recorded by the home action before the VM is
-// replaced, so after a failed replacement the content ref is the remaining
-// signal that the live VM is on the old content.
-func sameImageIdentity(a, b string) bool {
-	if a == b {
-		return true
-	}
-	parsedA := naming.ParseImageTag(a)
-	parsedB := naming.ParseImageTag(b)
-	// A digest-pinned or non-runner reference only ever equals itself.
-	if !isNameImage(parsedA) {
+// sameImageRef reports whether a persisted image reference names the same runner
+// image as the given structured identity, tolerating the legacy prefixed,
+// prefix-free and content-addressed spellings of one (slug, agent) so a VM
+// created under one spelling is not recreated merely because the launcher now
+// computes another. A digest-pinned or non-runner persisted reference names no
+// (slug, agent) pair, so it is never the same image. Two content-addressed
+// references are the same image only when their content ids match: the persisted
+// image digest that normally gates a switch is recorded by the home action
+// before the VM is replaced, so after a failed replacement the content ref is
+// the remaining signal that the live VM is on the old content.
+func sameImageRef(persisted string, image naming.ImageIdentity) bool {
+	parsed := naming.ParseImageTag(persisted)
+	if !isNameImage(parsed) {
 		return false
 	}
-	if parsedB.Slug != parsedA.Slug || parsedB.Agent != parsedA.Agent {
+	if parsed.Slug != image.Slug || parsed.Agent != image.Agent {
 		return false
 	}
 	// Both content-addressed: the content id decides.
-	if parsedA.ContentID != "" && parsedB.ContentID != "" {
-		return parsedA.ContentID == parsedB.ContentID
+	if parsed.ContentID != "" && image.ContentID != "" {
+		return parsed.ContentID == image.ContentID
 	}
 	// At least one is a name/legacy spelling (the upgrade from a 0.6.0 or
 	// pre-0.6 VM): same slug+agent is the same image.

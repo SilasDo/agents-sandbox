@@ -17,6 +17,40 @@ type ArtifactInfo struct {
 	Task      bool
 }
 
+// ImageIdentity is the structured identity of an agents-sandbox runner image:
+// the project slug, agent and content id that name it. It is the value the
+// launcher already holds after rendering a reference, so a caller that built or
+// resolved an image never has to parse the reference back into its parts (and
+// "which spelling is this" stays a closed union rather than a string-sniffing
+// convention). An identity carries a content id only when the image's content
+// is known; the name spelling is then derived rather than recorded.
+type ImageIdentity struct {
+	Slug      string
+	Agent     string
+	ContentID string
+}
+
+// NameRef renders the prefix-free name reference for the identity,
+// "<slug>:<agent>-latest", the spelling a 0.6.0 install cached the image under.
+// It is empty when the identity is not a complete slug/agent pair: runner
+// images are per-agent, so half an identity names no image.
+func (i ImageIdentity) NameRef() string {
+	if i.Slug == "" || i.Agent == "" {
+		return ""
+	}
+	return RunnerImageRef(i.Slug, i.Agent)
+}
+
+// Ref renders the reference the identity names: the content-addressed reference
+// when it carries a content id, the name reference otherwise. It is empty for
+// an incomplete slug/agent pair.
+func (i ImageIdentity) Ref() string {
+	if i.ContentID != "" && i.Slug != "" && i.Agent != "" {
+		return ContentImageRef(i.Slug, i.Agent, i.ContentID)
+	}
+	return i.NameRef()
+}
+
 // TaskSandboxName returns the prefix-free task sandbox name for a slug, agent
 // and creation timestamp in nanoseconds.
 func TaskSandboxName(slug, agent string, nanos int64) string {

@@ -12,9 +12,20 @@ import (
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
+
+// keepImageFor asks keepImage about a handle's reference the way PruneImages
+// does: parsing the listed reference once and passing the artifact in.
+func keepImageFor(
+	handle msb.ImageHandle,
+	pruneState PruneState,
+	keptImageRefs map[string]struct{},
+) bool {
+	return keepImage(handle, naming.ParseImageTag(handle.Reference()), pruneState, keptImageRefs)
+}
 
 func TestPruneImages(t *testing.T) {
 	now := time.Now()
@@ -271,7 +282,7 @@ func TestKeepImageNotReferencedWhenKeyAlsoPruned(t *testing.T) {
 		ToPrune: map[state.Key]msb.SandboxHandle{key: &msb.MockSandboxHandle{}},
 	}
 	handle := &msb.MockImageHandle{Reference_: "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest"}
-	if keepImage(handle, pruneState, nil) {
+	if keepImageFor(handle, pruneState, nil) {
 		t.Error("expected a key present in both ToKeep and ToPrune to be treated as not referenced")
 	}
 }
@@ -284,7 +295,7 @@ func TestKeepImageDropsLatestSuffixWithoutAgent(t *testing.T) {
 	pruneState := PruneState{ToKeep: map[state.Key]msb.SandboxHandle{
 		{Slug: ref, Agent: ""}: &msb.MockSandboxHandle{},
 	}}
-	if keepImage(&msb.MockImageHandle{Reference_: ref}, pruneState, nil) {
+	if keepImageFor(&msb.MockImageHandle{Reference_: ref}, pruneState, nil) {
 		t.Error("a -latest ref with no parsed agent must not be kept")
 	}
 }
@@ -449,11 +460,11 @@ func TestKeepImagePerAgent(t *testing.T) {
 		Reference_:  "agents-sandbox/runner-proj-1mjusbm3wikhb0:opencode-latest",
 		LastUsedAt_: time.Now(),
 	}
-	if !keepImage(oc, pruneState, nil) {
+	if !keepImageFor(oc, pruneState, nil) {
 		t.Error("expected opencode-latest to be kept")
 	}
 	pi := &msb.MockImageHandle{Reference_: "agents-sandbox/runner-proj-1mjusbm3wikhb0:pi-latest"}
-	if keepImage(pi, pruneState, nil) {
+	if keepImageFor(pi, pruneState, nil) {
 		t.Error("expected pi-latest to be pruned (no kept pi VM)")
 	}
 	// A prefix-free ref of the live (slug, agent) is kept the same way.
@@ -461,7 +472,7 @@ func TestKeepImagePerAgent(t *testing.T) {
 		Reference_:  "proj-1mjusbm3wikhb0:opencode-latest",
 		LastUsedAt_: time.Now(),
 	}
-	if !keepImage(prefixFree, pruneState, nil) {
+	if !keepImageFor(prefixFree, pruneState, nil) {
 		t.Error("expected a prefix-free opencode-latest ref to be kept")
 	}
 }
@@ -478,7 +489,7 @@ func TestKeepImageKeepsRefHeldByKeptSandboxRegardlessOfAge(t *testing.T) {
 		},
 	}
 	handle := &msb.MockImageHandle{Reference_: ref, LastUsedAt_: time.Now().Add(-48 * time.Hour)}
-	if !keepImage(handle, pruneState, map[string]struct{}{ref: {}}) {
+	if !keepImageFor(handle, pruneState, map[string]struct{}{ref: {}}) {
 		t.Error("expected a ref held by a kept sandbox to be kept regardless of age")
 	}
 }
@@ -497,7 +508,7 @@ func TestKeepImageKeepsRecentVariantOfLiveKey(t *testing.T) {
 		Reference_:  "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
 		LastUsedAt_: time.Now().Add(-time.Minute),
 	}
-	if !keepImage(handle, pruneState, nil) {
+	if !keepImageFor(handle, pruneState, nil) {
 		t.Error("expected a variant of a live key used within the age to be kept")
 	}
 }
@@ -515,7 +526,7 @@ func TestKeepImageDropsAgedVariantOfLiveKey(t *testing.T) {
 		Reference_:  "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
 		LastUsedAt_: time.Now().Add(-48 * time.Hour),
 	}
-	if keepImage(handle, pruneState, nil) {
+	if keepImageFor(handle, pruneState, nil) {
 		t.Error("expected an aged variant of a live key to be pruned")
 	}
 }
@@ -529,7 +540,7 @@ func TestKeepImageDropsRefsOfDeadKey(t *testing.T) {
 		Reference_:  "gone-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
 		LastUsedAt_: time.Now(),
 	}
-	if keepImage(handle, pruneState, nil) {
+	if keepImageFor(handle, pruneState, nil) {
 		t.Error("expected a ref of a dead key to be pruned even when fresh")
 	}
 }
@@ -547,7 +558,7 @@ func TestKeepImageHasNoRecencyProtectionWhenAgeZero(t *testing.T) {
 		Reference_:  "proj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31",
 		LastUsedAt_: time.Now(),
 	}
-	if keepImage(handle, pruneState, nil) {
+	if keepImageFor(handle, pruneState, nil) {
 		t.Error("a zero prune age must not keep a variant by recency")
 	}
 }
@@ -621,7 +632,7 @@ func TestKeepImageDropsAgentlessRefOfLiveKey(t *testing.T) {
 		},
 	}
 	handle := &msb.MockImageHandle{Reference_: ref, LastUsedAt_: time.Now()}
-	if keepImage(handle, pruneState, nil) {
+	if keepImageFor(handle, pruneState, nil) {
 		t.Error("an agent-less ref of a live key must not be kept even when fresh")
 	}
 }
