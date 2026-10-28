@@ -305,8 +305,8 @@ command reports the bare version (e.g. `0.1.0`).
 - `--dry-run` is now a read-only preview. It reports the agent version (or that the version resolves at build time),
   whether the runner image would build (with the same reasons a real build logs) or be reused, and whether the home
   volume would be created or reused — without building the runner image, creating a home volume, writing project state,
-  starting a sandbox, attaching, or making any network request. The `volume migrate`/`reset`/`edit` `--dry-run`
-  operations likewise no longer ensure the image.
+  starting a sandbox, attaching, or making any network request (`shell --dry-run` still runs its prerequisite check
+  first). The `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image.
 - `--rebuild` on `run`/`shell` now only forces a clean rebuild; it no longer suppresses the agent upgrade check. A
   pinned `--agent-version` is ignored for a user-provided agent, matching the documented contract.
 - Bare checkouts (a bare `.git` with worktrees inside it) now read project config — `.agents-sandbox/Dockerfile`,

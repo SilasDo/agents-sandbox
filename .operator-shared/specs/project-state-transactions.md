@@ -189,7 +189,7 @@ same process returns a descriptive error instead of deadlocking. This covers bot
 one process. The guard applies to **blocking** acquires only: a non-blocking self-acquire still returns `ok=false`
 rather than an error, because it cannot deadlock and is the contention-deferral path callers rely on.
 
-### `--dry-run` guard
+### Preview boundary
 
 The execution mode lives at the session/CLI boundary (`options.Mode`, resolved by `runoptions.ResolveMode`), and the
 preview returns before `PrepareSandbox`, so that hub needs no dry-run gates. The full `--dry-run` contract — a read-only
