@@ -56,6 +56,10 @@ command reports the bare version (e.g. `0.1.0`).
   longer re-downloaded, and the `~/.local/bin` fix is printed. Zig now installs under `~/.local` on Linux too, so `make
   bootstrap` never needs `sudo`, and `make build-release` locates zig's libc by following the symlink rather than the
   raw `PATH` entry.
+- Internal: launcher-config loading and run/shell option resolution are now separate packages. The
+  `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
+  config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
+  accessors) (#356).
 
 ### Fixed
 

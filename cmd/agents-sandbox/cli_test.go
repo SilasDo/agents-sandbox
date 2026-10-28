@@ -10,6 +10,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -365,9 +366,9 @@ func TestCLIConfigPrecedenceViaResolver(t *testing.T) {
 	runCmd.SetContext(rootCtx)
 
 	r := resolverFromContext(runCmd.Context())
-	opts, err := r.BuildRunOptions(runCmd, ui)
+	opts, err := runoptions.Build(r.Config(), runCmd, ui)
 	if err != nil {
-		t.Fatalf("BuildRunOptions: %v", err)
+		t.Fatalf("runoptions.Build: %v", err)
 	}
 	if opts.CPUs != 6 {
 		t.Errorf("CPUs = %d; want 6 (flag overrides config)", opts.CPUs)

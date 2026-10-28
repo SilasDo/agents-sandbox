@@ -15,10 +15,10 @@ func TestEnvVarName(t *testing.T) {
 		key    string
 		want   string
 	}{
-		{envPrefix, "cpus", "AGENTS_SANDBOX_CPUS"},
-		{legacyEnvPrefix, "auto-stop-timeout", "OPENCODE_SANDBOX_AUTO_STOP_TIMEOUT"},
-		{envPrefix, "network.profile", "AGENTS_SANDBOX_NETWORK_PROFILE"},
-		{legacyEnvPrefix, "network.dns-servers", "OPENCODE_SANDBOX_NETWORK_DNS_SERVERS"},
+		{EnvPrefix, "cpus", "AGENTS_SANDBOX_CPUS"},
+		{LegacyEnvPrefix, "auto-stop-timeout", "OPENCODE_SANDBOX_AUTO_STOP_TIMEOUT"},
+		{EnvPrefix, "network.profile", "AGENTS_SANDBOX_NETWORK_PROFILE"},
+		{LegacyEnvPrefix, "network.dns-servers", "OPENCODE_SANDBOX_NETWORK_DNS_SERVERS"},
 	}
 	for _, tt := range tests {
 		if got := envVarName(tt.prefix, tt.key); got != tt.want {

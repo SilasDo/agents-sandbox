@@ -1,6 +1,7 @@
 package viperconfig
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,7 +14,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/homeconfig"
 	"github.com/inoio/agents-sandbox/internal/notify"
+	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/testutil"
@@ -139,6 +142,9 @@ func TestResolverRejectsInvalidMountEntry(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -667,8 +673,12 @@ func TestNetworkProfileInvalidTypeRejected(t *testing.T) {
 	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
 		"network": map[string]any{"profile": 42},
 	})
-	if _, err := NewResolver(nil, ""); err == nil {
+	_, err := NewResolver(nil, "")
+	if err == nil {
 		t.Fatal("expected error for a non-string network.profile")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -884,8 +894,8 @@ func TestDindConfigAlias(t *testing.T) {
 	if !r.Docker() {
 		t.Error("Docker() = false, want true from the deprecated dind key")
 	}
-	if r.DockerLegacyAlias() == "" {
-		t.Error("DockerLegacyAlias() = empty, want the deprecated dind source")
+	if got := r.DockerLegacyAlias(); got != "the dind config key" {
+		t.Errorf("DockerLegacyAlias() = %q, want the dind config key", got)
 	}
 }
 
@@ -933,8 +943,8 @@ func TestDockerExplicitFromEnv(t *testing.T) {
 func TestDockerExplicitFromFlag(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	root := &cobra.Command{Use: "root"}
-	root.PersistentFlags().Bool(keyDocker, false, "")
-	if err := root.ParseFlags([]string{"--" + keyDocker}); err != nil {
+	root.PersistentFlags().Bool(KeyDocker, false, "")
+	if err := root.ParseFlags([]string{"--" + KeyDocker}); err != nil {
 		t.Fatalf("ParseFlags: %v", err)
 	}
 	r, err := NewResolver(root, "some-slug")
@@ -1263,7 +1273,68 @@ func TestResolverHomeRejectsInvalidHomeValue(t *testing.T) {
 	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
 		"home": 5,
 	})
-	if _, err := NewResolver(nil, ""); err == nil {
+	_, err := NewResolver(nil, "")
+	if err == nil {
 		t.Fatal("expected error for invalid home value")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
+	}
+}
+
+// TestResolverConfigReturnsACopy covers the accessor runoptions.Build consumes:
+// a non-nil resolver returns a deep copy of its config, and a nil resolver
+// returns nil (which runoptions.Build treats as "no config").
+func TestResolverConfigReturnsACopy(t *testing.T) {
+	r := NewResolverWithConfig(Config{
+		CPUs: 4, Agent: "pi", OpenLinks: true,
+		Network: network.Policy{
+			Profiles:    []network.Profile{network.ProfilePublic},
+			EgressAllow: []string{"example.com"},
+			EgressDeny:  []string{"bad.example"},
+			DNSServers:  []string{"1.1.1.1"},
+		},
+		Mounts: mounts.Mounts{"/guest": {Source: "/host"}},
+		Home:   homeconfig.Layers{{Dir: "/cfg", Manifest: homeconfig.Manifest{"~/.x": {Source: "/host/.x"}}}},
+	})
+
+	got := r.Config()
+	if got == nil {
+		t.Fatal("Config() = nil, want the resolved config")
+	}
+	if got.CPUs != 4 || got.Agent != "pi" || !got.OpenLinks {
+		t.Errorf("Config() = %+v, want cpus 4, agent pi, open-links true", *got)
+	}
+
+	// The returned config must be a deep copy: mutating any field, including the
+	// slices and maps, cannot change later resolver reads.
+	got.Agent = "claudecode"
+	got.Network.Profiles[0] = network.ProfileHost
+	got.Network.EgressAllow[0] = "evil.example"
+	got.Network.EgressDeny[0] = "evil.example"
+	got.Network.DNSServers[0] = "8.8.8.8"
+	got.Mounts["/guest"] = mounts.BindMount{Source: "/evil"}
+	got.Home[0].Manifest["~/.x"] = homeconfig.Entry{Source: "/evil"}
+
+	again := r.Config()
+	if again.Agent != "pi" {
+		t.Errorf("mutating Config().Agent changed the resolver: Agent = %q, want pi", again.Agent)
+	}
+	if again.Network.Profiles[0] != network.ProfilePublic ||
+		again.Network.EgressAllow[0] != "example.com" ||
+		again.Network.EgressDeny[0] != "bad.example" ||
+		again.Network.DNSServers[0] != "1.1.1.1" {
+		t.Errorf("mutating Config() network changed the resolver: %+v", again.Network)
+	}
+	if again.Mounts["/guest"].Source != "/host" {
+		t.Errorf("mutating Config() mounts changed the resolver: %+v", again.Mounts)
+	}
+	if again.Home[0].Manifest["~/.x"].Source != "/host/.x" {
+		t.Errorf("mutating Config() home changed the resolver: %+v", again.Home)
+	}
+
+	var nilResolver *Resolver
+	if nilResolver.Config() != nil {
+		t.Error("Config() on a nil resolver = non-nil, want nil")
 	}
 }

@@ -1,6 +1,7 @@
 package viperconfig
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -54,6 +55,12 @@ func TestNewResolverUnreadableConfig(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error reading a directory as config")
 	}
+	if !strings.Contains(err.Error(), "read launcher config") {
+		t.Errorf("error %q does not name the read failure", err)
+	}
+	if _, ok := errors.AsType[*os.PathError](err); !ok {
+		t.Errorf("error %q does not wrap the underlying path error", err)
+	}
 }
 
 // A malformed json5 config makes json5.Unmarshal fail inside mergeDir.
@@ -65,6 +72,12 @@ func TestNewResolverInvalidJSON5(t *testing.T) {
 	_, err := NewResolver(nil, "")
 	if err == nil {
 		t.Fatal("expected error for malformed json5 config")
+	}
+	if !strings.Contains(err.Error(), "parse launcher config") {
+		t.Errorf("error %q does not name the parse failure", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -79,6 +92,12 @@ func TestNewResolverJSON5MarshalError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for non-serializable json5 config")
 	}
+	if !strings.Contains(err.Error(), "normalize launcher config") {
+		t.Errorf("error %q does not name the normalize failure", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
+	}
 }
 
 // A plain .json config with invalid JSON triggers the non-yaml MergeConfig
@@ -91,6 +110,12 @@ func TestNewResolverInvalidJSON(t *testing.T) {
 	_, err := NewResolver(nil, "")
 	if err == nil {
 		t.Fatal("expected error for malformed json config")
+	}
+	if !strings.Contains(err.Error(), "load launcher config") {
+		t.Errorf("error %q does not name the load failure", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -134,6 +159,9 @@ func TestNewResolverSurfacesDecodeError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "memory") {
 		t.Errorf("error = %v, want it to name the offending memory key", err)
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error = %v, want it to wrap its cause", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
 )
@@ -126,17 +127,17 @@ func TestReservedHomeConfigTargetsOK(t *testing.T) {
 	}
 }
 
-// TestBuildRunOptionsInvalidNotifyFlag exercises the --notify flag override
-// error branch in BuildRunOptions (an invalid value passed directly on the
+// TestBuildInvalidNotifyFlag exercises the --notify flag override
+// error branch in runoptions.Build (an invalid value passed directly on the
 // flag, not via the env var), with a nil resolver.
-func TestBuildRunOptionsInvalidNotifyFlag(t *testing.T) {
+func TestBuildInvalidNotifyFlag(t *testing.T) {
 	ui := &termio.Mock{}
 	cmd := buildRunCmd(ui)
 	if err := cmd.Flags().Set(flagNotify, "loud"); err != nil {
 		t.Fatalf("set notify: %v", err)
 	}
 	var r *launcherconfig.Resolver
-	if _, err := r.BuildRunOptions(cmd, ui); err == nil {
+	if _, err := runoptions.Build(r.Config(), cmd, ui); err == nil {
 		t.Fatal("expected error for invalid --notify flag value")
 	}
 }
