@@ -179,6 +179,12 @@ This is the field guide for doing it. It was distilled from the first full sweep
   with `disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT`. Only `N`→`N+1` changes behaviour (an `N+1`-length
   input stops truncating), so kill it with a boundary-length input. The `x[:N]` on the next line is a *separate* mutant
   family (`INTEGER_*` on the slice constant) already killed by a long-enough input.
+- **A reflective derivation's skip guards can be unobservable through the production type.** `viperconfig`'s
+  `walkConfigKeys` skips unexported fields and untagged fields, but `Config` has no unexported *tagged* field and no
+  untagged exported field, so removing either guard changed no derived key (the `BRANCH_IF` body removal and the
+  `EXPRESSION_REMOVE` on `!tagged` → `false` both survived). Pass the walk a synthetic `reflect.Type` with one field
+  per guard (an unexported tagged field, an untagged exported field) and assert the returned keys — both guards are
+  real contracts, so recording them would be wrong.
 - **A non-positive-age guard is killable with a *future* timestamp, so do not record it as equivalent.**
   `if age <= 0 { return false }` (`imageWithinAge`) reads as always-true-equivalent because for a past timestamp the
   fall-through `time.Since(used) < age` is also false. A hostile caller gets through: set `LastUsedAt` to
