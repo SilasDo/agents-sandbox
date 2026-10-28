@@ -231,7 +231,7 @@ func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) boo
 		return true
 	}
 	_, _, body := splitFinalStage(projectDockerfile)
-	return hasDockerMarker([]byte(body), dockerMarker) || hasDockerMarker([]byte(body), legacyDockerMarker)
+	return hasDockerMarker([]byte(body))
 }
 
 // DockerfileDiagnostics is the classified result for one project Dockerfile:
@@ -250,8 +250,7 @@ type DockerfileDiagnostics struct {
 // ignored-marker notice, never the deprecation spelling.
 func DiagnoseDockerfile(project []byte, setting options.DockerSetting) DockerfileDiagnostics {
 	_, _, finalBody := splitFinalStage(project)
-	finalMarker := hasDockerMarker([]byte(finalBody), dockerMarker) ||
-		hasDockerMarker([]byte(finalBody), legacyDockerMarker)
+	finalMarker := hasDockerMarker([]byte(finalBody))
 	contentAsks := finalMarker ||
 		referencesImage(project, managedBaseDindRef) ||
 		referencesImage(project, managedBaseDockerRef)
@@ -266,7 +265,9 @@ func DiagnoseDockerfile(project []byte, setting options.DockerSetting) Dockerfil
 		d.Messages = append(d.Messages, "docker: off (config); project Dockerfile asks for docker")
 	case setting.Explicit:
 		d.Source = "config"
-	case d.Enabled && finalMarker:
+	// finalMarker here implies d.Enabled: an explicit setting is handled above,
+	// so d.Enabled can only be false from content, which finalMarker would set.
+	case finalMarker:
 		d.Source = "Dockerfile marker"
 		d.Messages = append(d.Messages, "docker: on (project Dockerfile marker)")
 	case d.Enabled:
@@ -289,6 +290,8 @@ func DiagnoseDockerfile(project []byte, setting options.DockerSetting) Dockerfil
 	for _, i := range topLevelLineIndices(lines) {
 		text := strings.TrimSpace(lineText(lines[i]))
 		if marker, ok := dockerMarkerKind(text); ok {
+			// The FROM line is not a marker line, so i == lastFrom never occurs.
+			// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="a marker line is never the final FROM line, so i == lastFrom is unreachable"
 			if i <= lastFrom {
 				d.Messages = append(
 					d.Messages,
@@ -356,13 +359,13 @@ func dockerMarkerKind(line string) (string, bool) {
 	}
 }
 
-// hasDockerMarker reports whether any top-level line of data carries want as a
-// docker injection marker. Heredoc bodies are skipped, so marker text copied
-// into a file is not read as a marker.
-func hasDockerMarker(data []byte, want string) bool {
+// hasDockerMarker reports whether any top-level line of data carries a docker
+// injection marker, current or legacy. Heredoc bodies are skipped, so marker
+// text copied into a file is not read as a marker.
+func hasDockerMarker(data []byte) bool {
 	lines := dockerfileLines(data)
 	for _, i := range topLevelLineIndices(lines) {
-		if marker, ok := dockerMarkerKind(lineText(lines[i])); ok && marker == want {
+		if _, ok := dockerMarkerKind(lineText(lines[i])); ok {
 			return true
 		}
 	}
