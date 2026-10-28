@@ -1,6 +1,6 @@
 ---
 title: Agent configuration
-description: "Select and configure the coding agent run by agents-sandbox: opencode, opencode2, pi or Claude Code."
+description: "Select and configure the coding agent run by agents-sandbox: opencode, opencode2, pi, Claude Code or Codex."
 layout: default
 parent: Configuration
 nav_order: 60
@@ -10,7 +10,7 @@ nav_order: 60
 
 agents-sandbox is agent-aware. A `--agent <name>` flag on `run`, `shell`, `build`, `volume`, `stop`, and `kill`
 selects the coding-agent profile to run, build, provision, or manage. The agent can also be selected via the `agent`
-config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship as built-in profiles:
+config key or the `AGENTS_SANDBOX_AGENT` environment variable. Five agents ship as built-in profiles:
 
 - **`opencode`** — daemon-based, with serve/attach, worktree sessions, and GitHub-release upgrade checks.
 - **`opencode2`** (default) — opencode 2 (beta), installed from its upstream installer (`https://opencode.ai/v2/install`); the
@@ -21,8 +21,13 @@ config key or the `AGENTS_SANDBOX_AGENT` environment variable. Four agents ship 
   config path and host drop-in stay `~/.config/opencode/` (v2 reads the same files as v1).
 - **`pi`** — the pi coding agent, run interactively; upgrade checks via `pi.dev`.
 - **`claude-code`** — Anthropic's Claude Code, run interactively; upgrade checks via the npm registry.
+- **`codex`** — OpenAI's Codex CLI, run interactively; upgrade checks via GitHub releases. Its startup update check is
+  turned off because agents-sandbox offers upgrades itself. Codex's own command sandbox is turned off too
+  (`sandbox_mode = "danger-full-access"`), because the VM already isolates it. This overrides `sandbox_mode` in `config.toml`; to choose another mode, pass it as an agent
+  argument, e.g. `agents-sandbox --agent codex -- --sandbox workspace-write`. Codex still asks for approval according
+  to its `approval_policy`.
 
-`--worktree` and `--serve-only` are rejected for pi and claude-code (they have no daemon); they run through the
+`--worktree` and `--serve-only` are rejected for pi, claude-code, and codex (they have no daemon); they run through the
 interactive TUI instead. Passing an unsupported `--agent` name reports the valid names in its error message.
 
 > **Note:** opencode2 server auth — v2's `serve` requires HTTP basic auth on every `/api/*` route and would otherwise generate a
@@ -61,11 +66,14 @@ user and project directories, and written to the agent's VM config path:
   from its own `opencode2/` config dirs instead of the shared `opencode/` dirs.
 - **pi** — snippets match `settings*.json*` in the `pi/` subdir; merged to `/home/dev/.pi/agent/settings.json`.
 - **claude-code** — snippets match `settings*.json*` in the `claude/` subdir; merged to `/home/dev/.claude/settings.json`.
+- **codex** — snippets match `config*.toml` in the `codex/` subdir (e.g. `config-model.toml`); merged to
+  `/home/dev/.codex/config.toml`, written as TOML.
 
 Matching files are parsed and **deep-merged** into one config document. The user directory is merged first, then the
 project directory; within each directory files are merged in alphabetical order, so later files override earlier ones.
-Snippet parsing supports JSON, JSONC, JSON5, and YAML (agents whose pattern includes YAML extensions, e.g. a pattern
-like `pi-*.{json,yaml}`). The built-in patterns match JSON-family extensions.
+Snippet parsing supports JSON, JSONC, JSON5, YAML, and TOML, chosen by file extension (YAML only applies to agents whose
+pattern includes YAML extensions, e.g. a pattern like `pi-*.{json,yaml}`). The merged config is written as TOML when the
+agent's VM config path ends in `.toml` (codex) and as JSON otherwise.
 
 If no snippet files exist, no merged config is produced.
 
@@ -89,7 +97,7 @@ the VM without extra configuration. For `opencode2`, read from its own `opencode
 
 Two families of files are *not* mirrored:
 
-- Files matching the agent's snippet pattern (`opencode*.json*`, `settings*.json*`) are **deep-merged** (see [Config
+- Files matching the agent's snippet pattern (`opencode*.json*`, `settings*.json*`, `config*.toml`) are **deep-merged** (see [Config
   snippet merge](#config-snippet-merge)), never mirrored.
 - The agent's config-file family (for opencode: `config.json`, `opencode.json`, `opencode.jsonc`, …) is **reserved for
   the merged output** and never mirrored, so a mirror copy cannot shadow the merged snippet config.
@@ -119,6 +127,7 @@ The drop-in copy is scoped to the agent's settings and, for opencode, its creden
 - **opencode2** — same drop-in copy as `opencode` (`~/.config/opencode/**` and `~/.local/share/opencode/auth.json`).
 - **pi** — `~/.pi/agent/settings.json`.
 - **claude-code** — `~/.claude/settings.json` (runtime state and the machine-managed `.credentials.json` are not copied).
+- **codex** — `~/.codex/config.toml` (sessions, logs, and the `auth.json` login cache are not copied).
 
 Precedence: the merged snippet config and any `home:` mappings override the drop-in copy for the same VM path.
 
@@ -153,13 +162,50 @@ To opt out, exclude `auth.json` from the drop-in copy by placing a `home:` entry
 host secrets in any other way; the env-secret mechanism is the supported channel for secrets you do not want on disk in
 the VM.
 
-For pi and claude-code, the drop-in copy does not include credential files; authenticate them with env secrets instead:
+For pi, claude-code, and codex, the drop-in copy does not include credential files. pi and claude-code authenticate with
+env secrets instead; codex logs in inside the VM:
 
 - **pi** — per-provider env vars, e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` (see pi's docs for the
   full list). Put them in an `env.secret` / `env.secret.yaml` file.
 - **claude-code** — `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY`, or `CLAUDE_CODE_OAUTH_TOKEN`. Claude's
   `.credentials.json` is machine-managed and not hand-provisioned, so env vars are the supported channel here.
+- **codex** — the interactive Codex CLI reads its login from `~/.codex/auth.json`, not from an env var, so you log in
+  once inside the VM (see [Codex login](#codex-login)). The host `auth.json` is not copied because a ChatGPT login
+  rotates its refresh token, and a second copy using it would sign the host out.
 - **opencode** — `OPENCODE_API_KEY`.
+
+### Codex login
+
+The default `public` network profile already lets Codex reach OpenAI. With `profile: none`, add these hosts to
+`network.egress-allow` (see [Networking]({% link configuration/networking.md %})); the network policy applies when the
+VM is created, so restart the sandbox afterwards:
+
+```yaml
+network:
+  egress-allow:
+    - auth.openai.com # ChatGPT login
+    - chatgpt.com     # ChatGPT backend: workspace routing and the model API for ChatGPT logins
+    - api.openai.com  # model API for API-key logins
+```
+
+Without `chatgpt.com`, a ChatGPT login completes in the browser but Codex then reports
+`workspace routing discovery failed`.
+
+**ChatGPT plan:** choose **Sign in with ChatGPT**. Codex opens the sign-in page in your host browser,
+and agents-sandbox passes the browser's return to `http://127.0.0.1:1455/auth/callback` on to Codex in the sandbox (see
+[Opening links]({% link configuration/opening-links.md %}#logging-in-to-an-agent)).
+
+If that doesn't work, for example because port 1455 is in use on your computer or `open-links` is off, choose **Sign in
+with Device Code** (or run `codex login --device-auth`), open the link on your host, and enter the one-time code. Device
+code login is off by default: enable it in your ChatGPT security settings (personal account) or ask a workspace admin.
+While it is off, Codex fails with `device code request failed with status 403 Forbidden`.
+
+**API key:** declare `OPENAI_API_KEY` as an [env secret]({% link configuration/secrets.md %}) for `api.openai.com`, then
+run `printenv OPENAI_API_KEY | codex login --with-api-key` in `agents-sandbox shell --agent codex`. The VM only sees the
+secret's placeholder, so `auth.json` stores the placeholder and the network proxy replaces it on requests to
+`api.openai.com`.
+
+The login is stored in `~/.codex/auth.json` on the home volume, so you sign in once per project and agent.
 
 ## Example: permissions
 

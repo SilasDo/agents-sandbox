@@ -12,6 +12,16 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 )
 
+// DockerSetting is the resolved docker capability: whether the Docker engine
+// is on, and whether that value came from an explicit config/flag/env setting
+// (and therefore overrides any project-Dockerfile content signal). Enablement
+// consults Enabled only when Explicit is true; without an explicit source the
+// project Dockerfile's content signals decide.
+type DockerSetting struct {
+	Enabled  bool
+	Explicit bool
+}
+
 // RunOptions controls sandbox lifecycle and configuration.
 type RunOptions struct {
 	Worktree WorktreeSpec
@@ -27,8 +37,10 @@ type RunOptions struct {
 	IdleTimeout time.Duration
 	CPUs        uint8
 	Rebuild     bool
-	// Docker bakes the tool's Docker engine block into the runner image.
-	Docker   bool
+	// Docker is the resolved docker capability: whether the tool's Docker
+	// engine block is baked into the runner image and whether that value was
+	// set explicitly.
+	Docker   DockerSetting
 	DryRun   bool
 	DryRunVM bool
 	// WorkspaceQuota is the guest-write quota for the /workspace bind mount.

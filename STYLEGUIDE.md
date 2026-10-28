@@ -55,7 +55,7 @@ everyone else can skip it.
 ```text
 Before:  The sandbox stops after a period of inactivity. opencode waits for active agent sessions before stopping.
 After:   opencode only: the sandbox waits for active sessions before stopping.
-         opencode2, pi, and Claude Code skip that wait and stop when the idle timeout expires.
+         opencode2, pi, Claude Code, and Codex skip that wait and stop when the idle timeout expires.
 ```
 
 **3. Order by universality and search intent, not taxonomy.** Actions that apply to everyone and are commonly
@@ -115,7 +115,7 @@ Use one term per concept and the same term everywhere. These words are fixed:
 | `--docker` / `docker` | `--dind` / `dind` |
 | `AGENTS_SANDBOX_*` | `OPENCODE_SANDBOX_*` (only the deprecations page names the old prefix) |
 
-"agent" is the program that runs inside the sandbox: opencode, opencode2, pi, or Claude Code. "harness" is internal
+"agent" is the program that runs inside the sandbox: opencode, opencode2, pi, Claude Code, or Codex. "harness" is internal
 test vocabulary and does not appear in `docs/`.
 
 ## Formatting

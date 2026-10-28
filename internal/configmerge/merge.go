@@ -1,6 +1,6 @@
 // Package configmerge merges agent configuration snippet files matching a
-// caller-supplied glob pattern into a single JSON config document consumed by
-// the sandbox. It is agent-agnostic: the snippet pattern and config path come
+// caller-supplied glob pattern into a single config document consumed by the
+// sandbox, written as TOML for a .toml config path and as JSON otherwise. It is agent-agnostic: the snippet pattern and config path come
 // from the agent.
 package configmerge
 
@@ -10,10 +10,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/titanous/json5"
 	"gopkg.in/yaml.v3"
 
@@ -136,31 +138,63 @@ func scanSnippets(dirs []string, pattern string) (map[string]any, []string) {
 }
 
 // parseConfigFile unmarshals config data into cfg, choosing a parser based on
-// the file extension: .yaml/.yml use YAML, everything else uses JSON5.
+// the file extension: .yaml/.yml use YAML, .toml uses TOML, everything else
+// uses JSON5.
 func parseConfigFile(name string, data []byte, cfg *map[string]any) error {
 	switch strings.ToLower(filepath.Ext(name)) {
 	case ".yaml", ".yml":
 		return yaml.Unmarshal(data, cfg)
+	case ".toml":
+		return toml.Unmarshal(data, cfg)
 	default:
 		return json5.Unmarshal(data, cfg)
 	}
 }
 
+// isTOMLPath reports whether configPath names a TOML config file.
+func isTOMLPath(configPath string) bool {
+	return strings.EqualFold(filepath.Ext(configPath), ".toml")
+}
+
 // BuildMerged merges all snippet files matching pattern under userDir and
-// projectDir into a single config document (JSON output). It returns the
-// marshaled bytes, the ordered list of snippet files that were merged, a
-// boolean reporting whether any snippet existed, and an error. When no snippet
-// exists the returned bytes and source list are nil and the boolean is false.
-func BuildMerged(pattern string, userDir, projectDir string) ([]byte, []string, bool, error) {
+// projectDir into a single config document for configPath: TOML when
+// configPath ends in .toml, indented JSON otherwise. It returns the marshaled
+// bytes, the ordered list of snippet files that were merged, a boolean
+// reporting whether any snippet existed, and an error. When no snippet exists
+// the returned bytes and source list are nil and the boolean is false.
+func BuildMerged(configPath, pattern, userDir, projectDir string) ([]byte, []string, bool, error) {
 	merged, sources := scanSnippets([]string{userDir, projectDir}, pattern)
 	if len(sources) == 0 {
 		return nil, nil, false, nil
 	}
-	data, err := json.MarshalIndent(merged, "", "  ")
+	data, err := marshalConfig(configPath, merged)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	return append(data, '\n'), sources, true, nil
+	return data, sources, true, nil
+}
+
+// marshalConfig encodes merged in the format configPath calls for.
+func marshalConfig(configPath string, merged map[string]any) ([]byte, error) {
+	if isTOMLPath(configPath) {
+		return toml.Marshal(merged)
+	}
+	data, err := json.MarshalIndent(merged, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
+}
+
+// DocumentsEqual reports whether a and b decode to the same config document,
+// parsed in the format configPath's extension calls for. Either side failing
+// to parse counts as a difference.
+func DocumentsEqual(configPath string, a, b []byte) bool {
+	var documentA, documentB map[string]any
+	if parseConfigFile(configPath, a, &documentA) != nil || parseConfigFile(configPath, b, &documentB) != nil {
+		return false
+	}
+	return reflect.DeepEqual(documentA, documentB)
 }
 
 // MirrorEntry is one verbatim file the config-dir mirror provisions: its host

@@ -13,6 +13,8 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
+	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
 // managedBaseRef, managedBaseDindRef, and managedBaseDockerRef are the base
@@ -209,32 +211,138 @@ const (
 	legacyDockerMarker = "# agents-sandbox:dind"
 )
 
-// effectiveDocker reports whether the docker capability is enabled, either by
-// the flag or implied by a project Dockerfile that extends the managed docker
-// or legacy dind base.
-func effectiveDocker(projectDockerfile []byte, docker bool) bool {
-	return docker ||
-		referencesImage(projectDockerfile, managedBaseDindRef) ||
-		referencesImage(projectDockerfile, managedBaseDockerRef)
+// effectiveDocker reports whether the docker capability is enabled. An explicit
+// config/flag/env setting wins in both directions; otherwise a project
+// Dockerfile that extends the managed docker or legacy dind base, or that
+// carries a docker injection marker in its final-stage body, enables it.
+//
+// The two content signals have different reach: the managed base is resolved
+// through the final stage's base image (referencesImage), while the marker is
+// scanned only in the final-stage body, so an earlier stage's marker is not a
+// signal. Enablement matches the marker exactly (case-sensitive), while the
+// near-miss detection is deliberately case-insensitive so a case variant is
+// still surfaced instead of silently ignored.
+func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) bool {
+	if docker.Explicit {
+		return docker.Enabled
+	}
+	if referencesImage(projectDockerfile, managedBaseDindRef) ||
+		referencesImage(projectDockerfile, managedBaseDockerRef) {
+		return true
+	}
+	_, _, body := splitFinalStage(projectDockerfile)
+	return hasDockerMarker([]byte(body))
 }
 
-// legacyDockerfileWarnings returns one deprecation warning per legacy dind
-// spelling a project Dockerfile still carries: the runner-base-dind base image
-// and the # agents-sandbox:dind injection marker. It returns nil when the
-// Dockerfile uses neither. The -docker spellings do not warn.
-func legacyDockerfileWarnings(projectDockerfile []byte) []string {
-	var warnings []string
-	if referencesImage(projectDockerfile, managedBaseDindRef) {
-		warnings = append(
-			warnings,
+// DockerfileDiagnostics is the classified result for one project Dockerfile:
+// the effective capability, its source, and at most one message per offending
+// line. Pure; no ui.
+type DockerfileDiagnostics struct {
+	Enabled  bool
+	Source   string   // "" | "config" | "Dockerfile marker" | "Dockerfile base"
+	Messages []string // warnings and the suppression notice, in file order
+}
+
+// DiagnoseDockerfile classifies a project Dockerfile against the resolved
+// docker setting. The capability line comes first when present, then one
+// message per offending line in file order; a marker line yields exactly one
+// message, so a legacy marker outside the final stage reports only the
+// ignored-marker notice, never the deprecation spelling.
+func DiagnoseDockerfile(project []byte, setting options.DockerSetting) DockerfileDiagnostics {
+	_, _, finalBody := splitFinalStage(project)
+	finalMarker := hasDockerMarker([]byte(finalBody))
+	contentAsks := finalMarker ||
+		referencesImage(project, managedBaseDindRef) ||
+		referencesImage(project, managedBaseDockerRef)
+
+	d := DockerfileDiagnostics{Enabled: effectiveDocker(project, setting), Source: "", Messages: nil}
+
+	// Capability line first: the source when content enables, the suppression
+	// notice when explicit config turns content off.
+	switch {
+	case setting.Explicit && !setting.Enabled && contentAsks:
+		d.Source = "config"
+		d.Messages = append(d.Messages, "docker: off (config); project Dockerfile asks for docker")
+	case setting.Explicit:
+		d.Source = "config"
+	// finalMarker here implies d.Enabled: an explicit setting is handled above,
+	// so d.Enabled can only be false from content, which finalMarker would set.
+	case finalMarker:
+		d.Source = "Dockerfile marker"
+		d.Messages = append(d.Messages, "docker: on (project Dockerfile marker)")
+	case d.Enabled:
+		d.Source = "Dockerfile base"
+		d.Messages = append(d.Messages, "docker: on (project Dockerfile base)")
+	}
+
+	// Base-image deprecation (whole file, instruction-aware).
+	if referencesImage(project, managedBaseDindRef) {
+		d.Messages = append(
+			d.Messages,
 			"project Dockerfile uses the deprecated agents-sandbox/runner-base-dind base image; switch to agents-sandbox/runner-base-docker",
 		)
 	}
-	if hasDockerMarker(projectDockerfile, legacyDockerMarker) {
-		warnings = append(warnings,
-			"project Dockerfile uses the deprecated # agents-sandbox:dind marker; switch to # agents-sandbox:docker")
+
+	// Per-line marker scan: exactly one message per marker line. Heredoc bodies
+	// are skipped, so marker-like text inside a copied file stays inert.
+	lines := dockerfileLines(project)
+	lastFrom := lastFromLine(lines)
+	for _, i := range topLevelLineIndices(lines) {
+		text := strings.TrimSpace(lineText(lines[i]))
+		if marker, ok := dockerMarkerKind(text); ok {
+			// The FROM line is not a marker line, so i == lastFrom never occurs.
+			// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="a marker line is never the final FROM line, so i == lastFrom is unreachable"
+			if i <= lastFrom {
+				d.Messages = append(
+					d.Messages,
+					"project Dockerfile has a docker marker outside the final stage; it is ignored — move it into the final stage (after the last FROM)",
+				)
+				continue
+			}
+			if marker == legacyDockerMarker {
+				d.Messages = append(
+					d.Messages,
+					"project Dockerfile uses the deprecated # agents-sandbox:dind marker; switch to # agents-sandbox:docker",
+				)
+			}
+			continue
+		}
+		if nearMissDockerMarker(text) {
+			d.Messages = append(d.Messages,
+				fmt.Sprintf("project Dockerfile has a near-miss docker marker %q; use %q", text, dockerMarker))
+		}
 	}
-	return warnings
+	return d
+}
+
+// nearMissDockerMarker reports whether a trimmed line looks like an injection
+// marker but is not the exact spelling: a comment naming the sandbox namespace
+// and docker/dind. Exact match enables (case-sensitive); lenient detection
+// warns (case-insensitive), so a case variant is still surfaced.
+func nearMissDockerMarker(line string) bool {
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	if _, ok := dockerMarkerKind(line); ok {
+		return false
+	}
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "agents-sandbox:") &&
+		(strings.Contains(lower, "docker") || strings.Contains(lower, "dind"))
+}
+
+// EmitDockerfileDiagnostics writes every diagnostic message to the warn channel,
+// keeping stdout free for the rendered Dockerfile.
+func EmitDockerfileDiagnostics(ui termio.UI, d DockerfileDiagnostics) {
+	for _, msg := range d.Messages {
+		ui.Warn(msg)
+	}
+}
+
+// EmitProjectDockerfileDiagnostics reads the on-disk project Dockerfile and
+// emits its diagnostics. Convenience for callers that have no bytes in hand.
+func EmitProjectDockerfileDiagnostics(ui termio.UI, setting options.DockerSetting) {
+	EmitDockerfileDiagnostics(ui, DiagnoseDockerfile(readProjectDockerfile(), setting))
 }
 
 // dockerMarkerKind reports whether line, ignoring surrounding whitespace, is
@@ -251,11 +359,13 @@ func dockerMarkerKind(line string) (string, bool) {
 	}
 }
 
-// hasDockerMarker reports whether any line of data carries want as a docker
-// injection marker.
-func hasDockerMarker(data []byte, want string) bool {
-	for line := range strings.SplitSeq(string(data), "\n") {
-		if marker, ok := dockerMarkerKind(line); ok && marker == want {
+// hasDockerMarker reports whether any top-level line of data carries a docker
+// injection marker, current or legacy. Heredoc bodies are skipped, so marker
+// text copied into a file is not read as a marker.
+func hasDockerMarker(data []byte) bool {
+	lines := dockerfileLines(data)
+	for _, i := range topLevelLineIndices(lines) {
+		if _, ok := dockerMarkerKind(lineText(lines[i])); ok {
 			return true
 		}
 	}
@@ -278,11 +388,16 @@ func hasDockerMarker(data []byte, want string) bool {
 //
 // It returns an error when the project Dockerfile declares a reserved stage
 // alias.
-func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []byte, docker bool) ([]byte, error) {
+func RenderDockerfile(
+	a agent.Agent,
+	agentVersion string,
+	projectDockerfile []byte,
+	docker options.DockerSetting,
+) ([]byte, error) {
 	if err := checkReservedAliases(projectDockerfile); err != nil {
 		return nil, err
 	}
-	docker = effectiveDocker(projectDockerfile, docker)
+	dockerEnabled := effectiveDocker(projectDockerfile, docker)
 
 	managed := len(bytes.TrimSpace(projectDockerfile)) == 0 || isManagedBase(projectDockerfile)
 	earlier, baseFrom, body := splitFinalStage(projectDockerfile)
@@ -294,7 +409,7 @@ func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []by
 		baseStage, baseAlias = customBaseStage(baseFrom)
 	}
 
-	body, dockerInjected := injectDockerBlock(body, docker)
+	body, dockerInjected := injectDockerBlock(body, dockerEnabled)
 
 	blocks := make([]string, 0, 7)
 	blocks = append(blocks, earlier, toolbaseStage())
@@ -304,10 +419,10 @@ func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []by
 		agentParent = nodeStageAlias
 	}
 	blocks = append(blocks, agentStage(a, agentParent, agentVersion))
-	if docker {
+	if dockerEnabled {
 		blocks = append(blocks, dockerStage())
 	}
-	blocks = append(blocks, baseStage, runnerStage(a, baseAlias, body, docker, dockerInjected))
+	blocks = append(blocks, baseStage, runnerStage(a, baseAlias, body, dockerEnabled, dockerInjected))
 	return []byte(joinBlocks(blocks...)), nil
 }
 
@@ -493,18 +608,19 @@ func runnerStage(a agent.Agent, baseAlias, body string, docker, dockerInjected b
 	return joinBlocks(parts...)
 }
 
-// injectDockerBlock replaces the first docker marker line in body with the
-// thin docker copy/adopt block, or appends it when no marker is present. It
-// reports whether the block was injected at a marker.
+// injectDockerBlock replaces the first top-level docker marker line in body
+// with the thin docker copy/adopt block, or appends it when no marker is
+// present. A marker inside a heredoc body is not a marker and is left untouched.
+// It reports whether the block was injected at a marker.
 func injectDockerBlock(body string, docker bool) (string, bool) {
 	if !docker {
 		return body, false
 	}
 	block := dockerMergeBlock()
-	lines := strings.SplitAfter(body, "\n")
-	for i, line := range lines {
-		if _, ok := dockerMarkerKind(line); ok {
-			return strings.Join(lines[:i], "") + block + strings.Join(lines[i+1:], ""), true
+	lines := dockerfileLines([]byte(body))
+	for _, i := range topLevelLineIndices(lines) {
+		if _, ok := dockerMarkerKind(lineText(lines[i])); ok {
+			return string(bytes.Join(lines[:i], nil)) + block + string(bytes.Join(lines[i+1:], nil)), true
 		}
 	}
 	return body, false
@@ -704,7 +820,7 @@ LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
 // the on-disk project Dockerfile (if any), and the docker switch. It is the
 // single source of truth for previewing and building the image. An empty
 // version renders the agent instance stage without a pinned default.
-func RenderProjectDockerfile(a agent.Agent, agentVersion string, docker bool) ([]byte, error) {
+func RenderProjectDockerfile(a agent.Agent, agentVersion string, docker options.DockerSetting) ([]byte, error) {
 	return RenderDockerfile(a, agentVersion, readProjectDockerfile(), docker)
 }
 

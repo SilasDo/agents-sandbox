@@ -71,6 +71,36 @@ func TestBuildDockerfileCommandReadsBareRoot(t *testing.T) {
 	assertWarnContains(t, ui, physicalPath(t, ignoredDir))
 }
 
+// TestBuildDockerfileWritesDiagnosticsToStderr asserts a near-miss marker is
+// surfaced on the warn channel while stdout stays a clean, pasteable
+// Dockerfile. The case variant is a near miss: enablement is case-sensitive, so
+// it does not enable, and detection is case-insensitive, so it warns.
+func TestBuildDockerfileWritesDiagnosticsToStderr(t *testing.T) {
+	cmd, ui, root := setupBareCheckoutFixtures(t, cmdBuild, cmdDockerfile)
+	bareConfigDir := filepath.Join(root, ".agents-sandbox")
+	if err := os.MkdirAll(bareConfigDir, 0o750); err != nil {
+		t.Fatalf("MkdirAll(%q): %v", bareConfigDir, err)
+	}
+	testutil.WritePath(t, filepath.Join(bareConfigDir, "Dockerfile"),
+		"FROM debian:trixie-slim\n# Agents-Sandbox:docker\nRUN echo hi\n")
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := ui.StdOutBuffer.String()
+	if !strings.Contains(out, "FROM debian:trixie-slim") {
+		t.Errorf("stdout must carry the rendered Dockerfile; got:\n%s", out)
+	}
+	if strings.Contains(out, "near-miss") || strings.Contains(out, "docker: on") {
+		t.Errorf("diagnostics must not pollute stdout; got:\n%s", out)
+	}
+	joined := strings.Join(ui.WarnCalls, "\n")
+	if !strings.Contains(joined, "near-miss docker marker") {
+		t.Errorf("near-miss diagnostic must land on the warn channel; got %v", ui.WarnCalls)
+	}
+}
+
 // TestRunCommandReadsBareRoot asserts the real run path resolves the bare root
 // (reaching EnsureImage) by warning about the ignored worktree .agents-sandbox.
 func TestRunCommandReadsBareRoot(t *testing.T) {

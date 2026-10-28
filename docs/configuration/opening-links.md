@@ -63,7 +63,7 @@ into the sandbox. See the [base image contract]({% link runner-image.md %}#the-b
 
 If that port is already in use on your computer, agents-sandbox can't listen on it and refuses the sign-in link. The
 agent then falls back to its other login options: Claude Code and pi ask you to paste a code or the final URL, and
-opencode and opencode2 offer a device-code login for some providers.
+opencode and opencode2 offer a device-code login for some providers, and Codex offers a device-code login.
 
 Sign-in pages that only show a code, such as device-code logins, open like any other link.
 

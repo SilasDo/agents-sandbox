@@ -1,8 +1,10 @@
 package vm
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -58,7 +60,11 @@ func migrateLegacyUpdaterState(ui termio.UI) {
 	ok, err := state.WithRootState(false, func(tx *state.RootTxn) error {
 		root := tx.State()
 		folded := false
-		for name, agent := range legacy.Agents {
+		// Visit agents in sorted order: Go randomizes map iteration, and the
+		// fold must not depend on that (a zero-LastChecked entry is skipped, not
+		// a reason to stop scanning).
+		for _, name := range slices.Sorted(maps.Keys(legacy.Agents)) {
+			agent := legacy.Agents[name]
 			if agent.LastChecked.IsZero() {
 				continue
 			}

@@ -59,7 +59,7 @@ func TestRenderDockerfileInstallsTrustHelper(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode agent not registered")
 	}
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	if !strings.Contains(final, "COPY "+trustHelperAsset+" "+trustHelperDest) {
 		t.Errorf("final stage must COPY %s to %s; got:\n%s", trustHelperAsset, trustHelperDest, final)
 	}
@@ -104,7 +104,7 @@ func TestRenderDockerfileInstallsTrustHelperLicense(t *testing.T) {
 	if !ok {
 		t.Fatal("opencode agent not registered")
 	}
-	final := finalStage(t, mustRender(t, a, nil, true))
+	final := finalStage(t, mustRender(t, a, nil, dockerOn))
 	if !strings.Contains(final, "COPY "+trustHelperLicenseAsset+" "+trustHelperLicenseDest) {
 		t.Errorf("final stage must COPY %s to %s; got:\n%s", trustHelperLicenseAsset, trustHelperLicenseDest, final)
 	}

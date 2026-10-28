@@ -92,6 +92,9 @@ func TestEnsureDaemonStartsWhenUnhealthy(t *testing.T) {
 	if !slices.Contains(testUI.VerboseCalls, "opencode daemon is healthy") {
 		t.Errorf("expected a verbose healthy note, got %v", testUI.VerboseCalls)
 	}
+	if !slices.Contains(testUI.VerboseCalls, "starting opencode serve daemon") {
+		t.Errorf("expected the starting-daemon verbose note, got %v", testUI.VerboseCalls)
+	}
 }
 
 // TestEnsureDaemonStartsServeOnlyOnExternalInterface verifies that serve-only
@@ -334,6 +337,58 @@ func TestProbeDaemonHealthReportsUnhealthyBody(t *testing.T) {
 	}
 	if want := `server reported unhealthy: {"healthy":false}`; probe.detail != want {
 		t.Errorf("detail = %q, want %q", probe.detail, want)
+	}
+}
+
+// TestProbeDaemonHealthReportsProbeError covers the health-command failure: the
+// probe is unhealthy and its detail names the failure, rather than falling
+// through to the exit-code classification.
+func TestProbeDaemonHealthReportsProbeError(t *testing.T) {
+	prev := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, _ string) (string, int, error) {
+		return "", -1, errors.New("dial refused")
+	})
+	t.Cleanup(func() { SetDaemonHealthFunc(prev) })
+
+	probe := probeDaemonHealth(context.Background(), nil, fakeDaemonProvider{healthCmd: "health"})
+	if probe.healthy {
+		t.Fatal("probe reported healthy for a failed health command")
+	}
+	if want := "health probe failed: dial refused"; probe.detail != want {
+		t.Errorf("detail = %q, want %q", probe.detail, want)
+	}
+}
+
+// TestProbeDaemonHealthReportsParseError covers an unparsable health response:
+// the detail names the parse failure, rather than falling through to the
+// server-reported-unhealthy branch.
+func TestProbeDaemonHealthReportsParseError(t *testing.T) {
+	prev := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, _ string) (string, int, error) {
+		return "garbage", 0, nil
+	})
+	t.Cleanup(func() { SetDaemonHealthFunc(prev) })
+
+	probe := probeDaemonHealth(context.Background(), nil, fakeDaemonProvider{
+		healthCmd: "health",
+		parse:     func(string) (bool, error) { return false, errors.New("bad json") },
+	})
+	if probe.healthy {
+		t.Fatal("probe reported healthy for an unparsable response")
+	}
+	if want := "health response unparsable: bad json: garbage"; probe.detail != want {
+		t.Errorf("detail = %q, want %q", probe.detail, want)
+	}
+}
+
+// TestDaemonReadinessDefaults pins the production readiness window and poll
+// cadence. TestMain overwrites the vars for fast unit tests, so the declared
+// values are observed through the capture in main_test.go; a zeroed or
+// off-by-one-nanosecond deadline would make every run race the daemon's startup.
+func TestDaemonReadinessDefaults(t *testing.T) {
+	if capturedDaemonReadyTimeout != 60*time.Second {
+		t.Errorf("daemon readiness timeout = %s, want 60s", capturedDaemonReadyTimeout)
+	}
+	if capturedDaemonPollInterval != 2*time.Second {
+		t.Errorf("daemon poll interval = %s, want 2s", capturedDaemonPollInterval)
 	}
 }
 

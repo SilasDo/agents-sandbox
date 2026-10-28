@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	config "github.com/inoio/agents-sandbox/internal/configmerge"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -19,7 +20,7 @@ func configEqual(cf *ConfigFiles, vmData map[string][]byte) bool {
 		if !ok {
 			return false
 		}
-		if !jsonEqual(cf.Merged, vm) {
+		if !config.DocumentsEqual(ocPath, cf.Merged, vm) {
 			return false
 		}
 	}

@@ -13,6 +13,12 @@ command reports the bare version (e.g. `0.1.0`).
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
+- Agent: `codex` runs OpenAI's Codex CLI (`--agent codex`), installed from its GitHub release package, with upgrade
+  checks via GitHub releases. Codex's own command sandbox is off (`danger-full-access`), since the VM isolates
+  it. `~/.codex/config.toml` is provisioned from the host. You log in inside the VM, through
+  the host browser or with a device code (#107).
+- Config snippets: TOML snippets (`.toml`) are merged, and an agent whose config file is TOML gets its merged config
+  written as TOML. codex merges `config*.toml` snippets from its `codex/` config dir into `~/.codex/config.toml` (#107).
 - CI: an advisory `mutation` workflow sweeps every code-changing PR's changeset with gomutants (docs-only PRs are
   filtered out): each surviving mutant lands as an inline `::warning::` on the diff, a sticky comment carries the totals
   and the full survivor list, and a `mutation-report` artifact holds the complete report. It is never a required check or
@@ -60,6 +66,13 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
+  / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
+  managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
+  `--docker`/`--dind`, or the matching environment variable now overrides that declaration in both directions, a
+  present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
+  with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
+  `docs/runner-image.md`.
 
 ### Fixed
 
@@ -113,6 +126,8 @@ command reports the bare version (e.g. `0.1.0`).
   older release — so an accepted agent upgrade no longer reverts to the previous release on a later run, a
   `--agent-version` pin persists across unpinned runs, a deleted baseline is re-recorded, and the `volume` subcommands
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
+- Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
+  a run with no config file; the deprecated `--dind` alias already survived.
 
 ## [0.6.0] - 2026-10-25
 

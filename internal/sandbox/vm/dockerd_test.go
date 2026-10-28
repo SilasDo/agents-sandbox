@@ -76,6 +76,9 @@ func TestStartDockerdIfPresentNoDockerdBinary(t *testing.T) {
 	if err := startDockerdIfPresent(context.Background(), sb, &ui); err != nil {
 		t.Fatalf("expected no-op when dockerd absent, got: %v", err)
 	}
+	if !slices.Contains(ui.VerboseCalls, "/usr/bin/dockerd not present, skipping Docker startup") {
+		t.Errorf("expected the absent-dockerd verbose note, got %v", ui.VerboseCalls)
+	}
 }
 
 func TestStartDockerdIfPresentAlreadyRunning(t *testing.T) {
@@ -87,6 +90,9 @@ func TestStartDockerdIfPresentAlreadyRunning(t *testing.T) {
 	}
 	if sb.execCalls != 0 {
 		t.Errorf("expected no detach when already running, got %d", sb.execCalls)
+	}
+	if !slices.Contains(ui.VerboseCalls, "using already running dockerd") {
+		t.Errorf("expected the already-running verbose note, got %v", ui.VerboseCalls)
 	}
 }
 
@@ -248,6 +254,11 @@ func TestDockerdReadyTimeoutAllowsFailOver(t *testing.T) {
 			"dockerdReadyTimeoutDefault=%v must exceed dockerd's 15s containerd start timeout",
 			dockerdReadyTimeoutDefault,
 		)
+	}
+	// Pin the exact value too: the "< 25s" floor alone lets a decrement or
+	// increment of the literal through, and the readiness window is a contract.
+	if dockerdReadyTimeoutDefault != 30*time.Second {
+		t.Errorf("dockerdReadyTimeoutDefault = %s, want 30s", dockerdReadyTimeoutDefault)
 	}
 }
 

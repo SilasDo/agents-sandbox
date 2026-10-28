@@ -67,6 +67,25 @@ func instructionLineIndices(lines [][]byte) []int {
 	return indices
 }
 
+// topLevelLineIndices returns, in order, the indexes of the lines that sit
+// outside any instruction's continuation and heredoc bodies: comments, blank
+// lines, and instruction starts. A line that only resembles a marker because it
+// is heredoc content — a COPY <<EOF file containing "# agents-sandbox:docker" —
+// is skipped, so callers that scan for comment markers do not read heredoc text.
+func topLevelLineIndices(lines [][]byte) []int {
+	escape := escapeToken(lines)
+	var indices []int
+	for i := 0; i < len(lines); {
+		indices = append(indices, i)
+		if isBlankOrComment(lineText(lines[i])) {
+			i++
+			continue
+		}
+		i = instructionEnd(lines, i, escape)
+	}
+	return indices
+}
+
 // instructionEnd returns the index of the first line after the instruction that
 // begins at start: its continuation lines and any heredoc bodies it declares.
 func instructionEnd(lines [][]byte, start int, escape byte) int {

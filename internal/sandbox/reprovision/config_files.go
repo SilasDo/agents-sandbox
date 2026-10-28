@@ -3,14 +3,12 @@ package reprovision
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -449,7 +447,9 @@ func configFileFamilyPaths(mergedPath string, names []string) []string {
 // ConfigMerger, so a non-merger agent produces no merged config.
 func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (string, []byte, []string, bool, error) {
 	if cm, ok := agent.AsConfigMerger(a); ok {
+		vmConfigPath := cm.VMConfigPath(vmHome)
 		merged, sources, hasSnippets, err := config.BuildMerged(
+			vmConfigPath,
 			cm.SnippetPattern(),
 			src.UserDir,
 			src.ProjectDir,
@@ -457,7 +457,7 @@ func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (string, 
 		if err != nil {
 			return "", nil, nil, false, fmt.Errorf("merge agent config: %w", err)
 		}
-		return cm.VMConfigPath(vmHome), merged, sources, hasSnippets, nil
+		return vmConfigPath, merged, sources, hasSnippets, nil
 	}
 	return "", nil, nil, false, nil
 }
@@ -640,7 +640,7 @@ func AgentConfigEqual(cf *ConfigFiles, vmData map[string][]byte) bool {
 		if !ok {
 			return false
 		}
-		if !jsonEqual(cf.Merged, vm) {
+		if !config.DocumentsEqual(cf.MergedPath, cf.Merged, vm) {
 			return false
 		}
 	}
@@ -651,22 +651,4 @@ func AgentConfigEqual(cf *ConfigFiles, vmData map[string][]byte) bool {
 		}
 	}
 	return true
-}
-
-func jsonEqual(a, b []byte) bool {
-	va, err1 := parseJSON(a)
-	vb, err2 := parseJSON(b)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	return reflect.DeepEqual(va, vb)
-}
-
-// parseJSON unmarshals data into map[string]any for deep equality comparison.
-func parseJSON(data []byte) (any, error) {
-	var v any
-	if err := json.Unmarshal(data, &v); err != nil {
-		return nil, err
-	}
-	return v, nil
 }

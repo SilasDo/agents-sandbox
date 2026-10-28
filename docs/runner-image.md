@@ -154,7 +154,7 @@ stages with fixed parents, merged into the final stage with `COPY` **after** the
   needs none of those binaries and the tool layers cache across bases.
 - **`agents-sandbox-node`** *(only for agents that need node)* — installs Node.js into `/opt/agents-sandbox`. It is emitted
   only when the selected agent requires node (today only `pi`, an npm-installed node bundle); `opencode`, `opencode2`, and
-  `claude-code` install native binaries and their images contain no node/npm.
+  `claude-code`, and `codex` install native binaries and their images contain no node/npm.
 - **`agents-sandbox-agent`** *(conditional)* — installs the selected agent into `/opt/agents-sandbox`. It starts from the
   node stage when one was emitted, otherwise from the tool base, and creates `/opt/agents-sandbox/bin` itself. npm agents
   (`pi`) install with `npm install -g --prefix /opt/agents-sandbox <pkg>@$VERSION`; the rest copy the binary produced by
@@ -212,8 +212,8 @@ base must meet these requirements:
 - **For the daemon agents (`opencode`, `opencode2`)**: the in-VM tool the launcher uses — `curl`. It reaches the daemon
   (the health probe, session and worktree calls, and notifications); the daemon is launched and stopped as a
   runtime-owned job, so no process-control tool is needed. `curl` is checked after your Dockerfile body runs, so it may
-  be installed in the body or an earlier stage; if it is missing, the build fails and names the tool. `pi` and
-  `claude-code` run no daemon and need none.
+  be installed in the body or an earlier stage; if it is missing, the build fails and names the tool. `pi`,
+  `claude-code`, and `codex` run no daemon and need none.
 - **For the host opener**: `curl`. The launcher replays a browser-login callback inside the VM with it, so every custom
   base needs `curl` even when the agent runs no daemon (the daemon agents' `curl` requirement covers the same tool). It
   is checked after your Dockerfile body runs, and a missing `curl` fails the build naming the tool. See
@@ -259,12 +259,27 @@ commands, not only in non-login agent-executed commands.
 
 ## Docker-in-Docker
 
-Enable the Docker engine (Docker-in-Docker) in the runner image with the `--docker` flag (on `build`, `run`, `shell`, or
-`build dockerfile`) or the `docker: true` config key, or the `AGENTS_SANDBOX_DOCKER` environment variable. The
-deprecated aliases `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND` still work with lower precedence and print a
-one-time warning. A project Dockerfile still starting `FROM .../runner-base-dind:latest` keeps working and implies it, but
-warns on every run that ensures the runner image (including cached reuse); the newer `FROM .../runner-base-docker:latest`
-implies it silently.
+Your project Dockerfile declares the Docker engine on its own. The engine is enabled when the final stage starts `FROM
+agents-sandbox/runner-base-docker:latest` (or the deprecated `runner-base-dind`) or when the final-stage body carries a
+`# agents-sandbox:docker` comment line. This holds for a custom base and a managed base alike, so a Dockerfile that asks
+for Docker needs no launcher config.
+
+Explicit config overrides that declaration **in both directions**. The `--docker` flag (on `build`, `run`, `shell`, or
+`build dockerfile`), the `docker` config key, and the `AGENTS_SANDBOX_DOCKER` environment variable — or a `dind`
+spelling — turn the engine off even when the Dockerfile asks for it, and on with no Dockerfile signal. The precedence is
+explicit config > Dockerfile content > off. A present-but-`false` value counts as explicit, so `docker: false`
+suppresses a Dockerfile signal rather than letting it re-enable the engine.
+
+Only a marker in the final stage (after the last `FROM`) enables Docker and places the injection block. A marker in an
+earlier stage is ignored, with a warning telling you to move it into the final stage. Enablement is case-sensitive:
+`# agents-sandbox:docker` enables and a case variant such as `# Agents-Sandbox:docker` does not, though it is reported as
+a near-miss warning so a case variant of the marker is caught. A typo inside the token (`# agents-sandbox:dockr`) is not
+caught and leaves the engine off without a diagnostic.
+
+The deprecated aliases `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND` still work with lower precedence and
+print a one-time warning. A project Dockerfile using the legacy `runner-base-dind` base or the `# agents-sandbox:dind`
+marker keeps working and enables the engine, but warns on every run that ensures the runner image (including cached
+reuse).
 
 The Docker stage installs the engine from a docker static binary tarball. The `vfs` storage driver is forced **inside
 the VM** at start-up — the image never writes `/etc/docker/daemon.json`, so your edits to it are preserved. If your
@@ -306,15 +321,17 @@ copy (the runner's `PATH` prefers base binaries). The pinned node stays on the v
 the v26 tarballs gained a hard `libatomic.so.1` runtime dependency the managed base does not provide, while v24 has no
 such dependency on either target architecture, so a custom base needs no extra library to run the tool-installed node.
 
-Four agents are built in: `opencode`, `opencode2` (default, the opencode 2 beta), `pi`, and `claude-code`. Only `pi`
+Five agents are built in: `opencode`, `opencode2` (default, the opencode 2 beta), `pi`, `claude-code`, and `codex`. Only `pi`
 needs node: its published package is an npm-installed `#!/usr/bin/env node` bundle, so it installs through
-`npm install -g --prefix /opt/agents-sandbox @earendil-works/pi-coding-agent@$PI_VERSION`. The other three ship
-self-contained native binaries and install through their upstream installers — `opencode` and `opencode2` via
-`https://opencode.ai/install` and `https://opencode.ai/v2/install`, `claude-code` via `https://claude.ai/install.sh` —
-copying the binary into `/opt/agents-sandbox/bin`; their images contain no node/npm. All four resolve their latest
+`npm install -g --prefix /opt/agents-sandbox @earendil-works/pi-coding-agent@$PI_VERSION`. The other four ship
+self-contained native binaries — `opencode` and `opencode2` via their upstream installers
+`https://opencode.ai/install` and `https://opencode.ai/v2/install` and `claude-code` via `https://claude.ai/install.sh`,
+copying the binary into `/opt/agents-sandbox/bin`, and `codex` from the static `codex-package-<arch>-unknown-linux-musl`
+asset of its `openai/codex` GitHub release, unpacked into `/opt/agents-sandbox/codex` (codex runs commands through
+helpers in that package) and linked into `/opt/agents-sandbox/bin`; their images contain no node/npm. All five resolve their latest
 version for an unpinned build — opencode via its GitHub releases endpoint, opencode2 via the opencode update API
-(`/update/api/latest/cli/npm`, the installer's own source), pi via `pi.dev`, and claude-code via the npm registry's
-`latest` dist-tag — as a host-side HTTP query, never
+(`/update/api/latest/cli/npm`, the installer's own source), pi via `pi.dev`, claude-code via the npm registry's
+`latest` dist-tag, and codex via its GitHub releases endpoint — as a host-side HTTP query, never
 inside the image. JS-based LSP servers are expected to run on the agent's embedded JS runtime (Bun) or on node that a
 project installs in its own Dockerfile.
 

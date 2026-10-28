@@ -13,6 +13,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
@@ -115,7 +116,7 @@ func prepareVolumeOp(c *cobra.Command, ui termio.UI, dryRun bool) (state.Key, im
 		c.Context(),
 		a,
 		adoption.Slug,
-		image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: resolveBuildDocker(c)},
+		image.BuildOptions{Force: false, AgentVersion: "", UserProvided: false, Docker: resolveBuildDockerSetting(c)},
 		ui,
 	)
 	if err != nil {
@@ -211,22 +212,24 @@ func parseLabelFlags(values []string) (map[string]string, error) {
 	return labels, nil
 }
 
-// resolveBuildDocker returns the effective docker switch for a build: the
-// --docker flag when set, else the deprecated --dind alias when set, else the
-// configured resolver value (false when absent).
-func resolveBuildDocker(cmd *cobra.Command) bool {
+// resolveBuildDockerSetting returns the effective docker setting for a build:
+// the --docker flag when set, else the deprecated --dind alias when set, else
+// the configured resolver value and its explicitness (zero when absent). A
+// changed flag is an explicit source, so it overrides any project-Dockerfile
+// content signal.
+func resolveBuildDockerSetting(cmd *cobra.Command) options.DockerSetting {
 	if cmd.Flags().Changed(flagDocker) {
 		docker, _ := cmd.Flags().GetBool(flagDocker)
-		return docker
+		return options.DockerSetting{Enabled: docker, Explicit: true}
 	}
 	if cmd.Flags().Changed(flagDind) {
 		dind, _ := cmd.Flags().GetBool(flagDind)
-		return dind
+		return options.DockerSetting{Enabled: dind, Explicit: true}
 	}
 	if r := resolverFromContext(cmd.Context()); r != nil {
-		return r.Docker()
+		return options.DockerSetting{Enabled: r.Docker(), Explicit: r.DockerExplicit()}
 	}
-	return false
+	return options.DockerSetting{}
 }
 
 func buildBuildCmd(ui termio.UI) *cobra.Command {
@@ -272,7 +275,10 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 				openCodeVersion,
 			)
 			info, err := image.Build(cmd.Context(), a, adoption.Slug, image.BuildOptions{
-				Force: force, AgentVersion: agentVersion, UserProvided: userProvided, Docker: resolveBuildDocker(cmd),
+				Force:        force,
+				AgentVersion: agentVersion,
+				UserProvided: userProvided,
+				Docker:       resolveBuildDockerSetting(cmd),
 			}, ui)
 			if err != nil {
 				return err
@@ -315,8 +321,10 @@ func buildDockerfileCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			setting := resolveBuildDockerSetting(cmd)
+			image.EmitProjectDockerfileDiagnostics(ui, setting)
 			agentVersion, _ := cmd.Flags().GetString(flagAgentVersion)
-			out, err := image.RenderProjectDockerfile(a, agentVersion, resolveBuildDocker(cmd))
+			out, err := image.RenderProjectDockerfile(a, agentVersion, setting)
 			if err != nil {
 				return err
 			}

@@ -73,7 +73,8 @@ const publicNetwork = "public"
 
 // Terminal keys that leave a harness's full-screen TUI: Ctrl-D is `opencode`'s,
 // `opencode2`'s, and `pi`'s documented `app_exit`/`app.exit`, and Ctrl-C is the
-// interrupt `claude-code` announces as its exit ("Press Ctrl-C again to exit").
+// interrupt `claude-code` announces as its exit ("Press Ctrl-C again to exit")
+// and `codex` quits on.
 const (
 	ctrlC = 0x03
 	ctrlD = 0x04
@@ -87,6 +88,9 @@ var harnessSpecs = map[string]harnessSpec{
 	// egress, and its renderer keeps the terminal's normal buffer, so the
 	// alternate screen never announces that its UI is up.
 	"claude-code": {QuitKey: []byte{ctrlC}, Network: publicNetwork, KeepsNormalBuffer: true},
+	// codex quits on Ctrl-C and may reach its API at startup, so it gets
+	// egress like claude-code; its TUI uses the alternate screen.
+	"codex": {QuitKey: []byte{ctrlC}, Network: publicNetwork, KeepsNormalBuffer: false},
 	// opencode's editor owns Ctrl-C, so its TUI leaves on Ctrl-D.
 	"opencode":  {QuitKey: []byte{ctrlD}, Network: "", KeepsNormalBuffer: false},
 	"opencode2": {QuitKey: []byte{ctrlD}, Network: "", KeepsNormalBuffer: false},

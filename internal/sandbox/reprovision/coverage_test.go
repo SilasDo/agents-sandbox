@@ -116,24 +116,6 @@ func TestAgentConfigEqualMissingVMConfig(t *testing.T) {
 	}
 }
 
-// TestJsonEqualParseError verifies that jsonEqual returns false when either
-// side is not valid JSON.
-func TestJsonEqualParseError(t *testing.T) {
-	if jsonEqual([]byte(`{"a":1}`), []byte(`not-json`)) {
-		t.Error("expected false when the VM side is invalid JSON")
-	}
-	if jsonEqual([]byte(`not-json`), []byte(`{"a":1}`)) {
-		t.Error("expected false when the desired side is invalid JSON")
-	}
-}
-
-// TestParseJSONError verifies that parseJSON returns an error on invalid input.
-func TestParseJSONError(t *testing.T) {
-	if _, err := parseJSON([]byte(`{oops`)); err == nil {
-		t.Error("expected an error for invalid JSON")
-	}
-}
-
 // TestMkdirAllFSExisting verifies that an existing directory short-circuits.
 func TestMkdirAllFSExisting(t *testing.T) {
 	fs := msb.NewTestFS(map[string][]byte{"/home/dev/.config/opencode": nil}, nil)
