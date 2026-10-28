@@ -435,6 +435,8 @@ for i in "${!worktree_path[@]}"; do
     method="$(local_merge_method "$branch" || true)"
     if [[ -z "$method" ]]; then
       note="unmerged"
+    elif [[ "$branch" == release/* ]]; then
+      note="release branch"
     elif is_excluded "$branch"; then
       note="excluded (merged)"
     elif [[ "$method" == ancestry ]] && worktree_is_fresh_session "$path" "$branch"; then
