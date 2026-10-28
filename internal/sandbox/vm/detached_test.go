@@ -62,30 +62,185 @@ func TestJobTailLogsRequestsTail(t *testing.T) {
 	}
 }
 
-func TestCommandMatches(t *testing.T) {
+// TestDetachedHelperMarkedCommand pins the launch shape that carries the
+// helper's identity, with literals: the marker and the env(1) hop are the
+// contract the kill path matches against, so a rename that kept the constants
+// in sync must still fail here.
+func TestDetachedHelperMarkedCommand(t *testing.T) {
+	args := []string{"-H", "unix:///var/run/docker.sock"}
+	binary, commandArgs := dockerdHelper().markedCommand(args)
+
+	if binary != "env" {
+		t.Errorf("launch binary = %q, want %q", binary, "env")
+	}
+	want := []string{
+		"AGENTS_SANDBOX_DETACHED_JOB=dockerd",
+		"dockerd",
+		"-H",
+		"unix:///var/run/docker.sock",
+	}
+	if !slices.Equal(commandArgs, want) {
+		t.Errorf("launch args = %v, want %v", commandArgs, want)
+	}
+	// The helper's own arguments are copied, never aliased: the caller keeps
+	// using the slice it passed.
+	if !slices.Equal(args, []string{"-H", "unix:///var/run/docker.sock"}) {
+		t.Errorf("caller args = %v, want them unchanged", args)
+	}
+}
+
+func TestDetachedHelperMatches(t *testing.T) {
 	tests := []struct {
 		name    string
+		helper  detachedHelper
 		command []string
-		binary  string
-		args    []string
 		want    bool
 	}{
-		{"exact", []string{"dockerd", "-H", "x"}, "dockerd", []string{"-H", "x"}, true},
-		{"prefix", []string{"dockerd", "-H", "x", "--extra"}, "dockerd", []string{"-H", "x"}, true},
-		{"wrong binary", []string{"dockerd", "-H", "x"}, "containerd", nil, false},
-		{"too short", []string{"dockerd"}, "dockerd", []string{"-H"}, false},
-		{"wrong arg", []string{"dockerd", "--other"}, "dockerd", []string{"-H"}, false},
+		{
+			name:    "marked",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=dockerd", "dockerd", "-H", "x"},
+			want:    true,
+		},
+		{
+			name:   "marked with arguments a previous release used",
+			helper: dockerdHelper(),
+			command: []string{
+				"env", "AGENTS_SANDBOX_DETACHED_JOB=dockerd", "dockerd",
+				"-H", "unix:///var/run/docker.sock", "--log-format=text",
+			},
+			want: true,
+		},
+		{
+			name:    "marked with no helper arguments",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=dockerd", "dockerd"},
+			want:    true,
+		},
+		{
+			name:    "marker assignment only",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=dockerd"},
+			want:    true,
+		},
+		{
+			name:    "launcher with no marker assignment",
+			helper:  dockerdHelper(),
+			command: []string{"env"},
+			want:    false,
+		},
+		{
+			name:    "marker-less legacy launch",
+			helper:  dockerdHelper(),
+			command: []string{"dockerd", "-H", "unix:///var/run/docker.sock"},
+			want:    true,
+		},
+		{
+			name:    "marker-less legacy launch with arguments the current release no longer sends",
+			helper:  dockerdHelper(),
+			command: []string{"dockerd", "-H", "unix:///var/run/docker.sock", "--log-format=text"},
+			want:    true,
+		},
+		{
+			name:    "another helper's marker",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=agent-daemon", "opencode", "serve"},
+			want:    false,
+		},
+		{
+			name:    "another helper's marker on this helper's binary",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=agent-daemon", "dockerd"},
+			want:    false,
+		},
+		{
+			name:    "marker in a later argument position",
+			helper:  dockerdHelper(),
+			command: []string{"sh", "-c", "AGENTS_SANDBOX_DETACHED_JOB=dockerd dockerd"},
+			want:    false,
+		},
+		{
+			name:    "unrelated command",
+			helper:  dockerdHelper(),
+			command: []string{"sleep", "1"},
+			want:    false,
+		},
+		{
+			name:    "empty command",
+			helper:  dockerdHelper(),
+			command: nil,
+			want:    false,
+		},
+		{
+			name:    "agent daemon marked",
+			helper:  agentDaemonHelper("opencode"),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=agent-daemon", "opencode", "serve"},
+			want:    true,
+		},
+		{
+			name:    "agent daemon marker-less legacy launch with the previous serve hostname",
+			helper:  agentDaemonHelper("opencode"),
+			command: []string{"opencode", "serve", "--hostname", "127.0.0.1", "--port", "4096"},
+			want:    true,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := commandMatches(tt.command, tt.binary, tt.args); got != tt.want {
-				t.Errorf("commandMatches(%v, %q, %v) = %v, want %v", tt.command, tt.binary, tt.args, got, tt.want)
+			if got := tt.helper.matches(tt.command); got != tt.want {
+				t.Errorf("%s.matches(%v) = %v, want %v", tt.helper.marker, tt.command, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestKillJobsByCommandKillsMatches(t *testing.T) {
+// TestKillJobsTargetsStaleHelperWithChangedArgs is the #343 regression: after a
+// release changes a helper's arguments (dockerd's storage-driver flag, the
+// daemon's serve hostname), the stale helper is still running with the old
+// arguments. Matching the recorded command against the new binary+args misses
+// it, so it keeps the socket/port the fresh helper then races for and the launch
+// fails with "exited before becoming ready".
+func TestKillJobsTargetsStaleHelperWithChangedArgs(t *testing.T) {
+	ui := termio.NewTestMock(t)
+	legacy := &msb.MockJob{ID_: "legacy-dockerd"}
+	marked := &msb.MockJob{ID_: "marked-dockerd"}
+	otherHelper := &msb.MockJob{ID_: "daemon"}
+	sb := &msb.MockSandbox{
+		Jobs: []msbSdk.JobInfo{
+			{ID: "legacy-dockerd", Command: []string{"dockerd", "-H", "unix:///var/run/docker.sock"}},
+			{
+				ID: "marked-dockerd",
+				Command: []string{
+					"env", "AGENTS_SANDBOX_DETACHED_JOB=dockerd", "dockerd", "-H", "x",
+				},
+			},
+			{ID: "daemon", Command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=agent-daemon", "opencode", "serve"}},
+		},
+		GetJobFn: func(_ context.Context, id string) (msb.Job, error) {
+			switch id {
+			case "legacy-dockerd":
+				return legacy, nil
+			case "marked-dockerd":
+				return marked, nil
+			default:
+				return otherHelper, nil
+			}
+		},
+	}
+
+	killJobs(context.Background(), sb, dockerdHelper(), &ui)
+
+	if !legacy.DidKill {
+		t.Error("a stale helper launched with different arguments was not killed")
+	}
+	if !marked.DidKill {
+		t.Error("a marked stale helper was not killed")
+	}
+	if otherHelper.DidKill {
+		t.Error("another helper's job was killed")
+	}
+}
+
+func TestKillJobsKillsMatches(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	stale := &msb.MockJob{ID_: "stale"}
 	other := &msb.MockJob{ID_: "other"}
@@ -103,7 +258,7 @@ func TestKillJobsByCommandKillsMatches(t *testing.T) {
 			return other, nil
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "dockerd", []string{"-H", "x"}, &ui)
+	killJobs(context.Background(), sb, dockerdHelper(), &ui)
 
 	if !stale.DidKill {
 		t.Error("matching stale job was not killed")
@@ -119,9 +274,9 @@ func TestKillJobsByCommandKillsMatches(t *testing.T) {
 	}
 }
 
-// TestKillJobsByCommandContinuesAfterKillFailure verifies a failed kill does not
+// TestKillJobsContinuesAfterKillFailure verifies a failed kill does not
 // abandon the remaining matching jobs.
-func TestKillJobsByCommandContinuesAfterKillFailure(t *testing.T) {
+func TestKillJobsContinuesAfterKillFailure(t *testing.T) {
 	failing := &msb.MockJob{ID_: "a", KillErr: errors.New("kill boom")}
 	healthy := &msb.MockJob{ID_: "b"}
 	sb := &msb.MockSandbox{
@@ -136,27 +291,27 @@ func TestKillJobsByCommandContinuesAfterKillFailure(t *testing.T) {
 			return healthy, nil
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "dockerd", nil, &termio.Mock{})
+	killJobs(context.Background(), sb, dockerdHelper(), &termio.Mock{})
 
 	if !healthy.DidKill {
 		t.Error("a kill failure must not stop later matching jobs from being killed")
 	}
 }
 
-func TestKillJobsByCommandToleratesFailures(t *testing.T) {
+func TestKillJobsToleratesFailures(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	sb := &msb.MockSandbox{
 		ListJobsFn: func(context.Context, ...msbSdk.JobListOption) ([]msbSdk.JobInfo, error) {
 			return nil, errors.New("list boom")
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "containerd", nil, &ui)
+	killJobs(context.Background(), sb, dockerdHelper(), &ui)
 	if !strings.Contains(strings.Join(ui.VerboseCalls, "\n"), "listing jobs") {
 		t.Errorf("expected a verbose listing failure, got %v", ui.VerboseCalls)
 	}
 }
 
-func TestKillJobsByCommandToleratesGetAndKillErrors(t *testing.T) {
+func TestKillJobsToleratesGetAndKillErrors(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	killFailJob := &msb.MockJob{ID_: "b", KillErr: errors.New("kill boom")}
 	sb := &msb.MockSandbox{
@@ -171,7 +326,7 @@ func TestKillJobsByCommandToleratesGetAndKillErrors(t *testing.T) {
 			return killFailJob, nil
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "dockerd", nil, &ui)
+	killJobs(context.Background(), sb, dockerdHelper(), &ui)
 
 	joined := strings.Join(ui.VerboseCalls, "\n")
 	if !strings.Contains(joined, "resolving job") || !strings.Contains(joined, "killing job") {
@@ -182,7 +337,7 @@ func TestKillJobsByCommandToleratesGetAndKillErrors(t *testing.T) {
 	}
 }
 
-func TestKillJobsByCommandReportsCloseFailure(t *testing.T) {
+func TestKillJobsReportsCloseFailure(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	closing := &msb.MockJob{ID_: "closing", CloseErr: errors.New("close boom")}
 	sb := &msb.MockSandbox{
@@ -191,7 +346,7 @@ func TestKillJobsByCommandReportsCloseFailure(t *testing.T) {
 			return closing, nil
 		},
 	}
-	killJobsByCommand(context.Background(), sb, "dockerd", nil, &ui)
+	killJobs(context.Background(), sb, dockerdHelper(), &ui)
 
 	if !closing.DidKill {
 		t.Error("expected the matching job to be killed")

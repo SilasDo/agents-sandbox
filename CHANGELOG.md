@@ -152,6 +152,11 @@ command reports the bare version (e.g. `0.1.0`).
   `home_volume: >`) no longer loses that leading newline when the launcher rewrites the file. The launcher now parses
   and writes YAML through the maintained `go.yaml.in/yaml/v3` instead of the unmaintained `gopkg.in/yaml.v3` v3.0.1,
   whose emitter dropped the blank line on write so a re-read no longer matched what was written.
+- Detached jobs: dockerd and the agent serve daemon are launched with a command-line identity marker
+  (`env AGENTS_SANDBOX_DETACHED_JOB=<helper> …`), and a stale helper is killed by that identity instead of by its exact
+  command line. After a release changes a helper's flags (dockerd's storage driver, the daemon's serve hostname or health
+  format), the old process was no longer matched and both raced for the socket or port, so the run failed with
+  "exited before becoming ready" (#343).
 
 ## [0.6.0] - 2026-10-25
 

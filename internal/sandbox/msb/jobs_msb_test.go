@@ -48,7 +48,15 @@ func TestJobsRoundTrip(t *testing.T) {
 
 	adapter := realSandbox{sandbox: sb}
 
-	job, err := adapter.ExecDetached(ctx, "sh", []string{"-c", "echo " + sentinel + "; sleep 30"})
+	// The launcher labels its helpers through the command line — the jobs ABI
+	// has no labels — by launching them as
+	// `env AGENTS_SANDBOX_DETACHED_JOB=<marker> <binary> <args…>`. That shape is
+	// how a stale helper is rediscovered, so the launch here mirrors it.
+	markedCommand := []string{
+		"AGENTS_SANDBOX_DETACHED_JOB=integration-test",
+		"sh", "-c", "echo " + sentinel + "; sleep 30",
+	}
+	job, err := adapter.ExecDetached(ctx, "env", markedCommand)
 	if err != nil {
 		t.Fatalf("ExecDetached: %v", err)
 	}
@@ -69,12 +77,12 @@ func TestJobsRoundTrip(t *testing.T) {
 	if info == nil {
 		t.Fatalf("ListJobs did not contain job %s: %+v", job.ID(), infos)
 	}
-	// killJobsByCommand matches JobInfo.Command as a prefix of [binary, args...],
+	// The launcher matches JobInfo.Command against the marker it launched with,
 	// so the reported shape is load-bearing: if the runtime rewrote it (resolved
-	// argv[0], joined string), stale jobs would never be killed on restart.
-	wantCommand := []string{"sh", "-c", "echo " + sentinel + "; sleep 30"}
-	if len(info.Command) < len(wantCommand) || !slices.Equal(info.Command[:len(wantCommand)], wantCommand) {
-		t.Fatalf("JobInfo.Command = %q, want prefix %q", info.Command, wantCommand)
+	// argv[0], joined string, dropped env assignments), stale helpers would
+	// never be killed on restart.
+	if len(info.Command) < len(markedCommand) || !slices.Equal(info.Command[:len(markedCommand)], markedCommand) {
+		t.Fatalf("JobInfo.Command = %q, want prefix %q", info.Command, markedCommand)
 	}
 
 	got, getErr := adapter.GetJob(ctx, job.ID())
