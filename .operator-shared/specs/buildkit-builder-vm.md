@@ -137,7 +137,10 @@ Components:
   the **msb cache** (`msb.ImageInspect`) and compare the `dockerfile-id` label
   (and identity labels) instead of inspecting a host Docker image. A cache hit
   skips both the build and the load. This removes the last read of the host
-  Docker image store.
+  Docker image store. The label is trusted for the *build* decision only: the
+  load-side content check (`cachedImageMatches`) stays digest-only, and a
+  cached image with no digest is reloaded, never matched by the label
+  (`specs/runner-image-build.md`).
 - **Base image digest**: no registry resolver is needed. BuildKit's solver
   response includes `containerimage.buildinfo` (base64 JSON; also embedded in
   the image config), whose `sources[]` list every `docker-image` source with
