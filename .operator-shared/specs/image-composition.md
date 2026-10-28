@@ -144,11 +144,14 @@ The marker is also an **enable** signal, not only a position. `effectiveDocker(p
 single decision site: the capability is on when the final-stage body carries either marker **or** the final stage's base
 resolves to the managed `runner-base-docker`/`runner-base-dind` alias (`referencesImage`). Both content signals work for
 a custom base and a managed base alike. Only the final-stage body is scanned, so a marker in an earlier stage neither
-enables nor positions.
+enables nor positions. Markers are read only from top-level lines (`topLevelLineIndices`): a marker inside a heredoc body
+— e.g. a `COPY <<EOF` copying a sample Dockerfile — is inert for enablement, positioning, and diagnostics, so heredoc
+text is never rewritten by the injection.
 
 **Precedence.** Explicit launcher config wins in both directions:
 `explicit config/flag/env (either value) > Dockerfile content > off`. "Explicit" is the canonical `docker` source (config
-key present, `--docker` changed, `AGENTS_SANDBOX_DOCKER` non-empty) **or** any deprecated `dind` source present (`dind`
+key present, `--docker` changed, `AGENTS_SANDBOX_DOCKER` or the legacy `OPENCODE_SANDBOX_DOCKER` non-empty) **or** any
+deprecated `dind` source present (`dind`
 config key, `--dind` changed, `AGENTS_SANDBOX_DIND` non-empty), including a present-but-`false` value, so a project
 configured `dind: false` suppresses a content signal rather than having it re-enabled by a marker. This is a deliberate
 inversion of the earlier OR: a `runner-base-docker` base no longer beats an explicit `docker: false`.

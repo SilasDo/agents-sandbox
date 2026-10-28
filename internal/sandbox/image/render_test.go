@@ -946,6 +946,25 @@ func TestRenderDockerfileHeredocBodyIsNotAStage(t *testing.T) {
 	}
 }
 
+// TestRenderDockerfileHeredocMarkerIsInert pins that a docker marker inside a
+// heredoc body neither enables docker nor is replaced: it is text copied into a
+// file, not a marker.
+func TestRenderDockerfileHeredocMarkerIsInert(t *testing.T) {
+	a, _ := agent.Lookup("opencode")
+	project := []byte("FROM debian:trixie-slim\n" +
+		"COPY <<EOF /tmp/example.Dockerfile\n" +
+		"# agents-sandbox:docker\n" +
+		"EOF\n" +
+		"RUN echo hi\n")
+	s := mustRender(t, a, project, dockerOff)
+	if strings.Contains(s, "agents-sandbox-docker") {
+		t.Errorf("a heredoc marker must not enable docker; got:\n%s", s)
+	}
+	if !strings.Contains(s, "COPY <<EOF /tmp/example.Dockerfile\n# agents-sandbox:docker\nEOF\n") {
+		t.Errorf("the heredoc must be preserved verbatim; got:\n%s", s)
+	}
+}
+
 func TestAgentImageConfigBlock(t *testing.T) {
 	a, _ := agent.Lookup("opencode")
 	block := agentImageConfigBlock(a)
@@ -981,6 +1000,20 @@ func TestInjectDockerBlockAppendsWithoutMarker(t *testing.T) {
 		t.Error("expected append, not marker injection")
 	}
 	if got != "RUN install-prereqs\n" {
+		t.Errorf("injectDockerBlock = %q, want the body unchanged", got)
+	}
+}
+
+// TestInjectDockerBlockSkipsHeredocMarker pins that marker text inside a
+// heredoc body is not an injection point: the block is appended after the body
+// instead of overwriting the copied file.
+func TestInjectDockerBlockSkipsHeredocMarker(t *testing.T) {
+	body := "COPY <<EOF /tmp/example.Dockerfile\n# agents-sandbox:docker\nEOF\n"
+	got, injected := injectDockerBlock(body, true)
+	if injected {
+		t.Error("a marker inside a heredoc body must not be an injection point")
+	}
+	if got != body {
 		t.Errorf("injectDockerBlock = %q, want the body unchanged", got)
 	}
 }

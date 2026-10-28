@@ -79,6 +79,16 @@ func TestDiagnoseDockerfile(t *testing.T) {
 				`project Dockerfile has a near-miss docker marker "# Agents-Sandbox:docker"; use "# agents-sandbox:docker"`,
 			},
 		},
+		{
+			name:    "heredoc marker is inert",
+			project: "FROM debian:trixie-slim\nCOPY <<EOF /tmp/example.Dockerfile\n# agents-sandbox:docker\nEOF\nRUN echo hi\n",
+			setting: dockerOff,
+		},
+		{
+			name:    "heredoc near miss is inert",
+			project: "FROM debian:trixie-slim\nCOPY <<EOF /tmp/example.Dockerfile\n# Agents-Sandbox:docker\nEOF\nRUN echo hi\n",
+			setting: dockerOff,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

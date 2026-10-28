@@ -282,11 +282,12 @@ func DiagnoseDockerfile(project []byte, setting options.DockerSetting) Dockerfil
 		)
 	}
 
-	// Per-line marker scan: exactly one message per marker line.
-	lines := bytes.SplitAfter(project, []byte("\n"))
+	// Per-line marker scan: exactly one message per marker line. Heredoc bodies
+	// are skipped, so marker-like text inside a copied file stays inert.
+	lines := dockerfileLines(project)
 	lastFrom := lastFromLine(lines)
-	for i, line := range lines {
-		text := strings.TrimSpace(string(line))
+	for _, i := range topLevelLineIndices(lines) {
+		text := strings.TrimSpace(lineText(lines[i]))
 		if marker, ok := dockerMarkerKind(text); ok {
 			if i <= lastFrom {
 				d.Messages = append(
@@ -355,11 +356,13 @@ func dockerMarkerKind(line string) (string, bool) {
 	}
 }
 
-// hasDockerMarker reports whether any line of data carries want as a docker
-// injection marker.
+// hasDockerMarker reports whether any top-level line of data carries want as a
+// docker injection marker. Heredoc bodies are skipped, so marker text copied
+// into a file is not read as a marker.
 func hasDockerMarker(data []byte, want string) bool {
-	for line := range strings.SplitSeq(string(data), "\n") {
-		if marker, ok := dockerMarkerKind(line); ok && marker == want {
+	lines := dockerfileLines(data)
+	for _, i := range topLevelLineIndices(lines) {
+		if marker, ok := dockerMarkerKind(lineText(lines[i])); ok && marker == want {
 			return true
 		}
 	}
@@ -602,18 +605,19 @@ func runnerStage(a agent.Agent, baseAlias, body string, docker, dockerInjected b
 	return joinBlocks(parts...)
 }
 
-// injectDockerBlock replaces the first docker marker line in body with the
-// thin docker copy/adopt block, or appends it when no marker is present. It
-// reports whether the block was injected at a marker.
+// injectDockerBlock replaces the first top-level docker marker line in body
+// with the thin docker copy/adopt block, or appends it when no marker is
+// present. A marker inside a heredoc body is not a marker and is left untouched.
+// It reports whether the block was injected at a marker.
 func injectDockerBlock(body string, docker bool) (string, bool) {
 	if !docker {
 		return body, false
 	}
 	block := dockerMergeBlock()
-	lines := strings.SplitAfter(body, "\n")
-	for i, line := range lines {
-		if _, ok := dockerMarkerKind(line); ok {
-			return strings.Join(lines[:i], "") + block + strings.Join(lines[i+1:], ""), true
+	lines := dockerfileLines([]byte(body))
+	for _, i := range topLevelLineIndices(lines) {
+		if _, ok := dockerMarkerKind(lineText(lines[i])); ok {
+			return string(bytes.Join(lines[:i], nil)) + block + string(bytes.Join(lines[i+1:], nil)), true
 		}
 	}
 	return body, false
