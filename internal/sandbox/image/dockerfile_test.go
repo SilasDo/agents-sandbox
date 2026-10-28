@@ -9,9 +9,11 @@ import (
 )
 
 // dockerOn and dockerOff are the docker settings most tests pass to the render
-// entry points.
+// entry points. dockerOn is explicit: a non-explicit setting is the resolved
+// default (off), so only an explicit value enables docker without a content
+// signal in the project Dockerfile.
 var (
-	dockerOn  = options.DockerSetting{Enabled: true}
+	dockerOn  = options.DockerSetting{Enabled: true, Explicit: true}
 	dockerOff = options.DockerSetting{}
 )
 

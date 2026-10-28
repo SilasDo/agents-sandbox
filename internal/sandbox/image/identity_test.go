@@ -3,6 +3,8 @@ package image
 import (
 	"strings"
 	"testing"
+
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
 func TestComputeImageIdentityNormalizesAbsentInputs(t *testing.T) {
@@ -52,6 +54,49 @@ func TestEffectiveDindImpliedByManagedDindBase(t *testing.T) {
 	}
 	if !effectiveDocker(nil, dockerOn) {
 		t.Error("expected docker to be on when the flag is set")
+	}
+}
+
+func TestEffectiveDockerContentSignals(t *testing.T) {
+	finalMarker := []byte("FROM debian:trixie-slim\n# agents-sandbox:docker\nRUN echo hi\n")
+	customBase := []byte("FROM debian:trixie-slim\nRUN echo hi\n")
+	cases := []struct {
+		name    string
+		project []byte
+		setting options.DockerSetting
+		want    bool
+	}{
+		{"marker enables with no config", finalMarker, dockerOff, true},
+		{
+			"legacy marker enables with no config",
+			[]byte("FROM debian:trixie-slim\n# agents-sandbox:dind\nRUN echo hi\n"),
+			dockerOff,
+			true,
+		},
+		{"managed docker base enables", []byte("FROM agents-sandbox/runner-base-docker\n"), dockerOff, true},
+		{"managed dind base enables", []byte("FROM agents-sandbox/runner-base-dind\n"), dockerOff, true},
+		{"no signal stays off", customBase, dockerOff, false},
+		{"explicit off beats marker", finalMarker, options.DockerSetting{Enabled: false, Explicit: true}, false},
+		{
+			"explicit off beats managed base",
+			[]byte("FROM agents-sandbox/runner-base-docker\n"),
+			options.DockerSetting{Enabled: false, Explicit: true},
+			false,
+		},
+		{"explicit on without content", customBase, options.DockerSetting{Enabled: true, Explicit: true}, true},
+		{
+			"earlier-stage marker does not enable",
+			[]byte("FROM debian:trixie-slim AS x\n# agents-sandbox:docker\nFROM debian:trixie-slim\nRUN echo hi\n"),
+			dockerOff,
+			false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectiveDocker(tc.project, tc.setting); got != tc.want {
+				t.Errorf("effectiveDocker = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -214,15 +214,16 @@ func parseLabelFlags(values []string) (map[string]string, error) {
 
 // resolveBuildDocker returns the effective docker switch for a build: the
 // --docker flag when set, else the deprecated --dind alias when set, else the
-// configured resolver value (false when absent).
+// configured resolver value (false when absent). A changed flag is an explicit
+// source, so it overrides any project-Dockerfile content signal.
 func resolveBuildDocker(cmd *cobra.Command) options.DockerSetting {
 	if cmd.Flags().Changed(flagDocker) {
 		docker, _ := cmd.Flags().GetBool(flagDocker)
-		return options.DockerSetting{Enabled: docker, Explicit: false}
+		return options.DockerSetting{Enabled: docker, Explicit: true}
 	}
 	if cmd.Flags().Changed(flagDind) {
 		dind, _ := cmd.Flags().GetBool(flagDind)
-		return options.DockerSetting{Enabled: dind, Explicit: false}
+		return options.DockerSetting{Enabled: dind, Explicit: true}
 	}
 	if r := resolverFromContext(cmd.Context()); r != nil {
 		return options.DockerSetting{Enabled: r.Docker(), Explicit: false}

@@ -210,13 +210,25 @@ const (
 	legacyDockerMarker = "# agents-sandbox:dind"
 )
 
-// effectiveDocker reports whether the docker capability is enabled, either by
-// the resolved setting or implied by a project Dockerfile that extends the
-// managed docker or legacy dind base.
+// effectiveDocker reports whether the docker capability is enabled. An explicit
+// config/flag/env setting wins in both directions; otherwise a project
+// Dockerfile that extends the managed docker or legacy dind base, or that
+// carries a docker injection marker in its final-stage body, enables it.
+//
+// The two content signals have different reach: the managed base is resolved
+// through the final stage's base image (referencesImage), while the marker is
+// scanned only in the final-stage body (Dockerfile marker scope), so an earlier
+// stage's marker is not a signal.
 func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) bool {
-	return docker.Enabled ||
-		referencesImage(projectDockerfile, managedBaseDindRef) ||
-		referencesImage(projectDockerfile, managedBaseDockerRef)
+	if docker.Explicit {
+		return docker.Enabled
+	}
+	if referencesImage(projectDockerfile, managedBaseDindRef) ||
+		referencesImage(projectDockerfile, managedBaseDockerRef) {
+		return true
+	}
+	_, _, body := splitFinalStage(projectDockerfile)
+	return hasDockerMarker([]byte(body), dockerMarker) || hasDockerMarker([]byte(body), legacyDockerMarker)
 }
 
 // legacyDockerfileWarnings returns one deprecation warning per legacy dind
