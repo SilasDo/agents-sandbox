@@ -692,17 +692,18 @@ func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui te
 // cachedImageMatches reports whether the microsandbox image under ref holds
 // the same content as the Docker image described by info. Docker's image ID and
 // the microsandbox config digest are the same content identity, so they are
-// compared directly. A cached image that records no digest is unknown content
-// and never counts as a match: the dockerfile-id label is a source signature,
-// not a content identity, and can match while the bytes differ (a floating base
-// tag, or the dev user's uid/gid), so it must not stand in for the digest. The
-// cost is one reload — a load records a digest, so the image matches next time.
+// compared directly. A nil inspect result, or one that records no digest, is
+// unknown content and never counts as a match: the dockerfile-id label is a
+// source signature, not a content identity, and can match while the bytes
+// differ (a floating base tag, or the dev user's uid/gid), so it must not stand
+// in for the digest. The cost is one reload — a load records a digest, so the
+// image matches next time.
 func cachedImageMatches(ctx context.Context, mclient msb.Client, ref string, info ImageInfo) bool {
 	mInspect, err := mclient.ImageInspect(ctx, ref)
 	if err != nil {
 		return false
 	}
-	return mInspect.Digest != "" && mInspect.Digest == info.Digest
+	return mInspect != nil && mInspect.Digest != "" && mInspect.Digest == info.Digest
 }
 
 // EnsureImage builds/inspects the runner Docker image and returns an ImageInfo

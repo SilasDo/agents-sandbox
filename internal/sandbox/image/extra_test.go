@@ -339,6 +339,7 @@ func TestCachedImageMatches(t *testing.T) {
 		name      string
 		msbDigest string
 		msbLabels map[string]string
+		msbNil    bool
 		info      ImageInfo
 		want      bool
 	}{
@@ -373,11 +374,20 @@ func TestCachedImageMatches(t *testing.T) {
 			info:      ImageInfo{DockerTag: "ref", Ref: "ref"},
 			want:      false,
 		},
+		{
+			name:   "nil inspect result never matches",
+			msbNil: true,
+			info:   ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
+			want:   false,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			msbClient := &msb.MockMsbClient{
 				ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
+					if tc.msbNil {
+						return nil, nil //nolint:nilnil // the seam can return a nil config with no error
+					}
 					return &msbSdk.ImageConfig{Digest: tc.msbDigest, Labels: tc.msbLabels}, nil
 				},
 			}
