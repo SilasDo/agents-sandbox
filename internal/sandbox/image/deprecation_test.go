@@ -3,6 +3,8 @@ package image
 import (
 	"context"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -23,6 +25,9 @@ func TestDiagnoseDockerfile(t *testing.T) {
 	baseWarn := "project Dockerfile uses the deprecated agents-sandbox/runner-base-dind base image; switch to agents-sandbox/runner-base-docker"
 	markerWarn := "project Dockerfile uses the deprecated # agents-sandbox:dind marker; switch to # agents-sandbox:docker"
 	earlierWarn := "project Dockerfile has a docker marker outside the final stage; it is ignored — move it into the final stage (after the last FROM)"
+	nearMissWarn := `project Dockerfile has a near-miss docker marker "# Agents-Sandbox:docker"; use "# agents-sandbox:docker"`
+	dockerExplicitOff := options.DockerSetting{Enabled: false, Explicit: true}
+	dockerExplicitOn := options.DockerSetting{Enabled: true, Explicit: true}
 	cases := []struct {
 		name    string
 		project string
@@ -46,10 +51,40 @@ func TestDiagnoseDockerfile(t *testing.T) {
 		{
 			name:    "config suppresses marker",
 			project: "FROM debian:trixie-slim\n# agents-sandbox:docker\nRUN echo hi\n",
-			setting: options.DockerSetting{Enabled: false, Explicit: true},
+			setting: dockerExplicitOff,
 			enabled: false,
 			source:  "config",
 			want:    []string{"docker: off (config); project Dockerfile asks for docker"},
+		},
+		{
+			name:    "config suppresses docker base",
+			project: "FROM agents-sandbox/runner-base-docker\nRUN echo hi\n",
+			setting: dockerExplicitOff,
+			enabled: false,
+			source:  "config",
+			want:    []string{"docker: off (config); project Dockerfile asks for docker"},
+		},
+		{
+			name:    "config suppresses dind base",
+			project: "FROM agents-sandbox/runner-base-dind\nRUN echo hi\n",
+			setting: dockerExplicitOff,
+			enabled: false,
+			source:  "config",
+			want:    []string{"docker: off (config); project Dockerfile asks for docker", baseWarn},
+		},
+		{
+			name:    "explicit on wins with content",
+			project: "FROM debian:trixie-slim\n# agents-sandbox:docker\nRUN echo hi\n",
+			setting: dockerExplicitOn,
+			enabled: true,
+			source:  "config",
+		},
+		{
+			name:    "explicit off without content",
+			project: "FROM debian:trixie-slim\nRUN echo hi\n",
+			setting: dockerExplicitOff,
+			enabled: false,
+			source:  "config",
 		},
 		{
 			name:    "earlier-stage marker ignored",
@@ -71,13 +106,40 @@ func TestDiagnoseDockerfile(t *testing.T) {
 			want:    []string{"docker: on (project Dockerfile marker)", markerWarn},
 		},
 		{
+			name:    "earlier-stage marker does not stop the scan",
+			project: "FROM debian:trixie-slim AS x\n# agents-sandbox:docker\nFROM debian:trixie-slim\n# agents-sandbox:dind\nRUN echo hi\n",
+			setting: dockerOff,
+			enabled: true,
+			source:  "Dockerfile marker",
+			want:    []string{"docker: on (project Dockerfile marker)", earlierWarn, markerWarn},
+		},
+		{
+			name:    "final marker does not stop the scan",
+			project: "FROM debian:trixie-slim\n# agents-sandbox:docker\n# Agents-Sandbox:docker\nRUN echo hi\n",
+			setting: dockerOff,
+			enabled: true,
+			source:  "Dockerfile marker",
+			want:    []string{"docker: on (project Dockerfile marker)", nearMissWarn},
+		},
+		{
+			name:    "namespace without docker is not a near miss",
+			project: "FROM debian:trixie-slim\n# agents-sandbox:network\nRUN echo hi\n",
+			setting: dockerOff,
+		},
+		{
+			name:    "backslash comment does not swallow the next marker",
+			project: "FROM debian:trixie-slim\n# note \\\n# agents-sandbox:docker\nRUN echo hi\n",
+			setting: dockerOff,
+			enabled: true,
+			source:  "Dockerfile marker",
+			want:    []string{"docker: on (project Dockerfile marker)"},
+		},
+		{
 			name:    "near miss warns",
 			project: "FROM debian:trixie-slim\n# Agents-Sandbox:docker\nRUN echo hi\n",
 			setting: dockerOff,
 			enabled: false,
-			want: []string{
-				`project Dockerfile has a near-miss docker marker "# Agents-Sandbox:docker"; use "# agents-sandbox:docker"`,
-			},
+			want:    []string{nearMissWarn},
 		},
 		{
 			name:    "heredoc marker is inert",
@@ -119,6 +181,7 @@ func TestNearMissDockerMarker(t *testing.T) {
 		{name: "plain comment", line: "# just a comment", want: false},
 		{name: "not a comment", line: "RUN agents-sandbox:docker", want: false},
 		{name: "other namespace", line: "# other:docker", want: false},
+		{name: "namespace without docker", line: "# agents-sandbox:network", want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,6 +189,33 @@ func TestNearMissDockerMarker(t *testing.T) {
 				t.Errorf("nearMissDockerMarker(%q) = %v, want %v", tc.line, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestEmitProjectDockerfileDiagnostics verifies the on-disk convenience reads
+// the project Dockerfile and routes its diagnostics to the UI's warn channel.
+func TestEmitProjectDockerfileDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	projectFile := filepath.Join(dir, configpaths.DockerFileName)
+	if err := os.WriteFile(
+		projectFile,
+		[]byte("FROM debian:trixie-slim\n# agents-sandbox:dind\nRUN echo hi\n"),
+		0o644,
+	); err != nil {
+		t.Fatalf("write project Dockerfile: %v", err)
+	}
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return &projectDockerfilePaths{dir: dir} }
+	t.Cleanup(func() { configpaths.Get = orig })
+
+	ui := &termio.Mock{}
+	EmitProjectDockerfileDiagnostics(ui, dockerOff)
+
+	joined := strings.Join(ui.WarnCalls, "\n")
+	for _, want := range []string{"docker: on (project Dockerfile marker)", "# agents-sandbox:dind"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("expected a diagnostic mentioning %q, got %v", want, ui.WarnCalls)
+		}
 	}
 }
 

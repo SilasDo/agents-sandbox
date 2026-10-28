@@ -1037,6 +1037,37 @@ func TestDockerExplicit(t *testing.T) {
 	})
 }
 
+// TestConfigDockerExplicitMirrorsResolver pins the Config accessor that
+// runoptions reads (Resolver.Config().DockerExplicit()) to the Resolver one the
+// CLI reads, for both the explicit and non-explicit values.
+func TestConfigDockerExplicitMirrorsResolver(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		value string
+		want  bool
+	}{
+		{name: "explicit", value: "true", want: true},
+		{name: "not explicit", value: "", want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			if tc.value != "" {
+				t.Setenv("AGENTS_SANDBOX_DOCKER", tc.value)
+			}
+			r, err := NewResolver(nil, "")
+			if err != nil {
+				t.Fatalf("NewResolver: %v", err)
+			}
+			if got := r.Config().DockerExplicit(); got != tc.want {
+				t.Errorf("Config().DockerExplicit() = %v, want %v", got, tc.want)
+			}
+			if got := r.DockerExplicit(); got != tc.want {
+				t.Errorf("Resolver.DockerExplicit() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestDindFromEnvAlias verifies AGENTS_SANDBOX_DIND enables docker and is
 // reported as the deprecated source.
 func TestDindFromEnvAlias(t *testing.T) {
