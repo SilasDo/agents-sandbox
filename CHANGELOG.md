@@ -77,6 +77,10 @@ command reports the bare version (e.g. `0.1.0`).
 ### Fixed
 
 - `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
+- An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of
+  a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
+  error, so a malformed profile fails at the config-resolution boundary with a message naming the agent rather than
+  crashing far from its cause (#366).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
@@ -119,6 +123,9 @@ command reports the bare version (e.g. `0.1.0`).
   parsed slug to embed the launcher's 14-character hash, matching `image list`, so a manually loaded single-segment image
   in the private runtime home is neither listed nor removable — and `--force` does not override the ownership refusal
   (#350).
+- Runner image: `prune` now applies the same ownership predicate as `image list` and `image remove`, so it no longer
+  considers — let alone deletes — a manually loaded single-segment image in the private runtime home. The documented
+  "never arbitrary cached images" boundary now holds on every path (#383).
 - Runner image: the recorded agent-version baseline is kept in sync with the runner image — the image's `agent-version`
   label is the authority and the record a cache that follows it, so a stale record can no longer pull a run back to an
   older release — so an accepted agent upgrade no longer reverts to the previous release on a later run, a
@@ -126,6 +133,11 @@ command reports the bare version (e.g. `0.1.0`).
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
 - Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
   a run with no config file; the deprecated `--dind` alias already survived.
+- Agent upgrade check: the launcher-global root lock is no longer held across the release-endpoint request, so one
+  project's egress check no longer blocks unrelated projects (adoption, the runtime-home copy campaign) or makes them
+  silently skip their step. The check reads the cached window under the lock, performs the request with the lock
+  released, and re-checks the window before persisting, so two concurrent checks still record at most one refresh
+  (#334).
 
 ## [0.6.0] - 2026-10-25
 

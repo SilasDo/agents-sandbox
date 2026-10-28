@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
@@ -76,6 +77,54 @@ func TestCreateProjectVMUsesResolvedRef(t *testing.T) {
 	}
 	if got := cfg.Labels[naming.LabelImage]; got != legacyRef {
 		t.Errorf("LabelImage = %q, want %q", got, legacyRef)
+	}
+}
+
+// TestCreateProjectVMIdleTimeout pins the single default: an unset
+// RunOptions.IdleTimeout takes options.DefaultVMIdleTimeout, while a configured
+// value is passed through unchanged.
+func TestCreateProjectVMIdleTimeout(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+
+	tests := []struct {
+		name string
+		opts time.Duration
+		want time.Duration
+	}{
+		{name: "unset uses the options default", opts: 0, want: options.DefaultVMIdleTimeout},
+		{name: "configured value is used as-is", opts: 45 * time.Second, want: 45 * time.Second},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			key := testVMKey()
+			client := &msb.MockMsbClient{}
+			testUI := termio.NewTestMock(t)
+			ui := &testUI
+
+			_, _, err := createProjectVM(
+				context.Background(),
+				client,
+				projectVMName(key),
+				key,
+				key.Slug,
+				image.ImageInfo{
+					DockerTag: "agents-sandbox/runner-test:latest",
+					Ref:       "agents-sandbox/runner-test:latest",
+				},
+				"test-home-vol",
+				t.TempDir(),
+				options.RunOptions{Memory: "1G", IdleTimeout: tc.opts},
+				ui,
+			)
+			if err != nil {
+				t.Fatalf("createProjectVM: %v", err)
+			}
+			cfg := createdProjectVMConfig(t, client, projectVMName(key))
+			if cfg.IdleTimeout != tc.want {
+				t.Errorf("IdleTimeout = %v, want %v", cfg.IdleTimeout, tc.want)
+			}
+		})
 	}
 }
 

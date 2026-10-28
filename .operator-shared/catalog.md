@@ -72,7 +72,7 @@
   - Description: Contract for the on-demand mutation-testing practice (#253): a version-pinned `make mutation` over gomutants (`--changed-since` by default, `FULL=1` unscoped, `ANNOTATIONS=github` for CI inline warnings), never a required `make check`/CI gate but swept by an advisory `mutation` workflow on every code-changing PR (docs filtered by `paths-ignore`; inline annotations, a sticky survivor comment, and the report artifact); each LIVED mutant is killed, deleted, or recorded in source with `// gomutants:disable`.
   - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, the advisory `mutation` CI workflow and its annotation/comment surfaces, or the release-skill verify step.
 - `config-paths-seam.md`
-  - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
+  - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`); the per-agent config-dir accessors return an error for a profile whose config-dir name is not a single path element, and reprovision propagates it at the resolution boundary.
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
 - `test-isolation.md`
   - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `realMsbClient` SDK seams that keep unit tests off the native library, the `WithMockConfigPaths` home redirect, the enforcement tests that derive each package's required set from the import graph, and the rule that seam overrides must be restored so the suite stays idempotent under `-count>1`.
@@ -188,6 +188,9 @@
 - `release-branching.md`
   - Description: Contract for the per-minor release branch `release/<major>.<minor>`: cut at the release commit, carries the line's patch releases, and takes the line's fixes while `main` keeps new work.
   - Read If: Deciding where a release tag or a fix lands, cutting a patch release for a released line, backporting a fix, or changing the release branch name or flow.
+- `vm-idle-timeout-default.md`
+  - Description: Contract for the single VM idle-timeout default: it lives only in `options.DefaultVMIdleTimeout`, the config layer carries `auto-stop-timeout` as-is with no fallback, the VM lifecycle applies the default (required because the SDK treats zero as unlimited), and the documented 10s value is that constant (#365).
+  - Read If: Changing the idle timeout default, `Config.AutoStopTimeout`/`Config.IdleTimeout`, `RunOptions.IdleTimeout`, `runoptions.Build`, or the VM lifecycle's `WithIdleTimeout` wiring.
 
 ### `plans/` - TDD implementation plans
 
