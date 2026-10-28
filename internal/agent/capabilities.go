@@ -139,6 +139,18 @@ func AsWorktreeProvider(a Agent) (WorktreeProvider, bool) {
 // AsUpgradeChecker returns the agent's UpgradeChecker, if it implements one.
 func AsUpgradeChecker(a Agent) (UpgradeChecker, bool) { p, ok := a.(UpgradeChecker); return p, ok }
 
+// LatestVersion resolves a's newest release through its UpgradeChecker. An agent
+// without one has no release to look up and reports an empty version, not an
+// error, so the image build and the upgrade check share this one resolution
+// instead of each wrapping AsUpgradeChecker.
+func LatestVersion(ctx context.Context, a Agent) (string, error) {
+	checker, ok := AsUpgradeChecker(a)
+	if !ok {
+		return "", nil
+	}
+	return checker.LatestVersion(ctx)
+}
+
 // AsSessionStatusProvider returns the agent's SessionStatusProvider, if it
 // implements one.
 func AsSessionStatusProvider(a Agent) (SessionStatusProvider, bool) {

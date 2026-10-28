@@ -84,6 +84,9 @@ command reports the bare version (e.g. `0.1.0`).
   (`PrintList`/`Mode`/`WriteJSON` and the report-mode renderer), and the sandbox/image/volume `Printer`
   implementations plus the prune/compact report JSON DTOs moved to `internal/view`; an import-boundary test
   keeps the separation (#357).
+- Internal: the runner image's agent-version resolution and the agent upgrade check share one release lookup
+  (`agent.LatestVersion`) instead of each wrapping the agent's `UpgradeChecker`, so a change to how a release is resolved
+  (channel gating, caching, error tolerance) lands in one place. The `image`/`vm` test seams are unchanged (#353).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
