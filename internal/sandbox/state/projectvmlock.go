@@ -45,7 +45,10 @@ func ProjectVMLockDir(k Key) string {
 // down the same VM at once. The flock auto-releases on process exit, so a
 // crashed holder never pins the lock. It is not reentrant: a single call path
 // must never take the same key's project-VM lock twice, since flock locks a
-// file description per open.
+// file description per open. The file is shared with ensureProjectVM, which
+// takes it via hostlock.AcquireExclusive and so bypasses the same-process
+// registry: nesting that acquire inside this one hangs on the second flock
+// instead of failing fast.
 //
 // With blocking true the call waits for the lock; with blocking false it
 // returns ok=false and a nil release when another process holds it.

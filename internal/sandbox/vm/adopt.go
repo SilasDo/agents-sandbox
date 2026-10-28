@@ -43,8 +43,9 @@ type IdentityAdoption struct {
 var adoptLockHook func()
 
 // adoptKeysLockedHook is a test seam invoked inside the WithKeyLocks region,
-// after every moved key's per-key locks are held and before the destroy. A test
-// uses it to observe the held locks and their release.
+// after every moved key's per-key locks are held: once before the destroy and
+// again after the state move, so a test can observe the held locks and their
+// release spanning both.
 var adoptKeysLockedHook func()
 
 // renameConfigDir is a seam over os.Rename for the legacy config-directory move.
@@ -446,6 +447,10 @@ func migrateLegacyState(
 			ui.Warnf("left %s in the legacy state directory %s", entry, state.SlugDir(slug))
 		}
 		skipped = append(skipped, sourceSkipped...)
+	}
+
+	if adoptKeysLockedHook != nil {
+		adoptKeysLockedHook()
 	}
 
 	if err := migrateLegacyConfigDirs(identity, ui); err != nil {

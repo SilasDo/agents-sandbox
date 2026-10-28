@@ -176,7 +176,10 @@ func TestAdoptLegacyIdentityReleasesKeyLocksOnDestroyFailure(t *testing.T) {
 	); err == nil {
 		t.Fatal("expected the destroy failure to abort adoption")
 	}
-	if err := state.WithKeyLocks([]state.Key{adoptCheckoutKey()}, func() error { return nil }); err != nil {
+	if err := state.WithKeyLocks(
+		[]state.Key{adoptRepoKey(), adoptCheckoutKey()},
+		func() error { return nil },
+	); err != nil {
 		t.Fatalf("a failed adoption leaked a key lock: %v", err)
 	}
 }

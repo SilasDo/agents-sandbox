@@ -79,7 +79,11 @@ recovery as the only wholesale writer.
    operation and the only place two per-key locks are held at once: it acquires them sorted by `(slug, agent)`
    (home before project-VM within a key) and releases everything on a failed acquire. Identity adoption
    (`vm.AdoptLegacyIdentity`) is its consumer — it holds every moved key's locks across the destroy and the
-   directory move (#333).
+   directory move (#333). The lock set covers per-`(slug, agent)` keys only: the agent-less legacy key
+   (`Key{Slug, Agent: ""}`, whose `state.yaml` the directory move also relocates and whose lock is
+   `locks/<slug>/legacy.lock`, taken by prune's `RemoveHomeState`) is deliberately not locked — no current path
+   writes the agent-less `HomeState`, so the only outcomes are a benign ENOENT or adoption's existing loud
+   arrival failure.
 7. **`--dry-run` side-effect-freedom is spread across call paths** (`vm/run_orchestrate.go:206`, `:313`), not one guard.
    It is now a genuine read-only preview (no image build, volume create, or state write); see
    [dry-run-preview.md](dry-run-preview.md).

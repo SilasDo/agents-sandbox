@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -93,7 +92,7 @@ func TestWithKeyLocksReleasesEarlierKeysOnLaterFailure(t *testing.T) {
 	wantErr := errors.New("mkdir boom")
 	orig := mkdirProjectVMLock
 	mkdirProjectVMLock = func(dir string, mode os.FileMode) error {
-		if strings.Contains(dir, second.Slug) {
+		if dir == ProjectVMLockDir(second) {
 			return wantErr
 		}
 		return os.MkdirAll(dir, mode)
