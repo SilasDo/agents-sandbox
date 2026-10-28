@@ -140,23 +140,5 @@ const (
 	keyNotifyOnError = "notify.on-error"
 )
 
-// configFlagKeys are the config-backed keys that are also exposed as CLI flags.
-// Their env vars use the AGENTS_SANDBOX_ prefix.
-var configFlagKeys = []string{
-	keyCPUs, "memory", "tmp-size", "disk-size", "workspace-quota",
-	keyYes, keyQuiet, "log-level", "agent", KeyDocker, KeyOpenLinks,
-}
-
-// configEnvKeys are all launcher config keys bound to env vars.
-var configEnvKeys = []string{
-	keyCPUs, "memory", "tmp-size", "disk-size", "workspace-quota",
-	keyYes, keyQuiet, "log-level",
-	keyAutoPruneAge, keyManualPruneAge,
-	keyAutoStopOnActiveSessions, keyAutoStopTimeout, keyAutoStopMaxSessionRetries,
-	keyNetworkProfile, keyNetworkDNSServers,
-	keyAgent,
-	KeyDocker, KeyDind,
-	keyUpgradeMode, keyUpgradeInterval, keyUpgradeChannel,
-	keyProvisionHostConfig,
-	KeyOpenLinks,
-}
+// The env-var and CLI-flag key sets (configEnvKeys, configBindKeys) are derived
+// from the Config struct tags in configkeys.go.

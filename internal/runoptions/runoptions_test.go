@@ -1055,34 +1055,20 @@ func TestBuildNotifyConfigOnlyWarnsForInteractiveAgent(t *testing.T) {
 	}
 }
 
-// --dry-run auto-enables --dry-run-vm so a dry run exercises the full VM boot.
-func TestBuildDryRunAutoEnablesDryRunVM(t *testing.T) {
-	ui := &termio.Mock{}
-	r := viperconfig.NewResolverWithConfig(viperconfig.Config{})
-	cmd := newRunCommand()
-	if err := cmd.Flags().Set(FlagDryRun, "true"); err != nil {
-		t.Fatalf("set dry-run: %v", err)
-	}
-
-	opts, err := Build(r.Config(), cmd, ui)
+func TestBuildLeavesDryRunToTheMode(t *testing.T) {
+	// Build no longer carries DryRun/DryRunVM; the mode is resolved separately.
+	cmd := &cobra.Command{}
+	cmd.Flags().Bool(FlagDryRun, false, "")
+	cmd.Flags().Bool(FlagDryRunVM, false, "")
+	_ = cmd.Flags().Set(FlagDryRun, "true")
+	ui := termio.NewTestMock(t)
+	opts, err := Build(nil, cmd, &ui)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.DryRun {
-		t.Error("DryRun = false; want true")
-	}
-	if !opts.DryRunVM {
-		t.Error("DryRunVM = false; want auto-enabled true by --dry-run")
-	}
-	found := false
-	for _, v := range ui.VerboseCalls {
-		if strings.Contains(v, "dry-run-vm: auto-enabled") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected a verbose note about auto-enabling dry-run-vm, got %v", ui.VerboseCalls)
+	_ = opts // RunOptions has no dry-run fields left to assert; this pins that Build no longer reads them
+	if got := ResolveMode(cmd); got != options.ModePreview {
+		t.Errorf("ResolveMode() = %v, want ModePreview", got)
 	}
 }
 
@@ -1277,5 +1263,36 @@ func TestBuildNotifyEmptyFlagIgnored(t *testing.T) {
 	}
 	if opts.Notify.Audio != notify.AudioSystem {
 		t.Errorf("Notify.Audio = %q; want the env override to survive an empty flag", opts.Notify.Audio)
+	}
+}
+
+// ResolveMode maps the dry-run flag pair to the execution mode, with --dry-run
+// subsuming --dry-run-vm.
+func TestResolveModeFromFlags(t *testing.T) {
+	cases := []struct {
+		name     string
+		dryRun   bool
+		dryRunVM bool
+		want     options.Mode
+	}{
+		{"full", false, false, options.ModeRun},
+		{"skip vm", false, true, options.ModeSkipVM},
+		{"preview subsumes skip vm", true, true, options.ModePreview},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(FlagDryRun, false, "")
+			cmd.Flags().Bool(FlagDryRunVM, false, "")
+			if tc.dryRun {
+				_ = cmd.Flags().Set(FlagDryRun, "true")
+			}
+			if tc.dryRunVM {
+				_ = cmd.Flags().Set(FlagDryRunVM, "true")
+			}
+			if got := ResolveMode(cmd); got != tc.want {
+				t.Errorf("ResolveMode() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

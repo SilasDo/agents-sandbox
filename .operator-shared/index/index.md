@@ -37,7 +37,7 @@ read_if: Navigating the codebase.
 - `commands_system.go` — doctor/list/config/home/agent/build/dockerfile/image/volume/sandbox/prune commands, including `config paths` (the config layers in precedence order, driven by `viperconfig.ConfigLayers`).
 - `commands_inspect.go` — `volume inspect`/`image inspect`/`sandbox inspect` command builders.
 - `commands_storage.go` — `df` command and the `storage` group alias (`storage df`/`storage prune`).
-- `list_output.go`, `inspect_output.go`, `prune_output.go`, `storage_output.go` — shared table/JSON/quiet list rendering, single-object inspect rendering, prune report JSON, and the msb-shaped `df` report.
+- `inspect_output.go`, `storage_output.go` — single-object inspect rendering and the msb-shaped `df` report.
 - `cli_storage_test.go` — CLI tests for `df` (table/JSON/verbose/quiet/degradation) and the `storage` group.
 - `constants.go`, `tree.go` — command name/flag constants and `tree` output.
 - `cli_*_test.go` — Extensive CLI integration tests (one per command/area).
@@ -46,7 +46,7 @@ read_if: Navigating the codebase.
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + fsync + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `cliout/` — Output rendering: the generic list/JSON rendering core (`PrintList`/`Mode`/`WriteJSON`) plus the domain printers for list/inspect/prune/`df`.
+- `cliout/` — Output rendering core, domain-free: the generic list/JSON rendering (`PrintList`/`Mode`/`WriteJSON`) and the report-mode renderer (`RenderPruneReport`). A `boundary_test.go` pins the no-domain-import rule; the domain printers live in `internal/view` (see `specs/cliout-package-boundary.md`).
 - `configmerge/` — Merge config with precedence.
 - `configpaths/` — Config/home path resolution and guards, plus the shared config-file discovery (`FindConfigFile`, the single extension order) that both config loaders call.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
@@ -60,6 +60,7 @@ read_if: Navigating the codebase.
 - `termio/` — Terminal UI (printer, table, prompt, spinner, ansi, levels).
 - `testutil/` — Test helpers (mocks, testgit) and the test-isolation contract test (`isolation_contract_test.go`).
 - `upgrade/` — Self-upgrade (incl. Homebrew).
+- `view/` — Domain-shaped output renderers for the launcher (#357): `SandboxPrinter`/`ImagePrinter`/`VolumePrinter` (the `cliout.Printer` implementations, plus digest truncation and the volume SIZE-column rules) and the prune/compact report JSON DTOs. Keeps `cliout` domain-free (see `specs/cliout-package-boundary.md`).
 - `viperconfig/` — Viper-based launcher config: `Config`/`Resolver`, layer discovery (`ConfigLayers`, the six-layer precedence list that drives both `NewResolver`'s merge order and the `config paths` display), env/flag binding, decode hooks, and validation. Split across focused files (`config.go`, `load.go`, `env.go`, `flags.go`, `docker.go`, `decode.go`, `validate.go`, `accessors.go`).
 - `runoptions/` — The `*cobra.Command`-driven run/shell option resolution (`Build`): flags, agent, notify, network, sizes, and mounts combined with the resolved `viperconfig.Config` into `options.RunOptions`. Extracted from `viperconfig` so the config-loading contract and the session-configuration contract change independently (#356). `ResolveDockerSetting` is shared with the build command's `resolveBuildDockerSetting` so the run and build paths cannot resolve docker/dind differently (#363).
 - `yamlfmt/` — YAML formatting.

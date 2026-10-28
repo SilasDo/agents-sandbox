@@ -16,15 +16,11 @@ import (
 // pending image upgrade.
 var errUpgradeQuit = errors.New("agent upgrade cancelled")
 
-// agentLatestVersion returns the newest release version for the agent via its
-// own UpgradeChecker.
-var agentLatestVersion = func(ctx context.Context, a agent.Agent) (string, error) {
-	checker, ok := agent.AsUpgradeChecker(a)
-	if !ok {
-		return "", nil
-	}
-	return checker.LatestVersion(ctx)
-}
+// agentLatestVersion resolves an agent's newest release for the upgrade check.
+// It is the same resolution the image build uses for a deferred version
+// (agent.LatestVersion), so a change to how a release is resolved lands in one
+// place; the alias keeps the lookup injectable, so no test hits the network.
+var agentLatestVersion = agent.LatestVersion
 
 // SetAgentLatestVersion replaces the agent-latest-version seam and returns the
 // previous value. Tests use it to keep the upgrade check off the network.

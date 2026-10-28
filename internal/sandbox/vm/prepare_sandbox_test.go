@@ -104,7 +104,7 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 	})
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -296,7 +296,7 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestPrepareSandboxRunsStartupHook(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -489,7 +489,7 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -554,6 +554,7 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 	if _, err := PrepareSandbox(
 		context.Background(),
 		options.RunOptions{Agent: "opencode"},
+		false,
 		&ui,
 	); !errors.Is(
 		err,
@@ -652,7 +653,7 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 		return "", nil
 	}
 
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox() error = %v, want success despite a corrupt root state", err)
 	}
@@ -791,7 +792,7 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 		"/home/dev/.m2": {Source: filepath.Join(t.TempDir(), "m2")},
 	}
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", Mounts: mnts}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", Mounts: mnts}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -874,7 +875,7 @@ func TestPrepareSandboxRecordsBakedAgentVersion(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -979,7 +980,7 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), opts, &ui)
+	sess, err := PrepareSandbox(context.Background(), opts, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}

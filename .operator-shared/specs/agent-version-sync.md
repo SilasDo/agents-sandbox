@@ -1,6 +1,6 @@
 ---
 description: Contract for keeping the per-project `HomeState.agent_version` baseline in sync with the agent release actually baked into the runner image: the image label is the authority, `agent_version` is a cache, the image-ensuring paths are the writers of record, and recovery reconciles a disagreeing cache, not only an empty one.
-read_if: Changing `resolveBuildVersion`, `recordImageProvenance`, `recoverAgentVersion`, `PrepareSandbox`'s version handling, `image.EnsureImage`/`image.Build`/`ImageInfo`, the `agent-version` image label, or `--agent-version`; diagnosing a run that silently rebuilds the runner image to an older agent release than it already holds, a baseline that stays empty after deletion, or an accepted upgrade (e.g. opencode2) that reverts on the next run.
+read_if: Changing `resolveBuildVersion`, `recordImageProvenance`, `recoverAgentVersion`, `PrepareSandbox`'s version handling, the release resolution (`agent.LatestVersion`, `image.resolveAgentVersion`, `vm.agentLatestVersion`), `image.EnsureImage`/`image.Build`/`ImageInfo`, the `agent-version` image label, or `--agent-version`; diagnosing a run that silently rebuilds the runner image to an older agent release than it already holds, a baseline that stays empty after deletion, or an accepted upgrade (e.g. opencode2) that reverts on the next run.
 ---
 
 # Agent-version baseline synchronization
@@ -30,6 +30,14 @@ recovery, while a fresh or repaired state deliberately leaves the field empty (`
 and `claude-code` implement `VersionProvider` and are unaffected on that axis.
 
 ## Contract
+
+### Release resolution
+
+- The agent's newest release resolves in one place, `agent.LatestVersion` (the agent's `UpgradeChecker` capability, empty
+  for an agent that lacks one): `image.resolveAgentVersion` adds only the requested-version short-circuit on top of it,
+  and `vm.agentLatestVersion` aliases the same function for the upgrade check. The two seam vars stay separate on purpose
+  — no single seam is reachable from every entry path (`build`/`image build` and the `volume` ops call `image.EnsureImage`
+  with no `vm` layer) and `cmd`'s fail-fast test isolation installs the `vm` seam — so do not collapse them into one.
 
 ### Authority and cache
 

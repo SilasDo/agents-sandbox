@@ -267,17 +267,18 @@ func TestRestartDaemonsNoProvider(t *testing.T) {
 	}
 }
 
-// TestEnsureProjectVMDryRunVM covers the DryRunVM early-return branch.
-func TestEnsureProjectVMDryRunVM(t *testing.T) {
+// TestEnsureProjectVMSkipVM covers the skip-VM early-return branch.
+func TestEnsureProjectVMSkipVM(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	sb, boot, err := ensureProjectVM(
 		context.Background(),
-		options.RunOptions{DryRunVM: true},
+		options.RunOptions{},
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag"},
 		"vol",
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		true,
 		&ui,
 	)
 	if err != nil {
@@ -308,6 +309,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {

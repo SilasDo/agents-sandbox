@@ -40,9 +40,7 @@ type RunOptions struct {
 	// Docker is the resolved docker capability: whether the tool's Docker
 	// engine block is baked into the runner image and whether that value was
 	// set explicitly.
-	Docker   DockerSetting
-	DryRun   bool
-	DryRunVM bool
+	Docker DockerSetting
 	// WorkspaceQuota is the guest-write quota for the /workspace bind mount.
 	WorkspaceQuota string
 	// Recreate forces a project-VM rebuild on this invocation. It is set by

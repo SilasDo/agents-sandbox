@@ -20,6 +20,7 @@ import (
 	sandbox "github.com/inoio/agents-sandbox/internal/sandbox/vm"
 	"github.com/inoio/agents-sandbox/internal/sandbox/volume"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/view"
 )
 
 type volumeOpFunc func(context.Context, state.Key, string, image.ImageInfo, bool, bool, termio.UI) error
@@ -191,7 +192,7 @@ func buildListCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cliout.PrintList(ui, mode, sandboxes, "No sandboxes found.", cliout.SandboxPrinter{})
+			return cliout.PrintList(ui, mode, sandboxes, "No sandboxes found.", view.SandboxPrinter{})
 		},
 	}
 	cmd.Flags().BoolVar(&namesOnly, pFlagNames, false, "Print only sandbox names")
@@ -363,7 +364,7 @@ func buildImageCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cliout.PrintList(ui, mode, images, "No images found.", cliout.ImagePrinter{})
+			return cliout.PrintList(ui, mode, images, "No images found.", view.ImagePrinter{})
 		},
 	}
 	listCmd.Flags().StringVar(&format, flagFormat, "", "Output format (json)")
@@ -417,7 +418,7 @@ func buildVolumeCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return cliout.PrintList(ui, mode, volumes, "No volumes found.", cliout.VolumePrinter{})
+			return cliout.PrintList(ui, mode, volumes, "No volumes found.", view.VolumePrinter{})
 		},
 	}
 	listCmd.Flags().StringVar(&format, flagFormat, "", "Output format (json)")
@@ -517,7 +518,7 @@ func buildPruneCmd(ui termio.UI) *cobra.Command {
 			if report != nil {
 				cliout.RenderPruneReport(ui, mode,
 					func() { pruning.RenderPruneSummary(ui, report, dryRun) },
-					cliout.NewPruneReportJSON(report, dryRun))
+					view.NewPruneReportJSON(report, dryRun))
 			}
 			return pruneErr
 		},
@@ -534,7 +535,7 @@ func buildImagePruneCmd(ui termio.UI) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runGroupPrune(cmd, ui, pruning.PruneImages,
 				func(report pruning.ImageReport, dryRun bool) { pruning.RenderImageReport(ui, report, dryRun) },
-				func(report pruning.ImageReport, dryRun bool) any { return cliout.NewImageReportJSON(report, dryRun) })
+				func(report pruning.ImageReport, dryRun bool) any { return view.NewImageReportJSON(report, dryRun) })
 		},
 	}
 	setPruneFlags(cmd)
@@ -552,7 +553,7 @@ func buildVolumePruneCmd(ui termio.UI) *cobra.Command {
 				ui,
 				pruning.PruneVolumes,
 				func(report pruning.VolumeReport, dryRun bool) { pruning.RenderVolumeReport(ui, report, dryRun) },
-				func(report pruning.VolumeReport, dryRun bool) any { return cliout.NewVolumeReportJSON(report, dryRun) },
+				func(report pruning.VolumeReport, dryRun bool) any { return view.NewVolumeReportJSON(report, dryRun) },
 			)
 		},
 	}
@@ -569,7 +570,7 @@ func buildSandboxPruneCmd(ui termio.UI) *cobra.Command {
 			return runGroupPrune(cmd, ui, pruning.PruneSandboxes,
 				func(report pruning.SandboxReport, dryRun bool) { pruning.RenderSandboxReport(ui, report, dryRun) },
 				func(report pruning.SandboxReport, dryRun bool) any {
-					return cliout.NewSandboxReportJSON(report, dryRun)
+					return view.NewSandboxReportJSON(report, dryRun)
 				})
 		},
 	}
