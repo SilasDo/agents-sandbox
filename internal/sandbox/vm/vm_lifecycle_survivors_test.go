@@ -173,6 +173,7 @@ func TestLifecycleSpinnerIsFinishedOnPreLockResolution(t *testing.T) {
 				"/workspace",
 				testVMKey(),
 				testVMKey().Slug,
+				false,
 				&ui,
 			)
 			if (err != nil) != tc.wantErr {

@@ -87,6 +87,9 @@ command reports the bare version (e.g. `0.1.0`).
   present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
   with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
   `docs/runner-image.md`.
+- `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
+  (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
+  `dry-run-vm: auto-enabled` verbose line (#344).
 
 ### Fixed
 
@@ -153,6 +156,8 @@ command reports the bare version (e.g. `0.1.0`).
   record the release they bake. Fixes opencode2, whose image has no in-VM version probe.
 - Docker: `--docker` is no longer dropped when no launcher config resolves (flag-only runs), so the flag takes effect on
   a run with no config file; the deprecated `--dind` alias already survived.
+- VM reconfiguration: the per-project VM creation lock now also covers a config-change VM recreate's teardown, so a
+  concurrent run cannot race the destroy while a new create is starting (#397).
 - Agent upgrade check: the launcher-global root lock is no longer held across the release-endpoint request, so one
   project's egress check no longer blocks unrelated projects (adoption, the runtime-home copy campaign) or makes them
   silently skip their step. The check reads the cached window under the lock, performs the request with the lock
@@ -346,8 +351,8 @@ command reports the bare version (e.g. `0.1.0`).
 - `--dry-run` is now a read-only preview. It reports the agent version (or that the version resolves at build time),
   whether the runner image would build (with the same reasons a real build logs) or be reused, and whether the home
   volume would be created or reused — without building the runner image, creating a home volume, writing project state,
-  starting a sandbox, attaching, or making any network request. The `volume migrate`/`reset`/`edit` `--dry-run`
-  operations likewise no longer ensure the image.
+  starting a sandbox, attaching, or making any network request (`shell --dry-run` still runs its prerequisite check
+  first). The `volume migrate`/`reset`/`edit` `--dry-run` operations likewise no longer ensure the image.
 - `--rebuild` on `run`/`shell` now only forces a clean rebuild; it no longer suppresses the agent upgrade check. A
   pinned `--agent-version` is ignored for a user-provided agent, matching the documented contract.
 - Bare checkouts (a bare `.git` with worktrees inside it) now read project config — `.agents-sandbox/Dockerfile`,

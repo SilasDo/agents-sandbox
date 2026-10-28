@@ -75,6 +75,8 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 
 Start a sandbox VM and open an interactive shell. Useful for debugging the sandbox environment. Shares the common run/shell flags with `run`.
 
+With `--dry-run`, `shell` builds no image, creates no volume, writes no state, starts no VM, and makes no network request — but unlike `run` it still runs the prerequisite check (`doctor`) first, which may install the microsandbox runtime.
+
 ```console
 agents-sandbox shell
 agents-sandbox shell -w bugfix-fix-thing

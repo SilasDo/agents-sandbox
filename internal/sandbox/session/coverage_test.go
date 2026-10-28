@@ -155,7 +155,7 @@ func TestRunServeOnlyClientLeaseFailureWarns(t *testing.T) {
 	ui := &termio.Mock{}
 	sb := msb.NewMockSandbox(msb.SandboxOpts{})
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb, key: key}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -164,7 +164,7 @@ func TestRunServeOnlyClientLeaseFailureWarns(t *testing.T) {
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
-		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+		done <- Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, options.ModeRun, ui)
 	}()
 	cancel()
 
@@ -214,7 +214,7 @@ func TestRunUsesSessionKeyForLease(t *testing.T) {
 		"sleep 1h": msb.NewTestResult(true, 0, "", "", nil),
 	}
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb, target: "/workspace", key: key}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -222,6 +222,7 @@ func TestRunUsesSessionKeyForLease(t *testing.T) {
 	if err := Run(
 		context.Background(),
 		options.RunOptions{Agent: "opencode", ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
 		ui,
 	); err != nil {
 		t.Fatalf("Run: %v", err)
@@ -248,7 +249,7 @@ func TestRunServeOnlyReturnsDeadlineExceeded(t *testing.T) {
 	ui := &termio.Mock{}
 	sb := msb.NewMockSandbox(msb.SandboxOpts{})
 	orig := prepareSandbox
-	prepareSandbox = func(context.Context, options.RunOptions, termio.UI) (preparedSandbox, error) {
+	prepareSandbox = func(context.Context, options.RunOptions, bool, termio.UI) (preparedSandbox, error) {
 		return &fakePrepared{sb: sb, serveHostPort: 4096}, nil
 	}
 	defer func() { prepareSandbox = orig }()
@@ -256,7 +257,12 @@ func TestRunServeOnlyReturnsDeadlineExceeded(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(100*time.Millisecond))
 	defer cancel()
 
-	err := Run(ctx, options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)}, ui)
+	err := Run(
+		ctx,
+		options.RunOptions{ServeOnly: true, ReapPolicy: options.NewReapPolicy(true, 5)},
+		options.ModeRun,
+		ui,
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want context.DeadlineExceeded", err)
 	}
@@ -285,5 +291,28 @@ func TestRunAttachClientLeaseFailureWarns(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected client lease warning, got %v", ui.WarnCalls)
+	}
+}
+
+// --- prepareSandbox: the real seam delegates to sandbox.PrepareSandbox ---
+
+// TestPrepareSandboxSeamDelegatesToVM calls the real, unstubbed prepareSandbox
+// so its delegation to sandbox.PrepareSandbox is covered. An unknown agent name
+// makes the real path fail deterministically before it can touch host state,
+// the mocked config paths, or the fail-fast msb client.
+func TestPrepareSandboxSeamDelegatesToVM(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	_, err := prepareSandbox(
+		context.Background(),
+		options.RunOptions{Agent: "no-such-agent"},
+		false,
+		&termio.Mock{},
+	)
+	if err == nil {
+		t.Fatal("expected the real PrepareSandbox to error for an unknown agent")
+	}
+	if !strings.Contains(err.Error(), "unknown agent") {
+		t.Fatalf("error = %v, want an unknown-agent error from the real path", err)
 	}
 }

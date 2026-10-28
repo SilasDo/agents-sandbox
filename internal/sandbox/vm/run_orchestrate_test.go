@@ -20,10 +20,10 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
-// TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer pins that --dry-run
-// (documented as side-effect-free) never runs the interactive copy offer, which
-// could prompt and copy multi-gigabyte volumes. DryRunVM is unaffected.
-func TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer(t *testing.T) {
+// TestPrepareHomeVolumeAlwaysOffersRuntimeHomeMigration pins that the hub offers
+// the legacy home copy on every prepare path (the --dry-run gate is gone; a
+// preview never reaches the hub).
+func TestPrepareHomeVolumeAlwaysOffersRuntimeHomeMigration(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	msb.WithMsbMock(t, &msb.MockMsbClient{
@@ -37,7 +37,7 @@ func TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer(t *testing.T) {
 		t.Fatalf("seedHomeState: %v", err)
 	}
 
-	var offered bool
+	offered := false
 	origOffer := offerRuntimeHomeMigration
 	offerRuntimeHomeMigration = func(_ context.Context, _ msb.Client, _ termio.UI) error {
 		offered = true
@@ -47,57 +47,15 @@ func TestPrepareHomeVolumeDryRunSkipsRuntimeHomeMigrationOffer(t *testing.T) {
 
 	ui := termio.NewTestMock(t)
 	if _, _, _, _, err := prepareHomeVolume(
-		context.Background(),
-		k,
-		sandboximage.ImageInfo{},
-		options.RunOptions{DryRun: true},
-		state.Fingerprints{},
-		&ui,
-	); err != nil {
-		t.Fatalf("prepareHomeVolume() error = %v", err)
-	}
-	if offered {
-		t.Error("prepareHomeVolume ran the migration offer under --dry-run")
-	}
-}
-
-// TestPrepareHomeVolumeDryRunVMStillOffers verifies the guard is scoped to
-// --dry-run only: DryRunVM keeps the offer, since it still sets up the volume.
-func TestPrepareHomeVolumeDryRunVMStillOffers(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-
-	msb.WithMsbMock(t, &msb.MockMsbClient{
-		GetVolumeFn: func(_ context.Context, name string) (msb.VolumeHandle, error) {
-			return &msb.MockVolumeHandle{Name_: name}, nil
-		},
-	})
-
-	k := state.Key{Slug: "slug", Agent: "opencode"}
-	if err := seedHomeState(k, state.HomeState{HomeVolume: "home-vol", ImageDigest: "sha256:abc123"}); err != nil {
-		t.Fatalf("seedHomeState: %v", err)
-	}
-
-	var offered bool
-	origOffer := offerRuntimeHomeMigration
-	offerRuntimeHomeMigration = func(_ context.Context, _ msb.Client, _ termio.UI) error {
-		offered = true
-		return nil
-	}
-	t.Cleanup(func() { offerRuntimeHomeMigration = origOffer })
-
-	ui := termio.NewTestMock(t)
-	if _, _, _, _, err := prepareHomeVolume(
-		context.Background(),
-		k,
-		sandboximage.ImageInfo{},
-		options.RunOptions{DryRunVM: true},
+		context.Background(), k, sandboximage.ImageInfo{},
+		true, /* skipVM */
 		state.Fingerprints{},
 		&ui,
 	); err != nil {
 		t.Fatalf("prepareHomeVolume() error = %v", err)
 	}
 	if !offered {
-		t.Error("prepareHomeVolume skipped the migration offer under --dry-run-vm, want it offered")
+		t.Error("the migration offer must run on the prepare path")
 	}
 }
 
@@ -121,7 +79,7 @@ func TestPrepareHomeVolumeOfferErrorPropagates(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{},
-		options.RunOptions{Agent: "opencode"},
+		false,
 		state.Fingerprints{},
 		&ui,
 	)
@@ -265,7 +223,7 @@ func TestPrepareHomeVolumeRecoversLostStateFromLiveVM(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{Digest: "sha256:def"},
-		options.RunOptions{Agent: "opencode"},
+		false,
 		state.Fingerprints{},
 		&ui,
 	)
@@ -376,7 +334,7 @@ func TestPrepareSandboxResolveWorkspaceDirError(t *testing.T) {
 	}
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected error when the workspace directory cannot be resolved")
 	}
 }
@@ -420,7 +378,7 @@ func TestPrepareHomeVolumeRecoversPersistedAdoptionVolume(t *testing.T) {
 		context.Background(),
 		k,
 		sandboximage.ImageInfo{Digest: "sha256:def"},
-		options.RunOptions{Agent: "opencode"},
+		false,
 		state.Fingerprints{},
 		&ui,
 	)

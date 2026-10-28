@@ -8,7 +8,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
-	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/sandbox/volume"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -39,7 +38,7 @@ func TestApplyReconfigHomeActionReturnsNewVolume(t *testing.T) {
 		key,
 		oldVolume,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
-		options.RunOptions{},
+		false,
 		decision,
 		&ui,
 	)
