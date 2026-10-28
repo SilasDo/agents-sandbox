@@ -76,6 +76,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of
+  a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
+  error, so a malformed profile fails at the config-resolution boundary with a message naming the agent rather than
+  crashing far from its cause (#366).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a

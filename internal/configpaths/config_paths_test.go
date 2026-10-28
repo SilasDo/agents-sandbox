@@ -1,6 +1,7 @@
 package configpaths
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -126,7 +127,10 @@ func TestUserAgentConfigDir(t *testing.T) {
 	WithRealConfigPaths(t)
 	t.Setenv("HOME", t.TempDir())
 	a, _ := agent.Lookup("opencode")
-	got := Get().UserAgentConfigDir(a)
+	got, err := Get().UserAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("UserAgentConfigDir(opencode) error = %v", err)
+	}
 	want := filepath.Join(Get().UserConfigDir(), a.ConfigDirName())
 	if got != want {
 		t.Errorf("UserAgentConfigDir(opencode) = %q, want %q", got, want)
@@ -141,15 +145,23 @@ func TestRealAgentConfigDirCandidates(t *testing.T) {
 		"/xdg/config/agents-sandbox/opencode2",
 		"/xdg/config/agents-sandbox/opencode",
 	}
-	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
-		t.Errorf("user candidates = %v, want %v", got, want)
+	userCandidates, err := Get().UserAgentConfigDirCandidates(oc2)
+	if err != nil {
+		t.Fatalf("UserAgentConfigDirCandidates error = %v", err)
+	}
+	if !slices.Equal(userCandidates, want) {
+		t.Errorf("user candidates = %v, want %v", userCandidates, want)
 	}
 	wantProject := []string{
 		filepath.Join(Get().ProjectConfigDirAbs(), "opencode2"),
 		filepath.Join(Get().ProjectConfigDirAbs(), "opencode"),
 	}
-	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
-		t.Errorf("project candidates = %v, want %v", got, wantProject)
+	projectCandidates, err := Get().ProjectAgentConfigDirCandidates(oc2)
+	if err != nil {
+		t.Fatalf("ProjectAgentConfigDirCandidates error = %v", err)
+	}
+	if !slices.Equal(projectCandidates, wantProject) {
+		t.Errorf("project candidates = %v, want %v", projectCandidates, wantProject)
 	}
 }
 
@@ -170,13 +182,12 @@ func TestProjectDirsAndFiles(t *testing.T) {
 	cfgPaths := Get()
 	a, _ := agent.Lookup("opencode")
 
-	if got := cfgPaths.ProjectAgentConfigDir(
-		a,
-	); got != filepath.Join(
-		cfgPaths.ProjectConfigDirAbs(),
-		a.ConfigDirName(),
-	) {
-		t.Errorf("ProjectAgentConfigDir() = %q", got)
+	projectAgentDir, err := cfgPaths.ProjectAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("ProjectAgentConfigDir() error = %v", err)
+	}
+	if projectAgentDir != filepath.Join(cfgPaths.ProjectConfigDirAbs(), a.ConfigDirName()) {
+		t.Errorf("ProjectAgentConfigDir() = %q", projectAgentDir)
 	}
 	if got := cfgPaths.ProjectEnvFile(); got != filepath.Join(projectConfigDir, EnvFileName) {
 		t.Errorf("ProjectEnvFile() = %q", got)
@@ -238,7 +249,10 @@ func TestFailFastUserEnvSecretYAMLFilePanics(t *testing.T) {
 func TestMockUserAgentConfigDir(t *testing.T) {
 	WithMockConfigPaths(t)
 	a, _ := agent.Lookup("opencode")
-	got := Get().UserAgentConfigDir(a)
+	got, err := Get().UserAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("mock UserAgentConfigDir(opencode) error = %v", err)
+	}
 	want := filepath.Join(Get().UserConfigDir(), a.ConfigDirName())
 	if got != want {
 		t.Errorf("mock UserAgentConfigDir(opencode) = %q, want %q", got, want)
@@ -248,7 +262,10 @@ func TestMockUserAgentConfigDir(t *testing.T) {
 func TestMockProjectAgentConfigDir(t *testing.T) {
 	WithMockConfigPaths(t)
 	a, _ := agent.Lookup("opencode")
-	got := Get().ProjectAgentConfigDir(a)
+	got, err := Get().ProjectAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("mock ProjectAgentConfigDir(opencode) error = %v", err)
+	}
 	want := filepath.Join(Get().ProjectConfigDir(), a.ConfigDirName())
 	if got != want {
 		t.Errorf("mock ProjectAgentConfigDir(opencode) = %q, want %q", got, want)
@@ -268,13 +285,96 @@ func TestFailFastProjectAgentConfigDirPanics(t *testing.T) {
 }
 
 func TestValidConfigDirName(t *testing.T) {
-	if got := validConfigDirName("opencode2", "opencode2"); got != "opencode2" {
+	got, err := validConfigDirName("opencode2", "opencode2")
+	if err != nil {
+		t.Fatalf("validConfigDirName(valid) error = %v", err)
+	}
+	if got != "opencode2" {
 		t.Errorf("validConfigDirName(valid) = %q, want opencode2", got)
 	}
 	for _, bad := range []string{"", ".", "..", "/", "//", "./", "a/b", "a/../b", "/abs", "../sibling", "foo/"} {
 		t.Run("reject "+bad, func(t *testing.T) {
-			assertPanics(t, func() { validConfigDirName("test", bad) })
+			if _, err := validConfigDirName("test", bad); err == nil {
+				t.Errorf("validConfigDirName(%q) error = nil, want error", bad)
+			}
 		})
+	}
+}
+
+// invalidConfigDirAgent is a profile whose config-dir name is not a single
+// clean path element, used to exercise the accessors' error path.
+type invalidConfigDirAgent struct{}
+
+func (invalidConfigDirAgent) Name() string               { return "bad-profile" }
+func (invalidConfigDirAgent) ConfigDirName() string      { return "../escape" }
+func (invalidConfigDirAgent) ImageSpec() agent.ImageSpec { return agent.ImageSpec{} }
+
+// invalidAliasConfigDirAgent has a valid primary dir but a bad alias, so alias
+// name validation is exercised through the candidate accessors.
+type invalidAliasConfigDirAgent struct{ invalidConfigDirAgent }
+
+func (invalidAliasConfigDirAgent) ConfigDirAliases() []string { return []string{"ok", ".."} }
+
+func TestAgentConfigDirAccessorsErrorOnInvalidName(t *testing.T) {
+	WithRealConfigPaths(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	bad := invalidConfigDirAgent{}
+
+	tests := []struct {
+		name string
+		call func() error
+	}{
+		{"UserAgentConfigDir", func() error { _, err := Get().UserAgentConfigDir(bad); return err }},
+		{"UserAgentConfigDirCandidates", func() error {
+			_, err := Get().UserAgentConfigDirCandidates(bad)
+			return err
+		}},
+		{"ProjectAgentConfigDir", func() error { _, err := Get().ProjectAgentConfigDir(bad); return err }},
+		{"ProjectAgentConfigDirCandidates", func() error {
+			_, err := Get().ProjectAgentConfigDirCandidates(bad)
+			return err
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err == nil {
+				t.Fatalf("%s with an invalid config-dir name = nil error, want error", tc.name)
+			}
+		})
+	}
+}
+
+func TestAgentConfigDirCandidatesErrorOnInvalidAlias(t *testing.T) {
+	WithRealConfigPaths(t)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	if _, err := Get().UserAgentConfigDirCandidates(invalidAliasConfigDirAgent{}); err == nil {
+		t.Fatal("UserAgentConfigDirCandidates with an invalid alias = nil error, want error")
+	}
+}
+
+func TestMustDirPanicsOnErrorAndReturnsValue(t *testing.T) {
+	if got := MustDir("/x/opencode", nil); got != "/x/opencode" {
+		t.Errorf("MustDir(valid) = %q, want /x/opencode", got)
+	}
+	assertPanics(t, func() { MustDir("", errors.New("invalid config dir name")) })
+}
+
+func TestMustDirsPanicsOnErrorAndReturnsValue(t *testing.T) {
+	dirs := []string{"/x/opencode"}
+	if got := MustDirs(dirs, nil); !slices.Equal(got, dirs) {
+		t.Errorf("MustDirs(valid) = %v, want %v", got, dirs)
+	}
+	assertPanics(t, func() { MustDirs(nil, errors.New("invalid config dir name")) })
+}
+
+func TestMockAgentConfigDirAccessorsErrorOnInvalidName(t *testing.T) {
+	WithMockConfigPaths(t)
+	bad := invalidConfigDirAgent{}
+	if _, err := Get().UserAgentConfigDir(bad); err == nil {
+		t.Error("mock UserAgentConfigDir with an invalid name = nil error, want error")
+	}
+	if _, err := Get().ProjectAgentConfigDir(bad); err == nil {
+		t.Error("mock ProjectAgentConfigDir with an invalid name = nil error, want error")
 	}
 }
 

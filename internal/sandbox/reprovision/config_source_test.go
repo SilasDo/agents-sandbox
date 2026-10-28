@@ -1,6 +1,7 @@
 package reprovision
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,21 +36,12 @@ func TestDescribeConfigScopes(t *testing.T) {
 // keeps ResolveConfigSource from indexing an empty candidate list.
 type emptyCandidatesConfigPaths struct{ configpaths.ConfigPaths }
 
-func (emptyCandidatesConfigPaths) UserAgentConfigDirCandidates(agent.Agent) []string {
-	return nil
+func (emptyCandidatesConfigPaths) UserAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return nil, nil
 }
 
-func (emptyCandidatesConfigPaths) ProjectAgentConfigDirCandidates(agent.Agent) []string {
-	return nil
-}
-
-func TestPrimaryDirsEmptyCandidates(t *testing.T) {
-	withEmptyCandidates(t)
-
-	a, _ := agent.Lookup("opencode2")
-	if user, project := PrimaryDirs(a); user != "" || project != "" {
-		t.Errorf("PrimaryDirs with no candidates = (%q, %q), want empty", user, project)
-	}
+func (emptyCandidatesConfigPaths) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return nil, nil
 }
 
 func TestResolveConfigSourceEmptyCandidates(t *testing.T) {
@@ -58,6 +50,23 @@ func TestResolveConfigSourceEmptyCandidates(t *testing.T) {
 	a, _ := agent.Lookup("opencode2")
 	if _, err := ResolveConfigSource(a); err == nil {
 		t.Error("expected an error for empty config-dir candidates")
+	}
+}
+
+// invalidConfigDirAgent is a profile whose config-dir name is not a single
+// clean path element, exercising the accessors' error path through the
+// production resolution boundary.
+type invalidConfigDirAgent struct{}
+
+func (invalidConfigDirAgent) Name() string               { return "bad-profile" }
+func (invalidConfigDirAgent) ConfigDirName() string      { return "../escape" }
+func (invalidConfigDirAgent) ImageSpec() agent.ImageSpec { return agent.ImageSpec{} }
+
+func TestLoadConfigFilesRejectsInvalidProfileName(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	ui := termio.NewTestMock(t)
+	if _, err := LoadConfigFilesForHost(invalidConfigDirAgent{}, t.TempDir(), t.TempDir(), &ui, true); err == nil {
+		t.Fatal("LoadConfigFilesForHost with an invalid config-dir name = nil error, want error")
 	}
 }
 
@@ -89,12 +98,12 @@ type staticCandidates struct {
 	dirs []string
 }
 
-func (s staticCandidates) UserAgentConfigDirCandidates(agent.Agent) []string {
-	return s.dirs
+func (s staticCandidates) UserAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return s.dirs, nil
 }
 
-func (s staticCandidates) ProjectAgentConfigDirCandidates(agent.Agent) []string {
-	return s.dirs
+func (s staticCandidates) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return s.dirs, nil
 }
 
 func withStaticCandidates(t *testing.T, dirs ...string) {
@@ -137,9 +146,13 @@ type splitCandidates struct {
 	user, project []string
 }
 
-func (s splitCandidates) UserAgentConfigDirCandidates(agent.Agent) []string { return s.user }
+func (s splitCandidates) UserAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return s.user, nil
+}
 
-func (s splitCandidates) ProjectAgentConfigDirCandidates(agent.Agent) []string { return s.project }
+func (s splitCandidates) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return s.project, nil
+}
 
 func TestResolveConfigSourceStatErrorDoesNotHideUsableScope(t *testing.T) {
 	// An unreadable user candidate must not abort when the project candidate
@@ -171,7 +184,6 @@ func TestResolveConfigSourceStatErrorDoesNotHideUsableScope(t *testing.T) {
 func TestSourceDirsMirrorResolvedSource(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	a, _ := agent.Lookup("opencode2")
 
 	src := ConfigSource{
 		UserDir:    filepath.Join(cp.UserConfigDir(), "opencode"),
@@ -182,12 +194,54 @@ func TestSourceDirsMirrorResolvedSource(t *testing.T) {
 	if user != src.UserDir || project != src.ProjectDir {
 		t.Errorf("SourceDirs = (%q, %q), want the resolved source dirs", user, project)
 	}
-	primaryUser, primaryProject := PrimaryDirs(a)
-	if primaryUser != cp.UserAgentConfigDir(a) || primaryProject != cp.ProjectAgentConfigDir(a) {
-		t.Errorf("PrimaryDirs = (%q, %q), want the seam's primary dirs", primaryUser, primaryProject)
+}
+
+// TestResolveConfigSourceCarriesPrimaryDirs pins that the primary migration
+// targets travel in the resolved source, so the fallback warning never
+// re-derives (and re-validates) the profile's config-dir name.
+func TestResolveConfigSourceCarriesPrimaryDirs(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	a, _ := agent.Lookup("opencode2")
+
+	// No dirs exist, so the primary dirs are returned with an empty fallback.
+	src, err := ResolveConfigSource(a)
+	if err != nil {
+		t.Fatalf("ResolveConfigSource: %v", err)
 	}
-	if filepath.IsAbs(primaryProject) == false {
-		t.Errorf("PrimaryDirs project dir %q should be absolute", primaryProject)
+	if src.PrimaryUserDir != configpaths.MustDir(cp.UserAgentConfigDir(a)) {
+		t.Errorf("PrimaryUserDir = %q, want the seam's primary user dir", src.PrimaryUserDir)
+	}
+	if src.PrimaryProjectDir != configpaths.MustDir(cp.ProjectAgentConfigDir(a)) {
+		t.Errorf("PrimaryProjectDir = %q, want the seam's primary project dir", src.PrimaryProjectDir)
+	}
+	if !filepath.IsAbs(src.PrimaryProjectDir) {
+		t.Errorf("PrimaryProjectDir %q should be absolute", src.PrimaryProjectDir)
+	}
+}
+
+// projectErrorCandidates serves a usable user candidate list but errors on the
+// project list, exercising the second candidate call's error path.
+type projectErrorCandidates struct {
+	configpaths.ConfigPaths
+}
+
+func (projectErrorCandidates) UserAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return []string{"/nonexistent/opencode2"}, nil
+}
+
+func (projectErrorCandidates) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return nil, errors.New("invalid project config-dir name")
+}
+
+func TestResolveConfigSourcePropagatesProjectCandidateError(t *testing.T) {
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return projectErrorCandidates{} }
+	t.Cleanup(func() { configpaths.Get = orig })
+
+	a, _ := agent.Lookup("opencode2")
+	if _, err := ResolveConfigSource(a); err == nil {
+		t.Fatal("ResolveConfigSource with a failing project candidate = nil error, want error")
 	}
 }
 
@@ -234,9 +288,11 @@ func TestResolveConfigSource(t *testing.T) {
 				name = tc.wantFallback
 			}
 			want := ConfigSource{
-				UserDir:    filepath.Join(cp.UserConfigDir(), name),
-				ProjectDir: filepath.Join(cp.ProjectConfigDir(), name),
-				Fallback:   tc.wantFallback,
+				UserDir:           filepath.Join(cp.UserConfigDir(), name),
+				ProjectDir:        filepath.Join(cp.ProjectConfigDir(), name),
+				Fallback:          tc.wantFallback,
+				PrimaryUserDir:    filepath.Join(cp.UserConfigDir(), "opencode2"),
+				PrimaryProjectDir: filepath.Join(cp.ProjectConfigDirAbs(), "opencode2"),
 			}
 			if got != want {
 				t.Errorf("ResolveConfigSource = %+v, want %+v", got, want)

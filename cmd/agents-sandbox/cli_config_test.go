@@ -28,7 +28,10 @@ func mustOpencode(t *testing.T) agent.Agent {
 
 func TestConfigAgentPrintsMergedAndHostFiles(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "opencode")
-	snippetPath := filepath.Join(configpaths.Get().UserAgentConfigDir(mustOpencode(t)), "opencode-x.json5")
+	snippetPath := filepath.Join(
+		configpaths.MustDir(configpaths.Get().UserAgentConfigDir(mustOpencode(t))),
+		"opencode-x.json5",
+	)
 	testutil.WritePath(t, snippetPath, `{"model":"x"}`)
 
 	// A host opencode.jsonc plus a non-config file exercise both statuses.
@@ -127,7 +130,7 @@ func TestConfigHomeEmptyManifest(t *testing.T) {
 func TestConfigAgentNoSnippetFiles(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "opencode")
 	a, _ := agent.Lookup("opencode")
-	if err := os.MkdirAll(configpaths.Get().UserAgentConfigDir(a), 0o755); err != nil {
+	if err := os.MkdirAll(configpaths.MustDir(configpaths.Get().UserAgentConfigDir(a)), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,7 +157,12 @@ func TestConfigAgentFlag(t *testing.T) {
 func TestConfigAgentCodexPrintsMergedTOML(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "codex")
 	a, _ := agent.Lookup("codex")
-	testutil.WriteFile(t, configpaths.Get().UserAgentConfigDir(a), "config-model.toml", "model = \"gpt-5\"\n")
+	testutil.WriteFile(
+		t,
+		configpaths.MustDir(configpaths.Get().UserAgentConfigDir(a)),
+		"config-model.toml",
+		"model = \"gpt-5\"\n",
+	)
 
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("config agent codex: %v", err)
@@ -197,7 +205,7 @@ func TestConfigHomeManifestError(t *testing.T) {
 
 func TestConfigAgentPrintsMirrorFiles(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "opencode")
-	agentDir := configpaths.Get().UserAgentConfigDir(mustOpencode(t))
+	agentDir := configpaths.MustDir(configpaths.Get().UserAgentConfigDir(mustOpencode(t)))
 	testutil.WriteFile(t, agentDir, "tui.json", `{"theme":"dark"}`)
 
 	if err := cmd.Execute(); err != nil {
@@ -251,7 +259,7 @@ func TestConfigAgentOpencode2ShowsLegacyFallback(t *testing.T) {
 
 func TestConfigAgentOpencode2UsesOwnDir(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
-	srcDir := configpaths.Get().UserAgentConfigDir(mustOpencode2(t))
+	srcDir := configpaths.MustDir(configpaths.Get().UserAgentConfigDir(mustOpencode2(t)))
 	testutil.WriteFile(t, srcDir, "opencode-model.json", `{"model":"v2"}`)
 
 	if err := cmd.Execute(); err != nil {
