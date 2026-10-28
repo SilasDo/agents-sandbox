@@ -325,8 +325,10 @@ Each runner image carries these labels:
 - `org.agents-sandbox.managed=true`
 - `org.agents-sandbox.agent=<name>`
 - `org.agents-sandbox.base=<ref>@sha256:<digest>`
+- `org.agents-sandbox.identity.agent-version=<release>`
 
-There is no tool-version label.
+The `agent-version` label records the agent release baked into the image. The Upgrades section reads it to compare that
+release against the new releases it finds.
 
 ## Upgrades
 
