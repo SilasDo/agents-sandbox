@@ -101,7 +101,7 @@ func (r *Resolver) UpgradeInterval() time.Duration {
 	switch {
 	case r.cfg.Upgrade.Interval <= 0:
 		return upgrade.DefaultInterval
-	case r.cfg.Upgrade.Interval < upgrade.MinInterval:
+	case r.cfg.Upgrade.Interval < upgrade.MinInterval: // gomutants:disable CONDITIONALS_BOUNDARY reason="at Interval == MinInterval both this case and the default return MinInterval"
 		return upgrade.MinInterval
 	default:
 		return r.cfg.Upgrade.Interval

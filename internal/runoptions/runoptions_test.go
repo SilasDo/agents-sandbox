@@ -1,6 +1,7 @@
 package runoptions
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -1051,5 +1052,160 @@ func TestBuildNotifyFlagInvalidValue(t *testing.T) {
 		t.Fatal("expected error for invalid --notify value")
 	} else if !strings.Contains(err.Error(), "invalid --notify value") {
 		t.Errorf("error = %q; want to mention invalid --notify value", err)
+	}
+}
+
+// notifyEnvOverride reports the variable name alongside its value.
+func TestNotifyEnvOverrideReturnsSourceName(t *testing.T) {
+	t.Setenv(notifyEnvVar, "desktop")
+
+	value, name := notifyEnvOverride()
+	if value != "desktop" || name != notifyEnvVar {
+		t.Fatalf("notifyEnvOverride() = %q, %q; want %q, %q", value, name, "desktop", notifyEnvVar)
+	}
+}
+
+// Config-derived resource limits reach the resolved options.
+func TestBuildPropagatesConfigResourceLimits(t *testing.T) {
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{
+		CPUs:                6,
+		Memory:              "8G",
+		ProvisionHostConfig: true,
+	})
+
+	opts, err := Build(r.Config(), newRunCommand(), &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if opts.CPUs != 6 {
+		t.Errorf("CPUs = %d; want 6 from config", opts.CPUs)
+	}
+	if opts.Memory != "8G" {
+		t.Errorf("Memory = %q; want 8G from config", opts.Memory)
+	}
+	if opts.ProvisionHostConfig == nil || !*opts.ProvisionHostConfig {
+		t.Errorf("ProvisionHostConfig = %v; want a pointer to true from config", opts.ProvisionHostConfig)
+	}
+}
+
+// applyDeprecatedDindFlag tolerates a command that never registered --dind.
+func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
+	opts := options.RunOptions{}
+
+	applyDeprecatedDindFlag(&cobra.Command{Use: "run"}, &opts)
+
+	if opts.Docker {
+		t.Error("Docker = true; want the missing --dind flag to be ignored")
+	}
+}
+
+// applyDeprecatedDindFlag tolerates a command that registered --dind but not
+// the canonical --docker flag.
+func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
+	cmd := &cobra.Command{Use: "run"}
+	cmd.Flags().Bool("dind", false, "")
+	if err := cmd.Flags().Set("dind", "true"); err != nil {
+		t.Fatalf("set dind: %v", err)
+	}
+	opts := options.RunOptions{}
+
+	applyDeprecatedDindFlag(cmd, &opts)
+
+	if !opts.Docker {
+		t.Error("Docker = false; want true from the deprecated --dind flag")
+	}
+}
+
+// A config-provided agent name wins over the flag default.
+func TestBuildAgentFromConfig(t *testing.T) {
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{Agent: "pi"})
+
+	opts, err := Build(r.Config(), newRunCommand(), &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if opts.Agent != "pi" {
+		t.Fatalf("Agent = %q; want pi from config", opts.Agent)
+	}
+}
+
+// An explicitly empty --agent value is ignored rather than selecting an empty
+// (unknown) agent.
+func TestBuildEmptyAgentFlagIgnored(t *testing.T) {
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set(FlagAgent, ""); err != nil {
+		t.Fatalf("set agent: %v", err)
+	}
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{Agent: "pi"})
+
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if opts.Agent != "pi" {
+		t.Fatalf("Agent = %q; want pi (the empty flag is ignored)", opts.Agent)
+	}
+}
+
+// The notify env override is rejected for an agent without a daemon.
+func TestBuildNotifyEnvRejectedForInteractiveAgent(t *testing.T) {
+	t.Setenv(notifyEnvVar, "audio")
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set(FlagAgent, "pi"); err != nil {
+		t.Fatalf("set agent: %v", err)
+	}
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{})
+
+	if _, err := Build(r.Config(), cmd, &termio.Mock{}); err == nil {
+		t.Fatal("expected error for the notify env override on an interactive agent")
+	}
+}
+
+// A config notify section with an empty audio mode resolves to audio off.
+func TestBuildNotifyConfigEmptyAudioDefaultsOff(t *testing.T) {
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{Notify: viperconfig.NotifyConfig{
+		Desktop: true,
+	}})
+
+	opts, err := Build(r.Config(), newRunCommand(), &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if opts.Notify.Audio != notify.AudioOff {
+		t.Errorf("Notify.Audio = %q; want off for an unset config audio mode", opts.Notify.Audio)
+	}
+}
+
+// A malformed notify env override error wraps its cause so callers can inspect
+// it.
+func TestBuildNotifyEnvErrorWrapsCause(t *testing.T) {
+	t.Setenv(notifyEnvVar, "loud")
+	var r *viperconfig.Resolver
+
+	_, err := Build(r.Config(), newRunCommand(), &termio.Mock{})
+	if err == nil {
+		t.Fatal("expected error for invalid AGENTS_SANDBOX_NOTIFY value")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
+	}
+}
+
+// An explicitly empty --notify value is ignored, leaving the env override in
+// effect rather than erroring.
+func TestBuildNotifyEmptyFlagIgnored(t *testing.T) {
+	t.Setenv(notifyEnvVar, "audio")
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set(FlagNotify, ""); err != nil {
+		t.Fatalf("set notify: %v", err)
+	}
+	r := viperconfig.NewResolverWithConfig(viperconfig.Config{})
+
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if opts.Notify.Audio != notify.AudioSystem {
+		t.Errorf("Notify.Audio = %q; want the env override to survive an empty flag", opts.Notify.Audio)
 	}
 }

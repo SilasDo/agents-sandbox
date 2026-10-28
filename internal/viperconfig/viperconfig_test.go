@@ -1,6 +1,7 @@
 package viperconfig
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -141,6 +142,9 @@ func TestResolverRejectsInvalidMountEntry(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not mention %q", err, want)
 		}
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -669,8 +673,12 @@ func TestNetworkProfileInvalidTypeRejected(t *testing.T) {
 	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
 		"network": map[string]any{"profile": 42},
 	})
-	if _, err := NewResolver(nil, ""); err == nil {
+	_, err := NewResolver(nil, "")
+	if err == nil {
 		t.Fatal("expected error for a non-string network.profile")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 
@@ -886,8 +894,8 @@ func TestDindConfigAlias(t *testing.T) {
 	if !r.Docker() {
 		t.Error("Docker() = false, want true from the deprecated dind key")
 	}
-	if r.DockerLegacyAlias() == "" {
-		t.Error("DockerLegacyAlias() = empty, want the deprecated dind source")
+	if got := r.DockerLegacyAlias(); got != "the dind config key" {
+		t.Errorf("DockerLegacyAlias() = %q, want the dind config key", got)
 	}
 }
 
@@ -1265,8 +1273,12 @@ func TestResolverHomeRejectsInvalidHomeValue(t *testing.T) {
 	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{
 		"home": 5,
 	})
-	if _, err := NewResolver(nil, ""); err == nil {
+	_, err := NewResolver(nil, "")
+	if err == nil {
 		t.Fatal("expected error for invalid home value")
+	}
+	if errors.Unwrap(err) == nil {
+		t.Errorf("error %q does not wrap its cause", err)
 	}
 }
 

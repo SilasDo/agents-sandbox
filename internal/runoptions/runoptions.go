@@ -223,7 +223,9 @@ func resolveNotifyConfig(cfg *viperconfig.Config, cmd *cobra.Command) (notify.Co
 		}
 		resolved = notify.ApplyOverride(resolved, override)
 	}
-	if raw, _ := cmd.Flags().GetString(FlagNotify); cmd.Flags().Changed(FlagNotify) && raw != "" {
+	// The --notify flag defaults to the empty string, so a non-empty value
+	// implies it was set; an explicit empty value is ignored.
+	if raw, _ := cmd.Flags().GetString(FlagNotify); raw != "" {
 		override, err := notify.ParseOverride(raw)
 		if err != nil {
 			return notify.Config{}, err

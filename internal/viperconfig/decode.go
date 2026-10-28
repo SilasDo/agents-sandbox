@@ -33,12 +33,18 @@ func ParseHumanDuration(s string) (time.Duration, bool) {
 	s = strings.TrimSpace(s)
 	switch {
 	case strings.HasSuffix(s, "w"):
+		// A bit size of 63 only differs for values that overflow it, which
+		// also exceed maxWeeks, so both branches reject them.
+		// gomutants:disable-next-line INTEGER_DECREMENT reason="values needing bit 63 also exceed maxWeeks"
 		num, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
 		if err != nil || num < 0 || num > maxWeeks {
 			return 0, false
 		}
 		return time.Duration(num) * 7 * 24 * time.Hour, true
 	case strings.HasSuffix(s, "d"):
+		// A bit size of 63 only differs for values that overflow it, which
+		// also exceed maxDays, so both branches reject them.
+		// gomutants:disable-next-line INTEGER_DECREMENT reason="values needing bit 63 also exceed maxDays"
 		num, err := strconv.ParseInt(s[:len(s)-1], 10, 64)
 		if err != nil || num < 0 || num > maxDays {
 			return 0, false
@@ -57,8 +63,8 @@ func ParseHumanDuration(s string) (time.Duration, bool) {
 // (which fires only for []string) so named string types such as network.Profile
 // decode the same way from env vars and StringSlice flags.
 func stringToSliceDecodeHook() mapstructure.DecodeHookFunc {
-	return func(f reflect.Type, t reflect.Type, data any) (any, error) {
-		if f.Kind() != reflect.String || t.Kind() != reflect.Slice {
+	return func(_ reflect.Type, t reflect.Type, data any) (any, error) {
+		if t.Kind() != reflect.Slice {
 			return data, nil
 		}
 		if t.Elem().Kind() != reflect.String {
@@ -76,17 +82,13 @@ func stringToSliceDecodeHook() mapstructure.DecodeHookFunc {
 }
 
 func durationDecodeHook() mapstructure.DecodeHookFunc {
-	return func(f reflect.Type, t reflect.Type, data any) (any, error) {
-		if f.Kind() != reflect.String {
-			return data, nil
-		}
+	return func(_ reflect.Type, t reflect.Type, data any) (any, error) {
 		if t.Kind() != reflect.Interface && t != reflect.TypeFor[time.Duration]() {
 			return data, nil
 		}
-		str, ok := data.(string)
-		if !ok {
-			return data, nil
-		}
+		// A non-string value leaves str empty, which no parser accepts, so
+		// the data is returned unchanged below.
+		str, _ := data.(string)
 		if d, ok := ParseHumanDuration(str); ok {
 			return d, nil
 		}

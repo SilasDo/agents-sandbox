@@ -36,6 +36,7 @@ func validate(v *viper.Viper) error {
 	if err := validateNotify(v); err != nil {
 		return err
 	}
+	// gomutants:disable-next-line BRANCH_IF reason="the fall-through checks GetInt's zero value, which is in range"
 	if !v.IsSet(keyCPUs) {
 		return nil
 	}
@@ -181,7 +182,9 @@ func validatePruneAges(v *viper.Viper) error {
 			continue
 		}
 		d := v.GetDuration(key)
-		if d > 0 {
+		// GetDuration yields whole nanoseconds, so only d == 1ns differs; the
+		// fall-through then re-parses the raw string and still finds it > 0.
+		if d > 0 { // gomutants:disable INTEGER_INCREMENT,BRANCH_IF reason="only d == 1ns differs and the fall-through leaves it positive"
 			continue
 		}
 		// viper's GetDuration returned 0 — check if the raw value is a
@@ -191,7 +194,9 @@ func validatePruneAges(v *viper.Viper) error {
 				d = parsed
 			}
 		}
-		if d <= 0 {
+		// Reaching here means d <= 0 already (the d > 0 guard above), so a
+		// bound of 1 can never differ from 0.
+		if d <= 0 { // gomutants:disable INTEGER_INCREMENT reason="d is already <= 0 at this point, so a bound of 1 is equivalent"
 			return fmt.Errorf("launcher config %s must be > 0, got %v", key, d)
 		}
 	}
@@ -199,6 +204,7 @@ func validatePruneAges(v *viper.Viper) error {
 }
 
 func validateAutoStop(v *viper.Viper) error {
+	// gomutants:disable-next-line BRANCH_IF reason="the fall-through checks GetInt's zero value, which is >= 0"
 	if !v.IsSet(keyAutoStopMaxSessionRetries) {
 		return nil
 	}
@@ -214,7 +220,9 @@ func validateAutoStopTimeout(v *viper.Viper) error {
 		return nil
 	}
 	d := v.GetDuration(keyAutoStopTimeout)
-	if d > 0 {
+	// GetDuration yields whole nanoseconds, so only d == 1ns differs; the
+	// fall-through then re-parses the raw string and still finds it > 0.
+	if d > 0 { // gomutants:disable INTEGER_INCREMENT,BRANCH_IF reason="only d == 1ns differs and the fall-through leaves it positive"
 		return nil
 	}
 	if s, ok := v.Get(keyAutoStopTimeout).(string); ok {
@@ -222,7 +230,9 @@ func validateAutoStopTimeout(v *viper.Viper) error {
 			d = parsed
 		}
 	}
-	if d <= 0 {
+	// Reaching here means d <= 0 already (the d > 0 guard above), so a bound
+	// of 1 can never differ from 0.
+	if d <= 0 { // gomutants:disable INTEGER_INCREMENT reason="d is already <= 0 at this point, so a bound of 1 is equivalent"
 		return fmt.Errorf("launcher config %s must be > 0, got %v", keyAutoStopTimeout, d)
 	}
 	return nil

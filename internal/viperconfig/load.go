@@ -59,9 +59,8 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 	v := viper.New()
 
 	for _, layer := range ConfigLayers(slug) {
-		if layer.Path == "" {
-			continue
-		}
+		// mergeDir with an empty path is a no-op, so the env and flag
+		// layers need no guard here.
 		if err := mergeDir(v, layer.Path); err != nil {
 			return nil, err
 		}
@@ -136,7 +135,9 @@ func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, s
 		return value, ""
 	}
 	if !v.IsSet(KeyDind) {
-		return value, ""
+		// value is always false here: any non-empty docker source makes
+		// dockerExplicit true above.
+		return value, "" // gomutants:disable RETURN_FALSE reason="value is always false when docker is not explicit"
 	}
 	return v.GetBool(KeyDind), dockerLegacySource(v)
 }
@@ -198,7 +199,7 @@ func mergeDir(v *viper.Viper, dir string) error {
 		if err != nil {
 			return fmt.Errorf("normalize launcher config %s: %w", path, err)
 		}
-		ct = ctJSON
+		// configType already reports both JSON5 and JSONC as JSON.
 	}
 	v.SetConfigType(ct)
 	if err := v.MergeConfig(bytes.NewReader(data)); err != nil {

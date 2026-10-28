@@ -19,6 +19,9 @@ func bindConfigFlags(v *viper.Viper, cmd *cobra.Command) {
 			continue
 		}
 		_ = v.BindPFlag(key, flag)
+		// viper's own flag-default fallback returns the same value, so this
+		// SetDefault is redundant for every config-backed flag.
+		// gomutants:disable-next-line STATEMENT_REMOVE reason="viper's flag-default fallback returns the same value"
 		v.SetDefault(key, flagTypedDefault(key, flag))
 	}
 }
