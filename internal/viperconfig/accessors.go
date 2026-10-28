@@ -22,13 +22,6 @@ func (r *Resolver) DockerLegacyAlias() string {
 	return r.dockerLegacy
 }
 
-func (c Config) IdleTimeout() time.Duration {
-	if c.AutoStopTimeout > 0 {
-		return c.AutoStopTimeout
-	}
-	return 10 * time.Second
-}
-
 // DockerExplicit reports whether the config's docker value came from an
 // explicit source, so it overrides any project-Dockerfile content signal.
 func (c Config) DockerExplicit() bool { return c.dockerExplicit }
