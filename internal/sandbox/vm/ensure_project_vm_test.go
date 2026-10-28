@@ -1244,6 +1244,7 @@ func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
 	}
 	t.Cleanup(func() { acquireProjectVMLock = origLock })
 
+	destroyed := false
 	handle := &msb.MockSandboxHandle{
 		Name_:   "vm-test-opencode",
 		Status_: msbSdk.SandboxStatusRunning,
@@ -1251,14 +1252,28 @@ func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
 			if !locked {
 				t.Error("recreate destroyed the VM outside the creation lock")
 			}
+			destroyed = true
 			return nil
 		},
 	}
+	created := false
 	client := &msb.MockMsbClient{}
-	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) { return handle, nil }
+	// The pre-lock lookup finds the VM; the destroy frees the name, so the
+	// post-lock re-check must miss and take the create path.
+	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) {
+		if destroyed {
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+		}
+		return handle, nil
+	}
 	client.CreateSandboxFn = func(_ context.Context, name string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
+		if !locked {
+			t.Error("recreate created the replacement VM outside the creation lock")
+		}
+		created = true
 		return &msb.MockSandbox{Name_: name}, nil
 	}
+	client.ImageGetFn = func(context.Context, string) error { return nil }
 	client.EnsureInstalledFn = func(context.Context) error { return nil }
 	msb.WithMsbMock(t, client)
 
@@ -1269,6 +1284,9 @@ func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
 		"homevol", "/workspace", testVMKey(), testVMKey().Slug, false, &ui,
 	); err != nil {
 		t.Fatalf("ensureProjectVM recreate: %v", err)
+	}
+	if !created {
+		t.Fatal("expected the recreate to create a replacement VM under the lock")
 	}
 }
 
