@@ -52,19 +52,24 @@ daemon setup, attach.
 
 It reports, via `termio`:
 
-1. **Agent version.** The explicit pin, else the project's recorded `agent_version`; when neither, a message that the
-   version would be resolved at build time. Never a network call. A user-provided agent (recorded `agent_source` is
-   `user`) takes the recorded version and ignores the pin, exactly as `resolveBuildVersion` does — a real run would
-   never rebuild such an agent to the pin, so the preview must not report the resulting phantom rebuild.
+1. **Agent version.** The explicit pin, else the release the project's existing image reports through its
+   `agent-version` label, else the recorded `agent_version` cache; when none, a message that the version would be
+   resolved at build time. Never a network call. The label is the authority for a present image and the record follows
+   it ([agent-version-sync.md](agent-version-sync.md)), so a stale recorded value must not be reported. A user-provided
+   agent (recorded `agent_source` is `user`) takes the recorded version and ignores the pin, exactly as
+   `resolveBuildVersion` does — a real run would never rebuild such an agent to the pin, so the preview must not report
+   the resulting phantom rebuild.
 2. **Image.** Render the build plan (pure: `RenderDockerfile` plus the `dockerfileID`/identity) and run the existing
    build decision (local `docker inspect` only). Report `would build runner image <tag> (<reasons>)` or
-   `would reuse runner image <tag>`. The reasons are the same ones a real build logs. When the pin and the recorded
-   `agent_version` are both empty, the preview recovers the baked version from the project's existing image label via
-   `image.ExistingAgentVersion` (a local `docker inspect`, no network). Unlike `recoverAgentVersion`
-   (`vm/upgrade.go:302`), the preview does **not** record the recovered version — it only reports. This makes a
-   post-migration project with an unchanged image report `would reuse` rather than always `would build`. Only when no
-   version can be recovered does the preview report that no version is known — that is item 1's deferred-resolution
-   message — and the image decision then likely reports `would build`.
+   `would reuse runner image <tag>`. The reasons are the same ones a real build logs. For a non-user-provided agent
+   with no pin, the preview reads the baked version from the project's existing image label via
+   `image.ExistingAgentVersion` (a local `docker inspect`, no network) and uses it ahead of the recorded cache, mirroring
+   `resolveBuildVersion`'s reconciliation: the label is the authority for a present image, so a stale record must not
+   drive the reported image decision. The recorded `agent_version` is used only when the image yields nothing. Unlike
+   `recoverAgentVersion` (`vm/upgrade.go:302`), the preview does **not** record the reconciled version — it only reports.
+   This makes a post-migration project with an unchanged image report `would reuse` rather than always `would build`.
+   Only when neither the image nor the record yields a version does the preview report that no version is known — that
+   is item 1's deferred-resolution message — and the image decision then likely reports `would build`.
    The preview does not run the upgrade check, so its image decision reflects the known version, not a possible
    upgrade. When a concrete version is known and not pinned — the project's recorded `agent_version` or the
    label-recovered baseline — the agent-version line carries the note `(upgrade check not run)`. An explicit
@@ -88,9 +93,9 @@ plus the session line) so it is asserted as data in unit tests and as the render
 - Split the image path so the preview can compute the decision without building: `EnsureImageWithClient`
   (`image/build.go:364`) factors a pure `planRunnerImage` (render + `buildDecision`) from `buildFromPlan` (`:470`).
   The preview calls the planner only; `buildFromPlan` — and therefore `resolveBaseDigest` — is never reached.
-- The preview must not call `resolveAgentVersion(ctx, a, "")` (`image/build.go:378`). It passes the pin or the recorded
-  `agent_version`, falling back to the label-recovered baseline (`image.ExistingAgentVersion`, local) as the real path
-  does, and reports a deferred resolution only when none can be recovered.
+- The preview must not call `resolveAgentVersion(ctx, a, "")` (`image/build.go:378`). It passes the pin, or the
+  label-reconciled baseline (`image.ExistingAgentVersion`, local) with the recorded `agent_version` as the fallback, in
+  the same order the real path resolves, and reports a deferred resolution only when neither yields a version.
 - Home resolution in the preview is a read-only variant of `ResolveHomeVolume` (`volume/state.go:23`): it reads state
   and probes the recorded volume, and on the recovery path consults `liveHomeVolume` (`vm/run_orchestrate.go:371`,
   also read-only), but never calls `recoverOrCreateHome`/`EnsureNewHome`/`RecoverHomeState` and never writes the
