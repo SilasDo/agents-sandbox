@@ -397,6 +397,28 @@ func TestIsNameImage(t *testing.T) {
 	}
 }
 
+// TestSameImageRefNonNameRefs pins that the persisted ref must name a (slug,
+// agent) pair before any comparison happens: a digest-pinned runner ref sharing
+// the desired slug, and a foreign ref, are never the same image even when the
+// desired identity is incomplete (a slug-only or empty one). The pair comparison
+// alone would accept the digest-pinned row, whose parsed agent is empty like the
+// identity's.
+func TestSameImageRefNonNameRefs(t *testing.T) {
+	cases := []struct {
+		name      string
+		persisted string
+		image     naming.ImageIdentity
+	}{
+		{"digest-pinned ref, same slug", planSlug + ":4e8oeqohbmalok", naming.ImageIdentity{Slug: planSlug}},
+		{"foreign ref, empty identity", "docker.io/library/foreign:1", naming.ImageIdentity{}},
+	}
+	for _, tc := range cases {
+		if sameImageRef(tc.persisted, tc.image) {
+			t.Errorf("%s: sameImageRef(%q, %+v) = true, want false", tc.name, tc.persisted, tc.image)
+		}
+	}
+}
+
 // TestSameImageRefSlugAndAgent pins that a persisted name ref is the same image
 // as a desired name identity only when both their slug and agent match, and that
 // a differing slug is not masked by an equal agent.
