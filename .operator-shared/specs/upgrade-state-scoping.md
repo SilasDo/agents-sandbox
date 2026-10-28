@@ -98,7 +98,7 @@ side-effect-freedom, matching the home-migration offer gate; the legacy fold bel
 `--dry-run`. The full `--dry-run` contract (no image build, no volume create, no state write, no network request) is
 [dry-run-preview.md](dry-run-preview.md).
 
-### Baseline recovery (image-label fallback)
+### Baseline recovery from the image label
 
 Migration drops the global `current_version`, so a pre-existing project has no `HomeState.agent_version` on its first
 run after the upgrade. The run decision happens *before* the boot that `recordImageProvenance` could record it, so

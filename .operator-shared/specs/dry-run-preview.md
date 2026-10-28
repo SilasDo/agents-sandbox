@@ -66,7 +66,7 @@ It reports, via `termio`:
    `image.ExistingAgentVersion` (a local `docker inspect`, no network) and uses it ahead of the recorded cache, mirroring
    `resolveBuildVersion`'s reconciliation: the label is the authority for a present image, so a stale record must not
    drive the reported image decision. The recorded `agent_version` is used only when the image yields nothing. Unlike
-   `recoverAgentVersion` (`vm/upgrade.go:302`), the preview does **not** record the reconciled version — it only reports.
+   `recoverAgentVersion` (`vm/upgrade.go:315`), the preview does **not** record the reconciled version — it only reports.
    This makes a post-migration project with an unchanged image report `would reuse` rather than always `would build`.
    Only when neither the image nor the record yields a version does the preview report that no version is known — that
    is item 1's deferred-resolution message — and the image decision then likely reports `would build`.
@@ -91,17 +91,18 @@ plus the session line) so it is asserted as data in unit tests and as the render
 ### Purity boundaries (implementation shape)
 
 - Split the image path so the preview can compute the decision without building: `EnsureImageWithClient`
-  (`image/build.go:364`) factors a pure `planRunnerImage` (render + `buildDecision`) from `buildFromPlan` (`:470`).
+  (`image/build.go:414`) factors a pure `planRunnerImage` (render + `buildDecision`) from `buildFromPlan` (`:602`).
   The preview calls the planner only; `buildFromPlan` — and therefore `resolveBaseDigest` — is never reached.
-- The preview must not call `resolveAgentVersion(ctx, a, "")` (`image/build.go:378`). It passes the pin, or the
-  label-reconciled baseline (`image.ExistingAgentVersion`, local) with the recorded `agent_version` as the fallback, in
-  the same order the real path resolves, and reports a deferred resolution only when neither yields a version.
+- The preview must not call `resolveAgentVersion(ctx, a, "")` (`image/build.go:443`). It passes the pin, or the
+  label-reconciled baseline (`image.ExistingAgentVersion`, local) with the recorded `agent_version` as the fallback —
+  the same precedence the real run applies for every registered agent — and reports a deferred resolution only when
+  neither yields a version.
 - Home resolution in the preview is a read-only variant of `ResolveHomeVolume` (`volume/state.go:23`): it reads state
-  and probes the recorded volume, and on the recovery path consults `liveHomeVolume` (`vm/run_orchestrate.go:371`,
+  and probes the recorded volume, and on the recovery path consults `liveHomeVolume` (`vm/run_orchestrate.go:433`,
   also read-only), but never calls `recoverOrCreateHome`/`EnsureNewHome`/`RecoverHomeState` and never writes the
   recovered state.
 - The `prepareHomeVolume` migration-offer gate and the `determineAgentVersion` gate stay as they are; they already
-  match the pure preview. The `--dry-run` note in `vm/run_orchestrate.go:109-115` is updated to state the new
+  match the pure preview. The `--dry-run` note in `vm/run_orchestrate.go:121-128` is updated to state the new
   contract.
 - Project identity is resolved read-only too: the preview runs `AdoptLegacyIdentity` with `apply=false`, so it reports
   against the slug a real run would find first (the legacy slug while a migration is pending) without moving state, and
