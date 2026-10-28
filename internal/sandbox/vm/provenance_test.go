@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
@@ -112,6 +113,32 @@ func TestRecordImageProvenancePreservesExistingFields(t *testing.T) {
 	}
 	if hs.AgentSource != agentSourceTool || hs.AgentVersion != "0.5.0" {
 		t.Errorf("provenance not recorded: %+v", hs)
+	}
+}
+
+// TestRecordImageProvenanceReadErrorLeavesStateUntouched pins the pre-provenance
+// skip: when the agent-source read fails the function must return before writing
+// anything (so an existing provenance survives) and log the skip.
+func TestRecordImageProvenanceReadErrorLeavesStateUntouched(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "proj", Agent: "opencode"}
+	if err := seedHomeState(k, state.HomeState{AgentSource: agentSourceUser}); err != nil {
+		t.Fatal(err)
+	}
+	fs := msb.NewTestFS(nil, nil) // every ReadString fails: no provenance files
+	ui := termio.NewTestMock(t)
+	recordImageProvenance(context.Background(), k, opencodeAgent(t), &msb.MockSandbox{FSValue_: fs}, &ui)
+
+	hs, err := state.ReadState(k)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if hs.AgentSource != agentSourceUser {
+		t.Errorf("AgentSource = %q, want the pre-existing %q (a read failure must not rewrite state)",
+			hs.AgentSource, agentSourceUser)
+	}
+	if !strings.Contains(strings.Join(ui.VerboseCalls, "\n"), "no agent-source file in image") {
+		t.Errorf("expected the pre-provenance verbose note, got %v", ui.VerboseCalls)
 	}
 }
 

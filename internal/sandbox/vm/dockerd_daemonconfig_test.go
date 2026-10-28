@@ -119,10 +119,15 @@ func TestDockerdArgsNonStringStorageDriverFails(t *testing.T) {
 
 func TestDockerdArgsReadErrorFails(t *testing.T) {
 	fs := msb.NewTestFS(map[string][]byte{dockerdDaemonConfigPath: []byte(`{}`)}, nil)
-	fs.ReadErr = errors.New("read boom")
+	readErr := errors.New("read boom")
+	fs.ReadErr = readErr
 	sb := &msb.MockSandbox{FSValue_: fs}
-	if _, err := dockerdArgs(context.Background(), sb); err == nil {
+	_, err := dockerdArgs(context.Background(), sb)
+	if err == nil {
 		t.Fatal("expected an error when daemon.json cannot be read")
+	}
+	if !errors.Is(err, readErr) {
+		t.Errorf("error = %v, want it to wrap the read cause", err)
 	}
 }
 

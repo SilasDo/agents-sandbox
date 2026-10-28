@@ -78,6 +78,7 @@ func ListSandboxes(ctx context.Context, opts ...ListOption) ([]Info, error) {
 		})
 	}
 	if opt.Limit != nil &&
+		// gomutants:disable-next-line CONDITIONALS_BOUNDARY reason="at len(result) == limit the truncation keeps the same elements, so > and >= agree"
 		uint32(len(result)) > *opt.Limit { //nolint:gosec // G115: len(result) is bounded by the sandbox count
 		result = result[:*opt.Limit]
 	}
