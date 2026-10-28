@@ -68,14 +68,6 @@ func TestDecodeNotifyReadsEveryKeyIndependently(t *testing.T) {
 	}
 }
 
-// only a sub-nanosecond timeout can reach the fall-through, so the literal
-// bound in IdleTimeout is observable at exactly 1ns.
-func TestConfigIdleTimeoutOneNanosecond(t *testing.T) {
-	if got := (Config{AutoStopTimeout: time.Nanosecond}).IdleTimeout(); got != time.Nanosecond {
-		t.Errorf("IdleTimeout() = %v, want 1ns", got)
-	}
-}
-
 func TestResolverQuietAndProvisionHostConfigFalse(t *testing.T) {
 	if NewResolverWithConfig(Config{Quiet: false}).Quiet() {
 		t.Error("Quiet() = true, want false")

@@ -81,7 +81,9 @@ Pruning removes:
 - Surplus msb images of a project that still has a sandbox. Retained are the runner-image variants a kept sandbox
   currently references and the ones the project used within the age threshold (a stopped-not-yet-stale sandbox may still
   point at a pre-redesign digest ref); every other ref (orphaned content, aged-out variants, old digest refs no sandbox
-  uses) is reclaimed.
+  uses) is reclaimed. Only runner images are considered — a reference whose parsed slug does not embed the launcher's
+  14-character hash (a manually loaded single-segment image, or a registry image) is left untouched, the same ownership
+  boundary `image list` and `image remove` enforce.
 - Dangling Docker images: after a rebuild the previous runner image is no longer referenced by any tag and is reclaimed
   by a scoped Docker image prune. Tagged images (base images and the current `:latest` runner) are left untouched.
 

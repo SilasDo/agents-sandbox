@@ -237,7 +237,10 @@ func resolveSessionIdentity(
 	if !ok {
 		return nil, git.Identity{}, IdentityAdoption{}, fmt.Errorf("unknown agent %q", agentName)
 	}
-	identity := git.ResolveIdentity(cwd)
+	identity, err := git.ResolveIdentity(cwd)
+	if err != nil {
+		return nil, git.Identity{}, IdentityAdoption{}, err
+	}
 	apply := !opts.DryRun && !opts.DryRunVM
 	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), apply, ui)
 	if err != nil {

@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 	msb "github.com/superradcompany/microsandbox/sdk/go"
 
-	"github.com/inoio/agents-sandbox/internal/git"
 	sandboxmsb "github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -422,7 +421,7 @@ func TestStopKillAdoptionFailureFailsClosed(t *testing.T) {
 			// setupStopKillConfig installs the config-paths mock, so the seed
 			// and the command resolve the same isolated state root.
 			cmd, _ := setupStopKillConfig(t, []string{cmdName}, nil)
-			identity := git.ResolveIdentity(".")
+			identity := mustIdentity(t, ".")
 			if identity.RepoSlug == identity.CheckoutSlug {
 				t.Fatalf("fixture must have distinct repo and checkout slugs")
 			}

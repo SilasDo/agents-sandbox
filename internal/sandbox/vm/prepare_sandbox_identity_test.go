@@ -14,7 +14,6 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -167,8 +166,8 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 
 	firstClone := newOriginClone(t)
 	secondClone := newOriginClone(t)
-	firstIdentity := git.ResolveIdentity(firstClone)
-	secondIdentity := git.ResolveIdentity(secondClone)
+	firstIdentity := mustIdentity(t, firstClone)
+	secondIdentity := mustIdentity(t, secondClone)
 	if firstIdentity.RepoSlug != secondIdentity.RepoSlug {
 		t.Fatalf("repo slugs differ for one origin: %q vs %q", firstIdentity.RepoSlug, secondIdentity.RepoSlug)
 	}
@@ -248,8 +247,8 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", outside)
 
-	identity := git.ResolveIdentity(outside)
-	checkoutIdentity := git.ResolveIdentity(repo)
+	identity := mustIdentity(t, outside)
+	checkoutIdentity := mustIdentity(t, repo)
 	if !identity.OutsideWorktree {
 		t.Fatalf("expected %q to resolve as an outside worktree", outside)
 	}
@@ -305,7 +304,7 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	if identity.RepoSlug == identity.CheckoutSlug {
 		t.Fatalf("fixture must produce distinct repo/checkout slugs, both %q", identity.RepoSlug)
 	}
@@ -353,7 +352,7 @@ func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) 
 func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 
 	legacyKey := state.Key{Slug: identity.RepoSlug, Agent: "opencode"}
 	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: "opencode"}
@@ -407,7 +406,7 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 func TestPrepareSandboxAdoptionFailureReturnsError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 	installPrepareSandboxMSBMock(t)
 

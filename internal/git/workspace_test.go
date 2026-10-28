@@ -9,9 +9,9 @@ import (
 )
 
 func TestResolveIdentityNonRepoLayout(t *testing.T) {
-	dir := resolvePath(t.TempDir())
+	dir := mustResolvePath(t, t.TempDir())
 
-	got := ResolveIdentity(dir)
+	got := mustResolveIdentity(t, dir)
 
 	if got.BindRoot != dir {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, dir)
@@ -25,9 +25,9 @@ func TestResolveIdentityNonRepoLayout(t *testing.T) {
 }
 
 func TestResolveIdentityRepoRoot(t *testing.T) {
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 
-	got := ResolveIdentity(repo)
+	got := mustResolveIdentity(t, repo)
 
 	if got.BindRoot != repo {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, repo)
@@ -41,11 +41,11 @@ func TestResolveIdentityRepoRoot(t *testing.T) {
 }
 
 func TestResolveIdentityNestedWorktree(t *testing.T) {
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	wt := filepath.Join(repo, "wt")
 	testutil.RunGit(t, repo, "worktree", "add", wt)
 
-	got := ResolveIdentity(wt)
+	got := mustResolveIdentity(t, wt)
 
 	if got.BindRoot != repo {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, repo)
@@ -59,11 +59,11 @@ func TestResolveIdentityNestedWorktree(t *testing.T) {
 }
 
 func TestResolveIdentityOutsideWorktree(t *testing.T) {
-	repo := resolvePath(testutil.InitRepo(t))
-	wt := filepath.Join(resolvePath(t.TempDir()), "wt")
+	repo := mustResolvePath(t, testutil.InitRepo(t))
+	wt := filepath.Join(mustResolvePath(t, t.TempDir()), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", wt)
 
-	got := ResolveIdentity(wt)
+	got := mustResolveIdentity(t, wt)
 
 	if got.BindRoot != wt {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, wt)
@@ -77,12 +77,12 @@ func TestResolveIdentityOutsideWorktree(t *testing.T) {
 }
 
 func TestResolveIdentityMalformedGitFile(t *testing.T) {
-	dir := resolvePath(t.TempDir())
+	dir := mustResolvePath(t, t.TempDir())
 	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("this is not a gitdir pointer"), 0o644); err != nil {
 		t.Fatalf("write .git: %v", err)
 	}
 
-	got := ResolveIdentity(dir)
+	got := mustResolveIdentity(t, dir)
 
 	if got.BindRoot != dir {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, dir)
@@ -102,13 +102,13 @@ func TestResolveIdentityMalformedGitFile(t *testing.T) {
 // than sharing the bare dir's VM with a different /workspace bind.
 func TestResolveIdentityOutsideWorktreeOfBareGitDir(t *testing.T) {
 	origin := testutil.InitRepo(t)
-	tmp := resolvePath(t.TempDir())
+	tmp := mustResolvePath(t, t.TempDir())
 	bare := filepath.Join(tmp, "bare.git")
 	testutil.RunGit(t, tmp, "clone", "--bare", origin, "bare.git")
 	wt := filepath.Join(tmp, "wt")
 	testutil.RunGit(t, bare, "worktree", "add", wt)
 
-	got := ResolveIdentity(wt)
+	got := mustResolveIdentity(t, wt)
 
 	if !got.OutsideWorktree {
 		t.Errorf("OutsideWorktree = false, want true")
@@ -123,15 +123,15 @@ func TestResolveIdentityOutsideWorktreeOfBareGitDir(t *testing.T) {
 
 func TestResolveIdentityBareWorktree(t *testing.T) {
 	origin := testutil.InitRepo(t)
-	root := resolvePath(t.TempDir())
+	root := mustResolvePath(t, t.TempDir())
 	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
 	testutil.RunGit(t, filepath.Join(root, ".git"), "worktree", "add", filepath.Join(root, "main"))
 
 	// The bare root and every worktree inside it share one checkout slug.
-	rootIdentity := ResolveIdentity(root)
+	rootIdentity := mustResolveIdentity(t, root)
 
 	t.Run("bare root", func(t *testing.T) {
-		got := ResolveIdentity(root)
+		got := mustResolveIdentity(t, root)
 		if got.BindRoot != root {
 			t.Errorf("BindRoot = %q, want %q", got.BindRoot, root)
 		}
@@ -144,7 +144,7 @@ func TestResolveIdentityBareWorktree(t *testing.T) {
 	})
 
 	t.Run("worktree root", func(t *testing.T) {
-		got := ResolveIdentity(filepath.Join(root, "main"))
+		got := mustResolveIdentity(t, filepath.Join(root, "main"))
 		if got.BindRoot != root {
 			t.Errorf("BindRoot = %q, want %q", got.BindRoot, root)
 		}
@@ -164,7 +164,7 @@ func TestResolveIdentityBareWorktree(t *testing.T) {
 		if err := os.MkdirAll(sub, 0o755); err != nil {
 			t.Fatalf("mkdir %s: %v", sub, err)
 		}
-		got := ResolveIdentity(sub)
+		got := mustResolveIdentity(t, sub)
 		if got.BindRoot != root {
 			t.Errorf("BindRoot = %q, want %q", got.BindRoot, root)
 		}
@@ -179,12 +179,12 @@ func TestResolveIdentityBareWorktree(t *testing.T) {
 
 func TestResolveIdentityRelativeGitDir(t *testing.T) {
 	origin := testutil.InitRepo(t)
-	root := resolvePath(t.TempDir())
+	root := mustResolvePath(t, t.TempDir())
 	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
 	testutil.RunGit(t, filepath.Join(root, ".git"), "config", "worktree.useRelativePaths", "true")
 	testutil.RunGit(t, filepath.Join(root, ".git"), "worktree", "add", filepath.Join(root, "main"))
 
-	got := ResolveIdentity(filepath.Join(root, "main"))
+	got := mustResolveIdentity(t, filepath.Join(root, "main"))
 
 	if got.BindRoot != root {
 		t.Errorf("BindRoot = %q, want %q", got.BindRoot, root)

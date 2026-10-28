@@ -244,7 +244,7 @@ func TestBuildAgentVersionPrecedenceMatchesRun(t *testing.T) {
 				},
 			})
 
-			key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+			key := state.Key{Slug: git.MustCheckoutSlug(), Agent: defaultAgentName}
 			if err := seedHomeState(key, state.HomeState{
 				AgentVersion: testCase.recordedVersion,
 				AgentSource:  testCase.agentSource,
@@ -298,7 +298,7 @@ func TestBuildCommandRecordsPinnedAgentVersion(t *testing.T) {
 		},
 	})
 
-	key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	key := state.Key{Slug: git.MustCheckoutSlug(), Agent: defaultAgentName}
 	if err := seedHomeState(key, state.HomeState{HomeVolume: "home-vol"}); err != nil {
 		t.Fatalf("seed state: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestBuildCommandWarnsWhenRecordingAgentVersionFails(t *testing.T) {
 	cmd, ui := setupCommandFixtures(t, cmdBuild, "--agent-version", "9.9.9")
 
 	// A directory at the state file's path makes the baseline write fail.
-	key := state.Key{Slug: git.CheckoutSlug(), Agent: defaultAgentName}
+	key := state.Key{Slug: git.MustCheckoutSlug(), Agent: defaultAgentName}
 	if err := os.MkdirAll(filepath.Join(state.KeyDir(key), "state.yaml"), 0o700); err != nil {
 		t.Fatalf("make state path unwritable: %v", err)
 	}

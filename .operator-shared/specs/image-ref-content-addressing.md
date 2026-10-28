@@ -85,7 +85,9 @@ digest is unchanged — the recreate the spec's migration clause forbids.
 The parsed `Slug`/`Agent` are what ownership and liveness key on, so `image.ListImages` (foreign-image exclusion),
 `image.RemoveImages`/`refuseNonRunnerRefs`, `naming.SandboxIdentity`, and `pruning` keep resolving content refs to the
 same `state.Key{Slug, Agent}` without a `ContentID` term. Ownership stays positional in the private runtime home; a
-content ref is a runner image exactly when it parses to a single-segment slug.
+content ref is a runner image exactly when its parsed slug embeds the launcher's 14-character slug hash
+(`naming.IsRunnerImageRef`), the predicate `image/list.go`, `image/remove.go` and `pruning/images.go` all apply
+(#350, #383).
 
 `state.ImageReferences` keeps protecting the project's legacy refs (the prefix-free name ref and the prefixed Docker-tag
 ref). It need not enumerate every content ref: the in-use guard unions it with the live-sandbox scan
