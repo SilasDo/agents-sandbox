@@ -6,10 +6,10 @@ import (
 	"github.com/spf13/cobra"
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
-	"github.com/inoio/agents-sandbox/cmd/agents-sandbox/view"
 	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/view"
 )
 
 // minimumCompactionLayers is the smallest layer count the runtime can merge.

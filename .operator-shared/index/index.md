@@ -42,18 +42,11 @@ read_if: Navigating the codebase.
 - `constants.go`, `tree.go` — command name/flag constants and `tree` output.
 - `cli_*_test.go` — Extensive CLI integration tests (one per command/area).
 
-#### `cmd/agents-sandbox/view/` — Domain-shaped output renderers (#357)
-
-- `printers.go` — `SandboxPrinter`/`ImagePrinter`/`VolumePrinter` (`cliout.Printer` implementations) plus digest truncation and the volume SIZE-column rules.
-- `prune.go` — Prune report JSON DTOs and constructors (`PruneReportJSON`/`ImageReportJSON`/`VolumeReportJSON`/`SandboxReportJSON`).
-- `compact.go` — `CompactReportJSON` and its constructor.
-- `*_test.go`, `main_test.go` — Unit tests and the fail-fast seam `TestMain`.
-
 ### `internal/` — Core packages (non-sandbox)
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
 - `atomicwrite/` — Atomic file writes (unique temp file + fsync + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
-- `cliout/` — Output rendering core, domain-free: the generic list/JSON rendering (`PrintList`/`Mode`/`WriteJSON`) and the report-mode renderer (`RenderPruneReport`). A `boundary_test.go` pins the no-domain-import rule; the domain printers live in `cmd/agents-sandbox/view` (see `specs/cliout-package-boundary.md`).
+- `cliout/` — Output rendering core, domain-free: the generic list/JSON rendering (`PrintList`/`Mode`/`WriteJSON`) and the report-mode renderer (`RenderPruneReport`). A `boundary_test.go` pins the no-domain-import rule; the domain printers live in `internal/view` (see `specs/cliout-package-boundary.md`).
 - `configmerge/` — Merge config with precedence.
 - `configpaths/` — Config/home path resolution and guards, plus the shared config-file discovery (`FindConfigFile`, the single extension order) that both config loaders call.
 - `filewalk/` — Best-effort recursive file walk shared by the tool.
@@ -67,6 +60,7 @@ read_if: Navigating the codebase.
 - `termio/` — Terminal UI (printer, table, prompt, spinner, ansi, levels).
 - `testutil/` — Test helpers (mocks, testgit) and the test-isolation contract test (`isolation_contract_test.go`).
 - `upgrade/` — Self-upgrade (incl. Homebrew).
+- `view/` — Domain-shaped output renderers for the launcher (#357): `SandboxPrinter`/`ImagePrinter`/`VolumePrinter` (the `cliout.Printer` implementations, plus digest truncation and the volume SIZE-column rules) and the prune/compact report JSON DTOs. Keeps `cliout` domain-free (see `specs/cliout-package-boundary.md`).
 - `viperconfig/` — Viper-based launcher config: `Config`/`Resolver`, layer discovery (`ConfigLayers`, the six-layer precedence list that drives both `NewResolver`'s merge order and the `config paths` display), env/flag binding, decode hooks, and validation. Split across focused files (`config.go`, `load.go`, `env.go`, `flags.go`, `decode.go`, `validate.go`, `accessors.go`).
 - `runoptions/` — The `*cobra.Command`-driven run/shell option resolution (`Build`): flags, agent, notify, network, sizes, and mounts combined with the resolved `viperconfig.Config` into `options.RunOptions`. Extracted from `viperconfig` so the config-loading contract and the session-configuration contract change independently (#356).
 - `yamlfmt/` — YAML formatting.

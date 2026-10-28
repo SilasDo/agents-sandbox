@@ -68,7 +68,7 @@ command reports the bare version (e.g. `0.1.0`).
   accessors) (#356).
 - Internal: `internal/cliout` no longer depends on the sandbox domain. It keeps only the generic renderer
   (`PrintList`/`Mode`/`WriteJSON` and the report-mode renderer), and the sandbox/image/volume `Printer`
-  implementations plus the prune/compact report JSON DTOs moved to `cmd/agents-sandbox/view`; an import-boundary test
+  implementations plus the prune/compact report JSON DTOs moved to `internal/view`; an import-boundary test
   keeps the separation (#357).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and

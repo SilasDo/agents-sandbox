@@ -8,7 +8,7 @@ import (
 
 // TestPackageStaysDomainFree pins the package boundary from issue #357: cliout is
 // the reusable renderer, so its non-test sources must not import a sandbox domain
-// package. The domain Printer implementations live in cmd/agents-sandbox/view.
+// package. The domain Printer implementations live in internal/view.
 func TestPackageStaysDomainFree(t *testing.T) {
 	pkg, err := build.Default.ImportDir(".", build.ImportComment)
 	if err != nil {
