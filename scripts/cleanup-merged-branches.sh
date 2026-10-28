@@ -32,8 +32,9 @@
 #   --older-than <dur>       Only act on entries whose tip is at least this old
 #                            (default 0 = no age filter). Suffixes: s m h d w.
 #   --stale <dur>            Age at/after which a remaining entry is stale (default 14d).
-#   --fresh <dur>            Keep a worktree with no commits of its own that was
-#                            created within this window (default 30m; 0 disables).
+#   --fresh <dur>            Window for keeping a just-created worktree with no commits
+#                            of its own (default 30m; 0 disables just this check). A
+#                            worktree at the local default branch or newer is always kept.
 #   --local-only             Do not delete origin branches.
 #   --remote-only            Do not touch worktrees or local branches.
 #   --exclude <glob>         Keep matching branches/worktrees (repeatable).
@@ -319,7 +320,9 @@ worktree_commit_age() {
 }
 worktree_creation_age() {
   local path="$1" oldest birth
-  # The oldest HEAD reflog entry is the worktree's creation checkout.
+  # The oldest HEAD reflog entry is the worktree's creation checkout. If the worktree
+  # has no reflog of its own, git reports the branch reflog instead (the branch's
+  # creation, i.e. older, so the worktree is never seen as fresher than it is).
   oldest="$(git -C "$path" reflog show --date=unix HEAD 2>/dev/null | tail -1 || true)"
   if [[ "$oldest" =~ HEAD@\{([0-9]+)\} ]]; then
     printf '%s' "$((NOW - BASH_REMATCH[1]))"
@@ -334,13 +337,14 @@ worktree_creation_age() {
   # Unknown creation time: fall back to the tip's age to stay conservative.
   worktree_commit_age "$path"
 }
-worktree_is_fresh_session() {
-  local path="$1" branch="$2"
-  # A: tip is the local default branch or newer.
-  git merge-base --is-ancestor "$local_default" "$branch" 2>/dev/null && return 0
-  # B: created within the fresh window.
+worktree_at_or_ahead_of_default() {
+  # A: the branch tip is the local default branch or a descendant of it.
+  git merge-base --is-ancestor "$local_default" "$1" 2>/dev/null
+}
+worktree_created_recently() {
+  # B: the worktree was created within the fresh window.
   ((fresh_after_seconds > 0)) || return 1
-  (($(worktree_creation_age "$path") < fresh_after_seconds))
+  (($(worktree_creation_age "$1") < fresh_after_seconds))
 }
 older_than_allows() { ((older_than_seconds == 0 || $1 >= older_than_seconds)); }
 is_stale() { (($1 >= stale_after_seconds)); }
@@ -391,7 +395,7 @@ flush_worktree
 
 for i in "${!worktree_path[@]}"; do
   if [[ "${worktree_bare[$i]}" != 1 && "${worktree_prunable[$i]}" != 1 && ! -d "${worktree_path[$i]}" ]]; then
-    worktree_prunable[$i]=1
+    worktree_prunable[i]=1
   fi
 done
 
@@ -439,7 +443,9 @@ for i in "${!worktree_path[@]}"; do
       note="release branch"
     elif is_excluded "$branch"; then
       note="excluded (merged)"
-    elif [[ "$method" == ancestry ]] && worktree_is_fresh_session "$path" "$branch"; then
+    elif [[ "$method" == ancestry ]] && worktree_at_or_ahead_of_default "$branch"; then
+      note="default branch or newer; kept"
+    elif [[ "$method" == ancestry ]] && worktree_created_recently "$path"; then
       note="fresh session; kept"
     elif ! older_than_allows "$age"; then
       note="younger than --older-than (merged)"
