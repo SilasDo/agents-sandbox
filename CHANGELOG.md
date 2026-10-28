@@ -80,6 +80,13 @@ command reports the bare version (e.g. `0.1.0`).
   through refresh-and-resume on both instead of only on the fast path — the post-lock re-check (the path every first
   boot and concurrent start takes) no longer falls through to a bare start — and the post-lock re-check reports its
   connect/start outcome like the fast path (#340).
+- Internal: `internal/cliout` no longer depends on the sandbox domain. It keeps only the generic renderer
+  (`PrintList`/`Mode`/`WriteJSON` and the report-mode renderer), and the sandbox/image/volume `Printer`
+  implementations plus the prune/compact report JSON DTOs moved to `internal/view`; an import-boundary test
+  keeps the separation (#357).
+- Internal: the runner image's agent-version resolution and the agent upgrade check share one release lookup
+  (`agent.LatestVersion`) instead of each wrapping the agent's `UpgradeChecker`, so a change to how a release is resolved
+  (channel gating, caching, error tolerance) lands in one place. The `image`/`vm` test seams are unchanged (#353).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
@@ -87,6 +94,10 @@ command reports the bare version (e.g. `0.1.0`).
   present-but-`false` value included. Two outcomes change: a project carrying an inert marker gains Docker, and a project
   with `runner-base-docker`/`runner-base-dind` plus `docker: false` loses it. Both are reported on the build output. See
   `docs/runner-image.md`.
+- Internal: the runner image's identity is now a structured value instead of a re-parsed string. `image.ImageInfo`
+  carries `naming.ImageIdentity` (slug, agent, content id) beside its rendered references, so the microsandbox load
+  decision and the VM reconfig comparison use the identity the launcher built rather than parsing its own reference;
+  only a reference read back from the VM or the microsandbox cache is still parsed (#349).
 - `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
   (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
   `dry-run-vm: auto-enabled` verbose line (#344).

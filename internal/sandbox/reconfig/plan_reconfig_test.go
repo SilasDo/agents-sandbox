@@ -6,6 +6,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
@@ -20,7 +21,7 @@ func TestPlanReconfigDecidesRecreate(t *testing.T) {
 			CPUs:      cpus,
 			MemoryMiB: mem,
 			RootDisk:  rootDisk,
-			Image:     "image-a",
+			Image:     naming.RunnerImageRef(planSlug, "opencode"),
 			Volumes: map[string]msbSdk.MountConfig{
 				mounts.TmpMountPath:       {SizeMiB: tmpMiB},
 				mounts.WorkspaceMountPath: {QuotaMiB: options.DefaultWorkspaceQuotaMiB},
@@ -30,81 +31,81 @@ func TestPlanReconfigDecidesRecreate(t *testing.T) {
 	}
 
 	cases := []struct {
-		name     string
-		cfg      *msbSdk.SandboxConfig
-		imageRef string
-		opts     options.RunOptions
-		homeVol  string
-		want     bool
+		name    string
+		cfg     *msbSdk.SandboxConfig
+		image   naming.ImageIdentity
+		opts    options.RunOptions
+		homeVol string
+		want    bool
 	}{
 		{
-			name:     "image mismatch",
-			cfg:      mkConfig(4, 4096, 0, 2048),
-			imageRef: "image-b",
-			opts:     options.RunOptions{},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     true,
+			name:    "image mismatch",
+			cfg:     mkConfig(4, 4096, 0, 2048),
+			image:   naming.ImageIdentity{Slug: planSlug, Agent: "pi"},
+			opts:    options.RunOptions{},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    true,
 		},
 		{
-			name:     "tmpfs mismatch",
-			cfg:      mkConfig(4, 4096, 0, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{TmpSize: "1G"},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     true,
+			name:    "tmpfs mismatch",
+			cfg:     mkConfig(4, 4096, 0, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{TmpSize: "1G"},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    true,
 		},
 		{
-			name:     "workspace quota mismatch",
-			cfg:      mkConfig(4, 4096, 0, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{WorkspaceQuota: "32G"},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     true,
+			name:    "workspace quota mismatch",
+			cfg:     mkConfig(4, 4096, 0, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{WorkspaceQuota: "32G"},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    true,
 		},
 		{
-			name:     "workspace quota unset ignores quota",
-			cfg:      mkConfig(4, 4096, 0, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     false,
+			name:    "workspace quota unset ignores quota",
+			cfg:     mkConfig(4, 4096, 0, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    false,
 		},
 		{
-			name:     "disk mismatch (explicit)",
-			cfg:      mkConfig(4, 4096, 8192, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{DiskSize: "16G"},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     true,
+			name:    "disk mismatch (explicit)",
+			cfg:     mkConfig(4, 4096, 8192, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{DiskSize: "16G"},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    true,
 		},
 		{
-			name:     "disk unset ignores disk",
-			cfg:      mkConfig(4, 4096, 8192, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     false,
+			name:    "disk unset ignores disk",
+			cfg:     mkConfig(4, 4096, 8192, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    false,
 		},
 		{
-			name:     "home volume mismatch",
-			cfg:      mkConfig(4, 4096, 0, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{},
-			homeVol:  "agents-sandbox-home-proj-new",
-			want:     true,
+			name:    "home volume mismatch",
+			cfg:     mkConfig(4, 4096, 0, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{},
+			homeVol: "agents-sandbox-home-proj-new",
+			want:    true,
 		},
 		{
-			name:     "no change",
-			cfg:      mkConfig(4, 4096, 16384, 2048),
-			imageRef: "image-a",
-			opts:     options.RunOptions{TmpSize: "2G", DiskSize: "16G"},
-			homeVol:  "agents-sandbox-home-proj-vol",
-			want:     false,
+			name:    "no change",
+			cfg:     mkConfig(4, 4096, 16384, 2048),
+			image:   planImage(),
+			opts:    options.RunOptions{TmpSize: "2G", DiskSize: "16G"},
+			homeVol: "agents-sandbox-home-proj-vol",
+			want:    false,
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := PlanReconfig(tc.cfg, tc.imageRef, tc.opts, ChangeFlags{}, tc.homeVol).Recreate
+			got := PlanReconfig(tc.cfg, tc.image, tc.opts, ChangeFlags{}, tc.homeVol).Recreate
 			if got != tc.want {
 				t.Errorf("PlanReconfig().Recreate = %v, want %v", got, tc.want)
 			}
@@ -147,13 +148,13 @@ func TestWorkspaceQuotaChange(t *testing.T) {
 
 func TestPlanReconfigServeHostPortReuse(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{
-		Image: "img",
+		Image: naming.RunnerImageRef(planSlug, "opencode"),
 		PortBindings: []msbSdk.PortBinding{
 			{Bind: "127.0.0.1", HostPort: 4096, GuestPort: 4096, Protocol: msbSdk.PortProtocolTCP},
 		},
 	}
 	opts := options.RunOptions{ServeOnly: true}
-	plan := PlanReconfig(cfg, "img", opts, ChangeFlags{}, "")
+	plan := PlanReconfig(cfg, planImage(), opts, ChangeFlags{}, "")
 	if plan.Recreate {
 		t.Error("expected no recreate when reusing the existing binding")
 	}

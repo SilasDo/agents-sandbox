@@ -23,6 +23,12 @@ import (
 // content-addressed reference in tests.
 const testDockerImageID = "sha256:9f2c1a7b4d6e0f3199999999999999999999999999999999999999999999999999"
 
+// testContentIdentity is the structured identity of the image the reuse tests
+// describe: project "test-project", agent opencode, content id 9f2c1a7b4d6e0f31.
+func testContentIdentity() naming.ImageIdentity {
+	return naming.ImageIdentity{Slug: "test-project", Agent: "opencode", ContentID: "9f2c1a7b4d6e0f31"}
+}
+
 func TestImageContentIDTrimsAndTruncates(t *testing.T) {
 	if got := imageContentID(testDockerImageID); got != "9f2c1a7b4d6e0f31" {
 		t.Errorf("imageContentID(%q) = %q, want the sha256-prefix-free 16-char prefix", testDockerImageID, got)
@@ -41,53 +47,13 @@ func TestImageContentIDTrimsAndTruncates(t *testing.T) {
 	}
 }
 
-func TestHasNameIdentity(t *testing.T) {
-	cases := []struct {
-		name string
-		info naming.ArtifactInfo
-		want bool
-	}{
-		{"slug and agent", naming.ArtifactInfo{Slug: "proj-1mjusbm3wikhb0", Agent: "opencode"}, true},
-		{"no slug", naming.ArtifactInfo{Agent: "opencode"}, false},
-		{"no agent", naming.ArtifactInfo{Slug: "proj-1mjusbm3wikhb0"}, false},
-		{"neither", naming.ArtifactInfo{}, false},
-	}
-	for _, tc := range cases {
-		if got := hasNameIdentity(tc.info); got != tc.want {
-			t.Errorf("%s: hasNameIdentity(%+v) = %v, want %v", tc.name, tc.info, got, tc.want)
-		}
-	}
-}
-
-func TestNameRefFromDockerTag(t *testing.T) {
-	const slug = "proj-1mjusbm3wikhb0"
-	cases := []struct {
-		name      string
-		dockerTag string
-		want      string
-	}{
-		{
-			"prefixed tag",
-			naming.DockerImageRef(slug, "opencode"),
-			naming.RunnerImageRef(slug, "opencode"),
-		},
-		{"prefix-free tag", naming.RunnerImageRef(slug, "opencode"), naming.RunnerImageRef(slug, "opencode")},
-		{"foreign reference", "docker.io/library/foreign:1", ""},
-		{"tag without an agent", slug + ":latest", ""},
-		{"empty tag", "", ""},
-	}
-	for _, tc := range cases {
-		if got := nameRefFromDockerTag(tc.dockerTag); got != tc.want {
-			t.Errorf("%s: nameRefFromDockerTag(%q) = %q, want %q", tc.name, tc.dockerTag, got, tc.want)
-		}
-	}
-}
-
 func TestImageRefCandidates(t *testing.T) {
 	const slug = "proj-1mjusbm3wikhb0"
-	contentRef := naming.ContentImageRef(slug, "opencode", "9f2c1a7b4d6e0f31")
+	contentID := "9f2c1a7b4d6e0f31"
+	contentRef := naming.ContentImageRef(slug, "opencode", contentID)
 	dockerTag := naming.DockerImageRef(slug, "opencode")
 	nameRef := naming.RunnerImageRef(slug, "opencode")
+	identity := naming.ImageIdentity{Slug: slug, Agent: "opencode", ContentID: contentID}
 
 	cases := []struct {
 		name string
@@ -96,21 +62,26 @@ func TestImageRefCandidates(t *testing.T) {
 	}{
 		{
 			"content, name, and legacy refs in preference order",
-			ImageInfo{Ref: contentRef, DockerTag: dockerTag},
+			ImageInfo{Ref: contentRef, Identity: identity, DockerTag: dockerTag},
 			[]string{contentRef, nameRef, dockerTag},
 		},
 		{
+			"the identity supplies the name ref without a Docker tag",
+			ImageInfo{Ref: contentRef, Identity: identity},
+			[]string{contentRef, nameRef},
+		},
+		{
 			"empty ref is dropped",
-			ImageInfo{Ref: "", DockerTag: dockerTag},
+			ImageInfo{Ref: "", Identity: identity, DockerTag: dockerTag},
 			[]string{nameRef, dockerTag},
 		},
 		{
 			"duplicate refs are deduplicated",
-			ImageInfo{Ref: nameRef, DockerTag: nameRef},
+			ImageInfo{Ref: nameRef, Identity: identity, DockerTag: nameRef},
 			[]string{nameRef},
 		},
 		{
-			"foreign docker tag alone",
+			"a foreign docker tag alone contributes no name ref",
 			ImageInfo{Ref: "", DockerTag: "docker.io/library/foreign:1"},
 			[]string{"docker.io/library/foreign:1"},
 		},
@@ -154,6 +125,11 @@ func TestEnsureImageWithClientSetsContentRef(t *testing.T) {
 	if want := naming.DockerImageRef("myproj-1abc1234defg5", "opencode"); info.DockerTag != want {
 		t.Errorf("info.DockerTag = %q, want the unchanged Docker tag %q", info.DockerTag, want)
 	}
+	if want := (naming.ImageIdentity{
+		Slug: "myproj-1abc1234defg5", Agent: "opencode", ContentID: "9f2c1a7b4d6e0f31",
+	}); info.Identity != want {
+		t.Errorf("info.Identity = %+v, want the structured identity %+v", info.Identity, want)
+	}
 }
 
 // TestEnsureImageWithClientFallsBackToNameRefWhenContentIDEmpty pins the
@@ -183,6 +159,9 @@ func TestEnsureImageWithClientFallsBackToNameRefWhenContentIDEmpty(t *testing.T)
 	if want := naming.RunnerImageRef("myproj-1abc1234defg5", "opencode"); info.Ref != want {
 		t.Errorf("info.Ref = %q, want the name ref %q", info.Ref, want)
 	}
+	if want := (naming.ImageIdentity{Slug: "myproj-1abc1234defg5", Agent: "opencode"}); info.Identity != want {
+		t.Errorf("info.Identity = %+v, want the identity with no content id %+v", info.Identity, want)
+	}
 }
 
 // TestEnsureLoadedReusesContentRef pins the primary reuse path: when the cache
@@ -207,7 +186,7 @@ func TestEnsureLoadedReusesContentRef(t *testing.T) {
 	info, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Digest: "sha256:same"},
+		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:same"},
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -223,7 +202,8 @@ func TestEnsureLoadedReusesContentRef(t *testing.T) {
 
 // TestEnsureLoadedReusesNameRefForMigration pins that a 0.6.0 install, which
 // cached the image under the prefix-free name reference, keeps its cache: the
-// name ref is derived from the Docker tag and reused when its content matches.
+// name ref is derived from the image's structured identity and reused when its
+// content matches.
 func TestEnsureLoadedReusesNameRefForMigration(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	contentRef := naming.ContentImageRef("test-project", "opencode", "9f2c1a7b4d6e0f31")
@@ -245,7 +225,7 @@ func TestEnsureLoadedReusesNameRefForMigration(t *testing.T) {
 	info, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Digest: "sha256:same"},
+		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:same"},
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -253,6 +233,44 @@ func TestEnsureLoadedReusesNameRefForMigration(t *testing.T) {
 	}
 	if len(msbClient.LoadedImages) != 0 {
 		t.Errorf("expected no load when the name ref matches, got %v", msbClient.LoadedImages)
+	}
+	if info.Ref != nameRef {
+		t.Errorf("info.Ref = %q, want the reused name ref %q", info.Ref, nameRef)
+	}
+}
+
+// TestEnsureLoadedReusesNameRefFromIdentity pins that the name-ref candidate
+// comes from the image's structured identity rather than from parsing the
+// Docker tag: an info that names its (slug, agent, contentID) reuses the
+// cached name reference even when no Docker tag accompanies it.
+func TestEnsureLoadedReusesNameRefFromIdentity(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	contentRef := naming.ContentImageRef("test-project", "opencode", "9f2c1a7b4d6e0f31")
+	nameRef := naming.RunnerImageRef("test-project", "opencode")
+	docker.WithNoopDockerMock(t)
+	msbClient := &msb.MockMsbClient{
+		ImageGetFn: func(_ context.Context, ref string) error {
+			if ref == nameRef {
+				return nil
+			}
+			return errors.New("not cached")
+		},
+		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
+			return &msbSdk.ImageConfig{Digest: "sha256:same"}, nil
+		},
+	}
+
+	info, err := EnsureLoaded(
+		context.Background(),
+		msbClient,
+		ImageInfo{Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:same"},
+		&termio.Mock{},
+	)
+	if err != nil {
+		t.Fatalf("EnsureLoaded: %v", err)
+	}
+	if len(msbClient.LoadedImages) != 0 {
+		t.Errorf("expected no load when the identity's name ref matches, got %v", msbClient.LoadedImages)
 	}
 	if info.Ref != nameRef {
 		t.Errorf("info.Ref = %q, want the reused name ref %q", info.Ref, nameRef)
@@ -282,7 +300,7 @@ func TestEnsureLoadedReusesLegacyPrefixedRefForMigration(t *testing.T) {
 	info, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Digest: "sha256:same"},
+		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:same"},
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -318,7 +336,7 @@ func TestEnsureLoadedLoadsUnderContentRefWhenNoCandidateMatches(t *testing.T) {
 	info, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Digest: "sha256:new"},
+		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:new"},
 		ui,
 	)
 	if err != nil {
@@ -363,7 +381,7 @@ func TestEnsureLoadedLoadsUnderContentRefWhenContentDiffers(t *testing.T) {
 	info, err := EnsureLoaded(
 		context.Background(),
 		msbClient,
-		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Digest: "sha256:new"},
+		ImageInfo{DockerTag: dockerTag, Ref: contentRef, Identity: testContentIdentity(), Digest: "sha256:new"},
 		ui,
 	)
 	if err != nil {

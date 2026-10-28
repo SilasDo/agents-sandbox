@@ -416,13 +416,11 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 	}
 }
 
-// TestAgentLatestVersionDefaultClosureNoChecker covers the default
-// agentLatestVersion closure branch for an agent that is not an UpgradeChecker:
-// it returns an empty version without error.
-func TestAgentLatestVersionDefaultClosureNoChecker(t *testing.T) {
-	orig := agentLatestVersion
-	defer func() { agentLatestVersion = orig }()
-	got, err := orig(context.Background(), &fakeAgent{})
+// TestAgentLatestVersionDefaultNoChecker covers the default agentLatestVersion
+// branch for an agent that is not an UpgradeChecker: it returns an empty version
+// without error.
+func TestAgentLatestVersionDefaultNoChecker(t *testing.T) {
+	got, err := agentLatestVersion(context.Background(), &fakeAgent{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

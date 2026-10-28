@@ -7,6 +7,7 @@ import (
 
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
+	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -115,8 +116,8 @@ func TestDiskMiBOr0NilRootDisk(t *testing.T) {
 // when RootDisk is nil (diskMiBOr0 nil branch) and exercises the disk change
 // formatting.
 func TestPlanReconfigDiskChangeWithNilRootDisk(t *testing.T) {
-	cfg := &msbSdk.SandboxConfig{Image: "img"}
-	plan := PlanReconfig(cfg, "img", options.RunOptions{DiskSize: "8G"}, ChangeFlags{}, "")
+	cfg := &msbSdk.SandboxConfig{Image: naming.RunnerImageRef(planSlug, "opencode")}
+	plan := PlanReconfig(cfg, planImage(), options.RunOptions{DiskSize: "8G"}, ChangeFlags{}, "")
 	if !plan.Recreate {
 		t.Fatal("expected recreate on disk size change with nil RootDisk")
 	}

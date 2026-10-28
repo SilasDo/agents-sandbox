@@ -160,6 +160,34 @@ func TestIsRunnerImageRef(t *testing.T) {
 	}
 }
 
+// TestImageIdentityRef pins the structured identity's rendered forms: a content
+// id yields the content-addressed reference, no content id the prefix-free name
+// reference, and an incomplete slug/agent pair renders nothing under either
+// spelling (a runner image is always a per-agent image).
+func TestImageIdentityRef(t *testing.T) {
+	identity := ImageIdentity{Slug: fixtureSlug, Agent: "opencode"}
+	require.Equal(t, "myproj-1mjusbm3wikhb0:opencode-latest", identity.NameRef())
+	require.Equal(t, "myproj-1mjusbm3wikhb0:opencode-latest", identity.Ref())
+
+	withContent := identity
+	withContent.ContentID = "9f2c1a7b4d6e0f31"
+	require.Equal(t, "myproj-1mjusbm3wikhb0:opencode.9f2c1a7b4d6e0f31", withContent.Ref())
+	// The name reference ignores the content id: it is the migration candidate.
+	require.Equal(t, "myproj-1mjusbm3wikhb0:opencode-latest", withContent.NameRef())
+
+	incomplete := []ImageIdentity{
+		{},
+		{Slug: fixtureSlug},
+		{Agent: "opencode"},
+		{Slug: fixtureSlug, ContentID: "9f2c1a7b4d6e0f31"},
+		{Agent: "opencode", ContentID: "9f2c1a7b4d6e0f31"},
+	}
+	for _, i := range incomplete {
+		require.Empty(t, i.Ref(), i)
+		require.Empty(t, i.NameRef(), i)
+	}
+}
+
 func TestContentImageRefRoundTrips(t *testing.T) {
 	ref := ContentImageRef("myproj-1abc1234defg5", "claude-code", "9f2c1a7b4d6e0f31")
 	require.Equal(t, "myproj-1abc1234defg5:claude-code.9f2c1a7b4d6e0f31", ref)

@@ -1,6 +1,6 @@
 ---
 description: Contract for keying the microsandbox runner-image cache by image content instead of a constant name/reference, so a project's image variants (docker on/off, agent bumps, body edits) coexist in msb and toggling reimports nothing; the Docker tag stays stable, ParseImageTag round-trips the content suffix, and prune retains a live project's variants by age and reclaims a pruned project's.
-read_if: Changing the msb runner-image reference (`naming.RunnerImageRef`, `ParseImageTag`), `image.EnsureImageWithClient`/`EnsureLoaded` and the load decision, `state.ImageReferences`, `pruning.PruneImages`/`keepImage` image retention, or diagnosing an unexpected `loading image ... into microsandbox` on a `run`/`shell`.
+read_if: Changing the msb runner-image reference (`naming.RunnerImageRef`, `naming.ImageIdentity`, `ParseImageTag`), `image.ImageInfo.Identity`, `image.EnsureImageWithClient`/`EnsureLoaded` and the load decision, `state.ImageReferences`, `pruning.PruneImages`/`keepImage` image retention, or diagnosing an unexpected `loading image ... into microsandbox` on a `run`/`shell`.
 ---
 
 # Content-addressed runner-image references
@@ -55,16 +55,19 @@ A candidate is reused only when its cached content matches (`cachedImageMatches`
 equal `info.Digest`. A cached image that records no digest is unknown content and is reloaded — the `dockerfile-id`
 label is a source signature, not a content identity, and must not stand in for the digest (a floating base tag can move
 the bytes under a matching label). Reloading is the deliberate cost: a load records a digest, so such an image matches
-on the next run instead. `EnsureLoaded` derives the
-name ref by parsing `info.DockerTag` for its `(slug, agent)` (the Docker tag still names them), since it cannot derive it
-from `Ref` once that is content-addressed; no new `ImageInfo` field is needed.
+on the next run instead. `ImageInfo` carries the image's structured identity (`naming.ImageIdentity{Slug, Agent,
+ContentID}`) alongside its rendered references, set by `EnsureImageWithClient` in the same expression that renders
+`Ref`; `EnsureLoaded` derives the name-ref candidate from it, so a reference the launcher itself constructed is never
+parsed back. Parsing (`naming.ParseImageTag`) remains only where a reference arrives from outside this process's own
+construction: the microsandbox image list (pruning, `image list`/`remove`) and CLI arguments.
 
 ### Reconfig tolerance
 
-`decideReconfig`'s image comparison (`reconfig.sameImageIdentity`) treats the content, prefix-free-name and
-prefixed-Docker-tag spellings of one `(slug, agent)` as the same image, so a VM created under an older spelling is not
-recreated merely because the launcher now computes a content ref. A digest-pinned or non-runner ref remains equal only
-to itself. The rule is asymmetric on `ContentID`:
+The plan's image comparison (`reconfig.sameImageRef`) takes the desired image as the structured identity and the
+persisted `cfg.Image` as the one reference that must be parsed (it is read back from the VM). It treats the content,
+prefix-free-name and prefixed-Docker-tag spellings of one `(slug, agent)` as the same image, so a VM created under an
+older spelling is not recreated merely because the launcher now computes a content ref. A digest-pinned or non-runner
+ref remains equal only to itself, and the launcher never computes one. The rule is asymmetric on `ContentID`:
 
 - When **either** reference is a name/legacy spelling (no `ContentID`) — the upgrade from a 0.6.0 or pre-0.6 VM — same
   `(Slug, Agent)` is the same image.
@@ -106,6 +109,9 @@ ref). It need not enumerate every content ref: the in-use guard unions it with t
   same threshold the prune invocation already resolves; carry it into `PruneImages` (add an `Age` field to `PruneState`,
   which `buildPruneState` already receives).
 
+`PruneImages` parses each listed reference once and passes the resulting `ArtifactInfo` into `keepImage`, so a
+reference read back from the microsandbox cache is never parsed twice.
+
 A pruned/dead key's references (in `ToPrune`, or in neither set) are removed as today. This bounds a live project's cached
 variants to those used within the window while keeping the ones a toggling user actually reuses, and reclaims a retired
 project's images outright. The current build's ref is fresh by construction, and a live VM's ref is protected by the first
@@ -123,6 +129,9 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
   signature. The source signature excludes the resolved base digest and the dev user's uid/gid, so it can match while the
   bytes differ (base tag move + `--rebuild`); keying the cache on it would silently reuse the wrong content.
 - `ImageInfo.DockerTag` remains the stable Docker tag; only `ImageInfo.Ref` is content-addressed.
+- `ImageInfo.Identity` is the image's structured identity and never changes; `ImageInfo.Ref` is the microsandbox
+  reference that actually holds the content, so it can be a legacy candidate `EnsureLoaded` reused. Identity is set by
+  the same call that renders the initial `Ref`, so no caller has to parse a reference it constructed.
 - Ownership/liveness resolve from `(slug, agent)` alone; `ContentID` never participates in a `state.Key`.
 - No legacy msb image with a recorded digest is reimported by this change: the name ref and the prefixed ref are still
   reused when their content matches. An image that records no digest is reloaded once (a load records a digest), because
@@ -144,9 +153,9 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
 - `artifact-naming.md`: the msb image ref is no longer `<slug>:<agent>-latest` as the produced form — that becomes the
   legacy/name form only; the produced msb ref is content-addressed. The "resolve by content" clause already established
   for the Docker/msb split extends to the content suffix.
-- `runner-image-build.md`: the "Load decision" section gains the candidate-reference set (content, name, prefixed) and the
-  name-ref derivation from the Docker tag; the retained-reference rule changes from "per-agent `-latest`" to "all variants
-  of a live key within the prune age".
+- `runner-image-build.md`: the "Load decision" section gains the candidate-reference set (content, name, prefixed) and
+  the `ImageInfo.Identity` field the name ref is derived from; the retained-reference rule changes from "per-agent
+  `-latest`" to "all variants of a live key within the prune age".
 
 ## Acceptance
 
@@ -155,7 +164,7 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
 - Same for an agent-version bump and back, and for a project-Dockerfile edit and back.
 - An existing 0.6.0 install (cached under `<slug>:<agent>-latest`) and a pre-0.6 install (cached under the prefixed ref)
   each keep their cache when the content matches — no reimport on upgrade, and no VM recreate while the image digest is
-  unchanged (`reconfig.sameImageIdentity` tolerates the content spelling).
+  unchanged (`reconfig.sameImageRef` tolerates the content spelling).
 - `image list` shows every content ref; `image remove <content-ref>` refuses while a kept sandbox holds it and otherwise
   removes it; `image prune` keeps a live project's recent variants and removes a retired project's refs and aged-out
   variants (dry-run reports the same).

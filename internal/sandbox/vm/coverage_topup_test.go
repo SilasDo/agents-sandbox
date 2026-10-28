@@ -23,7 +23,7 @@ import (
 )
 
 // upgradeCheckerAgent implements both the core Agent interface and the
-// UpgradeChecker capability so agentLatestVersion's real closure reaches its
+// UpgradeChecker capability so the shared release resolver reaches its
 // LatestVersion call without touching the network.
 type upgradeCheckerAgent struct{}
 
@@ -35,8 +35,8 @@ func (upgradeCheckerAgent) ImageSpec() agent.ImageSpec {
 func (upgradeCheckerAgent) LatestVersion(context.Context) (string, error) { return "9.9.9", nil }
 func (upgradeCheckerAgent) NewerThan(_, _ string) (bool, error)           { return true, nil }
 
-// TestAgentLatestVersionCheckerAgent covers the real agentLatestVersion closure
-// branch where the agent is an UpgradeChecker: it returns the checker's latest
+// TestAgentLatestVersionCheckerAgent covers the real agentLatestVersion branch
+// where the agent is an UpgradeChecker: it returns the checker's latest
 // version.
 func TestAgentLatestVersionCheckerAgent(t *testing.T) {
 	got, err := agentLatestVersion(context.Background(), upgradeCheckerAgent{})

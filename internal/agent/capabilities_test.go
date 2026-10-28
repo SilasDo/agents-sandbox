@@ -1,11 +1,70 @@
 package agent_test
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 )
+
+// stubUpgradeAgent is an Agent with an UpgradeChecker whose release lookup is
+// fixed, so the shared resolver can be exercised without a network call.
+type stubUpgradeAgent struct {
+	latest string
+	err    error
+}
+
+func (stubUpgradeAgent) Name() string               { return "stub-upgrade" }
+func (stubUpgradeAgent) ConfigDirName() string      { return "stub-upgrade" }
+func (stubUpgradeAgent) ImageSpec() agent.ImageSpec { return agent.ImageSpec{} }
+func (s stubUpgradeAgent) LatestVersion(context.Context) (string, error) {
+	return s.latest, s.err
+}
+func (stubUpgradeAgent) NewerThan(_, _ string) (bool, error) { return false, nil }
+
+// stubPlainAgent is an Agent implementing no optional capability.
+type stubPlainAgent struct{}
+
+func (stubPlainAgent) Name() string               { return "stub-plain" }
+func (stubPlainAgent) ConfigDirName() string      { return "stub-plain" }
+func (stubPlainAgent) ImageSpec() agent.ImageSpec { return agent.ImageSpec{} }
+
+// LatestVersion resolves the agent's newest release through its own
+// UpgradeChecker, so every caller shares one resolution.
+func TestLatestVersionResolvesThroughTheAgentsOwnChecker(t *testing.T) {
+	got, err := agent.LatestVersion(context.Background(), stubUpgradeAgent{latest: "7.7.7"})
+	if err != nil {
+		t.Fatalf("LatestVersion error: %v", err)
+	}
+	if got != "7.7.7" {
+		t.Errorf("LatestVersion = %q, want the checker's latest 7.7.7", got)
+	}
+}
+
+// An agent without an UpgradeChecker has no release to resolve: the shared
+// resolver reports an empty version and no error, so a caller can fall back
+// instead of failing.
+func TestLatestVersionWithoutUpgradeCheckerIsEmptyNotAnError(t *testing.T) {
+	got, err := agent.LatestVersion(context.Background(), stubPlainAgent{})
+	if err != nil {
+		t.Fatalf("LatestVersion error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("LatestVersion for a non-checker = %q, want empty", got)
+	}
+}
+
+// A failed release lookup is propagated unwrapped, so the caller decides how to
+// tolerate it (the upgrade check warns and defers).
+func TestLatestVersionPropagatesTheCheckerError(t *testing.T) {
+	lookupErr := errors.New("offline")
+	_, err := agent.LatestVersion(context.Background(), stubUpgradeAgent{err: lookupErr})
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("LatestVersion error = %v, want it to wrap %v", err, lookupErr)
+	}
+}
 
 // opencode must expose a distinct WorktreeProvider capability, separate from
 // DaemonProvider.
