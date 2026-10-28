@@ -336,8 +336,8 @@ The agent version is pinned at image build time and the agent's runtime autoupda
 binary in a sandbox is stable across runs. The release baked into an image is recorded as the project's upgrade baseline
 on every run and build, whether or not the image was rebuilt. Later runs therefore compare new releases against the
 version your image actually holds: an accepted upgrade sticks instead of reverting to the previous release, and a
-`--agent-version` pin survives unpinned runs. The recorded version is read from the image's `agent-version` label and
-costs no network access; the upgrade check itself is the only network query.
+`--agent-version` pin survives unpinned runs. The recorded version comes from the image's `agent-version` label, which is
+read locally and adds no network call to the prompt path.
 
 By default the latest release available at build time is used for agents installed by agents-sandbox. Pin an explicit
 version on the `build` command with `--agent-version`:
