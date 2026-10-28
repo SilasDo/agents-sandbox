@@ -32,6 +32,8 @@
 #   --older-than <dur>       Only act on entries whose tip is at least this old
 #                            (default 0 = no age filter). Suffixes: s m h d w.
 #   --stale <dur>            Age at/after which a remaining entry is stale (default 14d).
+#   --fresh <dur>            Keep a worktree with no commits of its own that was
+#                            created within this window (default 30m; 0 disables).
 #   --local-only             Do not delete origin branches.
 #   --remote-only            Do not touch worktrees or local branches.
 #   --exclude <glob>         Keep matching branches/worktrees (repeatable).
@@ -56,6 +58,7 @@ quiet=false
 set_config=false
 older_than_seconds=0
 stale_after_seconds=$((14 * 24 * 60 * 60))
+fresh_after_seconds=$((30 * 60))
 color_when=auto
 output=text
 excludes=()
@@ -128,6 +131,14 @@ while (($#)); do
       ;;
     --stale=*)
       stale_after_seconds="$(parse_duration "${1#*=}")" || die "invalid --stale value: ${1#*=}"
+      ;;
+    --fresh)
+      require_value "$1" "$@"
+      fresh_after_seconds="$(parse_duration "$2")" || die "invalid --fresh value: $2"
+      shift
+      ;;
+    --fresh=*)
+      fresh_after_seconds="$(parse_duration "${1#*=}")" || die "invalid --fresh value: ${1#*=}"
       ;;
     --exclude)
       require_value "$1" "$@"
