@@ -14,6 +14,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
+	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
 // managedBaseRef, managedBaseDindRef, and managedBaseDockerRef are the base
@@ -231,23 +232,111 @@ func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) boo
 	return hasDockerMarker([]byte(body), dockerMarker) || hasDockerMarker([]byte(body), legacyDockerMarker)
 }
 
-// legacyDockerfileWarnings returns one deprecation warning per legacy dind
-// spelling a project Dockerfile still carries: the runner-base-dind base image
-// and the # agents-sandbox:dind injection marker. It returns nil when the
-// Dockerfile uses neither. The -docker spellings do not warn.
-func legacyDockerfileWarnings(projectDockerfile []byte) []string {
-	var warnings []string
-	if referencesImage(projectDockerfile, managedBaseDindRef) {
-		warnings = append(
-			warnings,
+// DockerfileDiagnostics is the classified result for one project Dockerfile:
+// the effective capability, its source, and at most one message per offending
+// line. Pure; no ui.
+type DockerfileDiagnostics struct {
+	Enabled  bool
+	Source   string   // "" | "config" | "Dockerfile marker" | "Dockerfile base"
+	Messages []string // warnings and the suppression notice, in file order
+}
+
+// DiagnoseDockerfile classifies a project Dockerfile against the resolved
+// docker setting. The capability line comes first when present, then one
+// message per offending line in file order; a marker line yields exactly one
+// message, so a legacy marker outside the final stage reports only the
+// ignored-marker notice, never the deprecation spelling.
+func DiagnoseDockerfile(project []byte, setting options.DockerSetting) DockerfileDiagnostics {
+	_, _, finalBody := splitFinalStage(project)
+	finalMarker := hasDockerMarker([]byte(finalBody), dockerMarker) ||
+		hasDockerMarker([]byte(finalBody), legacyDockerMarker)
+	contentAsks := finalMarker ||
+		referencesImage(project, managedBaseDindRef) ||
+		referencesImage(project, managedBaseDockerRef)
+
+	d := DockerfileDiagnostics{Enabled: effectiveDocker(project, setting), Source: "", Messages: nil}
+
+	// Capability line first: the source when content enables, the suppression
+	// notice when explicit config turns content off.
+	switch {
+	case setting.Explicit && !setting.Enabled && contentAsks:
+		d.Source = "config"
+		d.Messages = append(d.Messages, "docker: off (config); project Dockerfile asks for docker")
+	case setting.Explicit:
+		d.Source = "config"
+	case d.Enabled && finalMarker:
+		d.Source = "Dockerfile marker"
+		d.Messages = append(d.Messages, "docker: on (project Dockerfile marker)")
+	case d.Enabled:
+		d.Source = "Dockerfile base"
+		d.Messages = append(d.Messages, "docker: on (project Dockerfile base)")
+	}
+
+	// Base-image deprecation (whole file, instruction-aware).
+	if referencesImage(project, managedBaseDindRef) {
+		d.Messages = append(
+			d.Messages,
 			"project Dockerfile uses the deprecated agents-sandbox/runner-base-dind base image; switch to agents-sandbox/runner-base-docker",
 		)
 	}
-	if hasDockerMarker(projectDockerfile, legacyDockerMarker) {
-		warnings = append(warnings,
-			"project Dockerfile uses the deprecated # agents-sandbox:dind marker; switch to # agents-sandbox:docker")
+
+	// Per-line marker scan: exactly one message per marker line.
+	lines := bytes.SplitAfter(project, []byte("\n"))
+	lastFrom := lastFromLine(lines)
+	for i, line := range lines {
+		text := strings.TrimSpace(string(line))
+		if marker, ok := dockerMarkerKind(text); ok {
+			if i <= lastFrom {
+				d.Messages = append(
+					d.Messages,
+					"project Dockerfile has a docker marker outside the final stage; it is ignored — move it into the final stage (after the last FROM)",
+				)
+				continue
+			}
+			if marker == legacyDockerMarker {
+				d.Messages = append(
+					d.Messages,
+					"project Dockerfile uses the deprecated # agents-sandbox:dind marker; switch to # agents-sandbox:docker",
+				)
+			}
+			continue
+		}
+		if nearMissDockerMarker(text) {
+			d.Messages = append(d.Messages,
+				fmt.Sprintf("project Dockerfile has a near-miss docker marker %q; use %q", text, dockerMarker))
+		}
 	}
-	return warnings
+	return d
+}
+
+// nearMissDockerMarker reports whether a trimmed line looks like an injection
+// marker but is not the exact spelling: a comment naming the sandbox namespace
+// and docker/dind. Exact match enables (case-sensitive); lenient detection
+// warns (case-insensitive), so a case variant is still surfaced.
+func nearMissDockerMarker(line string) bool {
+	if !strings.HasPrefix(line, "#") {
+		return false
+	}
+	if _, ok := dockerMarkerKind(line); ok {
+		return false
+	}
+	lower := strings.ToLower(line)
+	return strings.Contains(lower, "agents-sandbox:") &&
+		(strings.Contains(lower, "docker") || strings.Contains(lower, "dind"))
+}
+
+// EmitDockerfileDiagnostics writes every diagnostic message to the warn channel,
+// keeping stdout free for the rendered Dockerfile.
+func EmitDockerfileDiagnostics(ui termio.UI, d DockerfileDiagnostics) {
+	for _, msg := range d.Messages {
+		ui.Warn(msg)
+	}
+}
+
+// EmitProjectDockerfileDiagnostics reads the on-disk project Dockerfile and
+// emits its diagnostics. Convenience for callers that have no bytes in hand.
+func EmitProjectDockerfileDiagnostics(ui termio.UI, setting options.DockerSetting) {
+	EmitDockerfileDiagnostics(ui, DiagnoseDockerfile(readProjectDockerfile(), setting))
 }
 
 // dockerMarkerKind reports whether line, ignoring surrounding whitespace, is

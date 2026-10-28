@@ -321,8 +321,10 @@ func buildDockerfileCmd(ui termio.UI) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			setting := resolveBuildDockerSetting(cmd)
+			image.EmitProjectDockerfileDiagnostics(ui, setting)
 			agentVersion, _ := cmd.Flags().GetString(flagAgentVersion)
-			out, err := image.RenderProjectDockerfile(a, agentVersion, resolveBuildDockerSetting(cmd))
+			out, err := image.RenderProjectDockerfile(a, agentVersion, setting)
 			if err != nil {
 				return err
 			}

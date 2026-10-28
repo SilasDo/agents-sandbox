@@ -23,9 +23,7 @@ func previewRunnerImage(
 	ctx context.Context, a agent.Agent, projectDockerfile []byte, projectSlug string,
 	buildOpts BuildOptions, ui termio.UI,
 ) (ImagePreview, error) {
-	for _, warning := range legacyDockerfileWarnings(projectDockerfile) {
-		ui.Warn(warning)
-	}
+	EmitDockerfileDiagnostics(ui, DiagnoseDockerfile(projectDockerfile, buildOpts.Docker))
 	agentVersion, identityVersion, _ := initialBuildVersions(buildOpts)
 	_, tag, needsBuild, reasons, err := planRunnerImage(
 		ctx, a, projectDockerfile, projectSlug, buildOpts.Docker, agentVersion, identityVersion, buildOpts.Force,
