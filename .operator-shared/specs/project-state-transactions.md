@@ -74,7 +74,16 @@ recovery as the only wholesale writer.
 5. **Lock-free writers are exported.** `WriteState`, `WriteRootState`, and deliberately lock-free `UpdateRootState`
    (`root.go:146`) enforce correctness by comment only.
 6. **No reentrancy / lock-order guard.** flock is not reentrant and `UpdateHomeState` blocks, so a nested call
-   self-deadlocks; root→home is intended but unchecked.
+   self-deadlocks; the acquisition order is **root → per-key (home, then project-VM)**, and no path takes a
+   per-key lock and then the root lock. `WithKeyLocks` is the exported transaction primitive for a multi-key
+   operation and the only place two per-key locks are held at once: it acquires them sorted by `(slug, agent)`
+   (home before project-VM within a key) and releases everything on a failed acquire. Identity adoption
+   (`vm.AdoptLegacyIdentity`) is its consumer — it holds every moved key's locks across the destroy and the
+   directory move (#333). The lock set covers per-`(slug, agent)` keys only: the agent-less legacy key
+   (`Key{Slug, Agent: ""}`, whose `state.yaml` the directory move also relocates and whose lock is
+   `locks/<slug>/legacy.lock`, taken by prune's `RemoveHomeStateIf`) is deliberately not locked — no current path
+   writes the agent-less `HomeState`, so the only outcomes are a benign ENOENT or adoption's existing loud
+   arrival failure.
 7. **`--dry-run` side-effect-freedom is spread across call paths** (`vm/run_orchestrate.go:206`, `:313`), not one guard.
    It is now a genuine read-only preview (no image build, volume create, or state write); see
    [dry-run-preview.md](dry-run-preview.md).
@@ -198,7 +207,11 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 ### API after this change
 
 - Exported reads (lock-free snapshots, safe): `ReadState`, `ReadRootState`.
-- Exported mutations: `WithHomeState`, `RecoverHomeState`, `WithRootState`, `RemoveHomeStateIf`.
+- Exported mutations: `WithHomeState`, `RecoverHomeState`, `WithRootState`, `WithKeyLocks`, `RemoveHomeStateIf`.
+- `WithKeyLocks` is the multi-key transaction primitive: it holds the per-key home and project-VM locks for a
+  set of `(slug, agent)` keys, taken sorted by `(slug, agent)` (home before project-VM within a key) under the
+  root lock, and runs one closure. It is the only point at which two per-key locks are held at once, so a
+  multi-key operation (identity adoption) cannot be interleaved by a single-key state writer or VM creation.
 - Unexported: `writeState`, `writeRootState`, lock acquisition primitives.
 - **No exported raw write path.** Test seeding uses the transaction API itself; a deliberately corrupt fixture is written
   as raw bytes with `os.WriteFile(filepath.Join(state.KeyDir(k), "state.yaml"), …)`, which needs no exported writer.

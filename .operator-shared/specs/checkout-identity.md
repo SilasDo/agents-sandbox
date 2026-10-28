@@ -198,7 +198,10 @@ permanently un-match the trigger, and orphan the legacy auth and home volume.
 I/O (`internal/sandbox/runtimemigration/copy.go`), so two concurrent first-post-upgrade runs cannot
 both destroy and move. The trigger is re-checked while the lock is held: a run that loses the race to
 another checkout sees the state already moved and continues under the checkout identity instead of tripping
-the incomplete-migration failure on a source that is already gone.
+the incomplete-migration failure on a source that is already gone. Beyond the root lock, adoption holds
+`WithKeyLocks` for every key the move touches — each legacy slug's enumerated agents plus the command's agent,
+under both the legacy and the checkout slug — across the destroy and the move, so a concurrent per-key state
+write or VM creation cannot interleave with them (#333).
 
 **Actions**
 
