@@ -22,5 +22,9 @@ discard them.
   touched: the directory may still exist on the host while absent in the VM.
 - Dirty worktrees require `--force`; long-lived refs (`main`, `release/*`) and the current
   branch/worktree are never removed.
+- A worktree whose branch has no commits of its own (tip is an ancestor of `main`) is kept
+  when its tip is the local default branch or newer, or when the worktree was created within
+  `--fresh` (default 30m). This protects a just-created session worktree; `--force` does not
+  override it.
 - Run in a host session with no agents active. The script only protects its own working
   directory, so it cannot see a worktree another host or agent is using.
