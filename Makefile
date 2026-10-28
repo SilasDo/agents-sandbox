@@ -1,4 +1,4 @@
-.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck deadcode deadcode-test mutation coverage coverage-junit lint fmt validate-fmt run check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
+.PHONY: build build-release build-release-all bootstrap test fuzz test-race test-integration test-msb compile-all vulncheck deadcode deadcode-test mutation coverage coverage-junit lint fmt validate-fmt run cleanup-branches check verify all clean install-bash-completion install-head install-head-and-bash-completion upgrade-deps docs-diagrams docs-linkcheck docs-linkcheck-test docs-serve
 
 VERSION ?= dev
 
@@ -255,6 +255,11 @@ validate-fmt:
 
 run:
 	go run ./cmd/agents-sandbox
+
+# Local repository maintenance: remove merged worktrees and branches, then report the rest.
+# Forward flags with ARGS, e.g. `make cleanup-branches ARGS=--dry-run`.
+cleanup-branches:
+	./scripts/cleanup-merged-branches.sh $(ARGS)
 
 check: fmt lint test compile-all docs-linkcheck docs-linkcheck-test deadcode-test
 

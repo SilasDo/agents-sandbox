@@ -41,6 +41,9 @@
 - `operator-brain-maintenance.md`
   - Description: Conventions for keeping this brain small and findable: one-line catalog Descriptions, anchor-first `Read If` lines, and retiring a plan (fold into the owning spec, then delete) once its work lands.
   - Read If: Adding or editing a catalog entry, spec, plan, or guide; writing a new freeform document; or curating/retiring the brain.
+- `branch-worktree-cleanup.md`
+  - Description: How `scripts/cleanup-merged-branches.sh` (via `make cleanup-branches`) removes merged worktrees/branches and reports the rest; the three merge-detection tiers, the gh tip-match requirement, and the prunable-worktree host/VM and idle-agents safety rules.
+  - Read If: Running or changing local repository maintenance, cleaning up worktrees or merged branches, or debugging a branch the sweep kept or removed.
 
 ### `specs/` - System contracts for this partition
 
