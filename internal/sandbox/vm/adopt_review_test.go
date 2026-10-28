@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,6 +68,9 @@ func TestPersistRecoveredHomeVolumeReadError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "record the recovered home volume") {
 		t.Errorf("error = %v, want it to name the recovered-volume write", err)
+	}
+	if !errors.As(err, new(*os.PathError)) {
+		t.Errorf("error = %v, want it to preserve the filesystem cause", err)
 	}
 }
 
@@ -147,15 +151,19 @@ func TestAdoptLegacyIdentityClaimCommitFailureFailsClosed(t *testing.T) {
 	handle := legacyVMWithHome()
 	ui := termio.NewTestMock(t)
 
-	if _, err := AdoptLegacyIdentity(
+	_, err := AdoptLegacyIdentity(
 		context.Background(),
 		legacyVMNotFound(handle),
 		adoptIdentity(),
 		adoptAgentName,
 		true,
 		&ui,
-	); err == nil {
+	)
+	if err == nil {
 		t.Fatal("expected the claim commit failure to abort adoption")
+	}
+	if !errors.As(err, new(*os.PathError)) {
+		t.Errorf("error = %v, want it to preserve the filesystem cause", err)
 	}
 	if handle.Destroyed {
 		t.Error("the legacy VM must survive a failed claim commit")
@@ -356,5 +364,8 @@ func TestAdoptLegacyIdentityRecheckErrorPropagates(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "check for a pending legacy identity") {
 		t.Errorf("error = %v, want the pending-identity check failure", err)
+	}
+	if !errors.Is(err, state.ErrStateUnparsable) {
+		t.Errorf("error = %v, want it to preserve the unparsable-state cause", err)
 	}
 }

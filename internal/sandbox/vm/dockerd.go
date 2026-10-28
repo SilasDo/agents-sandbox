@@ -95,12 +95,17 @@ func guestStorageDriver(ctx context.Context, sb msb.Sandbox) (string, error) {
 		return "", fmt.Errorf("read %s: %w", dockerdDaemonConfigPath, err)
 	}
 	var config map[string]json.RawMessage
+	// json.Unmarshal pre-validates the whole document before decoding into the
+	// map, and a map of RawMessage cannot raise a type error, so an unparseable
+	// document always leaves config empty; the guard is therefore equivalent to
+	// falling through to the missing-key check below, which returns "" for the
+	// same reason. dockerd reports the parse error itself.
+	// gomutants:disable-next-line BRANCH_IF reason="an unparsable document leaves config empty here (syntax is pre-validated, RawMessage cannot type-error), and the fall-through's missing-key check returns the same \"\", nil"
 	if err := json.Unmarshal(raw, &config); err != nil {
-		// Unparseable: dockerd reports the parse error itself.
 		return "", nil //nolint:nilerr // malformed daemon.json is left for dockerd to reject
 	}
 	rawDriver, ok := config["storage-driver"]
-	if !ok || string(rawDriver) == "null" {
+	if !ok {
 		return "", nil
 	}
 	var driver string

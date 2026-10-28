@@ -1,5 +1,5 @@
 ---
-description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims and unparameterized clamp bounds), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, and the turn-2 packages.
+description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims, unparameterized clamp bounds, yaml.v3's partial decode, and map-iteration randomization), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, internal/sandbox/vm, internal/termio, and the turn-2 packages.
 read_if: Triaging LIVED mutants from a `make mutation` sweep, or deciding whether to strengthen a test or record a `// gomutants:disable` reason.
 ---
 
@@ -62,9 +62,28 @@ This is the field guide for doing it. It was distilled from the first full sweep
   payload *except* one that sets the field and then errors — a duplicate JSON key
   (`{"directory":"/x","directory":123}`). `json.Unmarshal` pre-validates syntax over the whole input, so a trailing
   syntax error aborts before any field is set; only a type error on a later duplicate key leaves the field populated.
+- **`yaml.v3` does NOT pre-validate like `encoding/json`: it sets earlier fields before a later type error.** A parse
+  guard (`if err := yaml.Unmarshal(...); err != nil { return zero }`) is therefore killable — `last_checked: <ts>`
+  followed by `agents: 5` (a scalar where a map is expected) returns an error *and* leaves `LastChecked` populated, so
+  the guard must discard that partial state. Do not generalize the json bullet above to yaml.
+- **`map[string]json.RawMessage` never partially populates: no input leaves the map filled when `Unmarshal` errors.** A
+  guard that returns a zero value on an unmarshal error is equivalent to the fall-through's missing-key check; record it.
+  Likewise `string(raw) == "null"` is a redundant operand (unmarshalling literal `null` into a `string` yields `""` with
+  no error); delete it so a type-scoped directive need not suppress the sibling `!ok` operand.
+- **Go randomizes map iteration, so a `continue` in a `for … range map` is not testable against a `break` without
+  controlling the order.** Restructure to iterate `slices.Sorted(maps.Keys(m))` (behaviour-preserving when the body's
+  effects are independent), then a test whose skipped entry sorts first makes a `break` deterministically drop a later
+  entry.
+- **A `<`-vs-`<=` comparator boundary is unobservable through a caller that feeds it unique keys.** Extract the comparator
+  to a named function (`lessMountByGuestPath`) and assert strict weak ordering directly: distinct keys order by value
+  (kills a constant-true body) and an equal-key call is irreflexive (kills `<=`).
 - **A caller guard duplicated by the callee is an equivalent `BRANCH_IF`.** When `if _, ok := asX(a); !ok { return }`
   merely precedes a call that performs the same guard internally, removing the caller's branch is unobservable; delete
   the redundant guard rather than recording it (the callee's own branch still kills the mutant's intent).
+- **An assertion in a *consumer* package does not kill a mutant in a *test-support* package.** gomutants runs only the
+  mutated package's tests, so `termio.Mock`'s spinner recording (asserted from `internal/sandbox/vm`) stayed LIVED when
+  `internal/termio` was swept — and the double's new guard `return`s were the codecov patch lines, uncovered the same way.
+  Assert a test double's recording where the double lives, in the double's own `*_test.go`.
 - **`--detect-equivalent` compares assembly, not behaviour.** A mutation that is logically equivalent but compiles to
   different code still reports LIVED, and must be closed by hand (delete or record).
 - **A "restore the factory" mutant (`Get = orig` removed from a `t.Cleanup`) needs a type or behavioural check, not a
