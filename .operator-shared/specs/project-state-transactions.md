@@ -56,7 +56,7 @@ recovery as the only wholesale writer.
 
 ## Current failure surface (what this fixes)
 
-1. **Lock-file deletion breaks mutual exclusion.** `RemoveHomeState` (`internal/sandbox/state/state.go:198`) does
+1. **Lock-file deletion breaks mutual exclusion.** The state-removal path does
    `os.RemoveAll(KeyDir(k))`, deleting `home.lock`, and is called by pruning
    (`internal/sandbox/pruning/volumes.go:107`). A holder keeps its flock on the unlinked inode while a new writer locks
    a fresh file: two "holders". The project-VM creation lock (`ensure-vm.lock`) had the same defect — `prune`
@@ -168,7 +168,7 @@ lock-and-write, so there is no import cycle.
 
 Lock files move to a dedicated `<root>/locks/` directory (`locks/root.lock`, `locks/<slug>/<agent>.lock` — or
 `locks/<slug>/legacy.lock` for an agent-less legacy key, plus `locks/<slug>/ensure-vm.lock` for the project-VM
-creation lock) that `RemoveHomeState`, pruning, and every other path never touch. `RemoveHomeState` continues to
+creation lock) that `RemoveHomeStateIf`, pruning, and every other path never touch. `RemoveHomeStateIf` continues to
 remove the key's state directory (the state file and `clients/`) but never the lock; `claims/` is per-slug, outside
 the key dir, and is untouched. (This changes the lock path once; there are no cross-change holders.)
 
@@ -177,10 +177,9 @@ The project-VM creation lock that serializes `ensureProjectVM` also lives under 
 and must not serialize on each other's creation — so a prune cannot unlink the lock a concurrent creation holds
 (#330).
 
-Because the lock now outlives the state directory, removal must itself take the home lock: `RemoveHomeState(k)` removes
-under the home lock (`withHomeLock`) directly, so a prune cannot delete the directory between a writer's read and its
-`atomicwrite` (which would recreate the directory and resurrect a just-pruned key). Legacy agent-less keys and
-`clients/` cleanup keep their current semantics, ordered inside the lock.
+Because the lock now outlives the state directory, removal must itself take the home lock: `RemoveHomeStateIf(k, shouldRemove)` reads the current document, asks `shouldRemove`, and removes under the home lock (`withHomeLock`) directly, so a prune cannot delete the directory between a writer's read and its `atomicwrite` (which would recreate the directory and resurrect a just-pruned key). Legacy agent-less keys and `clients/` cleanup keep their current semantics, ordered inside the lock.
+
+The guarded form is what makes pruning's state removal safe against a concurrently created resource (#335). Prune decides from a snapshot of `msb` volumes taken *before* it sweeps, so a home volume created after that snapshot is invisible to the counts; removing the state from the stale counts alone would delete a state that (once the writer commits) names the new volume, orphaning it. Because the writer that creates a volume commits the state naming it inside the same home-lock transaction (and only after the volume exists), reading the document under that lock closes the race: prune keeps a state that names a home volume, and a state with no home volume yet is one the writer will recreate. The check is the document's content, not a re-listing of `msb` volumes, so the home lock is still never held across external `msb` I/O.
 
 ### Reentrancy fail-fast
 
@@ -199,7 +198,7 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 ### API after this change
 
 - Exported reads (lock-free snapshots, safe): `ReadState`, `ReadRootState`.
-- Exported mutations: `WithHomeState`, `RecoverHomeState`, `WithRootState`, `RemoveHomeState`.
+- Exported mutations: `WithHomeState`, `RecoverHomeState`, `WithRootState`, `RemoveHomeStateIf`.
 - Unexported: `writeState`, `writeRootState`, lock acquisition primitives.
 - **No exported raw write path.** Test seeding uses the transaction API itself; a deliberately corrupt fixture is written
   as raw bytes with `os.WriteFile(filepath.Join(state.KeyDir(k), "state.yaml"), …)`, which needs no exported writer.
@@ -220,14 +219,15 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 ## Testing
 
 - Transaction primitive: absent / present / corrupt × `WithHomeState` / `RecoverHomeState` × commit / no-commit, plus
-  contention (`ok=false`), reentrancy fail-fast, and lock-file persistence across `RemoveHomeState`.
+  contention (`ok=false`), reentrancy fail-fast, and lock-file persistence across `RemoveHomeStateIf`.
 - Property test per writer: applying it preserves every field it does not own (the finding-3 guard).
 - Recovery: readable-prior carry-forward; corrupt rebuild-from-image; `offered_versions` documented-empty.
 - Migrate existing state-seeding tests off `WriteState` onto the transaction API (unchanged `ReadState`/`ReadRootState`
   reads are fine); corrupt fixtures via raw `os.WriteFile`.
 - CAS guard: a volume flow whose snapshot precondition no longer holds fails with a
   `home volume changed concurrently` error and writes nothing.
-- `RemoveHomeState` under lock: a prune racing a writer cannot resurrect pruned state.
+- `RemoveHomeStateIf` under lock: a prune racing a writer cannot resurrect pruned state, and a state naming a home
+  volume created since the prune snapshot is kept, not orphaned (#335).
 - Same-process lock tests assert the reentrancy fail-fast; true cross-process *blocking* waiting is flock's contract and
   is not directly tested in-process (a subprocess test is a possible future addition).
 - `make check` (fmt, lint, test, docs linkcheck) green; `make compile-all` green.
@@ -247,7 +247,7 @@ mechanism; the full `--dry-run` contract — a read-only preview that returns be
 - The home lock is never held across external msb I/O; multi-step flows use a compare-and-set guard.
 - `agent_source`/`docker_source` on a lost/corrupt state are left to self-heal via `recordImageProvenance` on the next
   boot, not re-read from the image during recovery.
-- Removal (`RemoveHomeState`) takes the home lock.
+- Removal (`RemoveHomeStateIf`) takes the home lock.
 
 ## Resolved: `--dry-run` scope
 

@@ -76,6 +76,7 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: `prune` no longer removes a project's state file while a home volume created since its volume snapshot still exists. The removal decision is made from the state document read under the home lock, so a concurrent `run` that mints a fresh home volume and commits it to state can no longer have that state pruned out from under it and the volume left orphaned (#335).
 - `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
 - An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of
   a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
