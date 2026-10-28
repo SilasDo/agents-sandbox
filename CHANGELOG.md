@@ -76,6 +76,7 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
