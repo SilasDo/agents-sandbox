@@ -19,6 +19,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/homeconfig"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -314,6 +315,199 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 	if missingWarnings != 1 {
 		t.Errorf("expected exactly 1 'missing home source' warning, got %d (warnings: %v)",
 			missingWarnings, ui.WarnCalls)
+	}
+}
+
+func TestPrepareSandboxLoadsEnvSecretsOnce(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+
+	// A project secret spec whose value lacks the "value@host" format makes the
+	// loader warn. A run used to load the env and secret files three times (the
+	// fingerprint seed, the reconfig decision, and VM creation), repeating that
+	// warning; the loaded value is threaded instead, so it warns once (#342).
+	testutil.WriteFile(t, cp.ProjectConfigDir(), configpaths.EnvSecretFileName, "TOKEN=missing-host\n")
+
+	sandboximage.WithMockAgentVersionResolver(t, func(_ context.Context, _ agent.Agent, req string) (string, error) {
+		return req, nil
+	})
+	origUpgradeInfo := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
+	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID: "sha256:abc123",
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+				},
+			}, nil
+		},
+	})
+
+	slug := git.MustCheckoutSlug()
+	vmFS := msb.NewTestFS(nil, nil)
+	createdSb := &msb.MockSandbox{
+		Name_:    projectVMName(state.Key{Slug: slug, Agent: "opencode"}),
+		FSValue_: vmFS,
+		ShellOut: map[string]msb.ShellResult{
+			dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
+		},
+	}
+	// No sandbox handle is registered, so GetSandbox reports "not found" and
+	// PrepareSandbox takes the create path, which is what used to read the env
+	// and secret files a third time.
+	mock := &msb.MockMsbClient{
+		ImageGetFn:     func(_ context.Context, _ string) error { return nil },
+		CreatedSandbox: createdSb,
+		Volumes:        []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "home-vol"}},
+	}
+	msb.WithMsbMock(t, mock)
+
+	if err := seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, state.HomeState{
+		HomeVolume:   "home-vol",
+		ImageDigest:  "sha256:abc123",
+		AgentVersion: "1.5.0",
+		AgentSource:  agentSourceTool,
+	}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	origDaemon := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+		if command == opencodeProvider(t).DaemonHealthCmd() {
+			return `{"healthy":true,"version":"test"}`, 0, nil
+		}
+		return "", 0, nil
+	})
+	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
+
+	ui := termio.NewTestMock(t)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox: %v", err)
+	}
+	if sess == nil {
+		t.Fatal("expected a non-nil session")
+	}
+	defer sess.Cleanup()
+
+	if len(mock.CreatedSandboxes) != 1 {
+		t.Fatalf("expected the project VM to be created, got %d creations", len(mock.CreatedSandboxes))
+	}
+
+	malformedWarnings := 0
+	for _, w := range ui.WarnCalls {
+		if strings.Contains(w, "not defined in format 'value@host'") {
+			malformedWarnings++
+		}
+	}
+	if malformedWarnings != 1 {
+		t.Errorf("expected exactly 1 malformed secret warning, got %d (warnings: %v)",
+			malformedWarnings, ui.WarnCalls)
+	}
+}
+
+// TestPrepareSandboxBakesAndFingerprintsTheLoadedEnv pins the one-load
+// agreement for a freshly created VM: the env and secrets read from the host
+// files are exactly what the VM is configured with and what its persisted
+// fingerprints record, so the next run compares against what is really baked
+// in (#342).
+func TestPrepareSandboxBakesAndFingerprintsTheLoadedEnv(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	testutil.WriteFile(t, cp.UserConfigDir(), configpaths.EnvFileName, "FROM_HOST=yes\n")
+	testutil.WriteFile(t, cp.UserConfigDir(), configpaths.EnvSecretFileName, "TOKEN=value-a@api.example.com\n")
+
+	sandboximage.WithMockAgentVersionResolver(t, func(_ context.Context, _ agent.Agent, req string) (string, error) {
+		return req, nil
+	})
+	origUpgradeInfo := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
+	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID: "sha256:abc123",
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+				},
+			}, nil
+		},
+	})
+
+	key := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
+	createdSb := &msb.MockSandbox{
+		Name_:    projectVMName(key),
+		FSValue_: msb.NewTestFS(nil, nil),
+		ShellOut: map[string]msb.ShellResult{
+			dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
+		},
+	}
+	// No sandbox handle is registered, so GetSandbox reports "not found" and
+	// PrepareSandbox creates the VM this run.
+	mock := &msb.MockMsbClient{
+		ImageGetFn:     func(_ context.Context, _ string) error { return nil },
+		CreatedSandbox: createdSb,
+		Volumes:        []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "home-vol"}},
+	}
+	msb.WithMsbMock(t, mock)
+
+	if err := seedHomeState(key, state.HomeState{
+		HomeVolume:   "home-vol",
+		ImageDigest:  "sha256:abc123",
+		AgentVersion: "1.5.0",
+		AgentSource:  agentSourceTool,
+	}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	origDaemon := SetDaemonHealthFunc(func(_ context.Context, _ msb.Sandbox, command string) (string, int, error) {
+		if command == opencodeProvider(t).DaemonHealthCmd() {
+			return `{"healthy":true,"version":"test"}`, 0, nil
+		}
+		return "", 0, nil
+	})
+	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
+
+	ui := termio.NewTestMock(t)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox: %v", err)
+	}
+	defer sess.Cleanup()
+
+	if len(mock.CreatedSandboxCalls) != 1 {
+		t.Fatalf("expected the project VM to be created, got %d creations", len(mock.CreatedSandboxCalls))
+	}
+	var cfg msbSdk.SandboxConfig
+	applySandboxOpts(&cfg, mock.CreatedSandboxCalls[0].Opts)
+	if cfg.Env["FROM_HOST"] != "yes" {
+		t.Errorf("created VM env FROM_HOST = %q, want %q (env: %v)", cfg.Env["FROM_HOST"], "yes", cfg.Env)
+	}
+	if len(cfg.Secrets) != 1 || cfg.Secrets[0].EnvVar != "TOKEN" || cfg.Secrets[0].Value != "value-a" {
+		t.Errorf("created VM secrets = %#v, want the TOKEN secret from the host file", cfg.Secrets)
+	}
+
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	wantEnv := state.BuildEnvState(map[string]string{"FROM_HOST": "yes"})
+	if st.EnvState.Hash != wantEnv.Hash {
+		t.Errorf("persisted EnvState.Hash = %q, want %q (the env baked into the VM)", st.EnvState.Hash, wantEnv.Hash)
+	}
+	wantSecrets := state.BuildSecretState(cfg.Secrets)
+	if st.SecretState.Hash != wantSecrets.Hash {
+		t.Errorf("persisted SecretState.Hash = %q, want %q (the secrets baked into the VM)",
+			st.SecretState.Hash, wantSecrets.Hash)
 	}
 }
 
@@ -956,7 +1150,7 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 
 	opts := options.RunOptions{Agent: "opencode", TmpSize: "2G"}
 	seedUI := termio.NewTestMock(t)
-	fingerprints := desiredFingerprints(opts, &seedUI)
+	fingerprints := desiredFingerprints(opts, envsecret.LoadEnvAndSecrets(&seedUI))
 	if err := seedHomeState(k, state.HomeState{
 		HomeVolume:   "home-vol",
 		ImageDigest:  "sha256:abc123",

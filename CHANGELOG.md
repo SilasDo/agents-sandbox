@@ -87,6 +87,9 @@ command reports the bare version (e.g. `0.1.0`).
   an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
   slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
   read stays tolerant and degrades to its relative base, since it is not identity-keyed.
+- Env and secrets: the host `env` and `env.secret`/`env.secret.yaml` files are read once per run instead of three
+  times, so a malformed entry is warned about once instead of up to three times. The fingerprints a run persists and
+  the host env and secrets baked into a newly created VM now come from that one read and cannot disagree (#342).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a

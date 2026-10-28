@@ -152,9 +152,15 @@ func PrepareSandbox(
 
 	ui.Verbosef("Using image '%s' (digest=%s)", imageInfo.Ref, imageInfo.Digest)
 
+	// Read the host env and secret files once and thread the loaded value down:
+	// the same value seeds a fresh home volume's state (issue #183), drives the
+	// reconfig change detection, and is baked into a newly created VM, so the
+	// files are read (and warned about) once per run.
+	env := envsecret.LoadEnvAndSecrets(ui)
+
 	// Compute the desired config fingerprints once: they seed a fresh home
 	// volume's state (issue #183) and are what persistConfigHashes records.
-	fingerprints := desiredFingerprints(opts, ui)
+	fingerprints := desiredFingerprints(opts, env)
 	client, vm, homeVol, vs, err := prepareHomeVolume(
 		ctx, k, imageInfo, opts, fingerprints, ui,
 	)
@@ -173,7 +179,7 @@ func PrepareSandbox(
 		return nil, err
 	}
 
-	decision, err := resolveReconfigDecision(ctx, client, vm, k, opts, imageInfo, homeVol, vs, cfs, ui)
+	decision, err := resolveReconfigDecision(ctx, client, vm, k, opts, imageInfo, homeVol, vs, cfs, env, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +191,7 @@ func PrepareSandbox(
 	opts.Recreate = decision.Recreate
 	opts.ServeHostPort = resolveServeHostPort(opts, decision.ServeHostPort)
 
-	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, ui)
+	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, env, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -445,13 +451,13 @@ func liveHomeVolume(ctx context.Context, client msb.Client, k state.Key, ui term
 // desiredFingerprints builds the VM-config fingerprints for the current run:
 // the one computation that seeds a fresh home volume's state (avoiding a
 // fingerprint-less state beside a VM) and that persistConfigHashes records
-// after a VM is created. Building it once keeps the two in lock-step and avoids
-// re-reading (and re-warning on) the env/secret files.
-func desiredFingerprints(opts options.RunOptions, ui termio.UI) state.Fingerprints {
-	env, secrets := envsecret.LoadEnvAndSecrets(ui)
+// after a VM is created. Building it once keeps the two in lock-step; the env
+// and secrets are the caller's single load, so the host files are not re-read
+// (nor re-warned about) per consumer.
+func desiredFingerprints(opts options.RunOptions, env envsecret.EnvSecrets) state.Fingerprints {
 	return state.Fingerprints{
-		Env:     state.BuildEnvState(env),
-		Secret:  state.BuildSecretState(secrets),
+		Env:     state.BuildEnvState(env.Vars),
+		Secret:  state.BuildSecretState(env.Secrets),
 		Network: state.BuildNetworkState(opts.Network),
 		Mount:   state.BuildMountState(opts.Mounts),
 	}

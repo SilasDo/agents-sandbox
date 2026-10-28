@@ -16,6 +16,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
@@ -29,28 +30,30 @@ func TestBuildProjectVMEnvMergesImageEnvs(t *testing.T) {
 		"PATH":                             "/custom/path",
 		"OPENCODE_EXPERIMENTAL_WORKSPACES": "true",
 	}
-	envMap := map[string]string{}
-	buildProjectVMEnv(envMap, imageEnvs)
-	if envMap["MY_KEY"] != "my_value" {
-		t.Errorf("expected MY_KEY=my_value from image envs, got %q", envMap["MY_KEY"])
+	env := buildProjectVMEnv(map[string]string{}, imageEnvs)
+	if env["MY_KEY"] != "my_value" {
+		t.Errorf("expected MY_KEY=my_value from image envs, got %q", env["MY_KEY"])
 	}
-	// Image env PATH should override any envMap default.
-	if envMap["PATH"] != "/custom/path" {
-		t.Errorf("expected PATH=/custom/path from image envs, got %q", envMap["PATH"])
+	// Image env PATH should override any host env default.
+	if env["PATH"] != "/custom/path" {
+		t.Errorf("expected PATH=/custom/path from image envs, got %q", env["PATH"])
 	}
-	if envMap["OPENCODE_EXPERIMENTAL_WORKSPACES"] != "true" {
+	if env["OPENCODE_EXPERIMENTAL_WORKSPACES"] != "true" {
 		t.Error("expected OPENCODE_EXPERIMENTAL_WORKSPACES to be passed through from image envs")
 	}
 }
 
 func TestBuildProjectVMEnvKeepsExistingEntries(t *testing.T) {
-	envMap := map[string]string{"FOO": "bar"}
-	buildProjectVMEnv(envMap, map[string]string{"BAZ": "qux"})
-	if envMap["FOO"] != "bar" {
-		t.Errorf("expected FOO=bar preserved, got %q", envMap["FOO"])
+	hostEnv := map[string]string{"FOO": "bar"}
+	env := buildProjectVMEnv(hostEnv, map[string]string{"BAZ": "qux"})
+	if env["FOO"] != "bar" {
+		t.Errorf("expected FOO=bar preserved, got %q", env["FOO"])
 	}
-	if envMap["BAZ"] != "qux" {
-		t.Errorf("expected BAZ=qux from image envs, got %q", envMap["BAZ"])
+	if env["BAZ"] != "qux" {
+		t.Errorf("expected BAZ=qux from image envs, got %q", env["BAZ"])
+	}
+	if len(hostEnv) != 1 {
+		t.Errorf("expected the host env to be left unmodified, got %v", hostEnv)
 	}
 }
 
@@ -145,6 +148,7 @@ func TestCreateProjectVMCallsClientCreateSandbox(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -200,6 +204,7 @@ func TestCreateProjectVMLoadsImageWhenNotCached(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -269,6 +274,7 @@ func TestEnsureProjectVM_CreatePath(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -321,6 +327,7 @@ func TestEnsureProjectVMAppliesLabels(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -357,6 +364,7 @@ func TestEnsureProjectVM_ReconnectPath(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -405,6 +413,7 @@ func TestEnsureProjectVM_ConnectOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (connect): %v", err)
@@ -434,6 +443,7 @@ func TestEnsureProjectVM_StartOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (start): %v", err)
@@ -467,6 +477,7 @@ func TestEnsureProjectVM_CreateOutcomeIsInfo(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
 		t.Fatalf("EnsureProjectVM (create): %v", err)
@@ -502,6 +513,7 @@ func TestEnsureProjectVM_ReconnectWhenImageUnchanged(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -608,6 +620,7 @@ func TestCreateProjectVMAppliesRootDiskWhenDiskSizeSet(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G", DiskSize: "16G"},
+		envsecret.EnvSecrets{},
 		ui,
 	); err != nil {
 		t.Fatalf("createProjectVM failed: %v", err)
@@ -658,6 +671,7 @@ func TestEnsureProjectVM_NoReplacementWhenExistingImageUnknown(t *testing.T) {
 		tmpRepo,
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -709,6 +723,7 @@ func TestEnsureProjectVMRecreatesWhenFlagged(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -754,6 +769,7 @@ func TestEnsureProjectVMReusesWhenNotFlagged(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {

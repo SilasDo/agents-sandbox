@@ -10,6 +10,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/git"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
@@ -83,6 +84,7 @@ func TestResolveReconfigDecisionConfigError(t *testing.T) {
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -150,6 +152,7 @@ func TestResolveReconfigDecisionConfigErrorPromptsAttachedClients(t *testing.T) 
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -190,6 +193,7 @@ func TestResolveReconfigDecisionFindProjectVMError(t *testing.T) {
 		"vol",
 		state.HomeState{HomeVolume: "vol", ImageDigest: "sha256:same"},
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -232,6 +236,7 @@ func TestResolveReconfigDecisionNoVMSkipsRecreate(t *testing.T) {
 		"vol",
 		state.HomeState{HomeVolume: "vol", ImageDigest: "sha256:same"},
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -284,6 +289,7 @@ func TestResolveReconfigDecisionQuitAtRecreatePrompt(t *testing.T) {
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err == nil {
@@ -330,6 +336,7 @@ func TestApplyReconfigHomeActionError(t *testing.T) {
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {

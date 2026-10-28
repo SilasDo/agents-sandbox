@@ -11,6 +11,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -278,6 +279,7 @@ func TestEnsureProjectVMDryRunVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -308,6 +310,7 @@ func TestEnsureProjectVMGetSandboxFatalError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {

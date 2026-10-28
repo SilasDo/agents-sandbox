@@ -202,6 +202,7 @@ func TestResolveReconfigDecision_NetworkChangedWithPersistedState(t *testing.T) 
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -246,6 +247,7 @@ func TestResolveReconfigDecision_NetworkUnchangedNoRecreate(t *testing.T) {
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -347,6 +349,7 @@ func TestResolveReconfigDecision_EnvChangedWithPersistedState(t *testing.T) {
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -400,6 +403,7 @@ func TestResolveReconfigDecision_EnvUnchangedWithPersistedState(t *testing.T) {
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -448,6 +452,7 @@ func TestResolveReconfigDecision_SecretsChangedWithPersistedState(t *testing.T) 
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -492,6 +497,7 @@ func TestResolveReconfigDecision_ZeroPersistedStateNoSpuriousChange(t *testing.T
 		"vol",
 		state.HomeState{},
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -693,6 +699,7 @@ func TestResolveReconfigDecision_PersistedSecretsMatchDesired(t *testing.T) {
 		"vol",
 		persistedState,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -762,6 +769,7 @@ func TestResolveReconfigDecision_HomePromptDeferredWhenRebuildDeferred(t *testin
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -841,6 +849,7 @@ func TestResolveReconfigDecision_HomePromptAskedWhenRebuildConfirmed(t *testing.
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -921,6 +930,7 @@ func TestResolveReconfigDecision_OpenCodeConfigChanged_StoppedVM(t *testing.T) {
 		"vol",
 		persisted,
 		cfs,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {

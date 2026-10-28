@@ -9,6 +9,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -73,6 +74,7 @@ func (f reconfigFixture) decide(t *testing.T, opts options.RunOptions, hs state.
 		f.homeVol,
 		hs,
 		f.cfs,
+		envsecret.EnvSecrets{},
 		f.ui,
 	)
 	return decision.Recreate, err
@@ -230,6 +232,7 @@ func TestResolveReconfigDecisionNoHomeActionOnUnchangedDigest(t *testing.T) {
 		f.homeVol,
 		hs,
 		f.cfs,
+		envsecret.EnvSecrets{},
 		f.ui,
 	)
 	if err != nil {
