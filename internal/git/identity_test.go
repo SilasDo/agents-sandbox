@@ -1,6 +1,7 @@
 package git
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -579,9 +580,8 @@ func TestResolvePathErrorsWhenCwdUnreadable(t *testing.T) {
 	t.Chdir(dir)
 	require.NoError(t, os.RemoveAll(dir))
 
-	if _, err := resolvePath("relative"); err == nil {
-		t.Fatal("resolvePath(relative) succeeded with the cwd gone, want an error")
-	}
+	_, err := resolvePath("relative")
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 // TestResolveIdentityErrorsWhenCwdUnresolvable pins that an unresolvable cwd is
@@ -591,9 +591,8 @@ func TestResolvePathErrorsWhenCwdUnreadable(t *testing.T) {
 func TestResolveIdentityErrorsWhenCwdUnresolvable(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "does-not-exist")
 
-	if _, err := ResolveIdentity(missing); err == nil {
-		t.Fatal("ResolveIdentity(missing cwd) succeeded, want an error")
-	}
+	_, err := ResolveIdentity(missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 // TestResolveIdentityErrorsWhenGitDirUnresolvable pins the common-git-dir half:
@@ -603,9 +602,8 @@ func TestResolveIdentityErrorsWhenGitDirUnresolvable(t *testing.T) {
 	root := mustResolvePath(t, t.TempDir())
 	writeGitdirFile(t, root, filepath.Join(t.TempDir(), "gone.git"))
 
-	if _, err := ResolveIdentity(root); err == nil {
-		t.Fatal("ResolveIdentity(unresolvable git dir) succeeded, want an error")
-	}
+	_, err := ResolveIdentity(root)
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 // TestMustSlugsPanicWhenCwdUnresolvable covers the cwd-derived test accessors:

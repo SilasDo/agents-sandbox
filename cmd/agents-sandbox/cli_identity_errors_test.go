@@ -1,10 +1,12 @@
 package main
 
 import (
+	"io/fs"
 	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/require"
 
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -20,6 +22,8 @@ func TestPersistentPreRunFailsWhenIdentityUnresolvable(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "resolve project identity") {
 		t.Fatalf("error = %v, want a project identity resolution error", err)
 	}
+	// The cause must survive the wrap, so the message alone is not enough.
+	require.ErrorIs(t, err, fs.ErrNotExist)
 }
 
 // TestConfigPathsErrorsWhenIdentityUnresolvable covers the config paths RunE

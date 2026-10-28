@@ -1,6 +1,8 @@
 package git
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,8 +52,9 @@ func TestWorktreeRegistrationRejectsMalformedNames(t *testing.T) {
 func TestResolvePathErrorsForMissingPath(t *testing.T) {
 	dir := mustResolvePath(t, t.TempDir())
 	missing := filepath.Join(dir, "does-not-exist")
-	if _, err := resolvePath(missing); err == nil {
-		t.Fatalf("resolvePath(%q) succeeded, want an error", missing)
+	_, err := resolvePath(missing)
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("resolvePath(%q) = %v, want an error wrapping fs.ErrNotExist", missing, err)
 	}
 }
 
