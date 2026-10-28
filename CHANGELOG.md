@@ -55,6 +55,8 @@ command reports the bare version (e.g. `0.1.0`).
 - Docs integrity: `ci/check-docs.sh` now verifies that every documentation fragment landing on the published site —
   rendered-HTML links, `docs/` in-page and cross-page anchors, and the launcher's printed links — resolves to a
   heading that slugs to it. The launcher composes its links through the new `internal/docslink` package (#296).
+- Docs: the roadmap now lists the `priority:medium` label alongside `priority:critical`/`high`/`low`, matching the
+  issue tracker.
 - Maintenance: updated the microsandbox Go SDK and managed `msb` runtime to v0.7.11.
 - Internal: `dockerd` and the agent `serve` daemon now run as microsandbox runtime-owned detached jobs
   (`ExecDetached`), replacing shell-backgrounded `nohup` processes, logfile polling, and `pkill` start/stop plumbing.
@@ -165,6 +167,11 @@ command reports the bare version (e.g. `0.1.0`).
   `home_volume: >`) no longer loses that leading newline when the launcher rewrites the file. The launcher now parses
   and writes YAML through the maintained `go.yaml.in/yaml/v3` instead of the unmaintained `gopkg.in/yaml.v3` v3.0.1,
   whose emitter dropped the blank line on write so a re-read no longer matched what was written.
+- Detached jobs: dockerd and the agent serve daemon are launched with a command-line identity marker
+  (`env AGENTS_SANDBOX_DETACHED_JOB=<helper> …`), and a stale helper is killed by that identity instead of by its exact
+  command line. After a release changes a helper's flags (dockerd's storage driver, the daemon's serve hostname or health
+  format), the old process was no longer matched and both raced for the socket or port, so the run failed with
+  "exited before becoming ready" (#343).
 
 ## [0.6.0] - 2026-10-25
 

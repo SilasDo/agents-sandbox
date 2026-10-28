@@ -13,7 +13,7 @@ resolution fails loudly instead of silently touching the host.
 
 Every test package installs the fail-fast defaults in `TestMain`, for every seam family its tests can import without a
 test import cycle. The normal call is
-`termio.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all six seam families:
+`mocks.InitFailFastMocks(m)` (`internal/testutil/mocks`), which installs all six seam families:
 
 - `configpaths.InstallFailFastConfigPaths()`
 - `docker.InstallFailFastGet()`

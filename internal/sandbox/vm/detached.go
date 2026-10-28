@@ -43,39 +43,75 @@ func jobTailLogs(ctx context.Context, job msb.Job) string {
 	return builder.String()
 }
 
-// commandMatches reports whether a job's recorded command starts with
-// binary+args. Jobs carry no labels, so a detached process is rediscovered by
-// its command line.
-func commandMatches(command []string, binary string, args []string) bool {
-	want := append([]string{binary}, args...)
-	if len(command) < len(want) {
-		return false
-	}
-	for i, expected := range want {
-		if command[i] != expected {
-			return false
-		}
-	}
-	return true
+// jobMarkerEnv names the environment assignment that carries a detached job's
+// identity. microsandbox's jobs ABI exposes no labels — JobInfo carries the id,
+// the recorded command, and the process state, nothing else — so the launcher
+// labels its helpers through the command line instead: a helper is launched as
+// `env <marker> <binary> <args…>` and rediscovered by the marker. Because the
+// marker does not depend on the helper's arguments, a helper left behind by an
+// older launcher (a different storage-driver flag, serve hostname, or log
+// format) is still targeted (#343).
+const jobMarkerEnv = "AGENTS_SANDBOX_DETACHED_JOB"
+
+// jobMarkerBinary is the launcher that takes the marker assignment and then
+// execs the helper, so the job's process, exit code, and logs stay the
+// helper's.
+const jobMarkerBinary = "env"
+
+// detachedHelper identifies one of the helper processes the launcher runs as a
+// detached job. It is the launcher's stand-in for a job label.
+type detachedHelper struct {
+	// marker is the helper's identity value, carried in the job's command line.
+	marker string
+	// binary is the helper's executable.
+	binary string
 }
 
-// killJobsByCommand kills every job whose command matches binary+args. It is
-// used to clear a stale dockerd/daemon before starting a fresh one; failures
-// are reported as verbose diagnostics and never fatal.
-func killJobsByCommand(
-	ctx context.Context,
-	sb msb.Sandbox,
-	binary string,
-	args []string,
-	ui termio.UI,
-) {
+// dockerdHelper is the identity of the dockerd job.
+func dockerdHelper() detachedHelper {
+	return detachedHelper{marker: "dockerd", binary: dockerdBinary}
+}
+
+// agentDaemonHelper is the identity of the agent serve daemon job; binary is
+// the agent's own serve executable (opencode, opencode2, …).
+func agentDaemonHelper(binary string) detachedHelper {
+	return detachedHelper{marker: "agent-daemon", binary: binary}
+}
+
+// markedCommand returns the command and arguments that launch the helper under
+// its marker.
+func (h detachedHelper) markedCommand(args []string) (string, []string) {
+	command := []string{jobMarkerEnv + "=" + h.marker, h.binary}
+	return jobMarkerBinary, append(command, args...)
+}
+
+// matches reports whether a job's recorded command belongs to this helper.
+//
+// A marked command names the helper outright, whatever arguments it was
+// launched with. A marker-less command is a helper started by a launcher
+// version that predates the marker: released launchers only ever ran these two
+// helpers as detached jobs, so the binary still identifies it. Its arguments
+// could not — they are exactly what changes between releases, which is the
+// stale-helper race this closes.
+func (h detachedHelper) matches(command []string) bool {
+	if len(command) >= 2 && command[0] == jobMarkerBinary {
+		return command[1] == jobMarkerEnv+"="+h.marker
+	}
+	return len(command) > 0 && command[0] == h.binary
+}
+
+// killJobs kills every detached job belonging to the helper, so a stale helper
+// never keeps the socket, port, or pid file a fresh launch needs. Failures are
+// reported as verbose diagnostics and never fatal: the readiness probe that
+// follows decides.
+func killJobs(ctx context.Context, sb msb.Sandbox, helper detachedHelper, ui termio.UI) {
 	infos, err := sb.ListJobs(ctx, msbSdk.WithAllJobs())
 	if err != nil {
-		ui.Verbosef("listing jobs to stop %s failed: %v", binary, err)
+		ui.Verbosef("listing jobs to stop %s failed: %v", helper.marker, err)
 		return
 	}
 	for _, info := range infos {
-		if !commandMatches(info.Command, binary, args) {
+		if !helper.matches(info.Command) {
 			continue
 		}
 		job, getErr := sb.GetJob(ctx, info.ID)

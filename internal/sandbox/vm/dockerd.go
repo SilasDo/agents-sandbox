@@ -144,12 +144,14 @@ func startDockerdIfPresent(ctx context.Context, sb msb.Sandbox, ui termio.UI) er
 	// never keeps the socket bound, then clear the containerd/pid/socket
 	// residue the killed process leaves behind. Both are best-effort: a failure
 	// is reported and the readiness probe below decides.
-	killJobsByCommand(ctx, sb, dockerdBinary, args, ui)
+	helper := dockerdHelper()
+	killJobs(ctx, sb, helper, ui)
 	if _, cleanupErr := sb.Shell(ctx, dockerdCleanupCmd, msbSdk.WithExecUser(RootUser)); cleanupErr != nil {
 		ui.Verbosef("dockerd residue cleanup failed (continuing): %v", cleanupErr)
 	}
 
-	job, startErr := sb.ExecDetached(ctx, dockerdBinary, args, msbSdk.WithExecUser(RootUser))
+	binary, commandArgs := helper.markedCommand(args)
+	job, startErr := sb.ExecDetached(ctx, binary, commandArgs, msbSdk.WithExecUser(RootUser))
 	if startErr != nil {
 		return fmt.Errorf("start dockerd: %w", startErr)
 	}

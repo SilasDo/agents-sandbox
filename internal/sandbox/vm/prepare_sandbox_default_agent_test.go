@@ -72,13 +72,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 	defer sess.Cleanup()
 
-	if want := provider.DaemonCommand(false).Binary; len(*detached) == 0 || (*detached)[0].Cmd != want {
-		t.Errorf(
-			"default agent %q daemon was not started as a detached job; calls = %v",
-			agent.DefaultAgentName,
-			*detached,
-		)
-	}
+	assertDetachedHelperLaunch(t, *detached, "agent-daemon", provider.DaemonCommand(false).Binary)
 	if !slices.Contains(commands, provider.DaemonHealthCmd()) {
 		t.Errorf("default agent %q daemon health was not probed; commands = %v", agent.DefaultAgentName, commands)
 	}
