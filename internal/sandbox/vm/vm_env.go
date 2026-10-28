@@ -12,7 +12,7 @@ import "maps"
 // The host env is not modified: it is the value loaded once per run and shared
 // with the config fingerprints and the reconfig change detection.
 func buildProjectVMEnv(hostEnv map[string]string, imageEnvs map[string]string) map[string]string {
-	env := make(map[string]string, len(hostEnv)+len(imageEnvs))
+	env := make(map[string]string)
 	maps.Copy(env, hostEnv)
 	maps.Copy(env, imageEnvs)
 	return env

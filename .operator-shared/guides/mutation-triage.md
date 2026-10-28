@@ -151,6 +151,10 @@ This is the field guide for doing it. It was distilled from the first full sweep
   mutant (`0`→`1`) leaves a leading zero element, so an exact-contents assertion kills it, but the capacity mutants
   (`cap`→`cap±1`) change nothing a caller can see. Replace `make([]T, 0, 3)` with `var xs []T` to remove the capacity
   family outright, and assert the returned slice exactly to kill the length one.
+- **A map's size hint is the same trap with no observable fallback: drop the hint.** Go exposes no capacity (or length)
+  for a map, so `make(map[string]string, len(a)+len(b))` yields a LIVED `ARITHMETIC_BASE` on the `+` that no assertion
+  can reach — the negative hint is clamped to zero internally. Write `make(map[string]string)`; the pre-size is
+  unobservable at any input, so there is nothing to record and nothing to test.
 - **A guard whose fields are only *partly* redundant is best extracted and table-tested with synthetic values.**
   `parsedA.Slug == "" || parsedA.Agent == "" || parsedA.Digest != ""` (`sameImageIdentity`): `ParseImageTag` never yields
   a digest with an agent, so `Digest != ""` is fully redundant, and it yields an agent with an empty slug only for a
