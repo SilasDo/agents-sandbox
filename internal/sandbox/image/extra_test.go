@@ -375,6 +375,11 @@ func TestCachedImageMatches(t *testing.T) {
 			want:      false,
 		},
 		{
+			name: "no cached digest and no requested digest never matches",
+			info: ImageInfo{DockerTag: "ref", Ref: "ref"},
+			want: false,
+		},
+		{
 			name:   "nil inspect result never matches",
 			msbNil: true,
 			info:   ImageInfo{DockerTag: "ref", Ref: "ref", Digest: "sha256:new"},
