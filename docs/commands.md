@@ -213,7 +213,9 @@ agents-sandbox prune --format json         # machine-readable report on stdout
 
 Prune cached runner images. Images of stale projects (older than the threshold) are removed entirely; for projects with a
 surviving VM, the runner-image variants used within the threshold and any image a kept VM currently references are
-retained, while older variants and surplus digest refs are removed. Native microsandbox image pruning also reclaims
+retained, while older variants and surplus digest refs are removed. Ownership follows `image list` and `image remove`: a
+reference whose parsed slug does not embed the launcher's 14-character hash — a manually loaded single-segment image, or a
+registry image — is left untouched. Native microsandbox image pruning also reclaims
 unreferenced manifests and layers left behind by refreshing an image while an older VM still points at the previous
 manifest.
 
