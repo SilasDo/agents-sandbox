@@ -145,6 +145,58 @@ func TestPreviewSandboxReportsReuse(t *testing.T) {
 	}
 }
 
+// TestPreviewSandboxReconcilesStaleRecordedVersionWithImageLabel pins that the
+// preview lets the existing image's label win over a disagreeing recorded
+// version, matching the real run: a stale record must not make the preview
+// report an older version or a phantom rebuild.
+func TestPreviewSandboxReconcilesStaleRecordedVersionWithImageLabel(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	// TestMain stubs the seam to "no image"; restore the real reader so the
+	// docker mock's label is what supplies the version.
+	orig := existingAgentVersion
+	existingAgentVersion = sandboximage.ExistingAgentVersion
+	t.Cleanup(func() { existingAgentVersion = orig })
+	a := opencodeAgent(t)
+
+	id, err := sandboximage.RunnerDockerfileID(a, "2.0.0", false)
+	if err != nil {
+		t.Fatalf("RunnerDockerfileID: %v", err)
+	}
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(
+			context.Context, string, ...client.ImageInspectOption,
+		) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				Config: &dockerspec.DockerOCIImageConfig{
+					Labels: map[string]string{
+						dockerfileIDLabel: id,
+						agentVersionLabel: "2.0.0",
+					},
+				},
+			}, nil
+		},
+	})
+	k := previewKey()
+	msb.WithMsbMock(t, &msb.MockMsbClient{
+		Volumes: []msb.VolumeHandle{&msb.MockVolumeHandle{Name_: "vol-1"}},
+	})
+	if err := seedHomeState(k, state.HomeState{HomeVolume: "vol-1", AgentVersion: "1.0.0"}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	ui := termio.NewTestMock(t)
+	p, err := PreviewSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	if err != nil {
+		t.Fatalf("PreviewSandbox() error = %v", err)
+	}
+	if p.AgentVersion != "2.0.0" {
+		t.Errorf("AgentVersion = %q, want the image label %q", p.AgentVersion, "2.0.0")
+	}
+	if p.BuildImage {
+		t.Errorf("BuildImage = true, want false (the real run reuses; reasons %v)", p.BuildReasons)
+	}
+}
+
 func TestPreviewSandboxRecoversVersionFromImageLabelReadOnly(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	// The seam is what supplies the recovered version; the docker mock below
