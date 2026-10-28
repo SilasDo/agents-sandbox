@@ -98,6 +98,24 @@ func TestResolveBuildDockerSettingFromResolver(t *testing.T) {
 	}
 }
 
+// The build path resolves the deprecated --dind flag through the same shared
+// precedence as the run path, so a canonical docker config beats it here too.
+func TestResolveBuildDindFlagLosesToDockerConfig(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{"docker": false})
+
+	cmd := buildDockerfileCmd(&termio.Mock{})
+	if err := cmd.Flags().Set(flagDind, "true"); err != nil {
+		t.Fatalf("set dind: %v", err)
+	}
+	cmd.SetContext(context.WithValue(context.Background(), (*launcherConfigKey)(nil), mustResolver(t, cmd)))
+
+	got := resolveBuildDockerSetting(cmd)
+	if want := (options.DockerSetting{Enabled: false, Explicit: true}); got != want {
+		t.Errorf("resolveBuildDockerSetting = %+v, want %+v", got, want)
+	}
+}
+
 // A user config `docker: false` is an explicit source: the build path must carry
 // the explicitness through, so it overrides any project-Dockerfile content signal.
 func TestResolveBuildDockerSettingFromResolverExplicitOff(t *testing.T) {

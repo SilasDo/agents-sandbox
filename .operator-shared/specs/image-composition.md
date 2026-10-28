@@ -1,6 +1,6 @@
 ---
 description: Contract for how the per-project runner Dockerfile is composed into per-tool multistage stages so tool-owned layers (apt tools, node, agent, docker) cache independently of the user body, the base, and each other; includes when the node stage is emitted (agent node dependency), the native vs npm agent install methods, and the `dind` → `docker` rename with deprecated aliases.
-read_if: Changing RenderDockerfile/stage composition, image layer caching, which agents need node, agent install methods (native installer vs npm), the dind/docker switch or marker, the Dockerfile-content docker enablement and its explicit-config precedence, the unified dockerfile diagnostics, custom-base handling, the node pin/libatomic dependency (node-removal direction), tool install paths (/opt/agents-sandbox), login-shell PATH handling (AGENTS_SANDBOX_IMAGE_PATH, the /etc/profile.d merge script), or the dockerd vfs storage driver.
+read_if: Changing RenderDockerfile/stage composition, image layer caching, which agents need node, agent install methods (native installer vs npm), the dind/docker switch or marker, the Dockerfile-content docker enablement, its explicit-config precedence and the shared docker/dind source precedence (`viperconfig.EffectiveDockerSource`), the unified dockerfile diagnostics, custom-base handling, the node pin/libatomic dependency (node-removal direction), tool install paths (/opt/agents-sandbox), login-shell PATH handling (AGENTS_SANDBOX_IMAGE_PATH, the /etc/profile.d merge script), or the dockerd vfs storage driver.
 ---
 
 # Runner image composition and tool-layer caching
@@ -155,6 +155,15 @@ deprecated `dind` source present (`dind`
 config key, `--dind` changed, `AGENTS_SANDBOX_DIND` non-empty), including a present-but-`false` value, so a project
 configured `dind: false` suppresses a content signal rather than having it re-enabled by a marker. This is a deliberate
 inversion of the earlier OR: a `runner-base-docker` base no longer beats an explicit `docker: false`.
+
+Among the explicit sources the ranking is one rule, implemented once: `viperconfig.EffectiveDockerSource` over the
+`DockerSource` enum ranks the canonical docker flag > env > config above the deprecated dind flag > env > config. Every
+canonical source therefore outranks every deprecated alias **regardless of layer**, which is the deprecation policy's
+"replacement wins" applied across layers too: a `docker: false` config beats a true `--dind`, and
+`AGENTS_SANDBOX_DOCKER=true` beats a false `--dind`. The config/env/`--docker` layers are folded in `NewResolver` (which
+owns the viper instance) and the changed `--docker`/`--dind` flags are folded over that resolved config by
+`runoptions.ResolveDockerSetting`, which both the run/shell path (`runoptions.Build`) and the build command
+(`resolveBuildDockerSetting`) call — so the build path cannot drift from the run path.
 
 **Case.** Enablement is case-sensitive (`dockerMarkerKind` matches the exact token); near-miss detection is deliberately
 case-insensitive (`nearMissDockerMarker`) so a case variant is still surfaced and told the exact spelling. Typos inside

@@ -87,6 +87,10 @@ command reports the bare version (e.g. `0.1.0`).
   an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
   slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
   read stays tolerant and degrades to its relative base, since it is not identity-keyed.
+- Docker: the canonical `docker` setting now beats the deprecated `dind` alias whichever layer each came from, so
+  `--dind` no longer overrides an explicit `docker` config key or `AGENTS_SANDBOX_DOCKER` (and vice versa) — the
+  deprecation policy's "replacement wins" rule held across the config and env layers but not across the flags. The
+  run/shell and build paths resolve the capability through one shared precedence, so they can no longer disagree (#363).
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a

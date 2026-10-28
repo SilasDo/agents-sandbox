@@ -60,8 +60,8 @@ read_if: Navigating the codebase.
 - `termio/` — Terminal UI (printer, table, prompt, spinner, ansi, levels).
 - `testutil/` — Test helpers (mocks, testgit) and the test-isolation contract test (`isolation_contract_test.go`).
 - `upgrade/` — Self-upgrade (incl. Homebrew).
-- `viperconfig/` — Viper-based launcher config: `Config`/`Resolver`, layer discovery (`ConfigLayers`, the six-layer precedence list that drives both `NewResolver`'s merge order and the `config paths` display), env/flag binding, decode hooks, and validation. Split across focused files (`config.go`, `load.go`, `env.go`, `flags.go`, `decode.go`, `validate.go`, `accessors.go`).
-- `runoptions/` — The `*cobra.Command`-driven run/shell option resolution (`Build`): flags, agent, notify, network, sizes, and mounts combined with the resolved `viperconfig.Config` into `options.RunOptions`. Extracted from `viperconfig` so the config-loading contract and the session-configuration contract change independently (#356).
+- `viperconfig/` — Viper-based launcher config: `Config`/`Resolver`, layer discovery (`ConfigLayers`, the six-layer precedence list that drives both `NewResolver`'s merge order and the `config paths` display), env/flag binding, decode hooks, and validation. Split across focused files (`config.go`, `load.go`, `env.go`, `flags.go`, `docker.go`, `decode.go`, `validate.go`, `accessors.go`).
+- `runoptions/` — The `*cobra.Command`-driven run/shell option resolution (`Build`): flags, agent, notify, network, sizes, and mounts combined with the resolved `viperconfig.Config` into `options.RunOptions`. Extracted from `viperconfig` so the config-loading contract and the session-configuration contract change independently (#356). `ResolveDockerSetting` is shared with the build command's `resolveBuildDockerSetting` so the run and build paths cannot resolve docker/dind differently (#363).
 - `yamlfmt/` — YAML formatting.
 
 ### `test/harness/` — `msb`-tagged harness smoke tests

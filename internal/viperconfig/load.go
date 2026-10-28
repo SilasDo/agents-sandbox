@@ -121,51 +121,86 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 	}
 	cfg.Home = homeLayers
 	cfg.hasHome = hasHome
-	docker, dockerLegacy, dockerExplicit := resolveDockerAlias(v, cmd, cfg.Docker)
+	docker, dockerSource, dockerLegacy := resolveDockerAlias(v, cmd, cfg.Docker)
 	cfg.Docker = docker
-	cfg.dockerExplicit = dockerExplicit
+	cfg.dockerSource = dockerSource
 	return &Resolver{cfg: cfg, legacyEnv: legacyEnvVarsInUse(), dockerLegacy: dockerLegacy}, nil
 }
 
-// resolveDockerAlias folds the deprecated dind alias into the docker setting.
-// The canonical docker value wins whenever it is explicitly set; otherwise a
-// deprecated dind value (config key or AGENTS_SANDBOX_DIND) is used. It returns
-// the effective value, the deprecated source name (if any), and whether a
-// canonical or dind source is present (making the value explicit, so it
-// overrides any project-Dockerfile content signal).
-func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, string, bool) {
-	if dockerExplicit(v, cmd) {
-		return value, "", true
+// resolveDockerAlias folds the deprecated dind alias into the docker setting
+// through EffectiveDockerSource, the single docker/dind precedence. The
+// canonical docker value wins whenever a canonical source is present (config
+// key, env, or the --docker flag); otherwise a deprecated dind value (config
+// key or AGENTS_SANDBOX_DIND) is used. It returns the effective value, the
+// source it came from, and the deprecated source name to warn about (empty when
+// the canonical setting won).
+//
+// The --dind flag is not among the sources here: it is not bound to viper, so
+// the run and build paths fold it in over this resolver with the same
+// precedence.
+func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, DockerSource, string) {
+	winner := EffectiveDockerSource(dockerSources(v, cmd, value)...)
+	if winner.Source == DockerSourceNone {
+		// value is the unmarshaled default (false) when no source is present.
+		return value, DockerSourceNone, ""
 	}
-	if !v.IsSet(KeyDind) {
-		// value is always false here: any non-empty docker source makes
-		// dockerExplicit true above.
-		return value, "", false // gomutants:disable RETURN_FALSE reason="value is always false when docker is not explicit"
+	legacy := ""
+	if winner.Source.Deprecated() {
+		legacy = dockerLegacySource(v)
 	}
-	return v.GetBool(KeyDind), dockerLegacySource(v), true
+	return winner.Value, winner.Source, legacy
 }
 
-// dockerExplicit reports whether the canonical docker setting is explicitly set
-// via env, config file, or the --docker flag, so it takes precedence over the
-// deprecated dind alias. The deprecated OPENCODE_SANDBOX_ prefix counts too:
-// NewResolver still reads it, so it must also be surfaced as explicit rather
-// than ignored by the project-Dockerfile decision.
-func dockerExplicit(v *viper.Viper, cmd *cobra.Command) bool {
-	if os.Getenv(envVarName(EnvPrefix, KeyDocker)) != "" {
-		return true
+// dockerSources lists the docker and deprecated dind sources the config and env
+// layers carry, each with the value it contributes. The docker value is the
+// merged one viper resolved with flag > env > config.
+func dockerSources(v *viper.Viper, cmd *cobra.Command, value bool) []DockerSourceValue {
+	var sources []DockerSourceValue
+	if source := canonicalDockerSource(v, cmd); source != DockerSourceNone {
+		sources = append(sources, DockerSourceValue{Source: source, Value: value})
 	}
-	if os.Getenv(envVarName(LegacyEnvPrefix, KeyDocker)) != "" {
-		return true
+	if v.IsSet(KeyDind) {
+		sources = append(sources, DockerSourceValue{Source: dindSource(), Value: v.GetBool(KeyDind)})
 	}
-	if v.InConfig(KeyDocker) {
-		return true
+	return sources
+}
+
+// canonicalDockerSource reports the highest-precedence canonical docker source
+// present. The deprecated OPENCODE_SANDBOX_ prefix counts too: NewResolver still
+// reads it, so it must also be surfaced as explicit rather than ignored by the
+// project-Dockerfile decision.
+func canonicalDockerSource(v *viper.Viper, cmd *cobra.Command) DockerSource {
+	switch {
+	case dockerFlagChanged(cmd):
+		return DockerSourceDockerFlag
+	case os.Getenv(envVarName(EnvPrefix, KeyDocker)) != "":
+		return DockerSourceDockerEnv
+	case os.Getenv(envVarName(LegacyEnvPrefix, KeyDocker)) != "":
+		return DockerSourceDockerEnv
+	case v.InConfig(KeyDocker):
+		return DockerSourceDockerConfig
 	}
-	if cmd != nil {
-		if flag := findFlag(cmd, KeyDocker); flag != nil && flag.Changed {
-			return true
-		}
+	return DockerSourceNone
+}
+
+// dockerFlagChanged reports whether a canonical --docker flag was explicitly set
+// on cmd, which viper cannot see because it binds the flag's value only.
+func dockerFlagChanged(cmd *cobra.Command) bool {
+	if cmd == nil {
+		return false
 	}
-	return false
+	flag := findFlag(cmd, KeyDocker)
+	return flag != nil && flag.Changed
+}
+
+// dindSource names the deprecated dind source IsSet reports, preferring the
+// environment variable over the config key (the layer order viper resolves).
+func dindSource() DockerSource {
+	if os.Getenv(envVarName(EnvPrefix, KeyDind)) != "" ||
+		os.Getenv(envVarName(LegacyEnvPrefix, KeyDind)) != "" {
+		return DockerSourceDindEnv
+	}
+	return DockerSourceDindConfig
 }
 
 // dockerLegacySource names where the deprecated dind value came from.
