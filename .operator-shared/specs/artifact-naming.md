@@ -81,10 +81,10 @@ filters in `vm/list.go` and `volume/list.go` are dropped. **Runner-image ownersh
 name-shape predicate**: the parsed slug must embed the 14-character base36 hash every launcher-built slug ends with
 (`naming.IsRunnerImageRef`, reusing `isBase36Hash`). A prefix test cannot stand in for it — a manually loaded
 single-segment image can live in the private runtime home, and the list seam (`msb.ImageList`) exposes no image labels,
-so neither the prefix nor the label route can tell it apart. Both `image/list.go` and `image/remove.go` apply that one
-predicate so list and remove agree, and `image/remove.go`'s `refuseNonRunnerRefs` refuses a hashless ref without
-`--force` overriding it. Do not "simplify" this back to `naming.ParseImageTag(ref).Slug == ""`. `pruning/images.go`
-still uses that weaker slug test (a known residual).
+so neither the prefix nor the label route can tell it apart. `image/list.go`, `image/remove.go` and
+`pruning/images.go` all apply that one predicate, so list, remove and prune agree; `image/remove.go`'s
+`refuseNonRunnerRefs` refuses a hashless ref without `--force` overriding it. Do not "simplify" this back to
+`naming.ParseImageTag(ref).Slug == ""`.
 
 Classification and identity **are** still needed, and both come from labels on anything the launcher creates:
 
