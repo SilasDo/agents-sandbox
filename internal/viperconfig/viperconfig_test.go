@@ -58,16 +58,6 @@ func TestResolverGettersReturnConfig(t *testing.T) {
 		r.cfg.AutoStopTimeout != 30*time.Second || r.cfg.AutoStopMaxSessionRetries != 5 {
 		t.Error("autostop getters mismatch")
 	}
-	if r.cfg.IdleTimeout() != 30*time.Second {
-		t.Errorf("IdleTimeout = %v; want 30s", r.cfg.IdleTimeout())
-	}
-}
-
-func TestResolverIdleTimeoutDefault(t *testing.T) {
-	r := NewResolverWithConfig(Config{})
-	if r.cfg.IdleTimeout() != 10*time.Second {
-		t.Errorf("IdleTimeout default = %v; want 10s", r.cfg.IdleTimeout())
-	}
 }
 
 func TestResolverMounts(t *testing.T) {
@@ -457,14 +447,17 @@ func TestResolverReapPolicyDefaults(t *testing.T) {
 	}
 }
 
-func TestResolverIdleTimeoutDefaultFromConfig(t *testing.T) {
+// TestResolverIdleTimeoutUnsetFromConfig pins that the config layer does not
+// substitute a default idle timeout: with nothing configured, AutoStopTimeout
+// stays zero and the VM layer applies options.DefaultVMIdleTimeout.
+func TestResolverIdleTimeoutUnsetFromConfig(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	r, err := NewResolver(nil, "")
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if r.cfg.IdleTimeout() != 10*time.Second {
-		t.Errorf("IdleTimeout default = %v; want 10s", r.cfg.IdleTimeout())
+	if r.cfg.AutoStopTimeout != 0 {
+		t.Errorf("AutoStopTimeout = %v; want 0 (default lives in the VM options layer)", r.cfg.AutoStopTimeout)
 	}
 }
 

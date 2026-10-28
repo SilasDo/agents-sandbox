@@ -86,7 +86,7 @@ func decideVMAction(notFoundErr error, status msbSdk.SandboxStatus) (vmAction, e
 // a project VM's create and destroy. It is a behavior seam so tests can observe
 // the lock boundary; production uses the shared host flock.
 var acquireProjectVMLock = func(k state.Key) (func(), error) {
-	return hostlock.AcquireExclusive(state.ProjectVMLockDir(k), "ensure-vm.lock")
+	return hostlock.AcquireExclusive(state.ProjectVMLockDir(k), state.ProjectVMLockName)
 }
 
 // ensureProjectVM returns a live *msb.Sandbox for the project VM and how it

@@ -232,7 +232,7 @@ func TestRunUsesSessionKeyForLease(t *testing.T) {
 		t.Errorf("client lease did not land under the session key dir %s: %v", state.KeyDir(key), statErr)
 	}
 
-	ambientSlug := git.CheckoutSlug()
+	ambientSlug := git.MustCheckoutSlug()
 	if ambientSlug == key.Slug {
 		t.Fatalf("fixture session slug %q must differ from the ambient slug", key.Slug)
 	}

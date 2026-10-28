@@ -75,7 +75,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 	// A directory at the lock path makes os.OpenFile fail, exercising the flock
 	// acquisition error branch.

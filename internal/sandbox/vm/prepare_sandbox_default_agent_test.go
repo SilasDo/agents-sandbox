@@ -41,7 +41,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 	detached := &[]msb.MockDetachedCall{}
 	created.ExecDetachedCalls = detached
-	seedMatchingHomeState(t, state.Key{Slug: git.CheckoutSlug(), Agent: agent.DefaultAgentName})
+	seedMatchingHomeState(t, state.Key{Slug: git.MustCheckoutSlug(), Agent: agent.DefaultAgentName})
 
 	// The first probe reports not-ready so the run takes the start-then-poll
 	// path, exercising both the start and health commands; later probes report

@@ -36,8 +36,16 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := cfgPaths.UserStateDir(); got != filepath.Join(base, "userstate") {
 		t.Errorf("UserStateDir() = %q, want %q", got, filepath.Join(base, "userstate"))
 	}
-	if got := cfgPaths.UserAgentConfigDir(a); got != filepath.Join(base, "userconfig", a.ConfigDirName()) {
-		t.Errorf("UserAgentConfigDir() = %q, want %q", got, filepath.Join(base, "userconfig", a.ConfigDirName()))
+	userAgentDir, err := cfgPaths.UserAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("UserAgentConfigDir() error = %v", err)
+	}
+	if userAgentDir != filepath.Join(base, "userconfig", a.ConfigDirName()) {
+		t.Errorf(
+			"UserAgentConfigDir() = %q, want %q",
+			userAgentDir,
+			filepath.Join(base, "userconfig", a.ConfigDirName()),
+		)
 	}
 	home, err := cfgPaths.UserHomeDir()
 	if err != nil {
@@ -55,8 +63,16 @@ func TestMockConfigPaths(t *testing.T) {
 	if got := cfgPaths.ProjectConfigDir(); got != filepath.Join(base, "projectconfig") {
 		t.Errorf("ProjectConfigDir() = %q, want %q", got, filepath.Join(base, "projectconfig"))
 	}
-	if got := cfgPaths.ProjectAgentConfigDir(a); got != filepath.Join(base, "projectconfig", a.ConfigDirName()) {
-		t.Errorf("ProjectAgentConfigDir() = %q, want %q", got, filepath.Join(base, "projectconfig", a.ConfigDirName()))
+	projectAgentDir, err := cfgPaths.ProjectAgentConfigDir(a)
+	if err != nil {
+		t.Fatalf("ProjectAgentConfigDir() error = %v", err)
+	}
+	if projectAgentDir != filepath.Join(base, "projectconfig", a.ConfigDirName()) {
+		t.Errorf(
+			"ProjectAgentConfigDir() = %q, want %q",
+			projectAgentDir,
+			filepath.Join(base, "projectconfig", a.ConfigDirName()),
+		)
 	}
 	if got := cfgPaths.UserEnvFile(); got != filepath.Join(base, "userconfig", envFileName) {
 		t.Errorf("UserEnvFile() = %q, want %q", got, filepath.Join(base, "userconfig", envFileName))
@@ -94,22 +110,34 @@ func TestMockAgentConfigDirCandidates(t *testing.T) {
 	oc, _ := agent.Lookup("opencode")
 	oc2, _ := agent.Lookup("opencode2")
 
-	if got := Get().UserAgentConfigDirCandidates(oc); !slices.Equal(
-		got,
+	openCodeUser, err := Get().UserAgentConfigDirCandidates(oc)
+	if err != nil {
+		t.Fatalf("UserAgentConfigDirCandidates error = %v", err)
+	}
+	if !slices.Equal(
+		openCodeUser,
 		[]string{filepath.Join(base, "userconfig", "opencode")},
 	) {
-		t.Errorf("opencode user candidates = %v", got)
+		t.Errorf("opencode user candidates = %v", openCodeUser)
 	}
 	want := []string{filepath.Join(base, "userconfig", "opencode2"), filepath.Join(base, "userconfig", "opencode")}
-	if got := Get().UserAgentConfigDirCandidates(oc2); !slices.Equal(got, want) {
-		t.Errorf("opencode2 user candidates = %v, want %v", got, want)
+	openCode2User, err := Get().UserAgentConfigDirCandidates(oc2)
+	if err != nil {
+		t.Fatalf("UserAgentConfigDirCandidates error = %v", err)
+	}
+	if !slices.Equal(openCode2User, want) {
+		t.Errorf("opencode2 user candidates = %v, want %v", openCode2User, want)
 	}
 	wantProject := []string{
 		filepath.Join(base, "projectconfig", "opencode2"),
 		filepath.Join(base, "projectconfig", "opencode"),
 	}
-	if got := Get().ProjectAgentConfigDirCandidates(oc2); !slices.Equal(got, wantProject) {
-		t.Errorf("opencode2 project candidates = %v, want %v", got, wantProject)
+	openCode2Project, err := Get().ProjectAgentConfigDirCandidates(oc2)
+	if err != nil {
+		t.Fatalf("ProjectAgentConfigDirCandidates error = %v", err)
+	}
+	if !slices.Equal(openCode2Project, wantProject) {
+		t.Errorf("opencode2 project candidates = %v, want %v", openCode2Project, wantProject)
 	}
 	if _, err := os.Stat(filepath.Join(base, "userconfig", "opencode2")); !os.IsNotExist(err) {
 		t.Errorf("candidate methods must not create dirs; stat err = %v", err)

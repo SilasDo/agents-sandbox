@@ -93,7 +93,11 @@ func StopProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agent
 	if !ok {
 		return fmt.Errorf("unknown agent %q", agentName)
 	}
-	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui)
+	identity, err := git.ResolveIdentity(".")
+	if err != nil {
+		return err
+	}
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), !dryRun, ui)
 	if err != nil {
 		return err
 	}
@@ -109,7 +113,11 @@ func KillProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agent
 	if !ok {
 		return fmt.Errorf("unknown agent %q", agentName)
 	}
-	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui)
+	identity, err := git.ResolveIdentity(".")
+	if err != nil {
+		return err
+	}
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), !dryRun, ui)
 	if err != nil {
 		return err
 	}

@@ -94,8 +94,8 @@ func TestBuildDefaults(t *testing.T) {
 	if opts.ReapPolicy != expectedPolicy {
 		t.Errorf("ReapPolicy = %+v; want %+v", opts.ReapPolicy, expectedPolicy)
 	}
-	if opts.IdleTimeout != 10*time.Second {
-		t.Errorf("IdleTimeout = %v; want 10s", opts.IdleTimeout)
+	if opts.IdleTimeout != 0 {
+		t.Errorf("IdleTimeout = %v; want 0 (the VM layer applies options.DefaultVMIdleTimeout)", opts.IdleTimeout)
 	}
 	wantNetworkProfiles(t, opts.Network, network.ProfilePublic)
 }

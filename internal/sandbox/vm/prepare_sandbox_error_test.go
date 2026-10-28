@@ -46,7 +46,7 @@ func TestPrepareSandboxImageError(t *testing.T) {
 func TestPrepareSandboxVersionResolutionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.0.0", AgentSource: agentSourceTool},
 	)
 	origUpgradeInfo := agentLatestVersion
@@ -112,7 +112,7 @@ func TestPrepareSandboxReconfigDecisionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	k := state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"}
+	k := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
 	existing := existingProjectVMHandle(k)
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -160,7 +160,7 @@ func TestPrepareSandboxReconfigApplyHomeActionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	k := state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"}
+	k := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
 	existing := existingProjectVMHandle(k)
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },

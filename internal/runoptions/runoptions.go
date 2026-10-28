@@ -84,7 +84,7 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.DiskSize = cfg.DiskSize
 		opts.WorkspaceQuota = cfg.WorkspaceQuota
 		opts.ReapPolicy = options.NewReapPolicy(cfg.AutoStopOnActiveSessions, cfg.AutoStopMaxSessionRetries)
-		opts.IdleTimeout = cfg.IdleTimeout()
+		opts.IdleTimeout = cfg.AutoStopTimeout
 		opts.Mounts, err = mounts.ResolveBindMounts(cfg.Mounts)
 		if err != nil {
 			return options.RunOptions{}, err

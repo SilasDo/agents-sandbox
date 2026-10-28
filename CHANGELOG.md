@@ -79,6 +79,17 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: `prune` no longer removes a project's state file while a home volume created since its volume snapshot still exists. The removal decision is made from the state document read under the home lock, so a concurrent `run` that mints a fresh home volume and commits it to state can no longer have that state pruned out from under it and the volume left orphaned (#335).
+- `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
+- An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of
+  a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
+  error, so a malformed profile fails at the config-resolution boundary with a message naming the agent rather than
+  crashing far from its cause (#366).
+- Identity: a project's directory is resolved strictly when its checkout identity is derived. A cwd or git
+  directory that cannot be resolved (a transient symlink, permission, or deleted-directory failure) now reports
+  an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
+  slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
+  read stays tolerant and degrades to its relative base, since it is not identity-keyed.
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
@@ -121,6 +132,9 @@ command reports the bare version (e.g. `0.1.0`).
   parsed slug to embed the launcher's 14-character hash, matching `image list`, so a manually loaded single-segment image
   in the private runtime home is neither listed nor removable — and `--force` does not override the ownership refusal
   (#350).
+- Runner image: `prune` now applies the same ownership predicate as `image list` and `image remove`, so it no longer
+  considers — let alone deletes — a manually loaded single-segment image in the private runtime home. The documented
+  "never arbitrary cached images" boundary now holds on every path (#383).
 - Runner image: the recorded agent-version baseline is kept in sync with the runner image — the image's `agent-version`
   label is the authority and the record a cache that follows it, so a stale record can no longer pull a run back to an
   older release — so an accepted agent upgrade no longer reverts to the previous release on a later run, a
@@ -130,6 +144,19 @@ command reports the bare version (e.g. `0.1.0`).
   a run with no config file; the deprecated `--dind` alias already survived.
 - VM reconfiguration: the per-project VM creation lock now also covers a config-change VM recreate's teardown, so a
   concurrent run cannot race the destroy while a new create is starting (#397).
+- Agent upgrade check: the launcher-global root lock is no longer held across the release-endpoint request, so one
+  project's egress check no longer blocks unrelated projects (adoption, the runtime-home copy campaign) or makes them
+  silently skip their step. The check reads the cached window under the lock, performs the request with the lock
+  released, and re-checks the window before persisting, so two concurrent checks still record at most one refresh
+  (#334).
+- State: the legacy identity migration (`AdoptLegacyIdentity`) now takes the per-key home and project-VM locks for every
+  key it moves — each legacy slug's agents under both the legacy and the checkout slug — across the destroy and the state
+  move, so a concurrent per-key state write or VM creation can no longer interleave and lose a write or orphan a legacy
+  VM (#333).
+- State: a `state.yaml` string value written as a folded block scalar with a leading blank line (e.g.
+  `home_volume: >`) no longer loses that leading newline when the launcher rewrites the file. The launcher now parses
+  and writes YAML through the maintained `go.yaml.in/yaml/v3` instead of the unmaintained `gopkg.in/yaml.v3` v3.0.1,
+  whose emitter dropped the blank line on write so a re-read no longer matched what was written.
 
 ## [0.6.0] - 2026-10-25
 

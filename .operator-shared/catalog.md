@@ -72,7 +72,7 @@
   - Description: Contract for the on-demand mutation-testing practice (#253): a version-pinned `make mutation` over gomutants (`--changed-since` by default, `FULL=1` unscoped, `ANNOTATIONS=github` for CI inline warnings), never a required `make check`/CI gate but swept by an advisory `mutation` workflow on every code-changing PR (docs filtered by `paths-ignore`; inline annotations, a sticky survivor comment, and the report artifact); each LIVED mutant is killed, deleted, or recorded in source with `// gomutants:disable`.
   - Read If: Changing the `make mutation` target, the `GOMUTANTS_VERSION` pin, the triage convention for surviving mutants, the advisory `mutation` CI workflow and its annotation/comment surfaces, or the release-skill verify step.
 - `config-paths-seam.md`
-  - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`).
+  - Description: Contract for the `internal/configpaths.ConfigPaths` seam: every host path (including `UserHomeDir`) resolves through it, guest VM paths deliberately do not, and the deliberate exceptions (mounts `~/` sources, docker `~/.docker`); the per-agent config-dir accessors return an error for a profile whose config-dir name is not a single path element, and reprovision propagates it at the resolution boundary.
   - Read If: Adding or changing host config/home path resolution, or writing tests that exercise config paths or host-home resolution.
 - `test-isolation.md`
   - Description: Contract for keeping tests off real host state: the fail-fast seam mocks installed by every package's `TestMain`, the `realMsbClient` SDK seams that keep unit tests off the native library, the `WithMockConfigPaths` home redirect, the enforcement tests that derive each package's required set from the import graph, and the rule that seam overrides must be restored so the suite stays idempotent under `-count>1`.
@@ -135,8 +135,8 @@
   - Description: Contract distinguishing a sandbox's mutable *name* from its stable *identity*: removal/attach fail closed via the SDK's identity-aware operations and `ErrSandboxReplaced` (via `msb.IsReplaced`), handled per path, replacing the name-based `RemoveSandbox`.
   - Read If: Working on the msb seam's sandbox removal/attach paths, prune, the reaper, reconfig-replace, or reasoning about name-vs-identity safety, `ErrSandboxReplaced`, or #144 vs #158.
 - `checkout-identity.md`
-  - Description: Contract for splitting project identity in two (#144): a repo-scoped slug (origin-derived; the per-slug config dir and grouping label) and a checkout-scoped slug (git common dir; state/VM/volume/locks/image tag), with the automatic, noticed migration of legacy VMs and state.
-  - Read If: Changing per-checkout project identity (#144), the repo-vs-checkout slug split, the runner-image tag identity, the migration/notice/prune guard, or the `config paths` command.
+  - Description: Contract for splitting project identity in two (#144): a repo-scoped slug (origin-derived; the per-slug config dir and grouping label) and a checkout-scoped slug (git common dir; state/VM/volume/locks/image tag), with the automatic, noticed migration of legacy VMs and state; and the strict path resolution that refuses an unresolvable cwd or git dir instead of hashing a fallback into the slug (#354).
+  - Read If: Changing per-checkout project identity (#144), the repo-vs-checkout slug split, the runner-image tag identity, the migration/notice/prune guard, `ResolveIdentity`'s error contract or the `MustRepoSlug`/`MustCheckoutSlug` accessors (#354), or the `config paths` command.
 - `bare-worktree-layout.md`
   - Description: Design for #145: make git worktrees host-and-VM-consistent by binding `/workspace` to the smallest enclosing checkout that contains the CWD, plus guest-CWD derivation for subdirectories; the identity clause is superseded by `checkout-identity.md` (#144).
   - Read If: Changing the bare-checkout worktree layout (#145), the `/workspace` bind-source resolution, guest-CWD derivation, or the worktree-layout recipe/skill.
@@ -162,7 +162,7 @@
   - Description: Contract for keeping the per-project `HomeState.agent_version` baseline equal to the release baked into the runner image: the image's `agent-version` label is the authority, `agent_version` is a cache, the image-ensuring paths (`EnsureImage`/`Build`) are the writers of record, recovery reconciles a disagreeing cache (not only an empty one), and opencode2's missing `VersionProvider` leaves its baseline stale.
   - Read If: Changing `resolveBuildVersion`/`recordImageProvenance`/`recoverAgentVersion`, `PrepareSandbox`'s version handling, `image.EnsureImage`/`Build`/`ImageInfo`, the `agent-version` label, or `--agent-version` persistence; or diagnosing a run that rebuilds the runner image to an older agent release than it holds (e.g. opencode2 reverting to 2.0.32 after an accepted 2.2.0 upgrade) or a baseline that stays empty after deletion.
 - `project-state-transactions.md`
-  - Description: Contract for project/launcher state handling: one locked transaction per document (`WithHomeState`/`RecoverHomeState`/`WithRootState`/`RemoveHomeState`) as the entire mutation API, a host-only flock, lock files under `<root>/locks/`, same-process reentrancy fail-fast, and compare-and-set guards across msb I/O.
+  - Description: Contract for project/launcher state handling: one locked transaction per document (`WithHomeState`/`RecoverHomeState`/`WithRootState`/`RemoveHomeStateIf`, the last a guarded removal read+decide+remove under the lock) as the entire mutation API, a host-only flock, lock files under `<root>/locks/`, same-process reentrancy fail-fast, and compare-and-set guards across msb I/O.
   - Read If: Changing any project/launcher state read-modify-write, the state lock files, recovery of a lost/corrupt `state.yaml`, or deciding how a writer preserves the fields it does not own.
 - `state-by-scope.md`
   - Description: Contract for #141: launcher-global state is one document (root `state.yaml`) and a new global decision is a key/section, never a new file; adds `updates.launcher`/`updates.agents` behind silent backwards-compatible folds and replaces `internal/upgrade`'s file seam with an injected store.
@@ -188,6 +188,12 @@
 - `release-branching.md`
   - Description: Contract for the per-minor release branch `release/<major>.<minor>`: cut at the release commit, carries the line's patch releases, and takes the line's fixes while `main` keeps new work.
   - Read If: Deciding where a release tag or a fix lands, cutting a patch release for a released line, backporting a fix, or changing the release branch name or flow.
+- `vm-idle-timeout-default.md`
+  - Description: Contract for the single VM idle-timeout default: it lives only in `options.DefaultVMIdleTimeout`, the config layer carries `auto-stop-timeout` as-is with no fallback, the VM lifecycle applies the default (required because the SDK treats zero as unlimited), and the documented 10s value is that constant (#365).
+  - Read If: Changing the idle timeout default, `Config.AutoStopTimeout`/`Config.IdleTimeout`, `RunOptions.IdleTimeout`, `runoptions.Build`, or the VM lifecycle's `WithIdleTimeout` wiring.
+- `yaml-library.md`
+  - Description: Contract for the YAML dependency: every parse/serialize goes through the maintained `go.yaml.in/yaml/v3`, never `gopkg.in/yaml.v3` v3.0.1, whose emitter drops a leading blank line on marshal.
+  - Read If: Adding a YAML parse/serialize path, touching `go.mod`'s YAML dependency, or triaging a `FuzzParseState` serialization-stability failure.
 
 ### `plans/` - TDD implementation plans
 

@@ -61,7 +61,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--tmp-size`   | —     | `2G`     | Size of `/tmp` tmpfs in the sandbox. An invalid value is rejected with an error. |
 | `--workspace-quota` | — | `16G` | Guest-write quota for the `/workspace` bind mount (e.g. `32G`), bounding writes on top of the host repo. Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
 | `--dry-run-vm` | —     | `false`  | Skip VM lifecycle but prepare everything else                                                                                              |
-| `--serve-only` | `-s`  | `false`  | Start the agent server published on host loopback at a dynamically allocated host port (no in-VM TUI); press `Ctrl-D` to exit. The printed `http://127.0.0.1:<port>` URL is authoritative — use it (rather than assuming a fixed port) to connect from clients like Opencode Desktop. Set `OPENCODE_SERVER_PASSWORD` for basic auth (opencode); opencode2's server requires the baked credential `opencode:opencode` (username:password). |
+| `--serve-only` | `-s`  | `false`  | Start the agent server published on host loopback at a dynamically allocated host port (no in-VM TUI); press `Ctrl-D` to exit, or send `SIGINT`/`SIGTERM` when stdin is not a terminal. The printed `http://127.0.0.1:<port>` URL is authoritative — use it (rather than assuming a fixed port) to connect from clients like Opencode Desktop. Set `OPENCODE_SERVER_PASSWORD` for basic auth (opencode); opencode2's server requires the baked credential `opencode:opencode` (username:password). |
 | `--agent`      | —     | `opencode2` | Coding-agent profile to run: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`.                                                                |
 | `--notify`     | —     | `off`     | Notify on session status: `on`, `off`, `desktop`, or `audio` (bare `--notify` = `on`). Overridable via `AGENTS_SANDBOX_NOTIFY`. Only applies to the `opencode` and `opencode2` agents (the only agents with a session event stream). |
 | `--open-links` | —    | `true`   | Open links from the VM (`xdg-open`) in the host's browser; `--open-links=false` turns it off. Overridable via `AGENTS_SANDBOX_OPEN_LINKS`. See [Opening links]({% link configuration/opening-links.md %}). |
@@ -215,7 +215,9 @@ agents-sandbox prune --format json         # machine-readable report on stdout
 
 Prune cached runner images. Images of stale projects (older than the threshold) are removed entirely; for projects with a
 surviving VM, the runner-image variants used within the threshold and any image a kept VM currently references are
-retained, while older variants and surplus digest refs are removed. Native microsandbox image pruning also reclaims
+retained, while older variants and surplus digest refs are removed. Ownership follows `image list` and `image remove`: a
+reference whose parsed slug does not embed the launcher's 14-character hash — a manually loaded single-segment image, or a
+registry image — is left untouched. Native microsandbox image pruning also reclaims
 unreferenced manifests and layers left behind by refreshing an image while an older VM still points at the previous
 manifest.
 

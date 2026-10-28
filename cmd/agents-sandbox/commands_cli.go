@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
@@ -183,17 +184,37 @@ func checkForUpgrade(ctx context.Context, r *launcherconfig.Resolver, ui termio.
 	return res.Exit, nil
 }
 
+// serveOnlyIsTerminal reports whether stdin is an interactive terminal. It is a
+// seam (mirroring termio's isTerminal) so the reader below can be exercised
+// without a real TTY.
+var serveOnlyIsTerminal = term.IsTerminal
+
+// serveOnlyStdinReader returns the reader whose EOF stops serve-only mode, or
+// nil when stdin must not be watched. Only an interactive terminal can deliver
+// a deliberate Ctrl-D; a non-TTY stdin (CI, `< /dev/null`, a background job) is
+// already at EOF, so watching it would cancel the run immediately (#387). It is
+// a seam so tests can drive both paths.
+var serveOnlyStdinReader = func() io.Reader {
+	if serveOnlyIsTerminal(int(os.Stdin.Fd())) {
+		return os.Stdin
+	}
+	return nil
+}
+
 // serveOnlyContext builds a cancellable context for the serve-only path.
-// It wires SIGINT/SIGTERM and stdin EOF (Ctrl-D) to cancel the context,
-// so runServeOnly can exit cleanly and trigger proper teardown
-// (lease release, keeper cancel, reaping, exit code 0).
+// It wires SIGINT/SIGTERM — and, for an interactive stdin, EOF (Ctrl-D) — to
+// cancel the context, so runServeOnly can exit cleanly and trigger proper
+// teardown (lease release, keeper cancel, reaping, exit code 0). A non-terminal
+// stdin is not watched: it relies on SIGINT/SIGTERM for shutdown.
 func serveOnlyContext(base context.Context) (context.Context, func()) {
 	ctx, stop := signal.NotifyContext(base, os.Interrupt, syscall.SIGTERM)
 	cancelCtx, cancel := context.WithCancel(ctx)
-	go func() {
-		_, _ = io.Copy(io.Discard, os.Stdin)
-		cancel()
-	}()
+	if stdin := serveOnlyStdinReader(); stdin != nil {
+		go func() {
+			_, _ = io.Copy(io.Discard, stdin)
+			cancel()
+		}()
+	}
 	return cancelCtx, func() {
 		stop()
 		cancel()

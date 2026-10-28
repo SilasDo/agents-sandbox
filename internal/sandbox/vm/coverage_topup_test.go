@@ -106,7 +106,7 @@ func TestResolveReconfigDecisionConfigErrorPromptsAttachedClients(t *testing.T) 
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 
 	release, err := state.AcquireClientLease(state.Key{Slug: slug, Agent: "opencode"})
 	if err != nil {
@@ -249,7 +249,7 @@ func TestResolveReconfigDecisionQuitAtRecreatePrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 
 	release, err := state.AcquireClientLease(state.Key{Slug: slug, Agent: "opencode"})
 	if err != nil {

@@ -69,14 +69,17 @@ document that exists; no new project-level file is introduced (see Non-goals).
 
 `pendingUpgrade(ctx, a, k, ui, current)`:
 
-1. Read the global root state. On a read error, warn and return no offer and do **not** persist: an unreadable document
-   (e.g. a corrupt `state.yaml`) must never be overwritten, so the `migrations` registry and every other agent's cached
-   check survive.
+1. Read the global root state under a non-blocking root transaction. On a read error or a held lock, warn and return no
+   offer and do **not** persist: an unreadable document (e.g. a corrupt `state.yaml`) must never be overwritten, so the
+   `migrations` registry and every other agent's cached check survive.
 2. Read the global `AgentCheckState` for `a`.
 3. If the check is due (`state.AgentCheckState.DueForCheck`: never checked, or at least `state.AgentCheckInterval`
-   = 24h since the last check): call the agent's `LatestVersion`. On error, warn and return no offer (the window stays
-   open).
-   On success, set `last_checked = now` and `latest_version = latest`, and persist the root state.
+   = 24h since the last check): **release the lock and call the agent's `LatestVersion` outside it**, so a slow request
+   never serializes unrelated projects (adoption, the runtime-home copy campaign) behind one agent's egress check. On
+   error, warn and return no offer (the window stays open). On success, re-acquire the lock (non-blocking) and re-check
+   `DueForCheck` before persisting: if another process refreshed the window while the request ran, skip the write and use
+   its cached entry, so two concurrent due checks persist at most one refresh. A held lock or unreadable state defers the
+   step; a write failure is warned but the freshly fetched version is still offered this run.
 4. `latest := cached latest_version`; if empty, no offer.
 5. Compare `NewerThan(latest, current)`. If not newer, no offer.
 6. Claim `latest` for this project: inside a single `HomeState(k)` transaction, check whether `offered_versions`
@@ -187,6 +190,9 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
 - **Serialized RootState writes.** Every `RootState` read-modify-write goes through the shared locked transaction API,
   so `runtimemigration` and the upgrade path cannot clobber each other's map; the upgrade path acquires it non-blocking
   and defers when it is held (`project-state-transactions.md`).
+- **No network request under the root lock.** The agent-version request runs with the root lock released; the lock is
+  taken only to read the cached check and to persist the refreshed one, and the re-check under the lock keeps the
+  single-write property when two processes' checks overlap.
 - **A RootState read failure never writes.** A `RootState` read error must warn and return no offer without persisting,
   never overwrite the file with a zero-value document that would discard the `migrations` registry.
 - **`--dry-run` skips the upgrade check.** The preview returns before the setup hub, so there is no upgrade network check,

@@ -55,7 +55,7 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -113,7 +113,7 @@ func TestPrepareSandboxDryRunVMServeOnlyPublishesPort(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -185,7 +185,7 @@ func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -271,7 +271,7 @@ func TestPrepareSandboxVolumeError(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
 	)
 
@@ -316,7 +316,7 @@ func TestPrepareSandboxEnsureVMError(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -383,7 +383,7 @@ func TestPrepareSandboxSetUpError(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellErr: errors.New("shell failed")}
 	sh := &msb.MockSandboxHandle{

@@ -102,8 +102,12 @@ func prepareVolumeOp(c *cobra.Command, ui termio.UI, dryRun bool) (state.Key, im
 	if err != nil {
 		return state.Key{}, image.ImageInfo{}, err
 	}
+	identity, err := git.ResolveIdentity(".")
+	if err != nil {
+		return state.Key{}, image.ImageInfo{}, err
+	}
 	adoption, err := sandbox.AdoptLegacyIdentity(
-		c.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+		c.Context(), msb.Get(), identity, a.Name(), !dryRun, ui,
 	)
 	if err != nil {
 		return state.Key{}, image.ImageInfo{}, err
@@ -260,8 +264,12 @@ func buildBuildCmd(ui termio.UI) *cobra.Command {
 			// image tag. It runs before the dry-run gate so the migration notice
 			// prints; a dry run passes apply=false, so the migration stays
 			// pending and adoption returns the legacy repo slug.
+			identity, err := git.ResolveIdentity(".")
+			if err != nil {
+				return err
+			}
 			adoption, err := sandbox.AdoptLegacyIdentity(
-				cmd.Context(), msb.Get(), git.ResolveIdentity("."), a.Name(), !dryRun, ui,
+				cmd.Context(), msb.Get(), identity, a.Name(), !dryRun, ui,
 			)
 			if err != nil {
 				return err
