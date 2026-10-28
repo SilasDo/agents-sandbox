@@ -13,6 +13,11 @@ returns a `ConfigPaths`; production code obtains host paths through it, never by
 - Methods cover the tool's XDG dirs (`UserConfigDir`/`UserCacheDir`/`UserStateDir`/`UserDataDir`), the per-agent
   config dirs, the project config dir, the env/secret/Dockerfile paths, and `UserHomeDir() (string, error)` — the host
   user's home, the root the home-relative agent config and `home:` manifests resolve against.
+- The per-agent config-dir accessors (`UserAgentConfigDir`, `UserAgentConfigDirCandidates`, `ProjectAgentConfigDir`,
+  `ProjectAgentConfigDirCandidates`) return an error when a profile's config-dir name is not a single clean path element
+  (`""`, `"."`, `".."`, or one containing a path separator), and `validConfigDirName` is the one guard. It returns the
+  error rather than panicking, so a malformed profile fails at the resolution boundary — `reprovision.ResolveConfigSource`
+  / `PrimaryDirs` / `LoadConfigFilesForHost` — with a message naming the agent (#366).
 - `MSBHome()` is a free function (not a method) so the low-level `sandbox/msb` adapter can resolve the private
   microsandbox home without importing the higher-level runtime package.
 - Config-file discovery (`FindConfigFile`, with `ExtJSONC`/`ExtJSON5`) is a free function here too: the launcher-config

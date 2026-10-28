@@ -142,7 +142,11 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 		// every clone of one origin, so it must not follow the checkout slug. A
 		// bare root before its config migration is the one exception, resolved by
 		// effectiveConfigSlug.
-		r, err := launcherconfig.NewResolver(cmd, effectiveConfigSlug(git.ResolveIdentity(".")))
+		identity, err := git.ResolveIdentity(".")
+		if err != nil {
+			return fmt.Errorf("resolve project identity: %w", err)
+		}
+		r, err := launcherconfig.NewResolver(cmd, effectiveConfigSlug(identity))
 		if err != nil {
 			return err
 		}

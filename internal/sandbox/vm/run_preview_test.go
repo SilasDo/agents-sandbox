@@ -60,7 +60,7 @@ func noVolumeCreateMock(t *testing.T) {
 }
 
 func previewKey() state.Key {
-	return state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"}
+	return state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
 }
 
 func TestPreviewSandboxReportsBuildAndCreate(t *testing.T) {
@@ -414,8 +414,8 @@ func TestPreviewSandboxUserProvidedAgentNeverRecoversVersion(t *testing.T) {
 // adoption check rather than be silently ignored.
 func TestPreviewSandboxSurfacesAdoptionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	legacySlug := git.RepoSlug()
-	if legacySlug == git.CheckoutSlug() {
+	legacySlug := git.MustRepoSlug()
+	if legacySlug == git.MustCheckoutSlug() {
 		t.Skip("no distinct legacy identity in this checkout")
 	}
 	legacyKey := state.Key{Slug: legacySlug, Agent: "opencode"}

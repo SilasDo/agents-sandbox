@@ -33,10 +33,15 @@ const VMHomeDir = mounts.VMHomeDir
 
 // ConfigSource is the resolved launcher config-dir pair for an agent. Fallback
 // is the legacy dir name actually in use, or "" when the primary dirs are used.
+// PrimaryUserDir/PrimaryProjectDir are the primary (non-fallback) dirs the agent
+// migrates to, carried from resolution so a caller need not re-derive (and
+// re-validate) them.
 type ConfigSource struct {
-	UserDir    string
-	ProjectDir string
-	Fallback   string
+	UserDir           string
+	ProjectDir        string
+	Fallback          string
+	PrimaryUserDir    string
+	PrimaryProjectDir string
 }
 
 // ResolveConfigSource picks the agent's launcher config dirs. The primary dirs
@@ -44,37 +49,50 @@ type ConfigSource struct {
 // exists in either scope is used for both scopes. When nothing exists the
 // primary dirs are returned and Fallback is empty.
 func ResolveConfigSource(a agent.Agent) (ConfigSource, error) {
-	userCands := cp.Get().UserAgentConfigDirCandidates(a)
-	projectCands := cp.Get().ProjectAgentConfigDirCandidates(a)
+	userCands, err := cp.Get().UserAgentConfigDirCandidates(a)
+	if err != nil {
+		return ConfigSource{}, err
+	}
+	projectCands, err := cp.Get().ProjectAgentConfigDirCandidates(a)
+	if err != nil {
+		return ConfigSource{}, err
+	}
 	if len(userCands) == 0 || len(userCands) != len(projectCands) {
 		return ConfigSource{}, fmt.Errorf(
 			"agent %s resolved %d user / %d project config-dir candidates; expected a non-empty parallel pair",
 			a.Name(), len(userCands), len(projectCands))
+	}
+	// The candidate lists are parallel by construction: both come from the
+	// same ordered name list via agentConfigDirCandidates, so userCands[i] and
+	// projectCands[i] name the same config dir in their respective scopes, and
+	// index 0 is the primary namespace.
+	src := ConfigSource{
+		UserDir:           userCands[0],
+		ProjectDir:        projectCands[0],
+		Fallback:          "",
+		PrimaryUserDir:    userCands[0],
+		PrimaryProjectDir: projectCands[0],
 	}
 	primaryExists, err := anyDirExists(userCands[0], projectCands[0])
 	if err != nil {
 		return ConfigSource{}, err
 	}
 	if primaryExists {
-		return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}, nil
+		return src, nil
 	}
-	// The candidate lists are parallel by construction: both come from the
-	// same ordered name list via agentConfigDirCandidates, so userCands[i] and
-	// projectCands[i] name the same config dir in their respective scopes.
 	for i := 1; i < len(userCands); i++ {
 		exists, err := anyDirExists(userCands[i], projectCands[i])
 		if err != nil {
 			return ConfigSource{}, err
 		}
 		if exists {
-			return ConfigSource{
-				UserDir:    userCands[i],
-				ProjectDir: projectCands[i],
-				Fallback:   filepath.Base(userCands[i]),
-			}, nil
+			src.UserDir = userCands[i]
+			src.ProjectDir = projectCands[i]
+			src.Fallback = filepath.Base(userCands[i])
+			return src, nil
 		}
 	}
-	return ConfigSource{UserDir: userCands[0], ProjectDir: projectCands[0], Fallback: ""}, nil
+	return src, nil
 }
 
 // anyDirExists reports whether any path names an existing directory. Every
@@ -127,17 +145,12 @@ func SourceDirs(src ConfigSource) (string, string) {
 	return src.UserDir, src.ProjectDir
 }
 
-// PrimaryDirs returns the absolute primary (non-fallback) user and project
-// config dirs an agent migrates to. It reads the candidate lists, which never
-// create dirs: naming the migration target must not manufacture the very dir
-// whose existence switches the agent off the legacy fallback.
-func PrimaryDirs(a agent.Agent) (string, string) {
-	user := cp.Get().UserAgentConfigDirCandidates(a)
-	project := cp.Get().ProjectAgentConfigDirCandidates(a)
-	if len(user) == 0 || len(project) == 0 {
-		return "", ""
-	}
-	return user[0], project[0]
+// baseUserConfigDir returns the tool's user config dir the agent subdir sits
+// under: one level above the resolved source's user dir. Home files and hooks
+// resolve relative to it, so deriving it from the resolved source avoids
+// re-validating the profile's config-dir name after resolution.
+func baseUserConfigDir(src ConfigSource) string {
+	return filepath.Dir(src.UserDir)
 }
 
 // isDir reports whether path names an existing directory.
@@ -198,11 +211,11 @@ func LoadConfigFilesForHost(
 	if err != nil {
 		return nil, err
 	}
-	hooks, err := loadHooks(a, vmHome, reserved)
+	hooks, err := loadHooks(baseUserConfigDir(src), vmHome, reserved)
 	if err != nil {
 		return nil, err
 	}
-	homeFiles, homeModes, err := loadHomeFiles(a, vmHome, reserved, ui)
+	homeFiles, homeModes, err := loadHomeFiles(baseUserConfigDir(src), vmHome, reserved, ui)
 	if err != nil {
 		return nil, err
 	}
@@ -243,7 +256,6 @@ func LoadConfigFilesForHost(
 	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
 		legacyUser, legacyProject := SourceDirs(src)
-		primaryUser, primaryProject := PrimaryDirs(a)
 		ui.Warnf(
 			"agent %s is reading launcher config from the legacy shared %q dir (%s), which agent opencode also uses; "+
 				"a %q dir in either the user or project scope switches both scopes, so copy (do not move) everything you need in one go into the %q namespace (%s): "+
@@ -253,7 +265,7 @@ func LoadConfigFilesForHost(
 			describeConfigScopes(legacyUser, legacyProject, true),
 			a.ConfigDirName(),
 			a.ConfigDirName(),
-			describeConfigScopes(primaryUser, primaryProject, false),
+			describeConfigScopes(src.PrimaryUserDir, src.PrimaryProjectDir, false),
 		)
 	}
 	return &ConfigFiles{
@@ -288,14 +300,12 @@ func reservedHomeTargets(mergedPath, vmHome string) ([]string, error) {
 // loadHomeFiles builds the home files and their modes, warning about any home
 // source missing on the host.
 func loadHomeFiles(
-	a agent.Agent,
-	vmHome string,
+	baseUserConfigDir, vmHome string,
 	reserved []string,
 	ui termio.UI,
 ) (map[string][]byte, map[string]os.FileMode, error) {
-	userConfigDir := filepath.Dir(cp.Get().UserAgentConfigDir(a))
 	homeSources, missing, _, err := homeconfig.BuildHomeFilesWithModes(
-		userConfigDir, // user config lives one level above the agent subdir
+		baseUserConfigDir, // user config lives one level above the agent subdir
 		cp.Get().ProjectConfigDir(),
 		vmHome,
 		reserved,
@@ -316,10 +326,9 @@ func loadHomeFiles(
 }
 
 // loadHooks builds the merged startup hooks for the agent.
-func loadHooks(a agent.Agent, vmHome string, reserved []string) ([]homeconfig.HookSpec, error) {
-	userConfigDir := filepath.Dir(cp.Get().UserAgentConfigDir(a))
+func loadHooks(baseUserConfigDir, vmHome string, reserved []string) ([]homeconfig.HookSpec, error) {
 	hooks, err := homeconfig.BuildHooks(
-		userConfigDir, // user config lives one level above the agent subdir
+		baseUserConfigDir, // user config lives one level above the agent subdir
 		cp.Get().ProjectConfigDir(),
 		vmHome,
 		reserved,

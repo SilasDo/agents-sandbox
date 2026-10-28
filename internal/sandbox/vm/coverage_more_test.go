@@ -433,7 +433,12 @@ func TestPrepareSandboxUnknownAgent(t *testing.T) {
 	t.Chdir(tmpRepo)
 	ui := termio.NewTestMock(t)
 
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "no-such-agent"}, &ui); err == nil {
+	if _, err := PrepareSandbox(
+		context.Background(),
+		options.RunOptions{Agent: "no-such-agent"},
+		false,
+		&ui,
+	); err == nil {
 		t.Fatal("expected error for an unknown agent")
 	}
 }

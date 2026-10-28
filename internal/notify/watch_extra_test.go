@@ -38,7 +38,7 @@ func TestWatchRetriesUntilCancelled(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Watch(ctx, sb, opencodeSpec(), &recordBackend{}) }()
+	go func() { done <- Watch(ctx, SandboxStreamOpener{Sandbox: sb}, opencodeSpec(), &recordBackend{}) }()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -272,7 +272,7 @@ func TestWatchBackoffResetsAfterLongLived(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Watch(ctx, sb, opencodeSpec(), &recordBackend{}) }()
+	go func() { done <- Watch(ctx, SandboxStreamOpener{Sandbox: sb}, opencodeSpec(), &recordBackend{}) }()
 
 	// Record each ShellStream invocation time as it happens.
 	var times []time.Time
@@ -333,7 +333,7 @@ func TestWatchStopsDuringReconnectBackoff(t *testing.T) {
 	defer func() { watchReconnectPolicy = orig }()
 
 	sb := msb.NewMockSandbox(msb.SandboxOpts{StreamHandle_: failHandle{}})
-	err := Watch(ctx, sb, opencodeSpec(), &recordBackend{})
+	err := Watch(ctx, SandboxStreamOpener{Sandbox: sb}, opencodeSpec(), &recordBackend{})
 	if err == nil || !strings.Contains(err.Error(), "dropped") {
 		t.Fatalf("Watch() error = %v, want a drop summary", err)
 	}

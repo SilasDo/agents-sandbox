@@ -165,7 +165,7 @@ func TestFingerprintsApply(t *testing.T) {
 	}
 }
 
-func TestRemoveHomeState(t *testing.T) {
+func TestRemoveHomeStateIf(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := Key{Slug: "myproj", Agent: "opencode"}
 
@@ -173,10 +173,10 @@ func TestRemoveHomeState(t *testing.T) {
 
 	statePath := filepath.Join(configpaths.Get().UserStateDir(), k.Slug, k.Agent, "state.yaml")
 	if _, err := os.Stat(statePath); os.IsNotExist(err) {
-		t.Fatal("state file should exist before RemoveHomeState")
+		t.Fatal("state file should exist before RemoveHomeStateIf")
 	}
 
-	RemoveHomeState(k)
+	RemoveHomeStateIf(k, removeAlways)
 
 	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
 		t.Errorf("state file should be removed, but still exists")
@@ -187,7 +187,61 @@ func TestRemoveHomeState(t *testing.T) {
 	}
 }
 
-func TestRemoveHomeState_LegacySlugOnly(t *testing.T) {
+// TestRemoveHomeStateIfKeepsWhenPredicateFalse pins that the decision runs
+// before any removal: a false predicate leaves the state in place untouched.
+func TestRemoveHomeStateIfKeepsWhenPredicateFalse(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := Key{Slug: "keepme", Agent: "opencode"}
+	if err := writeState(k, HomeState{HomeVolume: "vol"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveHomeStateIf(k, func(*HomeState) bool { return false }); err != nil {
+		t.Fatalf("RemoveHomeStateIf: %v", err)
+	}
+	if _, err := ReadState(k); err != nil {
+		t.Errorf("state must survive a false predicate, got err=%v", err)
+	}
+}
+
+// TestRemoveHomeStateIfMissingSkipsPredicate pins that a missing document is a
+// no-op and never consulted: there is nothing to protect and nothing to remove.
+func TestRemoveHomeStateIfMissingSkipsPredicate(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := Key{Slug: "nofile", Agent: "opencode"}
+	called := false
+	if err := RemoveHomeStateIf(k, func(*HomeState) bool { called = true; return true }); err != nil {
+		t.Fatalf("RemoveHomeStateIf on missing state: %v", err)
+	}
+	if called {
+		t.Error("predicate must not run when there is no document")
+	}
+}
+
+// TestRemoveHomeStateIfUnreadableFailsClosed pins that an unparsable document is
+// returned as an error and never removed: an unknown document is not discarded.
+func TestRemoveHomeStateIfUnreadableFailsClosed(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := Key{Slug: "corrupt", Agent: "opencode"}
+	dir := KeyDir(k)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "state.yaml"), []byte("home_volume: ["), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	if err := RemoveHomeStateIf(k, func(*HomeState) bool { called = true; return true }); err == nil {
+		t.Fatal("expected an error for an unparsable document")
+	}
+	if called {
+		t.Error("predicate must not run on an unreadable document")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state.yaml")); err != nil {
+		t.Errorf("unparsable state must survive, got err=%v", err)
+	}
+}
+
+func TestRemoveHomeStateIf_LegacySlugOnly(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	slug := "legacyproj"
 
@@ -208,8 +262,8 @@ func TestRemoveHomeState_LegacySlugOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := RemoveHomeState(Key{Slug: slug, Agent: ""}); err != nil {
-		t.Fatalf("RemoveHomeState legacy: %v", err)
+	if err := RemoveHomeStateIf(Key{Slug: slug, Agent: ""}, removeAlways); err != nil {
+		t.Fatalf("RemoveHomeStateIf legacy: %v", err)
 	}
 
 	// Legacy state file removed, sibling state and claims survive.
@@ -224,22 +278,22 @@ func TestRemoveHomeState_LegacySlugOnly(t *testing.T) {
 	}
 }
 
-func TestRemoveHomeState_LegacyMissing(t *testing.T) {
+func TestRemoveHomeStateIf_LegacyMissing(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := Key{Slug: "missingproj", Agent: ""}
-	if err := RemoveHomeState(k); err != nil {
-		t.Fatalf("RemoveHomeState on missing legacy state should be a no-op, got: %v", err)
+	if err := RemoveHomeStateIf(k, removeAlways); err != nil {
+		t.Fatalf("RemoveHomeStateIf on missing legacy state should be a no-op, got: %v", err)
 	}
 }
 
-func TestRemoveHomeStateRemovesStateButKeepsLock(t *testing.T) {
+func TestRemoveHomeStateIfRemovesStateButKeepsLock(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := testKey()
 	if err := writeState(k, HomeState{HomeVolume: "vol"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := RemoveHomeState(k); err != nil {
-		t.Fatalf("RemoveHomeState: %v", err)
+	if err := RemoveHomeStateIf(k, removeAlways); err != nil {
+		t.Fatalf("RemoveHomeStateIf: %v", err)
 	}
 	if _, err := ReadState(k); !errors.Is(err, ErrStateNotFound) {
 		t.Fatalf("state still present: %v", err)
@@ -248,6 +302,10 @@ func TestRemoveHomeStateRemovesStateButKeepsLock(t *testing.T) {
 		t.Fatalf("lock file must survive removal: %v", err)
 	}
 }
+
+// removeAlways is the unconditional predicate the tests that exercise removal
+// itself use, mirroring the plain "remove the state" semantics.
+func removeAlways(*HomeState) bool { return true }
 
 func TestWriteAndReadState_EnvSecretRoundTrip(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)

@@ -1,6 +1,6 @@
 ---
-description: Contract making the user-facing `--dry-run` a true make-no-changes preview of a run/shell: it inspects the existing runner image and home volume and reports would-build/would-reuse, but performs no image build, volume creation, prefill, state write, VM start, attach, or network request. Complies with issue #228; `--dry-run-vm` remains the KVM-less "prepare everything, skip the VM" flag.
-read_if: Changing `--dry-run`/`--dry-run-vm` behavior, `PrepareSandbox`'s dry-run handling, the run/shell preview, `image.EnsureImageWithClient`'s build decision, or the `agentLatestVersion` test seam.
+description: Contract making the user-facing `--dry-run` a true make-no-changes preview of a run/shell: it inspects the existing runner image and home volume and reports would-build/would-reuse, but on the preview path performs no image build, volume creation, prefill, state write, VM start, attach, or network request. Complies with issue #228; `--dry-run-vm` remains the KVM-less "prepare everything, skip the VM" flag.
+read_if: Changing `--dry-run`/`--dry-run-vm` behavior, the `options.Mode`/`runoptions.ResolveMode` boundary, the run/shell preview, `image.EnsureImageWithClient`'s build decision, or the `agentLatestVersion` test seam.
 ---
 
 # `--dry-run` preview
@@ -37,8 +37,8 @@ promises a preview and still mutates.
 ## Decision
 
 `--dry-run` becomes a **read-only plan**: it runs the pure planning and read-only inspection steps and reports the
-decision, then returns before any mutation. It keeps implying `--dry-run-vm` (harmless once the preview returns before
-the VM), so `opts.DryRun` continues to set `opts.DryRunVM` (`runoptions.go:143`).
+decision, then returns before any mutation. It subsumes `--dry-run-vm`: `runoptions.ResolveMode` maps the flag pair to a
+single `options.Mode`, and `ModePreview` skips the VM (`Mode.SkipsVM`) exactly as `ModeSkipVM` does.
 
 `--dry-run-vm` is unchanged: it still prepares fully (image ensure/build, home volume ensure/create, state writes,
 reconfig) and only skips the VM lifecycle. That is its purpose — running the tool on machines without `/dev/kvm`.
@@ -101,9 +101,11 @@ plus the session line) so it is asserted as data in unit tests and as the render
   and probes the recorded volume, and on the recovery path consults `liveHomeVolume` (`vm/run_orchestrate.go:433`,
   also read-only), but never calls `recoverOrCreateHome`/`EnsureNewHome`/`RecoverHomeState` and never writes the
   recovered state.
-- The `prepareHomeVolume` migration-offer gate and the `determineAgentVersion` gate stay as they are; they already
-  match the pure preview. The `--dry-run` note in `vm/run_orchestrate.go:121-128` is updated to state the new
-  contract.
+- The setup hub (`vm.PrepareSandbox`) takes a `skipVM bool` and has no `--dry-run` branch. The mode lives at the
+  session/CLI boundary (`options.Mode`, resolved by `runoptions.ResolveMode`): the session enters the hub only for
+  `ModeRun`/`ModeSkipVM` and returns the preview before reaching it, so the hub never runs under `--dry-run` and its
+  migration offer and version determination are simply never reached. The preview entry point
+  (`session.previewAndRender`) is unchanged.
 - Project identity is resolved read-only too: the preview runs `AdoptLegacyIdentity` with `apply=false`, so it reports
   against the slug a real run would find first (the legacy slug while a migration is pending) without moving state, and
   an error from that resolution (e.g. a corrupt legacy state document) surfaces rather than being ignored.
@@ -160,8 +162,9 @@ contract. Tests cover that `--dry-run` performs no `ImageInspect`/`ImageBuild` a
 
 ## Acceptance
 
-- On a fresh project, `run --dry-run` and `shell --dry-run` create no volume, build no image, write no state, start no
-  VM, and make no network request; they report would-build and would-create decisions.
+- On a fresh project, `run --dry-run` creates no volume, builds no image, writes no state, starts no VM, and makes no
+  network request, reporting would-build and would-create decisions; `shell --dry-run` previews the same way, but its
+  preflight still runs the prerequisite check (`doctor.CheckAll`), which may install the microsandbox runtime.
 - On a project with an unchanged image and an existing home volume, they report would-reuse for both.
 - `--dry-run-vm` on the same project still prepares fully (image ensured, volume ensured, state written) and skips
   only the VM.

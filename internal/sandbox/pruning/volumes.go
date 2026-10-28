@@ -108,18 +108,32 @@ func pruneHomeVolumes(
 	return removed
 }
 
-// removeStateForGoneKeys removes the state file for keys whose last home
-// volume was removed in this run. Keys are visited in a stable order so a
-// skipped key never determines whether a later one is processed.
+// removeStateForGoneKeys removes the state file for keys whose last home volume
+// was removed in this run, so the state file never outlives the volume it
+// references. The count guard holds back a key with a surviving volume (for
+// example one a failed removal left behind); the state-content guard holds back
+// a key whose state names a home volume, so a volume created since the prune
+// snapshot — committed to the state under the home lock — is never orphaned
+// (#335). Keys are visited in a stable order so a skipped key never determines
+// whether a later one is processed.
 func removeStateForGoneKeys(ui termio.UI, removed, exists map[state.Key]int) {
 	for _, key := range slices.SortedFunc(maps.Keys(removed), compareStateKey) {
 		if removed[key] < exists[key] {
 			continue
 		}
-		if err := state.RemoveHomeState(key); err != nil {
+		if err := state.RemoveHomeStateIf(key, stateHasNoHomeVolume); err != nil {
 			ui.Warnf("failed to remove state file for key (slug %s, agent %s): %v", key.Slug, key.Agent, err)
 		}
 	}
+}
+
+// stateHasNoHomeVolume reports whether a state records no home volume, settled
+// or pending recovery. Only such a state can be removed without orphaning a
+// volume: a recorded volume is always kept by the referenced-volume guard, so a
+// state that names one is never the state of a key whose volumes were all
+// removed.
+func stateHasNoHomeVolume(cur *state.HomeState) bool {
+	return cur.HomeVolume == "" && cur.RecoveredHomeVolume == ""
 }
 
 // compareStateKey orders project keys by slug then agent.

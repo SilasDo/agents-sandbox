@@ -403,9 +403,10 @@ func staleHomeHandle(name string) msb.VolumeHandle {
 
 func TestPruneVolumesKeepsStateWhenReferencedVolumeSiblingRemoved(t *testing.T) {
 	// The guard holds back the referenced volume, so removed[key] == 1 while
-	// exists[key] == 2. Only the count < exists check in removeStateForGoneKeys
-	// stops RemoveHomeState from deleting the state and orphaning the referenced
-	// volume for the next prune to reclaim.
+	// exists[key] == 2, and the state names the surviving referenced volume.
+	// removeStateForGoneKeys must not delete the state and orphan the referenced
+	// volume for the next prune to reclaim: the count guard skips the key, and
+	// the state-content guard would keep it anyway.
 	configpaths.WithMockConfigPaths(t)
 	const (
 		slug       = "stale-1mjusbm3wikhb0"
@@ -539,6 +540,56 @@ func TestRenderVolumeReport(t *testing.T) {
 // back by the exists guard does not stop later keys from being processed: the
 // iteration visits keys in a stable order, so "gone" is removed though "kept"
 // is skipped.
+// TestPruneVolumesKeepsStateCommittedAfterTheSnapshot reproduces #335
+// deterministically: prune snapshots the volumes and references, sweeps, and
+// only afterwards removes state. A concurrent run that commits a freshly created
+// home volume to the state in that window must not have its state removed. The
+// volume listing never contains the new volume, so the old removed >= exists
+// decision deleted the state that named it and orphaned the volume.
+func TestPruneVolumesKeepsStateCommittedAfterTheSnapshot(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	const (
+		slug          = "stale-1mjusbm3wikhb0"
+		staleVolume   = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143022"
+		concurrentVol = "agents-sandbox-home-stale-1mjusbm3wikhb0-20260806T143099"
+	)
+	key := state.Key{Slug: slug, Agent: ""}
+	// The snapshot sees a key whose state records no volume and one reclaimable
+	// volume, exactly the shape the race begins from.
+	if err := seedHomeState(key, state.HomeState{}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+	client := &msb.MockMsbClient{
+		Volumes: []msb.VolumeHandle{staleHomeHandle(staleVolume)},
+		RemoveVolumeFn: func(_ context.Context, name string) error {
+			if name != staleVolume {
+				return nil
+			}
+			// A concurrent run commits a fresh home volume to state after prune's
+			// snapshots but before its state removal.
+			return seedHomeState(key, state.HomeState{HomeVolume: concurrentVol})
+		},
+	}
+	msb.WithMsbMock(t, client)
+	ui := &termio.Mock{}
+	r, err := PruneVolumes(context.Background(), PruneState{
+		ToPrune: map[state.Key]msb.SandboxHandle{key: &msb.MockSandboxHandle{}},
+	}, false, ui)
+	if err != nil {
+		t.Fatalf("PruneVolumes: %v", err)
+	}
+	if r.VolumesPruned != 1 || len(client.RemovedVolumes) != 1 || client.RemovedVolumes[0] != staleVolume {
+		t.Fatalf("expected only the stale volume removed: report=%+v removed=%v", r, client.RemovedVolumes)
+	}
+	st, err := state.ReadState(key)
+	if err != nil {
+		t.Fatalf("state committed after the snapshot must survive, got err=%v", err)
+	}
+	if st.HomeVolume != concurrentVol {
+		t.Errorf("state HomeVolume = %q, want %q", st.HomeVolume, concurrentVol)
+	}
+}
+
 func TestRemoveStateForGoneKeysProcessesKeysAfterASkippedOne(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	kept := state.Key{Slug: "aaaa-kept"}
@@ -565,8 +616,9 @@ func TestRemoveStateForGoneKeysProcessesKeysAfterASkippedOne(t *testing.T) {
 func TestRemoveStateForGoneKeysWarnsOnRemoveError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := state.Key{Slug: "prunewarn-a"}
-	// A non-empty directory named state.yaml makes the legacy agent-less remove
-	// fail, exercising the warn branch.
+	// A non-empty directory named state.yaml makes the state unreadable, so
+	// RemoveHomeStateIf returns an error and prune warns rather than discarding
+	// a document it cannot parse.
 	stateYAML := filepath.Join(state.KeyDir(k), "state.yaml")
 	if err := os.MkdirAll(stateYAML, 0o700); err != nil {
 		t.Fatal(err)

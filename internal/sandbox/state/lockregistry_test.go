@@ -24,7 +24,7 @@ func TestLockRegistryFailsFastOnDoubleHold(t *testing.T) {
 	releaseLockPath("/tmp/x.lock")
 }
 
-func TestRemoveHomeStateFailsFastWhileHomeLockHeld(t *testing.T) {
+func TestRemoveHomeStateIfFailsFastWhileHomeLockHeld(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := testKey()
 	if err := writeState(k, HomeState{HomeVolume: "vol"}); err != nil {
@@ -35,8 +35,8 @@ func TestRemoveHomeStateFailsFastWhileHomeLockHeld(t *testing.T) {
 		t.Fatalf("hold: %v", err)
 	}
 	defer release()
-	if err := RemoveHomeState(k); err == nil {
-		t.Fatal("RemoveHomeState proceeded while the blocking home lock was held")
+	if err := RemoveHomeStateIf(k, removeAlways); err == nil {
+		t.Fatal("RemoveHomeStateIf proceeded while the blocking home lock was held")
 	}
 	if _, rerr := ReadState(k); rerr != nil {
 		t.Fatalf("state must survive the refused removal: %v", rerr)

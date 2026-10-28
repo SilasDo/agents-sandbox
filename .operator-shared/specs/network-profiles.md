@@ -33,6 +33,10 @@ repeated names collapse instead of erroring (`network.ParseProfiles` trims and d
 `network.ParseProfiles` validate the raw config value before decode, and `normalizeNetworkProfile` stores the parsed list
 back on the viper key so decode cannot disagree with validation. Precedence is unchanged: flag > env > config > default.
 
+`egress-allow` and `egress-deny` are config-file-only: their `network.Policy` fields carry `env:"-"`, which keeps
+viperconfig's derived env-key list from binding `AGENTS_SANDBOX_NETWORK_EGRESS_ALLOW`/`_DENY` (see
+[config-key registry](config-key-registry.md)).
+
 ## Fingerprint stability (do not drift)
 
 `Policy.Fingerprint()` emits one sorted, deduplicated `profile=<name>` line per profile. A single-profile policy therefore

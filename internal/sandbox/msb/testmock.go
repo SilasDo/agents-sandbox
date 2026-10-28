@@ -409,6 +409,7 @@ type MockSandboxHandle struct {
 	StopErr          error
 	KillErr          error
 	RemoveErr        error
+	DestroyFn        func(context.Context) error
 	DestroyErr       error
 	Destroyed        bool
 	Cfg              *msbSdk.SandboxConfig
@@ -481,7 +482,10 @@ func (m *MockSandboxHandle) Remove(_ context.Context) error {
 	return nil
 }
 func (m *MockSandboxHandle) DidRemove() bool { return m.DidRmv }
-func (m *MockSandboxHandle) Destroy(_ context.Context, _ ...msbSdk.DestroyOption) error {
+func (m *MockSandboxHandle) Destroy(ctx context.Context, _ ...msbSdk.DestroyOption) error {
+	if m.DestroyFn != nil {
+		return m.DestroyFn(ctx)
+	}
 	if m.DestroyErr != nil {
 		return m.DestroyErr
 	}

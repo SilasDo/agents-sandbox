@@ -64,7 +64,7 @@ func notifyEnvOverride() (string, string) {
 // the agent default and the notify env override but leaving the config-derived
 // fields (policy, sizes, mounts, provisioning) at their zero values.
 func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.RunOptions, error) {
-	opts, err := resolveFlags(cmd, ui)
+	opts, err := resolveFlags(cmd)
 	if err != nil {
 		return options.RunOptions{}, err
 	}
@@ -84,7 +84,7 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.DiskSize = cfg.DiskSize
 		opts.WorkspaceQuota = cfg.WorkspaceQuota
 		opts.ReapPolicy = options.NewReapPolicy(cfg.AutoStopOnActiveSessions, cfg.AutoStopMaxSessionRetries)
-		opts.IdleTimeout = cfg.IdleTimeout()
+		opts.IdleTimeout = cfg.AutoStopTimeout
 		opts.Mounts, err = mounts.ResolveBindMounts(cfg.Mounts)
 		if err != nil {
 			return options.RunOptions{}, err
@@ -130,8 +130,8 @@ func resolveDockerSetting(cmd *cobra.Command, cfg *viperconfig.Config, opts *opt
 }
 
 // resolveFlags reads the direct-run flags off the command and returns the
-// starting RunOptions, resolving the worktree spec and the dry-run auto-enable.
-func resolveFlags(cmd *cobra.Command, ui termio.UI) (options.RunOptions, error) {
+// starting RunOptions, resolving the worktree spec.
+func resolveFlags(cmd *cobra.Command) (options.RunOptions, error) {
 	opts := options.RunOptions{}
 	rawWorktree, _ := cmd.Flags().GetString(FlagWorktree)
 	worktree, err := options.ResolveWorktreeSpec(rawWorktree)
@@ -141,17 +141,23 @@ func resolveFlags(cmd *cobra.Command, ui termio.UI) (options.RunOptions, error) 
 	opts.Worktree = worktree
 	opts.Rebuild, _ = cmd.Flags().GetBool(FlagRebuild)
 	opts.AgentVersion, _ = cmd.Flags().GetString(FlagAgentVersion)
-	opts.DryRun, _ = cmd.Flags().GetBool(FlagDryRun)
-	opts.DryRunVM, _ = cmd.Flags().GetBool(FlagDryRunVM)
-	if opts.DryRun {
-		opts.DryRunVM = true
-		ui.Verbosef("dry-run-vm: auto-enabled (--dry-run)")
-	}
 	opts.ServeOnly, _ = cmd.Flags().GetBool(FlagServeOnly)
 	if cmd.Flags().Lookup(FlagRoot) != nil {
 		opts.Root, _ = cmd.Flags().GetBool(FlagRoot)
 	}
 	return opts, nil
+}
+
+// ResolveMode reports the execution mode the command's dry-run flags select.
+// --dry-run implies --dry-run-vm, so it maps to the preview mode alone.
+func ResolveMode(cmd *cobra.Command) options.Mode {
+	if dryRun, _ := cmd.Flags().GetBool(FlagDryRun); dryRun {
+		return options.ModePreview
+	}
+	if dryRunVM, _ := cmd.Flags().GetBool(FlagDryRunVM); dryRunVM {
+		return options.ModeSkipVM
+	}
+	return options.ModeRun
 }
 
 // resolveAgentAndValidate resolves the agent (default > config > flag) and

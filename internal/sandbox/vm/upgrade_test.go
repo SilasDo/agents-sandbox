@@ -1120,80 +1120,6 @@ func TestPendingUpgradeOfferedWritePreservesFingerprints(t *testing.T) {
 	}
 }
 
-// TestDetermineAgentVersionDryRunPrefersPin pins the --dry-run contract: an
-// explicit pin wins, resolveBuildVersion is not consulted (agentLatestVersion is
-// never called), and the dry-run verbose is emitted.
-func TestDetermineAgentVersionDryRunPrefersPin(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	k := state.Key{Slug: "proj", Agent: "opencode"}
-	seedAgentState(t, k, "1.0.0", agentSourceTool)
-
-	origLatest := agentLatestVersion
-	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) {
-		t.Error("agentLatestVersion must not be called under --dry-run")
-		return "2.0.0", nil
-	}
-	t.Cleanup(func() { agentLatestVersion = origLatest })
-
-	ui := &termio.Mock{}
-	got, upgrade, _, err := determineAgentVersion(
-		context.Background(),
-		k,
-		opencodeAgent(t),
-		ui,
-		options.RunOptions{DryRun: true, AgentVersion: "3.0.0"},
-	)
-	if err != nil {
-		t.Fatalf("determineAgentVersion: %v", err)
-	}
-	if got != "3.0.0" || upgrade {
-		t.Errorf("determineAgentVersion = (%q, %v), want (3.0.0, false)", got, upgrade)
-	}
-	if !slices.Contains(ui.VerboseCalls, "dry-run: would resolve build version") {
-		t.Errorf("expected dry-run verbose, got %v", ui.VerboseCalls)
-	}
-}
-
-// TestDetermineAgentVersionDryRunFallsBackToRecordedVersion pins the --dry-run
-// fallback: without a pin the recorded project version is used, no prompt fires,
-// and the network is never touched.
-func TestDetermineAgentVersionDryRunFallsBackToRecordedVersion(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-	k := state.Key{Slug: "proj", Agent: "opencode"}
-	seedAgentState(t, k, "1.0.0", agentSourceTool)
-
-	origLatest := agentLatestVersion
-	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) {
-		t.Error("agentLatestVersion must not be called under --dry-run")
-		return "2.0.0", nil
-	}
-	t.Cleanup(func() { agentLatestVersion = origLatest })
-
-	ui := &termio.Mock{
-		IsInteractiveResult: true,
-		SelectFn: func(_ string, _ []termio.Choice, _ string) (string, error) {
-			t.Error("--dry-run must not prompt")
-			return "", nil
-		},
-	}
-	got, upgrade, _, err := determineAgentVersion(
-		context.Background(),
-		k,
-		opencodeAgent(t),
-		ui,
-		options.RunOptions{DryRun: true},
-	)
-	if err != nil {
-		t.Fatalf("determineAgentVersion: %v", err)
-	}
-	if got != "1.0.0" || upgrade {
-		t.Errorf("determineAgentVersion = (%q, %v), want (1.0.0, false)", got, upgrade)
-	}
-	if !slices.Contains(ui.VerboseCalls, "dry-run: would resolve build version") {
-		t.Errorf("expected dry-run verbose, got %v", ui.VerboseCalls)
-	}
-}
-
 // TestPendingUpgradeRootStateReadErrorDoesNotClobber is the regression for the
 // clobber bug: an unreadable root state (which holds the migrations registry and
 // every other agent's cached check) must never be overwritten by the upgrade
@@ -1376,5 +1302,123 @@ func TestPendingUpgradeWarnsOnProjectStateWriteError(t *testing.T) {
 	joined := strings.Join(ui.WarnCalls, " ")
 	if !strings.Contains(joined, "could not read or persist project state") {
 		t.Errorf("expected a project-state persist warning, got %q", joined)
+	}
+}
+
+// TestCheckAgentUpgradeNetworkRunsWithoutRootLock is the #334 regression: the
+// agent-version request must not run while the launcher-global root lock is held,
+// so unrelated projects are not serialized behind one project's egress check. The
+// stub asserts the lock is free by taking it non-blocking from inside the request.
+func TestCheckAgentUpgradeNetworkRunsWithoutRootLock(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
+		"opencode": {LastChecked: now().Add(-25 * time.Hour), LatestVersion: "1.0.0"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	origLatest := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) {
+		ok, err := state.WithRootState(false, func(*state.RootTxn) error { return nil })
+		if err != nil {
+			t.Fatalf("WithRootState during the version request: %v", err)
+		}
+		if !ok {
+			t.Error("the root lock is held while the version request runs")
+		}
+		return "2.0.0", nil
+	}
+	t.Cleanup(func() { agentLatestVersion = origLatest })
+
+	entry, checked := checkAgentUpgrade(context.Background(), opencodeAgent(t), true, &termio.Mock{})
+	if !checked {
+		t.Fatal("checkAgentUpgrade deferred unexpectedly")
+	}
+	if entry.LatestVersion != "2.0.0" {
+		t.Errorf("LatestVersion = %q, want 2.0.0", entry.LatestVersion)
+	}
+}
+
+// TestCheckAgentUpgradeSkipsWriteWhenWindowRefreshedConcurrently is the
+// single-write guard for #334: while one process's version request is in flight,
+// another process may refresh the window. The re-check under the lock must then
+// skip this process's write and reuse the freshest cached entry, so two
+// concurrent due checks persist at most one refresh.
+func TestCheckAgentUpgradeSkipsWriteWhenWindowRefreshedConcurrently(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
+		"opencode": {LastChecked: now().Add(-25 * time.Hour), LatestVersion: "1.0.0"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+
+	concurrentCheckedAt := now()
+	origLatest := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) {
+		ok, err := state.WithRootState(false, func(txn *state.RootTxn) error {
+			txn.State().SetAgentCheck("opencode", state.AgentCheckState{
+				LastChecked:   concurrentCheckedAt,
+				LatestVersion: "9.9.9",
+			})
+			return txn.Commit()
+		})
+		if err != nil {
+			t.Fatalf("concurrent refresh: %v", err)
+		}
+		if !ok {
+			t.Fatal("concurrent refresh could not take the free root lock")
+		}
+		return "2.0.0", nil
+	}
+	t.Cleanup(func() { agentLatestVersion = origLatest })
+
+	entry, checked := checkAgentUpgrade(context.Background(), opencodeAgent(t), true, &termio.Mock{})
+	if !checked {
+		t.Fatal("checkAgentUpgrade deferred unexpectedly")
+	}
+	if entry.LatestVersion != "9.9.9" {
+		t.Errorf("LatestVersion = %q, want the concurrently refreshed 9.9.9", entry.LatestVersion)
+	}
+	root, err := state.ReadRootState()
+	if err != nil {
+		t.Fatalf("ReadRootState: %v", err)
+	}
+	if got := root.AgentCheck("opencode").LatestVersion; got != "9.9.9" {
+		t.Errorf("persisted LatestVersion = %q, want 9.9.9 (this process's write must be skipped)", got)
+	}
+}
+
+// TestCheckAgentUpgradeSecondReadErrorDefers covers the root state becoming
+// unreadable between the cached read and the post-fetch write: the step warns and
+// defers rather than persisting over an unknown document.
+func TestCheckAgentUpgradeSecondReadErrorDefers(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := seedRootState(state.RootState{Updates: state.Updates{Agents: map[string]state.AgentCheckState{
+		"opencode": {LastChecked: now().Add(-25 * time.Hour), LatestVersion: "1.0.0"},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	rootStatePath := filepath.Join(configpaths.Get().UserStateDir(), "state.yaml")
+
+	origLatest := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) {
+		// The document becomes unreadable while the request is in flight.
+		if err := os.WriteFile(rootStatePath, []byte("not: valid: yaml: ["), 0o600); err != nil {
+			t.Fatalf("corrupt root state: %v", err)
+		}
+		return "2.0.0", nil
+	}
+	t.Cleanup(func() { agentLatestVersion = origLatest })
+
+	ui := &termio.Mock{}
+	entry, checked := checkAgentUpgrade(context.Background(), opencodeAgent(t), true, ui)
+	if checked {
+		t.Error("checkAgentUpgrade must defer when the root state becomes unreadable")
+	}
+	if entry != (state.AgentCheckState{}) {
+		t.Errorf("entry = %+v, want the zero value on defer", entry)
+	}
+	if !strings.Contains(strings.Join(ui.WarnCalls, " "), "could not read upgrade check state") {
+		t.Errorf("expected a root-state read warning, got %v", ui.WarnCalls)
 	}
 }

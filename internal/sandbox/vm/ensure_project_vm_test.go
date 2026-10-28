@@ -18,6 +18,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
+	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -50,6 +51,7 @@ func TestEnsureProjectVMFlockDirError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -80,6 +82,7 @@ func TestEnsureProjectVMDecideActionError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -116,6 +119,7 @@ func TestEnsureProjectVMWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -163,6 +167,7 @@ func TestEnsureProjectVMStartingReconcileWarning(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -195,6 +200,7 @@ func TestEnsureProjectVMStartingStatusError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -230,6 +236,7 @@ func TestEnsureProjectVMStartsAfterConcurrentBootFails(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -276,6 +283,7 @@ func TestEnsureProjectVMConvergesCreatedStartRace(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -312,6 +320,7 @@ func TestEnsureProjectVMConnectRetryRejectsRefreshedPausedVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -354,6 +363,7 @@ func TestEnsureProjectVMConnectRetryWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil || sb == nil || boot != vmBootConnected {
@@ -396,6 +406,7 @@ func TestEnsureProjectVMPostLockWaitsForStartingVM(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -436,6 +447,7 @@ func TestEnsureProjectVMPostLockWaitError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -480,6 +492,7 @@ func TestEnsureProjectVMPostLockWaitReconcileWarning(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -634,6 +647,7 @@ func TestEnsureProjectVMStartError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -661,6 +675,7 @@ func TestEnsureProjectVMEnsureInstalledError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -691,6 +706,7 @@ func TestEnsureProjectVMConnectRetryReconnectError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -729,6 +745,7 @@ func TestEnsureProjectVMConnectRetryStartAfterRefresh(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -767,6 +784,7 @@ func TestEnsureProjectVMPostLockRecheckConnect(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -811,6 +829,7 @@ func TestEnsureProjectVMPostLockRecheckStart(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -858,6 +877,7 @@ func TestEnsureProjectVMRecreateStopError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -894,6 +914,7 @@ func TestEnsureProjectVMStartSucceedsWithReconcile(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -932,6 +953,7 @@ func TestEnsureProjectVMConnectReconcileWarn(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -972,6 +994,7 @@ func TestEnsureProjectVMStartReconcileWarn(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -1010,6 +1033,7 @@ func TestEnsureProjectVMRecheckNonNotFoundError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1036,6 +1060,7 @@ func TestEnsureProjectVMCreateError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1073,6 +1098,7 @@ func TestEnsureProjectVMRecreateDestroyError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1120,6 +1146,7 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err != nil {
@@ -1184,6 +1211,7 @@ func TestEnsureProjectVMRecreateReplacedIdentityFailsClosed(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
@@ -1197,6 +1225,68 @@ func TestEnsureProjectVMRecreateReplacedIdentityFailsClosed(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Errorf("GetSandbox calls = %d, want 1 (must not re-look-up the replacement)", callCount)
+	}
+}
+
+// TestEnsureProjectVMRecreateHoldsCreationLock is the #397 regression: the
+// recreate destroy must run while the per-project creation lock is held, so a
+// concurrent invocation cannot clobber a VM another client just created.
+func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+	ui := termio.NewTestMock(t)
+
+	locked := false
+	origLock := acquireProjectVMLock
+	acquireProjectVMLock = func(state.Key) (func(), error) {
+		locked = true
+		return func() { locked = false }, nil
+	}
+	t.Cleanup(func() { acquireProjectVMLock = origLock })
+
+	destroyed := false
+	handle := &msb.MockSandboxHandle{
+		Name_:   "vm-test-opencode",
+		Status_: msbSdk.SandboxStatusRunning,
+		DestroyFn: func(context.Context) error {
+			if !locked {
+				t.Error("recreate destroyed the VM outside the creation lock")
+			}
+			destroyed = true
+			return nil
+		},
+	}
+	created := false
+	client := &msb.MockMsbClient{}
+	// The pre-lock lookup finds the VM; the destroy frees the name, so the
+	// post-lock re-check must miss and take the create path.
+	client.GetSandboxFn = func(context.Context, string) (msb.SandboxHandle, error) {
+		if destroyed {
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "gone"}
+		}
+		return handle, nil
+	}
+	client.CreateSandboxFn = func(_ context.Context, name string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
+		if !locked {
+			t.Error("recreate created the replacement VM outside the creation lock")
+		}
+		created = true
+		return &msb.MockSandbox{Name_: name}, nil
+	}
+	client.ImageGetFn = func(context.Context, string) error { return nil }
+	client.EnsureInstalledFn = func(context.Context) error { return nil }
+	msb.WithMsbMock(t, client)
+
+	if _, _, err := ensureProjectVM(
+		context.Background(),
+		options.RunOptions{Recreate: true, CPUs: 1, Memory: "2G"},
+		image.ImageInfo{DockerTag: "new:tag", Ref: "new:tag"},
+		"homevol", "/workspace", testVMKey(), testVMKey().Slug, false, &ui,
+	); err != nil {
+		t.Fatalf("ensureProjectVM recreate: %v", err)
+	}
+	if !created {
+		t.Fatal("expected the recreate to create a replacement VM under the lock")
 	}
 }
 
@@ -1226,6 +1316,7 @@ func TestEnsureProjectVMCreateEnsureLoadedError(t *testing.T) {
 		"/workspace",
 		testVMKey(),
 		testVMKey().Slug,
+		false,
 		&ui,
 	)
 	if err == nil {
