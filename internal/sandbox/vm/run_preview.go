@@ -50,10 +50,14 @@ func PreviewSandbox(ctx context.Context, opts options.RunOptions, ui termio.UI) 
 	if !ok {
 		return Preview{}, fmt.Errorf("unknown agent %q", opts.Agent)
 	}
+	identity, err := git.ResolveIdentity(cwd)
+	if err != nil {
+		return Preview{}, err
+	}
 	// Read-only adoption: apply=false so the preview never moves state, but it
 	// still resolves against the location a real run would find first (the
 	// legacy slug while a migration is pending), matching the volume dry runs.
-	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), git.ResolveIdentity(cwd), a.Name(), false, ui)
+	adoption, err := AdoptLegacyIdentity(ctx, msb.Get(), identity, a.Name(), false, ui)
 	if err != nil {
 		return Preview{}, err
 	}

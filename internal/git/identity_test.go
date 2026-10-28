@@ -1,6 +1,7 @@
 package git
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,24 @@ import (
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
+// mustResolvePath is the test-side wrapper for the now-fallible resolvePath:
+// every fixture path exists, so an error is a broken test rather than an input.
+func mustResolvePath(t testing.TB, path string) string {
+	t.Helper()
+	resolved, err := resolvePath(path)
+	require.NoError(t, err)
+	return resolved
+}
+
+// mustResolveIdentity is the test-side wrapper for the fallible ResolveIdentity:
+// fixtures point at real paths, so a resolution error is a broken test.
+func mustResolveIdentity(t testing.TB, cwd string) Identity {
+	t.Helper()
+	identity, err := ResolveIdentity(cwd)
+	require.NoError(t, err)
+	return identity
+}
+
 // newRepo builds a minimal repo layout in a fresh temp dir: a .git directory
 // holding a config with the given origin remote (omitted when origin is empty).
 // It returns the symlink-resolved path, so assertions compare against exactly
@@ -18,7 +37,7 @@ import (
 // /var -> /private/var symlink.
 func newRepo(t *testing.T, origin string) string {
 	t.Helper()
-	root := resolvePath(t.TempDir())
+	root := mustResolvePath(t, t.TempDir())
 	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
 	if origin != "" {
 		writeOriginConfig(t, root, origin)
@@ -44,7 +63,7 @@ func writeGitdirFile(t *testing.T, dir, gitdir string) {
 func TestResolveIdentityRepoWithOrigin(t *testing.T) {
 	root := newRepo(t, "https://example.com/acme/widget.git")
 
-	id := ResolveIdentity(root)
+	id := mustResolveIdentity(t, root)
 
 	// The repo slug is byte-identical to the pre-change value: the per-slug user
 	// config dir must not move for existing users.
@@ -61,30 +80,30 @@ func TestResolveIdentityRepoWithOrigin(t *testing.T) {
 func TestResolveIdentityClonesShareRepoSlug(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
 
-	first := ResolveIdentity(newRepo(t, origin))
-	second := ResolveIdentity(newRepo(t, origin))
+	first := mustResolveIdentity(t, newRepo(t, origin))
+	second := mustResolveIdentity(t, newRepo(t, origin))
 
 	require.Equal(t, first.RepoSlug, second.RepoSlug)
 	require.NotEqual(t, first.CheckoutSlug, second.CheckoutSlug)
 }
 
 func TestResolveIdentityDifferentOriginsDiffer(t *testing.T) {
-	first := ResolveIdentity(newRepo(t, "https://example.com/acme/widget.git"))
-	second := ResolveIdentity(newRepo(t, "https://example.com/other/widget.git"))
+	first := mustResolveIdentity(t, newRepo(t, "https://example.com/acme/widget.git"))
+	second := mustResolveIdentity(t, newRepo(t, "https://example.com/other/widget.git"))
 
 	require.NotEqual(t, first.RepoSlug, second.RepoSlug)
 }
 
 func TestResolveIdentityWorktreeSharesCheckoutSlug(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
-	main := ResolveIdentity(repo)
+	main := mustResolveIdentity(t, repo)
 
 	nested := filepath.Join(repo, "nested", "wt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
 	testutil.RunGit(t, repo, "worktree", "add", nested)
-	got := ResolveIdentity(nested)
+	got := mustResolveIdentity(t, nested)
 
 	require.Equal(t, main.RepoSlug, got.RepoSlug)
 	require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
@@ -100,13 +119,13 @@ func TestResolveIdentityWorktreeSharesCheckoutSlug(t *testing.T) {
 // from the worktree root), so the inside-worktree still has its own repo slug.
 func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
 	t.Run("plain checkout", func(t *testing.T) {
-		repo := resolvePath(testutil.InitRepo(t))
-		main := ResolveIdentity(repo)
+		repo := mustResolvePath(t, testutil.InitRepo(t))
+		main := mustResolveIdentity(t, repo)
 
 		nested := filepath.Join(repo, "nested", "wt")
 		require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
 		testutil.RunGit(t, repo, "worktree", "add", nested)
-		got := ResolveIdentity(nested)
+		got := mustResolveIdentity(t, nested)
 
 		require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
 		require.False(t, got.OutsideWorktree)
@@ -120,14 +139,14 @@ func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
 
 	t.Run("bare root", func(t *testing.T) {
 		origin := testutil.InitRepo(t)
-		root := resolvePath(t.TempDir())
+		root := mustResolvePath(t, t.TempDir())
 		gitDir := filepath.Join(root, ".git")
 		testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
 		testutil.RunGit(t, gitDir, "remote", "remove", "origin")
 		testutil.RunGit(t, gitDir, "worktree", "add", "--detach", filepath.Join(root, "main"))
 
-		main := ResolveIdentity(root)
-		got := ResolveIdentity(filepath.Join(root, "main"))
+		main := mustResolveIdentity(t, root)
+		got := mustResolveIdentity(t, filepath.Join(root, "main"))
 
 		require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
 		require.False(t, got.OutsideWorktree)
@@ -138,11 +157,11 @@ func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
 
 func TestResolveIdentitySubdirectoryMatchesCheckoutRoot(t *testing.T) {
 	root := newRepo(t, "https://example.com/acme/widget.git")
-	main := ResolveIdentity(root)
+	main := mustResolveIdentity(t, root)
 
 	sub := filepath.Join(root, "internal", "foo")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
-	got := ResolveIdentity(sub)
+	got := mustResolveIdentity(t, sub)
 
 	require.Equal(t, main.RepoSlug, got.RepoSlug)
 	require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
@@ -159,8 +178,8 @@ func TestResolveIdentityIgnoresCwdForNonRepo(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(cwdWithGit, ".git"), 0o755))
 	t.Chdir(cwdWithGit)
 
-	dir := resolvePath(t.TempDir())
-	got := ResolveIdentity(dir)
+	dir := mustResolvePath(t, t.TempDir())
+	got := mustResolveIdentity(t, dir)
 	want := projectSlug(sanitizeFolderName(filepath.Base(dir)), dir)
 	require.Equal(t, want, got.RepoSlug)
 	require.Equal(t, want, got.CheckoutSlug)
@@ -174,28 +193,28 @@ func TestResolveIdentityIgnoresCwdForNonRepo(t *testing.T) {
 // checkout's slug.
 func TestResolveIdentityResolvesSymlinkedWorktreeGitDir(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
-	main := ResolveIdentity(repo)
+	main := mustResolveIdentity(t, repo)
 
 	nested := filepath.Join(repo, "nested", "wt")
 	require.NoError(t, os.MkdirAll(filepath.Dir(nested), 0o755))
 	testutil.RunGit(t, repo, "worktree", "add", nested)
 
-	link := filepath.Join(resolvePath(t.TempDir()), "repo-link")
+	link := filepath.Join(mustResolvePath(t, t.TempDir()), "repo-link")
 	require.NoError(t, os.Symlink(repo, link))
 	shared := filepath.Join(link, ".git", "worktrees", "wt")
 	require.NoError(t, os.WriteFile(filepath.Join(nested, ".git"), []byte("gitdir: "+shared+"\n"), 0o644))
 
-	got := ResolveIdentity(nested)
+	got := mustResolveIdentity(t, nested)
 	require.False(t, got.OutsideWorktree)
 	require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
 }
 
 func TestResolveIdentityNonRepoDirectory(t *testing.T) {
-	dir := resolvePath(t.TempDir())
+	dir := mustResolvePath(t, t.TempDir())
 
-	id := ResolveIdentity(dir)
+	id := mustResolveIdentity(t, dir)
 
 	want := projectSlug(sanitizeFolderName(filepath.Base(dir)), dir)
 	require.Equal(t, want, id.RepoSlug)
@@ -207,11 +226,11 @@ func TestResolveIdentityNonRepoDirectory(t *testing.T) {
 
 func TestResolveIdentityResolvesSymlinks(t *testing.T) {
 	physical := newRepo(t, "https://example.com/acme/widget.git")
-	link := filepath.Join(resolvePath(t.TempDir()), "link")
+	link := filepath.Join(mustResolvePath(t, t.TempDir()), "link")
 	require.NoError(t, os.Symlink(physical, link))
 
-	fromPhysical := ResolveIdentity(physical)
-	fromLink := ResolveIdentity(link)
+	fromPhysical := mustResolveIdentity(t, physical)
+	fromLink := mustResolveIdentity(t, link)
 
 	require.Equal(t, fromPhysical.RepoSlug, fromLink.RepoSlug)
 	require.Equal(t, fromPhysical.CheckoutSlug, fromLink.CheckoutSlug)
@@ -225,21 +244,34 @@ func TestResolveIdentityResolvesSymlinks(t *testing.T) {
 // keeps its own worktree as the bind root and hashes the common dir like any
 // checkout.
 func TestResolveIdentitySeparateGitDirIsNotOutside(t *testing.T) {
-	for name, gitdir := range map[string]string{
-		"separate git dir": "/elsewhere/repo.git",
-		"submodule":        "../.git/modules/sub",
-	} {
-		t.Run(name, func(t *testing.T) {
-			root := resolvePath(t.TempDir())
-			writeGitdirFile(t, root, gitdir)
+	t.Run("separate git dir", func(t *testing.T) {
+		root := mustResolvePath(t, t.TempDir())
+		gitdir := filepath.Join(mustResolvePath(t, t.TempDir()), "repo.git")
+		require.NoError(t, os.MkdirAll(gitdir, 0o755))
+		writeGitdirFile(t, root, gitdir)
 
-			id := ResolveIdentity(root)
+		id, err := ResolveIdentity(root)
+		require.NoError(t, err)
 
-			require.False(t, id.OutsideWorktree)
-			require.Equal(t, root, id.CheckoutRoot)
-			require.Equal(t, root, id.BindRoot)
-		})
-	}
+		require.False(t, id.OutsideWorktree)
+		require.Equal(t, root, id.CheckoutRoot)
+		require.Equal(t, root, id.BindRoot)
+	})
+
+	t.Run("submodule", func(t *testing.T) {
+		super := mustResolvePath(t, t.TempDir())
+		gitdir := filepath.Join(super, ".git", "modules", "sub")
+		require.NoError(t, os.MkdirAll(gitdir, 0o755))
+		root := filepath.Join(super, "sub")
+		writeGitdirFile(t, root, "../.git/modules/sub")
+
+		id, err := ResolveIdentity(root)
+		require.NoError(t, err)
+
+		require.False(t, id.OutsideWorktree)
+		require.Equal(t, root, id.CheckoutRoot)
+		require.Equal(t, root, id.BindRoot)
+	})
 }
 
 // newSubmoduleUnderWorktreesAncestor creates a real submodule whose superproject
@@ -250,7 +282,7 @@ func TestResolveIdentitySeparateGitDirIsNotOutside(t *testing.T) {
 func newSubmoduleUnderWorktreesAncestor(t *testing.T) string {
 	t.Helper()
 	origin := testutil.InitRepo(t)
-	super := filepath.Join(resolvePath(t.TempDir()), "worktrees", "super")
+	super := filepath.Join(mustResolvePath(t, t.TempDir()), "worktrees", "super")
 	require.NoError(t, os.MkdirAll(super, 0o755))
 	testutil.RunGit(t, super, "init")
 	testutil.ConfigureRepo(t, super)
@@ -266,7 +298,7 @@ func newSubmoduleUnderWorktreesAncestor(t *testing.T) string {
 // its working-tree root.
 func newRepoUnderWorktreesAncestor(t *testing.T) string {
 	t.Helper()
-	repo := filepath.Join(resolvePath(t.TempDir()), "worktrees", "repo")
+	repo := filepath.Join(mustResolvePath(t, t.TempDir()), "worktrees", "repo")
 	require.NoError(t, os.MkdirAll(repo, 0o755))
 	testutil.RunGit(t, repo, "init")
 	testutil.ConfigureRepo(t, repo)
@@ -282,7 +314,7 @@ func newRepoUnderWorktreesAncestor(t *testing.T) string {
 // root and the recorded git dir.
 func newSeparateGitDirUnderWorktreesAncestor(t *testing.T) (string, string) {
 	t.Helper()
-	base := resolvePath(t.TempDir())
+	base := mustResolvePath(t, t.TempDir())
 	root := filepath.Join(base, "checkout")
 	require.NoError(t, os.MkdirAll(root, 0o755))
 	require.NoError(t, os.MkdirAll(filepath.Join(base, "worktrees"), 0o755))
@@ -300,7 +332,7 @@ func TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside(t *testing.
 	t.Run("submodule", func(t *testing.T) {
 		root := newSubmoduleUnderWorktreesAncestor(t)
 
-		id := ResolveIdentity(root)
+		id := mustResolveIdentity(t, root)
 
 		require.False(t, id.OutsideWorktree)
 		require.Equal(t, root, id.CheckoutRoot)
@@ -310,10 +342,11 @@ func TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside(t *testing.
 	t.Run("relative separate git dir", func(t *testing.T) {
 		// git records --separate-git-dir as an absolute path, so the relative
 		// form is hand-written to exercise the same strip-before-join order.
-		root := filepath.Join(resolvePath(t.TempDir()), "worktrees", "proj", "sub")
+		root := filepath.Join(mustResolvePath(t, t.TempDir()), "worktrees", "proj", "sub")
+		require.NoError(t, os.MkdirAll(filepath.Join(root, "..", "shared.git"), 0o755))
 		writeGitdirFile(t, root, "../shared.git")
 
-		id := ResolveIdentity(root)
+		id := mustResolveIdentity(t, root)
 
 		require.False(t, id.OutsideWorktree)
 		require.Equal(t, root, id.CheckoutRoot)
@@ -324,11 +357,12 @@ func TestResolveIdentityGitDirFileUnderWorktreesAncestorIsNotOutside(t *testing.
 		// An absolute gitdir carries its ancestors in the recorded text, so a
 		// "worktrees" component there must not look like a worktree registration
 		// (it would strip to the ancestor and bind the wrong root).
-		root := filepath.Join(resolvePath(t.TempDir()), "proj")
-		shared := filepath.Join(resolvePath(t.TempDir()), "worktrees", "proj", "shared.git")
+		root := filepath.Join(mustResolvePath(t, t.TempDir()), "proj")
+		shared := filepath.Join(mustResolvePath(t, t.TempDir()), "worktrees", "proj", "shared.git")
+		require.NoError(t, os.MkdirAll(shared, 0o755))
 		writeGitdirFile(t, root, shared)
 
-		id := ResolveIdentity(root)
+		id := mustResolveIdentity(t, root)
 
 		require.False(t, id.OutsideWorktree)
 		require.Equal(t, root, id.CheckoutRoot)
@@ -344,7 +378,7 @@ func TestResolveIdentityWorktreeUnderWorktreesAncestor(t *testing.T) {
 	wt := filepath.Join(repo, "wt")
 	testutil.RunGit(t, repo, "worktree", "add", wt)
 
-	id := ResolveIdentity(wt)
+	id := mustResolveIdentity(t, wt)
 
 	require.False(t, id.OutsideWorktree)
 	require.Equal(t, repo, id.CheckoutRoot)
@@ -362,7 +396,7 @@ func TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside(t *test
 	require.Equal(t, gitdir, resolveGitDir(root))
 	require.False(t, isLinkedWorktree(root))
 
-	id := ResolveIdentity(root)
+	id := mustResolveIdentity(t, root)
 
 	require.False(t, id.OutsideWorktree)
 	require.Equal(t, root, id.CheckoutRoot)
@@ -371,13 +405,13 @@ func TestResolveIdentitySeparateGitDirShapedLikeRegistrationIsNotOutside(t *test
 
 func TestRepoSlugOutsideWorktree(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
-	outside := filepath.Join(resolvePath(t.TempDir()), "wt")
+	outside := filepath.Join(mustResolvePath(t, t.TempDir()), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", outside)
 	t.Chdir(outside)
 
-	require.Equal(t, projectSlug(sanitizeFolderName("widget"), origin), RepoSlug())
+	require.Equal(t, projectSlug(sanitizeFolderName("widget"), origin), MustRepoSlug())
 }
 
 // TestCheckoutSlugOutsideWorktreeOwnsItsIdentity pins the outside-worktree rule:
@@ -387,18 +421,18 @@ func TestRepoSlugOutsideWorktree(t *testing.T) {
 // user config dir with its checkout.
 func TestCheckoutSlugOutsideWorktreeOwnsItsIdentity(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
-	checkout := ResolveIdentity(repo)
+	checkout := mustResolveIdentity(t, repo)
 
-	base := resolvePath(t.TempDir())
+	base := mustResolvePath(t, t.TempDir())
 	worktree := filepath.Join(base, "wt")
 	sibling := filepath.Join(base, "sibling")
 	testutil.RunGit(t, repo, "worktree", "add", worktree)
 	testutil.RunGit(t, repo, "worktree", "add", sibling)
 	t.Chdir(worktree)
 
-	identity := ResolveIdentity(worktree)
+	identity := mustResolveIdentity(t, worktree)
 	// Built from the hash primitive directly, not from projectSlug: a bug in that
 	// helper must not move the expectation along with the implementation.
 	wantSlug := sanitizeFolderName("widget") + "-" + HashID(worktree)
@@ -406,12 +440,12 @@ func TestCheckoutSlugOutsideWorktreeOwnsItsIdentity(t *testing.T) {
 	require.True(t, identity.OutsideWorktree)
 	require.Equal(t, worktree, identity.BindRoot)
 	require.Equal(t, wantSlug, identity.CheckoutSlug)
-	require.Equal(t, sanitizeFolderName("widget")+"-"+HashID(origin), RepoSlug())
-	require.Equal(t, wantSlug, CheckoutSlug())
+	require.Equal(t, sanitizeFolderName("widget")+"-"+HashID(origin), MustRepoSlug())
+	require.Equal(t, wantSlug, MustCheckoutSlug())
 	// Collision guard: an outside worktree must share neither its checkout's slug
 	// (one VM, wrong /workspace) nor a sibling worktree's.
-	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
-	require.NotEqual(t, ResolveIdentity(sibling).CheckoutSlug, CheckoutSlug())
+	require.NotEqual(t, checkout.CheckoutSlug, MustCheckoutSlug())
+	require.NotEqual(t, mustResolveIdentity(t, sibling).CheckoutSlug, MustCheckoutSlug())
 }
 
 // TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot pins that the bind
@@ -420,23 +454,23 @@ func TestCheckoutSlugOutsideWorktreeOwnsItsIdentity(t *testing.T) {
 // hashes the worktree root, not the subdirectory.
 func TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot(t *testing.T) {
 	const origin = "https://example.com/acme/widget.git"
-	repo := resolvePath(testutil.InitRepo(t))
+	repo := mustResolvePath(t, testutil.InitRepo(t))
 	testutil.RunGit(t, repo, "remote", "add", "origin", origin)
-	checkout := ResolveIdentity(repo)
+	checkout := mustResolveIdentity(t, repo)
 
-	worktree := filepath.Join(resolvePath(t.TempDir()), "wt")
+	worktree := filepath.Join(mustResolvePath(t, t.TempDir()), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", worktree)
 	sub := filepath.Join(worktree, "sub", "dir")
 	require.NoError(t, os.MkdirAll(sub, 0o755))
 	t.Chdir(sub)
 
-	identity := ResolveIdentity(sub)
+	identity := mustResolveIdentity(t, sub)
 	wantSlug := sanitizeFolderName("widget") + "-" + HashID(worktree)
 
 	require.True(t, identity.OutsideWorktree)
 	require.Equal(t, worktree, identity.BindRoot)
-	require.Equal(t, wantSlug, CheckoutSlug())
-	require.NotEqual(t, checkout.CheckoutSlug, CheckoutSlug())
+	require.Equal(t, wantSlug, MustCheckoutSlug())
+	require.NotEqual(t, checkout.CheckoutSlug, MustCheckoutSlug())
 }
 
 // TestResolveIdentityBareRootRecordsLegacySlug pins the extra legacy identity a
@@ -446,11 +480,11 @@ func TestCheckoutSlugOutsideWorktreeSubdirectoryUsesWorktreeRoot(t *testing.T) {
 // bare-root user's saved home and per-slug config are not stranded.
 func TestResolveIdentityBareRootRecordsLegacySlug(t *testing.T) {
 	origin := testutil.InitRepo(t)
-	root := resolvePath(t.TempDir())
+	root := mustResolvePath(t, t.TempDir())
 	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
 	testutil.RunGit(t, filepath.Join(root, ".git"), "worktree", "add", filepath.Join(root, "main"))
 
-	bare := ResolveIdentity(root)
+	bare := mustResolveIdentity(t, root)
 	legacy := projectSlug(sanitizeFolderName(filepath.Base(root)), root)
 
 	require.Equal(t, []string{legacy}, bare.LegacyRepoSlugs)
@@ -459,7 +493,7 @@ func TestResolveIdentityBareRootRecordsLegacySlug(t *testing.T) {
 
 	// A worktree inside the bare root has no extra legacy source: its pre-split
 	// slug was already the origin-derived one.
-	require.Empty(t, ResolveIdentity(filepath.Join(root, "main")).LegacyRepoSlugs)
+	require.Empty(t, mustResolveIdentity(t, filepath.Join(root, "main")).LegacyRepoSlugs)
 }
 
 // TestResolveIdentityBareRootWithoutOriginHasNoExtraLegacySlug keeps the common
@@ -467,11 +501,11 @@ func TestResolveIdentityBareRootRecordsLegacySlug(t *testing.T) {
 // path-derived one, so there is nothing extra to adopt.
 func TestResolveIdentityBareRootWithoutOriginHasNoExtraLegacySlug(t *testing.T) {
 	origin := testutil.InitRepo(t)
-	root := resolvePath(t.TempDir())
+	root := mustResolvePath(t, t.TempDir())
 	testutil.RunGit(t, root, "clone", "--bare", origin, ".git")
 	testutil.RunGit(t, filepath.Join(root, ".git"), "remote", "remove", "origin")
 
-	id := ResolveIdentity(root)
+	id := mustResolveIdentity(t, root)
 
 	require.Empty(t, id.LegacyRepoSlugs)
 }
@@ -480,7 +514,7 @@ func TestRepoSlugWithoutOriginUnchanged(t *testing.T) {
 	root := newRepo(t, "")
 	folder := sanitizeFolderName(filepath.Base(root))
 
-	id := ResolveIdentity(root)
+	id := mustResolveIdentity(t, root)
 
 	require.Equal(t, projectSlug(folder, root), id.RepoSlug)
 	require.Equal(t, projectSlug(folder, resolveGitDir(root)), id.CheckoutSlug)
@@ -490,12 +524,12 @@ func TestRepoSlugUsesOriginRepoName(t *testing.T) {
 	root := newRepo(t, "git@github.com:inoio/agents-sandbox.git")
 	t.Chdir(root)
 
-	got := RepoSlug()
+	got := MustRepoSlug()
 
 	require.True(
 		t,
 		strings.HasPrefix(got, "agents-sandbox-"),
-		"RepoSlug() = %q, want prefix %q",
+		"MustRepoSlug() = %q, want prefix %q",
 		got,
 		"agents-sandbox-",
 	)
@@ -506,21 +540,21 @@ func TestRepoSlugFallsBackWithoutOrigin(t *testing.T) {
 	root := newRepo(t, "")
 	t.Chdir(root)
 
-	got := RepoSlug()
+	got := MustRepoSlug()
 
 	folder := sanitizeFolderName(filepath.Base(root))
-	require.True(t, strings.HasPrefix(got, folder+"-"), "RepoSlug() = %q, want prefix %q", got, folder+"-")
+	require.True(t, strings.HasPrefix(got, folder+"-"), "MustRepoSlug() = %q, want prefix %q", got, folder+"-")
 }
 
 func TestRepoSlugFormat(t *testing.T) {
 	root := newRepo(t, "")
 	t.Chdir(root)
 
-	got := RepoSlug()
+	got := MustRepoSlug()
 
 	// Expected format: <sanitized-folder>-<14 base36 chars>.
 	folder := sanitizeFolderName(filepath.Base(root))
-	require.True(t, strings.HasPrefix(got, folder+"-"), "RepoSlug() = %q, want prefix %q", got, folder+"-")
+	require.True(t, strings.HasPrefix(got, folder+"-"), "MustRepoSlug() = %q, want prefix %q", got, folder+"-")
 	hashPart := strings.TrimPrefix(got, folder+"-")
 	require.Len(t, hashPart, hashIDLen)
 	for _, r := range hashPart {
@@ -533,18 +567,53 @@ func TestRepoSlugDeterministic(t *testing.T) {
 	root := newRepo(t, "")
 	t.Chdir(root)
 
-	first := RepoSlug()
-	second := RepoSlug()
+	first := MustRepoSlug()
+	second := MustRepoSlug()
 	require.Equal(t, first, second)
 }
 
-// TestResolvePathFallsBackWhenCwdUnreadable pins the last-resort branch: with the
-// process cwd gone, filepath.Abs cannot make a relative path absolute, so
-// resolvePath returns the input instead of erroring (it is total by design).
-func TestResolvePathFallsBackWhenCwdUnreadable(t *testing.T) {
+// TestResolvePathErrorsWhenCwdUnreadable pins #354: with the process cwd gone,
+// filepath.Abs cannot make a relative path absolute, and resolvePath reports it
+// instead of returning the raw input to be hashed into an identity.
+func TestResolvePathErrorsWhenCwdUnreadable(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	require.NoError(t, os.RemoveAll(dir))
 
-	require.Equal(t, "relative", resolvePath("relative"))
+	_, err := resolvePath("relative")
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+// TestResolveIdentityErrorsWhenCwdUnresolvable pins that an unresolvable cwd is
+// an error, not a fallback-derived slug: otherwise the same physical project
+// would get a new state dir, VM and home volume for a transient resolution
+// failure (#354).
+func TestResolveIdentityErrorsWhenCwdUnresolvable(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+
+	_, err := ResolveIdentity(missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+// TestResolveIdentityErrorsWhenGitDirUnresolvable pins the common-git-dir half:
+// a .git file whose recorded git dir cannot be resolved is an error, not a
+// checkout slug hashed from the unresolved recorded path.
+func TestResolveIdentityErrorsWhenGitDirUnresolvable(t *testing.T) {
+	root := mustResolvePath(t, t.TempDir())
+	writeGitdirFile(t, root, filepath.Join(t.TempDir(), "gone.git"))
+
+	_, err := ResolveIdentity(root)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+}
+
+// TestMustSlugsPanicWhenCwdUnresolvable covers the cwd-derived test accessors:
+// they cannot return an error, so an unresolvable cwd is loud rather than a
+// silently wrong slug.
+func TestMustSlugsPanicWhenCwdUnresolvable(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	require.NoError(t, os.Remove(dir))
+
+	require.Panics(t, func() { MustRepoSlug() })
+	require.Panics(t, func() { MustCheckoutSlug() })
 }

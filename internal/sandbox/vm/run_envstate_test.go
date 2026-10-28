@@ -818,7 +818,7 @@ func TestResolveReconfigDecision_HomePromptAskedWhenRebuildConfirmed(t *testing.
 		HomeVolume:  "vol",
 		ImageDigest: "sha256:old",
 	}
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	seedHomeState(state.Key{Slug: slug, Agent: "opencode"}, persisted)
 
 	cfs, err := reprovision.LoadConfigFilesForHost(opencodeAgent(t), t.TempDir(), reprovision.VMHomeDir, ui, true)

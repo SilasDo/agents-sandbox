@@ -9,7 +9,6 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -148,7 +147,7 @@ func TestKillProjectVMWrapsKillError(t *testing.T) {
 func TestStopKillProjectVMDryRunLeavesLegacyState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	t.Chdir(newOriginClone(t))
-	identity := git.ResolveIdentity(".")
+	identity := mustIdentity(t, ".")
 	if identity.RepoSlug == identity.CheckoutSlug {
 		t.Fatalf("fixture must have distinct repo and checkout slugs")
 	}

@@ -158,7 +158,7 @@ func setupBareCheckoutCommandFixtures(t *testing.T, args ...string) (*cobra.Comm
 // repo slug, failing the test if the fixture has no legacy slug.
 func bareRootLegacyConfigDir(t *testing.T) (git.Identity, string) {
 	t.Helper()
-	identity := git.ResolveIdentity(".")
+	identity := mustIdentity(t, ".")
 	if len(identity.LegacyRepoSlugs) == 0 {
 		t.Fatal("bare root must record a legacy config slug")
 	}

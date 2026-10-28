@@ -135,8 +135,8 @@
   - Description: Contract distinguishing a sandbox's mutable *name* from its stable *identity*: removal/attach fail closed via the SDK's identity-aware operations and `ErrSandboxReplaced` (via `msb.IsReplaced`), handled per path, replacing the name-based `RemoveSandbox`.
   - Read If: Working on the msb seam's sandbox removal/attach paths, prune, the reaper, reconfig-replace, or reasoning about name-vs-identity safety, `ErrSandboxReplaced`, or #144 vs #158.
 - `checkout-identity.md`
-  - Description: Contract for splitting project identity in two (#144): a repo-scoped slug (origin-derived; the per-slug config dir and grouping label) and a checkout-scoped slug (git common dir; state/VM/volume/locks/image tag), with the automatic, noticed migration of legacy VMs and state.
-  - Read If: Changing per-checkout project identity (#144), the repo-vs-checkout slug split, the runner-image tag identity, the migration/notice/prune guard, or the `config paths` command.
+  - Description: Contract for splitting project identity in two (#144): a repo-scoped slug (origin-derived; the per-slug config dir and grouping label) and a checkout-scoped slug (git common dir; state/VM/volume/locks/image tag), with the automatic, noticed migration of legacy VMs and state; and the strict path resolution that refuses an unresolvable cwd or git dir instead of hashing a fallback into the slug (#354).
+  - Read If: Changing per-checkout project identity (#144), the repo-vs-checkout slug split, the runner-image tag identity, the migration/notice/prune guard, `ResolveIdentity`'s error contract or the `MustRepoSlug`/`MustCheckoutSlug` accessors (#354), or the `config paths` command.
 - `bare-worktree-layout.md`
   - Description: Design for #145: make git worktrees host-and-VM-consistent by binding `/workspace` to the smallest enclosing checkout that contains the CWD, plus guest-CWD derivation for subdirectories; the identity clause is superseded by `checkout-identity.md` (#144).
   - Read If: Changing the bare-checkout worktree layout (#145), the `/workspace` bind-source resolution, guest-CWD derivation, or the worktree-layout recipe/skill.

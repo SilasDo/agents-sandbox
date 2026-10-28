@@ -11,7 +11,6 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/testutil"
 )
 
@@ -289,7 +288,7 @@ func TestConfigCommandsWorkOutsideWorktree(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", outside)
 
-	identity := git.ResolveIdentity(outside)
+	identity := mustIdentity(t, outside)
 	if !identity.OutsideWorktree {
 		t.Fatalf("%q must resolve as an outside worktree", outside)
 	}

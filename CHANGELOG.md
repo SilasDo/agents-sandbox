@@ -81,6 +81,11 @@ command reports the bare version (e.g. `0.1.0`).
   a panic deep inside a path join. The `internal/configpaths` accessors that build the per-agent config dirs return the
   error, so a malformed profile fails at the config-resolution boundary with a message naming the agent rather than
   crashing far from its cause (#366).
+- Identity: a project's directory is resolved strictly when its checkout identity is derived. A cwd or git
+  directory that cannot be resolved (a transient symlink, permission, or deleted-directory failure) now reports
+  an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
+  slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
+  read stays tolerant and degrades to its relative base, since it is not identity-keyed.
 - State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
   before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
   created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
