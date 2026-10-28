@@ -237,6 +237,24 @@ func TestRemoveStateForGoneKeysKeepsStateNamingAVolume(t *testing.T) {
 	}
 }
 
+// TestRemoveStateForGoneKeysKeepsStateNamingARecoveredVolume pins that a pending
+// recovered-volume marker (#144) protects the state just as a settled home
+// volume does: the state names a volume the project still expects to recover, so
+// discarding it would lose the marker.
+func TestRemoveStateForGoneKeysKeepsStateNamingARecoveredVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	kept := state.Key{Slug: "pending-recovery"}
+	if err := seedHomeState(kept, state.HomeState{RecoveredHomeVolume: "vol-pending"}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	removeStateForGoneKeys(&termio.Mock{}, map[state.Key]int{kept: 1}, map[state.Key]int{kept: 1})
+
+	if _, err := state.ReadState(kept); err != nil {
+		t.Errorf("state naming a pending recovered volume must survive, got err=%v", err)
+	}
+}
+
 func TestRenderPruneSummaryDryRunAction(t *testing.T) {
 	dry := &termio.Mock{}
 	RenderPruneSummary(dry, &StaleReport{PrunedSandboxes: 1}, true)

@@ -237,9 +237,7 @@ func removeHomeStateLocked(k Key) error {
 	}
 	// Legacy agent-less state lived directly under the slug dir; remove only the
 	// legacy state file, leaving per-project claims and sibling per-agent state
-	// intact.
-	if err := os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml")); err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	return nil
+	// intact. The file was read under the lock, so it exists: there is no
+	// not-exist case to tolerate.
+	return os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml"))
 }
