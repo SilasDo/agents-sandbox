@@ -218,7 +218,15 @@ func destroyProjectVMHandle(
 	}
 }
 
-// resolveExistingVM attaches to, waits for, or starts an already-existing VM.
+// resolveExistingVM brings an already-existing VM to a connected state: it
+// attaches to a running VM, converges a VM another caller is starting, or starts
+// a created/stopped/crashed one. A connect failure is always recovered through
+// refresh-and-resume (connectRunningVM), whichever caller resolved the handle.
+//
+// The handle is resolved by the caller — before the flock on the fast path, or
+// under it after the post-lock re-check. spin is the lookup's active spinner,
+// which only the pre-lock path has; the post-lock re-check passes nil, and the
+// transition reports through ui alone.
 func resolveExistingVM(
 	ctx context.Context,
 	handle msb.SandboxHandle,
@@ -229,7 +237,7 @@ func resolveExistingVM(
 ) (msb.Sandbox, vmBoot, error) {
 	action, actionErr := decideVMAction(nil, handle.Status())
 	if actionErr != nil {
-		spin.StopError(actionErr)
+		stopSpinnerError(spin, actionErr)
 		return nil, vmBootConnected, actionErr
 	}
 	if action == vmActionConnect {
@@ -238,24 +246,39 @@ func resolveExistingVM(
 	if action == vmActionWait {
 		sb, boot, waitErr := convergeExistingVM(ctx, handle)
 		if waitErr != nil {
-			spin.StopError(waitErr)
+			stopSpinnerError(spin, waitErr)
 			return nil, vmBootConnected, fmt.Errorf("wait for sandbox %q to start: %w", name, waitErr)
 		}
-		spin.Stop()
+		stopSpinner(spin)
 		reconcileResources(ctx, handle, opts, ui)
 		return sb, boot, nil
 	}
-	spin.Stop()
+	stopSpinner(spin)
 	// Created/stopped/crashed → start. The helper converges if another caller
 	// wins the start transition.
 	sb, boot, startErr := startExistingVM(ctx, handle)
 	if startErr != nil {
-		spin.StopError(startErr)
+		stopSpinnerError(spin, startErr)
 		return nil, vmBootConnected, fmt.Errorf("start sandbox %q: %w", name, startErr)
 	}
 	ui.Infof("started existing project VM: %s", name)
 	reconcileResources(ctx, handle, opts, ui)
 	return sb, boot, nil
+}
+
+// stopSpinner finishes a lookup spinner when one is active. A nil spinner means
+// the handle was resolved without one (the post-lock re-check).
+func stopSpinner(spin termio.Spinner) {
+	if spin != nil {
+		spin.Stop()
+	}
+}
+
+// stopSpinnerError finishes a lookup spinner with err when one is active.
+func stopSpinnerError(spin termio.Spinner, err error) {
+	if spin != nil {
+		spin.StopError(err)
+	}
 }
 
 // connectRunningVM connects to a running VM, retrying once via Start when the
@@ -272,7 +295,7 @@ func connectRunningVM(
 	if connErr != nil {
 		return resumeAfterConnectFailure(ctx, handle, opts, name, ui, spin, connErr)
 	}
-	spin.Stop()
+	stopSpinner(spin)
 	ui.Infof("connected to existing project VM: %s", name)
 	reconcileResources(ctx, handle, opts, ui)
 	return sb, vmBootConnected, nil
@@ -292,7 +315,7 @@ func resumeAfterConnectFailure(
 	ui.Verbosef("connect failed (%v), retrying via Start", connErr)
 	handle2, refreshErr := handle.Refresh(ctx)
 	if refreshErr != nil {
-		spin.StopError(refreshErr)
+		stopSpinnerError(spin, refreshErr)
 		return nil, vmBootConnected, fmt.Errorf(
 			"connect sandbox %q (refresh after connect failure): %w",
 			name,
@@ -301,15 +324,15 @@ func resumeAfterConnectFailure(
 	}
 	retryStatus := handle2.Status()
 	if _, retryActionErr := decideVMAction(nil, retryStatus); retryActionErr != nil {
-		spin.StopError(retryActionErr)
+		stopSpinnerError(spin, retryActionErr)
 		return nil, vmBootConnected, retryActionErr
 	}
 	sb2, retryBoot, resumeErr := resumeSandboxByStatus(ctx, handle2, retryStatus, name)
 	if resumeErr != nil {
-		spin.StopError(resumeErr)
+		stopSpinnerError(spin, resumeErr)
 		return nil, vmBootConnected, fmt.Errorf("resume sandbox %q: %w", name, resumeErr)
 	}
-	spin.Stop()
+	stopSpinner(spin)
 	reconcileResources(ctx, handle2, opts, ui)
 	return sb2, retryBoot, nil
 }
@@ -350,7 +373,7 @@ func createOrAttachAfterLock(
 ) (msb.Sandbox, vmBoot, error) {
 	handle, err := client.GetSandbox(ctx, name)
 	if err == nil {
-		return resolveExistingVMPostLock(ctx, handle, opts, name, ui)
+		return resolveExistingVM(ctx, handle, opts, name, ui, nil)
 	}
 	if !msb.IsNotFound(err) {
 		return nil, vmBootConnected, fmt.Errorf("re-check sandbox %q: %w", name, err)
@@ -364,45 +387,6 @@ func createOrAttachAfterLock(
 	if created {
 		boot = vmBootCreated
 	}
-	return sb, boot, nil
-}
-
-// resolveExistingVMPostLock attaches to or starts the VM another invocation may
-// have created while this one waited for the flock.
-func resolveExistingVMPostLock(
-	ctx context.Context,
-	handle msb.SandboxHandle,
-	opts options.RunOptions,
-	name string,
-	ui termio.UI,
-) (msb.Sandbox, vmBoot, error) {
-	action, actionErr := decideVMAction(nil, handle.Status())
-	if actionErr != nil {
-		return nil, vmBootConnected, actionErr
-	}
-	if action == vmActionConnect {
-		sb, connErr := handle.Connect(ctx)
-		if connErr != nil {
-			ui.Verbosef("post-lock connect failed: %v", connErr)
-		}
-		if sb != nil {
-			reconcileResources(ctx, handle, opts, ui)
-			return sb, vmBootConnected, nil
-		}
-	}
-	if action == vmActionWait {
-		sb, boot, waitErr := convergeExistingVM(ctx, handle)
-		if waitErr != nil {
-			return nil, vmBootConnected, fmt.Errorf("wait for sandbox %q to start: %w", name, waitErr)
-		}
-		reconcileResources(ctx, handle, opts, ui)
-		return sb, boot, nil
-	}
-	sb, boot, startErr := startExistingVM(ctx, handle)
-	if startErr != nil {
-		return nil, vmBootConnected, fmt.Errorf("start sandbox %q: %w", name, startErr)
-	}
-	reconcileResources(ctx, handle, opts, ui)
 	return sb, boot, nil
 }
 
