@@ -144,6 +144,10 @@ command reports the bare version (e.g. `0.1.0`).
   silently skip their step. The check reads the cached window under the lock, performs the request with the lock
   released, and re-checks the window before persisting, so two concurrent checks still record at most one refresh
   (#334).
+- State: the legacy identity migration (`AdoptLegacyIdentity`) now takes the per-key home and project-VM locks for every
+  key it moves — each legacy slug's agents under both the legacy and the checkout slug — across the destroy and the state
+  move, so a concurrent per-key state write or VM creation can no longer interleave and lose a write or orphan a legacy
+  VM (#333).
 
 ## [0.6.0] - 2026-10-25
 

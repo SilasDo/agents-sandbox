@@ -42,6 +42,11 @@ type IdentityAdoption struct {
 // shared legacy identity while this run waited for the root lock.
 var adoptLockHook func()
 
+// adoptKeysLockedHook is a test seam invoked inside the WithKeyLocks region,
+// after every moved key's per-key locks are held and before the destroy. A test
+// uses it to observe the held locks and their release.
+var adoptKeysLockedHook func()
+
 // renameConfigDir is a seam over os.Rename for the legacy config-directory move.
 // A same-parent rename cannot be made to fail deterministically without
 // permission tricks, so tests force the failure through this seam.
@@ -84,7 +89,10 @@ var renameConfigDir = os.Rename
 // first-post-upgrade runs cannot both destroy and move. The trigger is
 // re-checked while the lock is held: a second run that lost the race to another
 // checkout sees the state already moved and continues normally under the
-// checkout identity instead of failing.
+// checkout identity instead of failing. The destroy and move additionally hold
+// the per-key home and project-VM locks (WithKeyLocks) of every key they touch,
+// so a concurrent per-key state write or VM creation cannot interleave with them
+// (#333).
 func AdoptLegacyIdentity(
 	ctx context.Context,
 	client msb.Client,
@@ -169,6 +177,25 @@ func legacySlugs(identity git.Identity) []string {
 		slugs = append(slugs, slug)
 	}
 	return slugs
+}
+
+// adoptionLockKeys returns every (slug, agent) key whose per-key locks the
+// adoption must hold: the directory move carries every agent's state from each
+// legacy slug onto the checkout slug, so both the source key and the destination
+// key of every moved agent are locked. The order is the caller's; WithKeyLocks
+// sorts and de-duplicates.
+func adoptionLockKeys(slugs []string, checkoutSlug, agentName string) ([]state.Key, error) {
+	var keys []state.Key
+	for _, slug := range slugs {
+		agents, err := legacyAgentsToMigrate(slug, agentName)
+		if err != nil {
+			return nil, err
+		}
+		for _, agent := range agents {
+			keys = append(keys, state.Key{Slug: slug, Agent: agent}, state.Key{Slug: checkoutSlug, Agent: agent})
+		}
+	}
+	return keys, nil
 }
 
 // legacyPendingSource is where a pending legacy identity was found. FromVM marks
@@ -344,7 +371,9 @@ func legacyAdoptionPending(
 }
 
 // adoptLegacyIdentity destroys the legacy VMs and merges every legacy state
-// directory onto the checkout slug, with the root transaction's lock held.
+// directory onto the checkout slug. The VM-only arm's durable marker write runs
+// first, under the root transaction; the destroy and the move then run holding
+// every moved key's per-key locks (see adoptionLockKeys).
 func adoptLegacyIdentity(
 	ctx context.Context,
 	client msb.Client,
@@ -355,8 +384,6 @@ func adoptLegacyIdentity(
 	txn *state.RootTxn,
 	ui termio.UI,
 ) error {
-	primary := slugs[0]
-
 	// The VM-only arm destroys the only record of its home volume, so the
 	// recovered reference must be durable first. See persistAdoptionOwnership.
 	if source.FromVM && source.HomeVolume != "" {
@@ -364,6 +391,37 @@ func adoptLegacyIdentity(
 			return err
 		}
 	}
+
+	keys, err := adoptionLockKeys(slugs, checkoutKey.Slug, checkoutKey.Agent)
+	if err != nil {
+		return err
+	}
+	// Serialize the destroy and the directory move against every per-key state
+	// writer and VM creator for the keys the move touches: the root lock (held
+	// here) excludes another adoption, but not a per-key writer. Taken after
+	// persistAdoptionOwnership so this checkout key's home lock is not held twice
+	// in one process.
+	return state.WithKeyLocks(keys, func() error {
+		if adoptKeysLockedHook != nil {
+			adoptKeysLockedHook()
+		}
+		return migrateLegacyState(ctx, client, identity, slugs, checkoutKey, source, ui)
+	})
+}
+
+// migrateLegacyState destroys the legacy VMs and merges every legacy state
+// directory onto the checkout slug, with the per-key locks for every moved key
+// held (see adoptLegacyIdentity).
+func migrateLegacyState(
+	ctx context.Context,
+	client msb.Client,
+	identity git.Identity,
+	slugs []string,
+	checkoutKey state.Key,
+	source legacyPendingSource,
+	ui termio.UI,
+) error {
+	primary := slugs[0]
 
 	// Destroy every legacy VM across all sources before moving any state. A
 	// destroy failure then aborts the migration with every legacy state file
@@ -429,17 +487,10 @@ func adoptLegacyIdentity(
 // whole set matters because the whole slug directory is moved: leaving a sibling
 // agent's VM running would let it keep writing the shared home volume while a
 // later run recreates that agent under the checkout name over the same volume.
-// The command's own agent is included explicitly because a legacy VM whose state
-// file was lost is not listed by StatefulAgentNames (issue #219), yet it is the
-// VM that would otherwise keep running over the volume adoption preserves.
 func destroyLegacyVMs(ctx context.Context, client msb.Client, slug, agentName string, ui termio.UI) error {
-	names, err := state.StatefulAgentNames(slug)
+	toDestroy, err := legacyAgentsToMigrate(slug, agentName)
 	if err != nil {
-		return fmt.Errorf("list legacy state for %s: %w", slug, err)
-	}
-	toDestroy := names
-	if !slices.Contains(names, agentName) {
-		toDestroy = append(append([]string(nil), names...), agentName)
+		return err
 	}
 	for _, name := range toDestroy {
 		if err := destroyLegacyVM(ctx, client, state.Key{Slug: slug, Agent: name}, ui); err != nil {
@@ -447,6 +498,23 @@ func destroyLegacyVMs(ctx context.Context, client msb.Client, slug, agentName st
 		}
 	}
 	return nil
+}
+
+// legacyAgentsToMigrate returns the agents whose legacy artifacts the move
+// touches: every agent with state under slug (state.StatefulAgentNames), plus the
+// command's own agent. The command's agent is included explicitly because a
+// legacy VM whose state file was lost is not listed by StatefulAgentNames (issue
+// #219), yet it is the VM that would otherwise keep running over the volume
+// adoption preserves.
+func legacyAgentsToMigrate(slug, agentName string) ([]string, error) {
+	names, err := state.StatefulAgentNames(slug)
+	if err != nil {
+		return nil, fmt.Errorf("list legacy state for %s: %w", slug, err)
+	}
+	if slices.Contains(names, agentName) {
+		return names, nil
+	}
+	return append(append([]string(nil), names...), agentName), nil
 }
 
 // destroyLegacyVM destroys the legacy origin-keyed project VM of one agent if it

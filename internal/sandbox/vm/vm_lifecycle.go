@@ -143,7 +143,7 @@ func ensureProjectVM(
 
 	// Slow path: VM doesn't exist → create. Hold a flock so concurrent
 	// invocations don't both create (and clobber via WithReplace).
-	release, lockErr := hostlock.AcquireExclusive(state.ProjectVMLockDir(k), "ensure-vm.lock")
+	release, lockErr := hostlock.AcquireExclusive(state.ProjectVMLockDir(k), state.ProjectVMLockName)
 	if lockErr != nil {
 		return nil, vmBootConnected, fmt.Errorf("acquire project flock: %w", lockErr)
 	}
