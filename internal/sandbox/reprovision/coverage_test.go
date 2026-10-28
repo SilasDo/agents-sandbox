@@ -29,7 +29,12 @@ const opencodeMergedPath = "/home/dev/.config/opencode/opencode.jsonc"
 func TestLoadConfigFilesWithSnippet(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	testutil.WriteFile(t, cp.ProjectAgentConfigDir(opencodeTestAgent()), "opencode-model.json", `{"model":"x"}`)
+	testutil.WriteFile(
+		t,
+		configpaths.MustDir(cp.ProjectAgentConfigDir(opencodeTestAgent())),
+		"opencode-model.json",
+		`{"model":"x"}`,
+	)
 
 	ui := termio.NewTestMock(t)
 	cf, err := LoadConfigFilesForHost(opencodeTestAgent(), t.TempDir(), VMHomeDir, &ui, true)
