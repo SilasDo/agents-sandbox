@@ -50,13 +50,19 @@ func TestJobsRoundTrip(t *testing.T) {
 
 	// The launcher labels its helpers through the command line — the jobs ABI
 	// has no labels — by launching them as
-	// `env AGENTS_SANDBOX_DETACHED_JOB=<marker> <binary> <args…>`. That shape is
-	// how a stale helper is rediscovered, so the launch here mirrors it.
-	markedCommand := []string{
-		"AGENTS_SANDBOX_DETACHED_JOB=integration-test",
-		"sh", "-c", "echo " + sentinel + "; sleep 30",
-	}
-	job, err := adapter.ExecDetached(ctx, "env", markedCommand)
+	// `env AGENTS_SANDBOX_DETACHED_JOB=<marker> <binary> <args…>` (detached.go's
+	// `markedCommand`), and its matcher reads `Command[0] == "env"` with the
+	// marker at `Command[1]`. The SDK sends cmd and args separately and the
+	// runtime records them as `Command = [cmd, args…]`, so the expectation is
+	// derived from the same cmd/args pair the launch used rather than restated.
+	const (
+		launchBinary = "env"
+		launchMarker = "AGENTS_SANDBOX_DETACHED_JOB=integration-test"
+	)
+	launchArgs := []string{launchMarker, "sh", "-c", "echo " + sentinel + "; sleep 30"}
+	wantCommand := append([]string{launchBinary}, launchArgs...)
+
+	job, err := adapter.ExecDetached(ctx, launchBinary, launchArgs)
 	if err != nil {
 		t.Fatalf("ExecDetached: %v", err)
 	}
@@ -77,12 +83,19 @@ func TestJobsRoundTrip(t *testing.T) {
 	if info == nil {
 		t.Fatalf("ListJobs did not contain job %s: %+v", job.ID(), infos)
 	}
-	// The launcher matches JobInfo.Command against the marker it launched with,
-	// so the reported shape is load-bearing: if the runtime rewrote it (resolved
-	// argv[0], joined string, dropped env assignments), stale helpers would
-	// never be killed on restart.
-	if len(info.Command) < len(markedCommand) || !slices.Equal(info.Command[:len(markedCommand)], markedCommand) {
-		t.Fatalf("JobInfo.Command = %q, want prefix %q", info.Command, markedCommand)
+	// The marker has to survive into JobInfo.Command for a stale helper to be
+	// found: if the runtime rewrote the argv (resolved argv[0], joined string,
+	// dropped env assignments), the launcher's binary would never match.
+	if len(info.Command) < len(wantCommand) || !slices.Equal(info.Command[:len(wantCommand)], wantCommand) {
+		t.Fatalf("JobInfo.Command = %q, want prefix %q", info.Command, wantCommand)
+	}
+	// The two positions the matcher reads, asserted directly so a change to the
+	// launch shape and the matcher cannot drift apart here.
+	if info.Command[0] != launchBinary || info.Command[1] != launchMarker {
+		t.Fatalf(
+			"JobInfo.Command = %q, want %q then the marker %q",
+			info.Command, launchBinary, launchMarker,
+		)
 	}
 
 	got, getErr := adapter.GetJob(ctx, job.ID())

@@ -89,6 +89,62 @@ func TestDetachedHelperMarkedCommand(t *testing.T) {
 	}
 }
 
+// TestDetachedHelperMarkerlessFallbackScope pins the exact scope of the
+// transitional marker-less fallback: a marker-less command matches only the
+// helper whose binary is its argv[0], whatever other arguments it carries, and
+// nothing else. The fallback exists for helpers started by a launcher that
+// predates the marker, so it must not widen into a catch-all — matching more
+// binaries, a path to one, or a marker-less shape that is not the helper.
+func TestDetachedHelperMarkerlessFallbackScope(t *testing.T) {
+	tests := []struct {
+		name    string
+		helper  detachedHelper
+		command []string
+		want    bool
+	}{
+		{"dockerd", dockerdHelper(), []string{"dockerd"}, true},
+		{
+			name:    "dockerd with arguments the current release no longer sends",
+			helper:  dockerdHelper(),
+			command: []string{"dockerd", "--log-format=text"},
+			want:    true,
+		},
+		{"an unrelated binary", dockerdHelper(), []string{"containerd"}, false},
+		{"a prefix of the helper binary", dockerdHelper(), []string{"docker"}, false},
+		{"a suffix of the helper binary", dockerdHelper(), []string{"erd"}, false},
+		{"a path to the helper binary", dockerdHelper(), []string{"/usr/bin/dockerd"}, false},
+		{"the launcher binary alone", dockerdHelper(), []string{"env"}, false},
+		{"a shell command naming the helper", dockerdHelper(), []string{"sh", "-c", "dockerd"}, false},
+		{"an empty command", dockerdHelper(), nil, false},
+		{"the agent daemon binary", agentDaemonHelper("opencode"), []string{"opencode", "serve"}, true},
+		{
+			name:    "another agent build's daemon binary",
+			helper:  agentDaemonHelper("opencode"),
+			command: []string{"opencode2", "serve"},
+			want:    false,
+		},
+		{
+			name:    "the opencode2 daemon for its own identity",
+			helper:  agentDaemonHelper("opencode2"),
+			command: []string{"opencode2", "serve", "--hostname", "0.0.0.0"},
+			want:    true,
+		},
+		{
+			name:    "another helper's marker",
+			helper:  dockerdHelper(),
+			command: []string{"env", "AGENTS_SANDBOX_DETACHED_JOB=agent-daemon", "dockerd"},
+			want:    false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.helper.matches(tt.command); got != tt.want {
+				t.Errorf("%s.matches(%v) = %v, want %v", tt.helper.marker, tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDetachedHelperMatches(t *testing.T) {
 	tests := []struct {
 		name    string
