@@ -59,8 +59,9 @@ var existingAgentVersion = image.ExistingAgentVersion
 //
 // The current version comes from this project's per-(slug, agent) HomeState, so
 // the prompt can only ever name this project's version, never another project's.
-// When the HomeState has no recorded baseline, it is recovered from this
-// project's existing image label (see recoverAgentVersion).
+// It is reconciled against this project's existing image label before the check
+// (see recoverAgentVersion): a missing baseline is recovered, and one that
+// disagrees with a present image is a stale cache the label overrides.
 //
 // The offered release is returned because the offered set must be persisted
 // after the home volume is resolved: pendingUpgrade can only record it when a
@@ -93,10 +94,7 @@ func resolveBuildVersion(
 		return currentAgentVersion(k), false, "", nil
 	}
 
-	current := currentAgentVersion(k)
-	if current == "" {
-		current = recoverAgentVersion(ctx, k, ui)
-	}
+	current := recoverAgentVersion(ctx, k, currentAgentVersion(k), ui)
 	if current == "" {
 		// No recorded baseline and no existing image to recover one from (e.g.,
 		// first run): resolve latest at build time rather than prompting against
@@ -309,32 +307,17 @@ func currentAgentSource(k state.Key) string {
 	return hs.AgentSource
 }
 
-// recoverAgentVersion recovers a project's upgrade baseline from its existing
-// runner image when the recorded HomeState has none, and records it. This is the
-// run after the updater.yaml migration dropped the machine-global
-// current_version: without recovery the first unpinned run would resolve the
-// latest release and silently rebuild the image (and fail offline); recovering
-// the version restores the prompt-and-reuse behavior. It returns "" when no
-// image or no release label exists, so a genuine first run still resolves at
-// build time.
-//
-// The version is recorded only when a state file already exists. This runs
-// before home resolution, so creating a state here would leave a
-// fingerprint-less partial state that the home-recovery step would treat as a
-// prior state and copy empty fingerprints forward, spuriously detecting a
-// config change (#183). A failure only costs a re-inspection next run.
-func recoverAgentVersion(ctx context.Context, k state.Key, ui termio.UI) string {
+// recoverAgentVersion reconciles a project's upgrade baseline with the release
+// its existing runner image reports. A missing image (or a non-release sentinel)
+// leaves the recorded value as the authoritative offline fallback; a label that
+// disagrees with the recorded value wins, because the image is what is actually
+// installed, and the cache is rewritten. It returns the version to build.
+func recoverAgentVersion(ctx context.Context, k state.Key, recorded string, ui termio.UI) string {
 	version, ok := existingAgentVersion(ctx, k.Slug, k.Agent)
-	if !ok {
-		return ""
+	if !ok || version == recorded {
+		return recorded
 	}
-	if err := state.WithHomeState(k, func(hs *state.HomeState, exists bool) (bool, error) {
-		if !exists {
-			return false, nil
-		}
-		hs.AgentVersion = version
-		return true, nil
-	}); err != nil {
+	if err := state.RecordAgentVersion(k, version); err != nil {
 		ui.Verbosef("could not record recovered agent version: %v", err)
 	}
 	return version

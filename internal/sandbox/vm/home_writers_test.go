@@ -79,7 +79,8 @@ func TestHomeWritersPreserveUnrelatedFields(t *testing.T) {
 				orig := existingAgentVersion
 				existingAgentVersion = func(context.Context, string, string) (string, bool) { return "1.2.3", true }
 				t.Cleanup(func() { existingAgentVersion = orig })
-				if got := recoverAgentVersion(context.Background(), k, &termio.Mock{}); got != "1.2.3" {
+				// The recorded baseline disagrees, so the image label wins.
+				if got := recoverAgentVersion(context.Background(), k, "0.0.0", &termio.Mock{}); got != "1.2.3" {
 					t.Fatalf("recoverAgentVersion = %q, want 1.2.3", got)
 				}
 			},
