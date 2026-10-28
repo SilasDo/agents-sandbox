@@ -146,6 +146,15 @@ var ErrStateNotFound = errors.New("state file not found")
 // recovery (RecoverHomeState) may discard an unparsable document.
 var ErrStateUnparsable = errors.New("state file is unparsable")
 
+// WriteInstalled reports whether a state write's error was raised after the
+// rename already installed the new document: the on-disk state is the new one,
+// and only a durability step failed (see atomicwrite.ErrInstalled). A caller
+// that rolls back on a write error must not roll back when this is true, or it
+// would discard the resource the installed state names.
+func WriteInstalled(err error) bool {
+	return errors.Is(err, atomicwrite.ErrInstalled)
+}
+
 // ReadState loads and parses the state file.
 // Returns ErrStateNotFound with a nil state if no file exists.
 // Returns ErrStateUnparsable-wrapped error for parse failures and a plain error

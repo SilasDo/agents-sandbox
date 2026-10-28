@@ -213,7 +213,7 @@ func volumeOp(
 	// The operation replaced the volume a pending recovered-volume marker may
 	// still record (#144), so commitNewHomeVolume clears it.
 	if err := commitNewHomeVolume(k, st.HomeVolume, newVolumeName, info.Digest, true); err != nil {
-		vm.cleanupVolume(ctx, client, newVolumeName, ui)
+		vm.cleanupUncommittedVolume(ctx, client, newVolumeName, err, ui)
 		return err
 	}
 	// If the operation replaced a volume an identity adoption preserved, its

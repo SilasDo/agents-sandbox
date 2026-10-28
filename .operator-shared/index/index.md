@@ -44,7 +44,7 @@ read_if: Navigating the codebase.
 ### `internal/` — Core packages (non-sandbox)
 
 - `agent/` — Agent (opencode/opencode2/pi/claudecode) version resolution, manifests, image selection.
-- `atomicwrite/` — Atomic file writes (unique temp file + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
+- `atomicwrite/` — Atomic file writes (unique temp file + fsync + rename, 0600/0700); shared by the persistent state/config writers (`state.WriteState`, `state.WriteRootState`, `vm.saveUpgradeState`, `upgrade.saveState`).
 - `cliout/` — Output rendering: the generic list/JSON rendering core (`PrintList`/`Mode`/`WriteJSON`) plus the domain printers for list/inspect/prune/`df`.
 - `configmerge/` — Merge config with precedence.
 - `configpaths/` — Config/home path resolution and guards, plus the shared config-file discovery (`FindConfigFile`, the single extension order) that both config loaders call.

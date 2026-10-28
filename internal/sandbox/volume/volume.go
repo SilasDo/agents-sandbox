@@ -125,7 +125,7 @@ func (vm *Manager) ApplyHomeAction(
 	// ResolveHomeVolume settles any recovered-volume marker before a home action
 	// runs, so a marker present now was set concurrently and must be kept.
 	if err := commitNewHomeVolume(k, oldVolume, newName, info.Digest, false); err != nil {
-		vm.cleanupVolume(ctx, client, newName, ui)
+		vm.cleanupUncommittedVolume(ctx, client, newName, err, ui)
 		return "", err
 	}
 	ui.Infof("%s to new home volume %q (old %q kept)", label, newName, oldVolume)
@@ -138,6 +138,19 @@ func (vm *Manager) cleanupVolume(ctx context.Context, client msb.Client, name st
 	if err := client.RemoveVolume(ctx, name); err != nil {
 		ui.Warnf("failed to remove new volume %q after error: %v", name, err)
 	}
+}
+
+// cleanupUncommittedVolume removes name after a failed commit, unless the
+// commit error means the rename already installed the state that names it (a
+// post-rename durability failure): deleting the volume then would leave the
+// saved state pointing at a removed volume.
+func (vm *Manager) cleanupUncommittedVolume(
+	ctx context.Context, client msb.Client, name string, commitErr error, ui termio.UI,
+) {
+	if state.WriteInstalled(commitErr) {
+		return
+	}
+	vm.cleanupVolume(ctx, client, name, ui)
 }
 
 // CopyVolume copies the contents of the old home volume on top of the newly

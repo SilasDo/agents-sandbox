@@ -63,6 +63,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: a completed state write is now durable. The atomic writer flushes the temporary file with `fsync`
+  before it is renamed into place, then `fsync`s the destination directory and the parent of every directory it
+  created, so a crash or power loss can no longer lose the latest home or root state — or surface it as a
+  zero-length document. A failure in that final directory flush still reports an error but keeps the new state
+  and the home volume it recorded, instead of deleting a volume the saved state names (#336).
 - Self-update: the downloaded release binary is verified against the SHA-256 published in the release's
   `checksums.txt` before it replaces the running executable. A mismatched digest, a missing `checksums.txt`, or a
   missing or malformed entry aborts the install, removes the downloaded temp file, and leaves the running binary
