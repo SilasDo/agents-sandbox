@@ -1241,3 +1241,34 @@ func TestBuildNotifyEmptyFlagIgnored(t *testing.T) {
 		t.Errorf("Notify.Audio = %q; want the env override to survive an empty flag", opts.Notify.Audio)
 	}
 }
+
+// ResolveMode maps the dry-run flag pair to the execution mode, with --dry-run
+// subsuming --dry-run-vm.
+func TestResolveModeFromFlags(t *testing.T) {
+	cases := []struct {
+		name     string
+		dryRun   bool
+		dryRunVM bool
+		want     options.Mode
+	}{
+		{"full", false, false, options.ModeRun},
+		{"skip vm", false, true, options.ModeSkipVM},
+		{"preview subsumes skip vm", true, true, options.ModePreview},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.Flags().Bool(FlagDryRun, false, "")
+			cmd.Flags().Bool(FlagDryRunVM, false, "")
+			if tc.dryRun {
+				_ = cmd.Flags().Set(FlagDryRun, "true")
+			}
+			if tc.dryRunVM {
+				_ = cmd.Flags().Set(FlagDryRunVM, "true")
+			}
+			if got := ResolveMode(cmd); got != tc.want {
+				t.Errorf("ResolveMode() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

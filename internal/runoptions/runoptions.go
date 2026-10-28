@@ -154,6 +154,18 @@ func resolveFlags(cmd *cobra.Command, ui termio.UI) (options.RunOptions, error) 
 	return opts, nil
 }
 
+// ResolveMode reports the execution mode the command's dry-run flags select.
+// --dry-run implies --dry-run-vm, so it maps to the preview mode alone.
+func ResolveMode(cmd *cobra.Command) options.Mode {
+	if dryRun, _ := cmd.Flags().GetBool(FlagDryRun); dryRun {
+		return options.ModePreview
+	}
+	if dryRunVM, _ := cmd.Flags().GetBool(FlagDryRunVM); dryRunVM {
+		return options.ModeSkipVM
+	}
+	return options.ModeRun
+}
+
 // resolveAgentAndValidate resolves the agent (default > config > flag) and
 // rejects unknown names and unsupported --worktree/--serve-only combinations.
 func resolveAgentAndValidate(cfg *viperconfig.Config, cmd *cobra.Command, opts *options.RunOptions) error {
