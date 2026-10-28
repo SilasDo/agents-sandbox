@@ -293,3 +293,26 @@ func TestRunAttachClientLeaseFailureWarns(t *testing.T) {
 		t.Errorf("expected client lease warning, got %v", ui.WarnCalls)
 	}
 }
+
+// --- prepareSandbox: the real seam delegates to sandbox.PrepareSandbox ---
+
+// TestPrepareSandboxSeamDelegatesToVM calls the real, unstubbed prepareSandbox
+// so its delegation to sandbox.PrepareSandbox is covered. An unknown agent name
+// makes the real path fail deterministically before it can touch host state,
+// the mocked config paths, or the fail-fast msb client.
+func TestPrepareSandboxSeamDelegatesToVM(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	_, err := prepareSandbox(
+		context.Background(),
+		options.RunOptions{Agent: "no-such-agent"},
+		false,
+		&termio.Mock{},
+	)
+	if err == nil {
+		t.Fatal("expected the real PrepareSandbox to error for an unknown agent")
+	}
+	if !strings.Contains(err.Error(), "unknown agent") {
+		t.Fatalf("error = %v, want an unknown-agent error from the real path", err)
+	}
+}
