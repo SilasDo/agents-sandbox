@@ -182,22 +182,27 @@ func TestRemoveSandboxReplacedFailsClosed(t *testing.T) {
 
 func TestRemoveSandboxSurfacesGetError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	getErr := errors.New("boom")
 	client := &msb.MockMsbClient{}
-	client.SetGetSandboxErr(errors.New("boom"))
+	client.SetGetSandboxErr(getErr)
 	msb.WithMsbMock(t, client)
 
 	err := RemoveSandbox(context.Background(), naming.LegacyVMPrefix+"proj-aBc1234D", false, assumeYesUI())
 	if err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Fatalf("RemoveSandbox(get error) = %v, want the GetSandbox error", err)
 	}
+	if !errors.Is(err, getErr) {
+		t.Errorf("error = %v, want it to wrap the GetSandbox cause", err)
+	}
 }
 
 func TestRemoveSandboxSurfacesStopError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	stopErr := errors.New("stop failed")
 	handle := &msb.MockSandboxHandle{
 		Name_:   naming.LegacyVMPrefix + "proj-aBc1234D",
 		Status_: msbSdk.SandboxStatusRunning,
-		StopErr: errors.New("stop failed"),
+		StopErr: stopErr,
 	}
 	client := &msb.MockMsbClient{}
 	client.SetGotSandbox(handle)
@@ -206,6 +211,9 @@ func TestRemoveSandboxSurfacesStopError(t *testing.T) {
 	err := RemoveSandbox(context.Background(), handle.Name_, true, assumeYesUI())
 	if err == nil || !strings.Contains(err.Error(), "stop failed") {
 		t.Fatalf("RemoveSandbox(stop error) = %v, want the stop error", err)
+	}
+	if !errors.Is(err, stopErr) {
+		t.Errorf("error = %v, want it to wrap the stop cause", err)
 	}
 	if handle.DidRmv {
 		t.Error("a failed stop must prevent removal")
@@ -283,5 +291,27 @@ func TestRemoveSandboxDeclinedConfirmation(t *testing.T) {
 	}
 	if handle.DidRmv {
 		t.Error("a declined confirmation must not remove the sandbox")
+	}
+}
+
+// TestIsProjectVMNameAcceptsPrefixFreeProjectVM pins the second half of the
+// classification: a prefix-free project VM (a parsed slug that is not a task) is
+// a project VM, so RemoveSandbox accepts it rather than rejecting it as foreign.
+func TestIsProjectVMNameAcceptsPrefixFreeProjectVM(t *testing.T) {
+	name := projectVMName(state.Key{Slug: "myproj-1mjusbm3wikhb0", Agent: "opencode"})
+	if !isProjectVMName(name) {
+		t.Errorf("isProjectVMName(%q) = false, want true for a prefix-free project VM", name)
+	}
+}
+
+// TestIsProjectVMNameRejectsNamesWithoutASlug pins the parsed-slug guard: a
+// name that parses to no slug (empty, a home volume, a runner image) is not a
+// project VM. Only the slug operand makes this false; a lone "not a task" test
+// would accept such a name, since ParseVMName reports Task=false for it.
+func TestIsProjectVMNameRejectsNamesWithoutASlug(t *testing.T) {
+	for _, name := range []string{"", naming.LegacyHomePrefix + "proj", "agents-sandbox/runner-proj:latest"} {
+		if isProjectVMName(name) {
+			t.Errorf("isProjectVMName(%q) = true, want false for a name that parses to no slug", name)
+		}
 	}
 }

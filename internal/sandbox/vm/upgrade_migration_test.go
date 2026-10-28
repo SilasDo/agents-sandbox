@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -162,9 +163,13 @@ func TestMigrateLegacyUpdaterStateReadErrorIsNonFatal(t *testing.T) {
 	if err := os.MkdirAll(legacyUpdaterStatePath(), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	migrateLegacyUpdaterState(&termio.Mock{})
+	ui := termio.NewTestMock(t)
+	migrateLegacyUpdaterState(&ui)
 	if _, err := os.Stat(legacyUpdaterStatePath()); err != nil {
 		t.Fatal("an unreadable updater.yaml must survive a read failure")
+	}
+	if !strings.Contains(strings.Join(ui.WarnCalls, "\n"), "reading legacy updater state") {
+		t.Errorf("a non-not-found read error must warn, got %v", ui.WarnCalls)
 	}
 }
 
@@ -181,9 +186,13 @@ func TestMigrateLegacyUpdaterStateRootStateReadErrorIsNonFatal(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	migrateLegacyUpdaterState(&termio.Mock{})
+	ui := termio.NewTestMock(t)
+	migrateLegacyUpdaterState(&ui)
 	if _, err := os.Stat(legacyUpdaterStatePath()); err != nil {
 		t.Fatal("updater.yaml must survive a root-state read failure")
+	}
+	if !strings.Contains(strings.Join(ui.WarnCalls, "\n"), "updating root state for legacy updater migration") {
+		t.Errorf("a root-state error must warn, got %v", ui.WarnCalls)
 	}
 }
 
@@ -231,5 +240,56 @@ func TestMigrateLegacyUpdaterStateWriteErrorIsNonFatal(t *testing.T) {
 	migrateLegacyUpdaterState(&termio.Mock{})
 	if _, err := os.Stat(legacyUpdaterStatePath()); err != nil {
 		t.Fatal("updater.yaml must survive a root-state write failure")
+	}
+}
+
+// TestMigrateLegacyUpdaterStateFoldsPastAZeroAgent pins the loop control: a
+// zero-LastChecked agent is skipped, not a reason to stop, so a non-zero agent
+// sorted after it is still folded. Agents are visited in sorted order ("aaa"
+// before "opencode"), so a `break` on the zero entry deterministically drops
+// opencode.
+func TestMigrateLegacyUpdaterStateFoldsPastAZeroAgent(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	if err := os.WriteFile(
+		legacyUpdaterStatePath(),
+		[]byte("agents:\n  aaa:\n    current_version: 1\n  opencode:\n    last_checked: 2021-06-01T00:00:00Z\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	migrateLegacyUpdaterState(&termio.Mock{})
+	root, _ := state.ReadRootState()
+	if got := root.AgentCheck("opencode").LastChecked.UTC().Year(); got != 2021 {
+		t.Fatalf("opencode was not folded past a zero agent: year=%d", got)
+	}
+}
+
+// TestMigrateLegacyUpdaterStateTypeErrorFoldsNothing pins the parse guard against
+// a partial decode: yaml.v3 sets an earlier valid field before failing on a later
+// type error, and the guard must discard that partial state rather than fold it.
+func TestMigrateLegacyUpdaterStateTypeErrorFoldsNothing(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	rootStatePath := filepath.Join(configpaths.Get().UserStateDir(), "state.yaml")
+	if err := os.WriteFile(
+		legacyUpdaterStatePath(),
+		[]byte("last_checked: 2021-06-01T00:00:00Z\nagents: 5\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	migrateLegacyUpdaterState(&termio.Mock{})
+	if _, err := os.Stat(rootStatePath); !os.IsNotExist(err) {
+		t.Fatal("a parse failure must fold nothing, leaving no root document")
+	}
+}
+
+// TestFoldFlatFieldIntoOpencodeIgnoresZeroLastChecked pins the guard on the flat
+// cadence: a zero last_checked must leave the agents map untouched, not seed an
+// opencode entry with the zero value.
+func TestFoldFlatFieldIntoOpencodeIgnoresZeroLastChecked(t *testing.T) {
+	legacy := legacyUpdaterState{}
+	foldFlatFieldIntoOpencode(&legacy)
+	if legacy.Agents != nil {
+		t.Errorf("a zero flat last_checked must not create an agents entry, got %v", legacy.Agents)
 	}
 }

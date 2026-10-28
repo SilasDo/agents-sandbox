@@ -582,6 +582,8 @@ func TestResolveTargetCreateReportsWorktree(t *testing.T) {
 	if !infoCallContains(ui.InfoCalls, "created worktree", "feat-x", "/workspace/worktrees/feat-x") {
 		t.Errorf("expected a default-visible create message naming the directory; got: %v", ui.InfoCalls)
 	}
+	assertVerboseContains(t, ui.VerboseCalls, "checking for an existing worktree")
+	assertVerboseContains(t, ui.VerboseCalls, "creating worktree")
 }
 
 // TestResolveTargetReuseReportsWorktree pins that reuse is announced at the

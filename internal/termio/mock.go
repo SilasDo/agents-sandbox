@@ -26,17 +26,19 @@ type ErrorCall struct {
 type Mock struct {
 	mu sync.Mutex
 
-	InfoCalls        []string
-	WarnCalls        []string
-	ErrorCalls       []ErrorCall
-	VerboseCalls     []string
-	OutCalls         []string
-	PrintCalls       []string
-	SpinnerCalls     []string
-	ConfirmCalls     []string
-	AcknowledgeCalls []string
-	StdOutBuffer     bytes.Buffer
-	StdErrBuffer     bytes.Buffer
+	InfoCalls         []string
+	WarnCalls         []string
+	ErrorCalls        []ErrorCall
+	VerboseCalls      []string
+	OutCalls          []string
+	PrintCalls        []string
+	SpinnerCalls      []string
+	SpinnerStops      int
+	SpinnerStopErrors []error
+	ConfirmCalls      []string
+	AcknowledgeCalls  []string
+	StdOutBuffer      bytes.Buffer
+	StdErrBuffer      bytes.Buffer
 
 	level               Level
 	assumeYes           bool
@@ -50,11 +52,25 @@ type Mock struct {
 	InputFn  func(prompt, defaultValue string) (string, error)
 }
 
-type mockSpinner struct{}
+type mockSpinner struct{ owner *Mock }
 
-func (m *mockSpinner) Stop() {}
+func (s *mockSpinner) Stop() {
+	if s.owner == nil {
+		return
+	}
+	s.owner.mu.Lock()
+	defer s.owner.mu.Unlock()
+	s.owner.SpinnerStops++
+}
 
-func (m *mockSpinner) StopError(error) {}
+func (s *mockSpinner) StopError(err error) {
+	if s.owner == nil {
+		return
+	}
+	s.owner.mu.Lock()
+	defer s.owner.mu.Unlock()
+	s.owner.SpinnerStopErrors = append(s.owner.SpinnerStopErrors, err)
+}
 
 func (m *Mock) Info(msg string) {
 	m.mu.Lock()
@@ -141,13 +157,13 @@ func (m *Mock) Spinner(msg string) Spinner {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.SpinnerCalls = append(m.SpinnerCalls, msg)
-	return &mockSpinner{}
+	return &mockSpinner{owner: m}
 }
 func (m *Mock) Spinnerf(format string, args ...any) Spinner {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.SpinnerCalls = append(m.SpinnerCalls, fmt.Sprintf(format, args...))
-	return &mockSpinner{}
+	return &mockSpinner{owner: m}
 }
 
 func (m *Mock) SetLevel(level Level) {
