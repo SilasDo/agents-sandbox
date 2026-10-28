@@ -158,7 +158,7 @@ func TestPreviewSandboxReconcilesStaleRecordedVersionWithImageLabel(t *testing.T
 	t.Cleanup(func() { existingAgentVersion = orig })
 	a := opencodeAgent(t)
 
-	id, err := sandboximage.RunnerDockerfileID(a, "2.0.0", false)
+	id, err := sandboximage.RunnerDockerfileID(a, "2.0.0", options.DockerSetting{})
 	if err != nil {
 		t.Fatalf("RunnerDockerfileID: %v", err)
 	}

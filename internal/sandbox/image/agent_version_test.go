@@ -16,7 +16,7 @@ func TestEnsureImageReportsBakedAgentVersion(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	WithMockAgentVersion(t, "1.2.3")
 	a := agentOpencode(t)
-	rendered, err := RenderDockerfile(a, "1.2.3", nil, false)
+	rendered, err := RenderDockerfile(a, "1.2.3", nil, dockerOff)
 	if err != nil {
 		t.Fatalf("render Dockerfile: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestEnsureImageReportsEmptyForSentinelLabel(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	WithMockAgentVersion(t, "1.2.3")
 	a := agentOpencode(t)
-	rendered, err := RenderDockerfile(a, "1.2.3", nil, false)
+	rendered, err := RenderDockerfile(a, "1.2.3", nil, dockerOff)
 	if err != nil {
 		t.Fatalf("render Dockerfile: %v", err)
 	}
