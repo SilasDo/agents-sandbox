@@ -10,6 +10,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- CI: `main` merges through a **merge queue**. A queued PR is built on top of the current `main` plus the pull requests
+  ahead of it, and the required checks — `lint`, `test`, `race`, `deadcode` — run on that combined tree before it
+  merges, so two independently-green PRs can no longer combine into a broken `main`. `race` and `deadcode` are now
+  required and always run, since a gated required check would report success without running; the `integration` suites
+  still run after the merge. See `CONTRIBUTING.md`.
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
@@ -66,6 +71,10 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Internal: the pre-lock and post-lock VM start/connect transitions are one function, so a connect failure recovers
+  through refresh-and-resume on both instead of only on the fast path — the post-lock re-check (the path every first
+  boot and concurrent start takes) no longer falls through to a bare start — and the post-lock re-check reports its
+  connect/start outcome like the fast path (#340).
 - Docker: a project Dockerfile now declares the Docker engine by content alone. A final-stage `# agents-sandbox:docker`
   / `# agents-sandbox:dind` marker or the managed `runner-base-docker`/`runner-base-dind` base enables it, for custom and
   managed bases alike, so a Dockerfile that asks for Docker needs no launcher config. Explicit `docker`/`dind` config,
