@@ -1,6 +1,7 @@
 package viperconfig
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 
@@ -107,5 +108,33 @@ func TestFlagTypedDefaultUsesConfigFieldType(t *testing.T) {
 		if got := flagTypedDefault(tc.key, &pflag.Flag{DefValue: tc.def}); got != tc.want {
 			t.Errorf("flagTypedDefault(%q, %q) = %#v, want %#v", tc.key, tc.def, got, tc.want)
 		}
+	}
+}
+
+// A field contributes a key only when it is exported *and* carries a
+// mapstructure tag: an untagged exported field, the mapstructure "-" and
+// env:"-" opt-outs, and an unexported field (tagged or not) are all skipped.
+// Config has no untagged exported field and no tagged unexported field, so the
+// synthetic type makes each guard observable on its own.
+func TestWalkConfigKeysSkipsUntaggedAndUnexportedFields(t *testing.T) {
+	type nested struct {
+		Inner string `mapstructure:"inner"`
+	}
+	type sample struct {
+		Tagged    string `mapstructure:"tagged"`
+		Untagged  string
+		Omitted   string `mapstructure:"-"`
+		EnvAbsent string `mapstructure:"env-absent" env:"-"`
+		Nested    nested `mapstructure:"nested"`
+
+		//nolint:unused // read through the walk's reflection, not by name
+		hidden string `mapstructure:"hidden"`
+	}
+
+	got := configKeyNames(walkConfigKeys(reflect.TypeFor[sample](), ""))
+
+	want := []string{"tagged", "nested.inner"}
+	if !slices.Equal(got, want) {
+		t.Errorf("walkConfigKeys = %v, want %v", got, want)
 	}
 }
