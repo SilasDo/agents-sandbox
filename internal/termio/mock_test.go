@@ -58,14 +58,29 @@ func TestMockPrintRecordsDataLine(t *testing.T) {
 	}
 }
 
-func TestMockSpinnerIsNoOp(t *testing.T) {
+func TestMockSpinnerRecordsStopsAndStopErrors(t *testing.T) {
 	m := &Mock{}
 	spin := m.Spinner("work")
 	spin.Stop()
-	spin.StopError(errors.New("x"))
+	stopErr := errors.New("x")
+	spin.StopError(stopErr)
 	if len(m.SpinnerCalls) != 1 {
 		t.Errorf("expected 1 spinner call, got %d", len(m.SpinnerCalls))
 	}
+	if m.SpinnerStops != 1 {
+		t.Errorf("SpinnerStops = %d, want 1", m.SpinnerStops)
+	}
+	if len(m.SpinnerStopErrors) != 1 || !errors.Is(m.SpinnerStopErrors[0], stopErr) {
+		t.Errorf("SpinnerStopErrors = %v, want [x]", m.SpinnerStopErrors)
+	}
+}
+
+// TestMockSpinnerWithNilOwnerIsNoOp pins the guard that lets a mockSpinner be
+// used without a Mock: both methods return instead of dereferencing a nil owner.
+func TestMockSpinnerWithNilOwnerIsNoOp(t *testing.T) {
+	spin := &mockSpinner{}
+	spin.Stop()
+	spin.StopError(errors.New("x"))
 }
 
 func TestMockPromptDefaults(t *testing.T) {

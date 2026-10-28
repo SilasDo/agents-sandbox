@@ -529,7 +529,7 @@ func TestRenderDockerfileCodexNodeFree(t *testing.T) {
 	if !ok {
 		t.Fatal("codex agent not registered")
 	}
-	s := mustRender(t, a, nil, false)
+	s := mustRender(t, a, nil, dockerOff)
 	for _, want := range []string{
 		"ARG CODEX_VERSION",
 		"https://github.com/openai/codex/releases/download/",

@@ -2,6 +2,7 @@ package vm
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -220,5 +221,63 @@ func TestListSandboxesHidesTaskSandboxesBothSchemes(t *testing.T) {
 	}
 	if len(infos) != 1 || infos[0].Name != "myproj-1mjusbm3wikhb0-opencode" {
 		t.Errorf("expected only the project VM, got %+v", infos)
+	}
+}
+
+// TestListSandboxesContinuesPastTaskSandbox pins the task filter as a skip, not
+// a stop: a task sandbox sorts before a project VM here, so a `break` would drop
+// the project VM that follows.
+func TestListSandboxesContinuesPastTaskSandbox(t *testing.T) {
+	mock := &msb.MockMsbClient{}
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-task-x-1729", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-later", Status_: msbSdk.SandboxStatusRunning},
+	}
+	msb.WithMsbMock(t, mock)
+
+	infos, err := ListSandboxes(context.Background())
+	if err != nil {
+		t.Fatalf("ListSandboxes: %v", err)
+	}
+	if len(infos) != 1 || infos[0].Name != "agents-sandbox-vm-later" {
+		t.Errorf("expected the project VM after the task sandbox, got %+v", infos)
+	}
+}
+
+// TestListSandboxesLimitAboveCountReturnsAll pins the limit guard: a limit
+// larger than the result set is not a truncation (an unconditional truncation
+// would slice past the end and panic).
+func TestListSandboxesLimitAboveCountReturnsAll(t *testing.T) {
+	mock := &msb.MockMsbClient{}
+	mock.Sandboxes = []msb.SandboxHandle{
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-a", Status_: msbSdk.SandboxStatusRunning},
+		&msb.MockSandboxHandle{Name_: "agents-sandbox-vm-b", Status_: msbSdk.SandboxStatusRunning},
+	}
+	msb.WithMsbMock(t, mock)
+
+	infos, err := ListSandboxes(context.Background(), ListOption{Limit: intPtr(5)})
+	if err != nil {
+		t.Fatalf("ListSandboxes: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Errorf("a limit above the count must return every sandbox, got %d: %+v", len(infos), infos)
+	}
+}
+
+// TestListSandboxesWrapsListError pins the list-error wrap: the SDK's cause is
+// preserved.
+func TestListSandboxesWrapsListError(t *testing.T) {
+	sentinel := errors.New("list boom")
+	mock := &msb.MockMsbClient{ListSandboxesFn: func(context.Context, map[string]string) ([]msb.SandboxHandle, error) {
+		return nil, sentinel
+	}}
+	msb.WithMsbMock(t, mock)
+
+	_, err := ListSandboxes(context.Background())
+	if err == nil {
+		t.Fatal("expected a list failure to abort")
+	}
+	if !errors.Is(err, sentinel) {
+		t.Errorf("error = %v, want it to wrap the list cause", err)
 	}
 }

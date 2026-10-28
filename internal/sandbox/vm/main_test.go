@@ -13,6 +13,15 @@ import (
 	mocks "github.com/inoio/agents-sandbox/internal/testutil/mocks"
 )
 
+// capturedDaemonReadyTimeout and capturedDaemonPollInterval hold the values the
+// production declarations assign, captured before TestMain overwrites the vars
+// for fast unit tests. TestMain's override makes the declared defaults
+// unreachable from a test otherwise, so this capture is how a test can pin them.
+var (
+	capturedDaemonReadyTimeout = daemonReadyTimeout
+	capturedDaemonPollInterval = daemonPollInterval
+)
+
 func TestMain(m *testing.M) {
 	// A mock that does not answer a readiness probe must fail fast, not poll out
 	// the production budget: these are mocked unit tests, and the first probe is

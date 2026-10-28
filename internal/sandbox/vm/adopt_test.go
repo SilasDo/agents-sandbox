@@ -98,6 +98,15 @@ func TestAdoptLegacyIdentityMovesStateAndDestroysVM(t *testing.T) {
 	if !handle.Destroyed {
 		t.Error("legacy VM was not destroyed")
 	}
+	var sawDestroyed bool
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "destroyed legacy project VM") {
+			sawDestroyed = true
+		}
+	}
+	if !sawDestroyed {
+		t.Errorf("expected the destroyed-VM verbose note; got %v", ui.VerboseCalls)
+	}
 	if !statePresent(t, adoptCheckoutKey()) {
 		t.Error("no state file under the checkout slug after adoption")
 	}
@@ -263,6 +272,8 @@ func TestAdoptLegacyIdentityUnparsableLegacyState(t *testing.T) {
 		&ui,
 	); err == nil {
 		t.Fatal("expected an unparsable legacy state to fail adoption")
+	} else if !errors.Is(err, state.ErrStateUnparsable) {
+		t.Errorf("error = %v, want it to preserve the unparsable-state cause", err)
 	}
 
 	if handle.Destroyed {
@@ -338,6 +349,15 @@ func TestAdoptLegacyIdentityLegacyVMAlreadyGone(t *testing.T) {
 	if got.Applied != true {
 		t.Errorf("adoption = %+v, want it applied", got)
 	}
+	var sawAbsentLegacyVM bool
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "legacy project VM") && strings.Contains(call, "is already gone") {
+			sawAbsentLegacyVM = true
+		}
+	}
+	if !sawAbsentLegacyVM {
+		t.Errorf("expected the absent-legacy-VM verbose note; got %v", ui.VerboseCalls)
+	}
 }
 
 // TestAdoptLegacyIdentityLegacyVMReplacedFailsClosed verifies the
@@ -348,7 +368,7 @@ func TestAdoptLegacyIdentityLegacyVMReplacedFailsClosed(t *testing.T) {
 	seedLegacyState(t)
 
 	handle := &msb.MockSandboxHandle{
-		Name_:      adoptLegacyVMName(),
+		Name_:      "widget-aaa--renamed-sandbox",
 		DestroyErr: &msbSdk.Error{Kind: msbSdk.ErrSandboxReplaced, Message: "replaced"},
 	}
 	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
@@ -365,6 +385,9 @@ func TestAdoptLegacyIdentityLegacyVMReplacedFailsClosed(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rerun to finish migrating this checkout") {
 		t.Errorf("error = %v, want the adoption action clause from destroyProjectVMHandle", err)
+	}
+	if !strings.Contains(err.Error(), handle.Name()) {
+		t.Errorf("error = %v, want it to name the resolved handle %q", err, handle.Name())
 	}
 	if statePresent(t, adoptCheckoutKey()) {
 		t.Error("state moved despite a replaced legacy VM")
@@ -415,6 +438,18 @@ func TestAdoptLegacyIdentityStrandedStateFileFailsLoudly(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error missing %q:\n%v", want, err)
 		}
+	}
+	if !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("error = %v, want it to preserve the missing-state cause", err)
+	}
+	var sawSkipWarning bool
+	for _, call := range ui.WarnCalls {
+		if strings.Contains(call, "left "+adoptAgentName+" in the legacy state directory") {
+			sawSkipWarning = true
+		}
+	}
+	if !sawSkipWarning {
+		t.Errorf("expected the skipped-entry warning; got %v", ui.WarnCalls)
 	}
 	if _, statErr := os.Stat(legacyStateFile); statErr != nil {
 		t.Errorf("legacy state file gone after a loud failure: %v", statErr)
@@ -509,6 +544,9 @@ func TestAdoptLegacyIdentityStateMoveFailureFailsLoudly(t *testing.T) {
 	if !strings.Contains(err.Error(), "move project state to") {
 		t.Errorf("error = %v, want the state-move failure", err)
 	}
+	if !errors.As(err, new(*os.PathError)) {
+		t.Errorf("error = %v, want it to preserve the filesystem cause", err)
+	}
 	if statePresent(t, adoptCheckoutKey()) {
 		t.Error("state present after a failed move")
 	}
@@ -522,7 +560,7 @@ func TestAdoptLegacyIdentityGetSandboxErrorAborts(t *testing.T) {
 	seedLegacyState(t)
 
 	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
-		return nil, errors.New("msb unreachable")
+		return nil, errLegacyVMBoom
 	}}
 	ui := termio.NewTestMock(t)
 
@@ -532,6 +570,9 @@ func TestAdoptLegacyIdentityGetSandboxErrorAborts(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "check legacy project VM") {
 		t.Errorf("error = %v, want the legacy-VM check failure", err)
+	}
+	if !errors.Is(err, errLegacyVMBoom) {
+		t.Errorf("error = %v, want it to wrap the GetSandbox cause", err)
 	}
 	if statePresent(t, adoptCheckoutKey()) {
 		t.Error("state moved despite a failed legacy-VM check")
@@ -715,6 +756,15 @@ func TestMigrateLegacyConfigDirsMovesBareRootConfig(t *testing.T) {
 	if _, err := os.Stat(from); !os.IsNotExist(err) {
 		t.Errorf("legacy config dir still present (stat err = %v)", err)
 	}
+	var sawMoved bool
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "moved legacy config dir") {
+			sawMoved = true
+		}
+	}
+	if !sawMoved {
+		t.Errorf("expected the moved-config-dir verbose note; got %v", ui.VerboseCalls)
+	}
 }
 
 // TestMigrateLegacyConfigDirsKeepsExistingTarget pins the never-overwrite rule:
@@ -751,6 +801,15 @@ func TestMigrateLegacyConfigDirsKeepsExistingTarget(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(from, "config.yaml")); err != nil {
 		t.Errorf("legacy config removed although the target existed: %v", err)
+	}
+	var sawKept bool
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "kept existing config dir") {
+			sawKept = true
+		}
+	}
+	if !sawKept {
+		t.Errorf("expected the kept-config-dir verbose note; got %v", ui.VerboseCalls)
 	}
 }
 
@@ -802,6 +861,9 @@ func TestDestroyLegacyVMsErrorsOnUnreadableSlug(t *testing.T) {
 	if !strings.Contains(err.Error(), "list legacy state") {
 		t.Errorf("error = %v, want the enumeration failure", err)
 	}
+	if !errors.As(err, new(*os.PathError)) {
+		t.Errorf("error = %v, want it to preserve the filesystem cause", err)
+	}
 }
 
 // TestMigrateLegacyConfigDirsSkipsRepoSlugAndMissingSource covers the two skip
@@ -810,6 +872,14 @@ func TestDestroyLegacyVMsErrorsOnUnreadableSlug(t *testing.T) {
 func TestMigrateLegacyConfigDirsSkipsRepoSlugAndMissingSource(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	// The repo-slug config dir exists, so an entry equal to the repo slug is
+	// only a no-op if it is skipped outright: without the skip, from==to and the
+	// code reports a spurious "kept existing" note.
+	if err := os.MkdirAll(paths.UserSlugConfigDir("agents-sandbox-bbb"), 0o700); err != nil {
+		t.Fatalf("mkdir repo-slug config dir: %v", err)
+	}
 
 	ui := termio.NewTestMock(t)
 	identity := git.Identity{
@@ -818,6 +888,101 @@ func TestMigrateLegacyConfigDirsSkipsRepoSlugAndMissingSource(t *testing.T) {
 	}
 	if err := migrateLegacyConfigDirs(identity, &ui); err != nil {
 		t.Fatalf("migrateLegacyConfigDirs: %v", err)
+	}
+	if len(ui.VerboseCalls) != 0 {
+		t.Errorf("a repo-slug or missing legacy entry must be silent; got %v", ui.VerboseCalls)
+	}
+}
+
+// TestMigrateLegacyConfigDirsContinuesPastRepoSlug pins loop order: a legacy
+// entry equal to the repo slug is skipped, but the scan continues, so a later
+// legacy identity's config directory is still moved onto the repo slug.
+func TestMigrateLegacyConfigDirsContinuesPastRepoSlug(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	from := paths.UserSlugConfigDir("workspace-aaa")
+	if err := os.MkdirAll(from, 0o700); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
+
+	ui := termio.NewTestMock(t)
+	identity := git.Identity{
+		RepoSlug:        "agents-sandbox-bbb",
+		LegacyRepoSlugs: []string{"agents-sandbox-bbb", "workspace-aaa"},
+	}
+	if err := migrateLegacyConfigDirs(identity, &ui); err != nil {
+		t.Fatalf("migrateLegacyConfigDirs: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths.UserSlugConfigDir("agents-sandbox-bbb"), "config.yaml")); err != nil {
+		t.Errorf("a later legacy config dir was not moved past the repo-slug entry: %v", err)
+	}
+}
+
+// TestMigrateLegacyConfigDirsContinuesPastMissingSource pins loop order on the
+// missing source: a legacy identity with no config directory is skipped, but the
+// scan continues, so a later present legacy directory is still moved.
+func TestMigrateLegacyConfigDirsContinuesPastMissingSource(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	from := paths.UserSlugConfigDir("workspace-aaa")
+	if err := os.MkdirAll(from, 0o700); err != nil {
+		t.Fatalf("mkdir legacy config dir: %v", err)
+	}
+	testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
+
+	ui := termio.NewTestMock(t)
+	identity := git.Identity{
+		RepoSlug:        "agents-sandbox-bbb",
+		LegacyRepoSlugs: []string{"workspace-absent", "workspace-aaa"},
+	}
+	if err := migrateLegacyConfigDirs(identity, &ui); err != nil {
+		t.Fatalf("migrateLegacyConfigDirs: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(paths.UserSlugConfigDir("agents-sandbox-bbb"), "config.yaml")); err != nil {
+		t.Errorf("a later present legacy config dir was not moved past a missing source: %v", err)
+	}
+}
+
+// TestMigrateLegacyConfigDirsReportsEveryKeptTarget pins that an existing target
+// leaves every legacy directory in place, one note per legacy identity: the scan
+// reports each rather than stopping at the first.
+func TestMigrateLegacyConfigDirsReportsEveryKeptTarget(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	configpaths.WithRealConfigPaths(t)
+	paths := configpaths.Get()
+
+	if err := os.MkdirAll(paths.UserSlugConfigDir("agents-sandbox-bbb"), 0o700); err != nil {
+		t.Fatalf("mkdir target config dir: %v", err)
+	}
+	for _, slug := range []string{"workspace-aaa", "workspace-ccc"} {
+		from := paths.UserSlugConfigDir(slug)
+		if err := os.MkdirAll(from, 0o700); err != nil {
+			t.Fatalf("mkdir legacy config dir %s: %v", slug, err)
+		}
+		testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
+	}
+
+	ui := termio.NewTestMock(t)
+	identity := git.Identity{
+		RepoSlug:        "agents-sandbox-bbb",
+		LegacyRepoSlugs: []string{"workspace-aaa", "workspace-ccc"},
+	}
+	if err := migrateLegacyConfigDirs(identity, &ui); err != nil {
+		t.Fatalf("migrateLegacyConfigDirs: %v", err)
+	}
+	var kept int
+	for _, call := range ui.VerboseCalls {
+		if strings.Contains(call, "kept existing config dir") {
+			kept++
+		}
+	}
+	if kept != 2 {
+		t.Errorf("kept-config-dir notes = %d, want one per legacy identity; got %v", kept, ui.VerboseCalls)
 	}
 }
 
@@ -834,7 +999,7 @@ func TestMigrateLegacyConfigDirsReportsRenameFailure(t *testing.T) {
 	}
 	testutil.WriteFile(t, from, "config.yaml", "x: 1\n")
 
-	renameConfigDir = func(_, _ string) error { return errors.New("rename boom") }
+	renameConfigDir = func(_, _ string) error { return errRenameBoom }
 	t.Cleanup(func() { renameConfigDir = os.Rename })
 
 	ui := termio.NewTestMock(t)
@@ -845,6 +1010,9 @@ func TestMigrateLegacyConfigDirsReportsRenameFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "move config dir") {
 		t.Errorf("error = %v, want the config-move failure", err)
+	}
+	if !errors.Is(err, errRenameBoom) {
+		t.Errorf("error = %v, want it to wrap the rename cause", err)
 	}
 }
 
@@ -870,7 +1038,7 @@ func TestAdoptLegacyIdentityConfigMoveFailurePropagates(t *testing.T) {
 		t.Fatalf("seed legacy state: %v", err)
 	}
 
-	renameConfigDir = func(_, _ string) error { return errors.New("rename boom") }
+	renameConfigDir = func(_, _ string) error { return errRenameBoom }
 	t.Cleanup(func() { renameConfigDir = os.Rename })
 
 	client := &msb.MockMsbClient{GetSandboxFn: func(_ context.Context, _ string) (msb.SandboxHandle, error) {
@@ -886,6 +1054,9 @@ func TestAdoptLegacyIdentityConfigMoveFailurePropagates(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "move config dir") {
 		t.Errorf("error = %v, want the propagated config-move failure", err)
+	}
+	if !errors.Is(err, errRenameBoom) {
+		t.Errorf("error = %v, want it to wrap the rename cause", err)
 	}
 }
 
@@ -919,6 +1090,14 @@ func TestAdoptLegacyIdentityDryRunReturnsFoundLegacySlug(t *testing.T) {
 	}
 	if !got.Pending || got.Applied {
 		t.Errorf("adoption = %+v, want pending and not applied", got)
+	}
+	notice := strings.Join(ui.WarnCalls, "\n")
+	if !strings.Contains(notice, state.SlugDir(legacySlug)) {
+		t.Errorf("notice missing the extra legacy state row for %s:\n%s", legacySlug, notice)
+	}
+	legacyConfigDir := configpaths.Get().UserSlugConfigDir(legacySlug)
+	if !strings.Contains(notice, "config dir") || !strings.Contains(notice, legacyConfigDir) {
+		t.Errorf("notice missing the legacy config-dir row %q:\n%s", legacyConfigDir, notice)
 	}
 }
 

@@ -847,6 +847,9 @@ func TestStopProjectVMAlreadyStopped(t *testing.T) {
 	if err := StopProjectVM(context.Background(), false, false, ui, "opencode"); err != nil {
 		t.Fatalf("StopProjectVM on already-stopped VM failed: %v", err)
 	}
+	if !strings.Contains(joinStrings(ui.InfoCalls), "already stopped") {
+		t.Errorf("expected the already-stopped note, got %v", ui.InfoCalls)
+	}
 }
 
 func TestStopProjectVMDryRunRemove(t *testing.T) {
@@ -883,6 +886,9 @@ func TestStopProjectVMNotFound(t *testing.T) {
 
 	if err := StopProjectVM(context.Background(), false, false, ui, "opencode"); err != nil {
 		t.Fatalf("StopProjectVM on missing VM failed: %v", err)
+	}
+	if !strings.Contains(joinStrings(ui.InfoCalls), "no project VM found") {
+		t.Errorf("expected the missing-VM note, got %v", ui.InfoCalls)
 	}
 }
 
