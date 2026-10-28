@@ -14,7 +14,9 @@ import (
 
 // DockerSetting is the resolved docker capability: whether the Docker engine
 // is on, and whether that value came from an explicit config/flag/env setting
-// (and therefore overrides any project-Dockerfile content signal).
+// (and therefore overrides any project-Dockerfile content signal). Enablement
+// consults Enabled only when Explicit is true; without an explicit source the
+// project Dockerfile's content signals decide.
 type DockerSetting struct {
 	Enabled  bool
 	Explicit bool

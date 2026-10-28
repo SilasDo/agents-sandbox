@@ -15,6 +15,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/network"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/testutil"
 	"github.com/inoio/agents-sandbox/internal/viperconfig"
 )
 
@@ -396,6 +397,23 @@ func TestBuildPropagatesDocker(t *testing.T) {
 	}
 	if !opts.Docker.Enabled {
 		t.Error("opts.Docker.Enabled = false, want true from resolver")
+	}
+}
+
+// A user config `docker: false` is an explicit source: the setting must reach the
+// boundary as Explicit, so it overrides any project-Dockerfile content signal.
+func TestResolveDockerSettingFromConfigExplicitOff(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{"docker": false})
+
+	cmd := newRunCommand()
+	r := mustResolver(t, cmd)
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if want := (options.DockerSetting{Enabled: false, Explicit: true}); opts.Docker != want {
+		t.Errorf("opts.Docker = %+v, want %+v", opts.Docker, want)
 	}
 }
 
@@ -1089,7 +1107,7 @@ func TestBuildPropagatesConfigResourceLimits(t *testing.T) {
 }
 
 // resolveDockerSetting tolerates a command that never registered --dind.
-func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
+func TestResolveDockerSettingWithoutDindFlag(t *testing.T) {
 	opts := options.RunOptions{}
 
 	resolveDockerSetting(&cobra.Command{Use: "run"}, nil, &opts)
@@ -1101,7 +1119,7 @@ func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
 
 // resolveDockerSetting tolerates a command that registered --dind but not the
 // canonical --docker flag.
-func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
+func TestResolveDockerSettingWithoutDockerFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "run"}
 	cmd.Flags().Bool("dind", false, "")
 	if err := cmd.Flags().Set("dind", "true"); err != nil {

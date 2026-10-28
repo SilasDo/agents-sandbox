@@ -35,7 +35,9 @@ func FuzzRenderDockerfile(f *testing.F) {
 		if !ok {
 			t.Fatal("agent opencode is not registered")
 		}
-		out, err := RenderDockerfile(a, "1.2.3", []byte(projectDockerfile), options.DockerSetting{Enabled: docker})
+		out, err := RenderDockerfile(
+			a, "1.2.3", []byte(projectDockerfile), options.DockerSetting{Enabled: docker, Explicit: docker},
+		)
 		if err != nil {
 			return
 		}

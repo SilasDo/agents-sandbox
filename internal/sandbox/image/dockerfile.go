@@ -218,8 +218,10 @@ const (
 //
 // The two content signals have different reach: the managed base is resolved
 // through the final stage's base image (referencesImage), while the marker is
-// scanned only in the final-stage body (Dockerfile marker scope), so an earlier
-// stage's marker is not a signal.
+// scanned only in the final-stage body, so an earlier stage's marker is not a
+// signal. Enablement matches the marker exactly (case-sensitive), while the
+// near-miss detection is deliberately case-insensitive so a case variant is
+// still surfaced instead of silently ignored.
 func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) bool {
 	if docker.Explicit {
 		return docker.Enabled

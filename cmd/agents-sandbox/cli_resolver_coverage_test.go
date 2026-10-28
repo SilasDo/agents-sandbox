@@ -5,8 +5,11 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/runoptions"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/testutil"
 	launcherconfig "github.com/inoio/agents-sandbox/internal/viperconfig"
 )
 
@@ -92,6 +95,21 @@ func TestResolveBuildDockerSettingFromResolver(t *testing.T) {
 	cmd.SetContext(ctx)
 	if !resolveBuildDockerSetting(cmd).Enabled {
 		t.Error("resolveBuildDockerSetting = false, want true (from resolver)")
+	}
+}
+
+// A user config `docker: false` is an explicit source: the build path must carry
+// the explicitness through, so it overrides any project-Dockerfile content signal.
+func TestResolveBuildDockerSettingFromResolverExplicitOff(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{"docker": false})
+
+	cmd := buildDockerfileCmd(&termio.Mock{})
+	cmd.SetContext(context.WithValue(context.Background(), (*launcherConfigKey)(nil), mustResolver(t, cmd)))
+
+	got := resolveBuildDockerSetting(cmd)
+	if want := (options.DockerSetting{Enabled: false, Explicit: true}); got != want {
+		t.Errorf("resolveBuildDockerSetting = %+v, want %+v", got, want)
 	}
 }
 
