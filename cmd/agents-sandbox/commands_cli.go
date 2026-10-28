@@ -183,13 +183,18 @@ func checkForUpgrade(ctx context.Context, r *launcherconfig.Resolver, ui termio.
 	return res.Exit, nil
 }
 
+// serveOnlyIsTerminal reports whether stdin is an interactive terminal. It is a
+// seam (mirroring termio's isTerminal) so the reader below can be exercised
+// without a real TTY.
+var serveOnlyIsTerminal = term.IsTerminal
+
 // serveOnlyStdinReader returns the reader whose EOF stops serve-only mode, or
 // nil when stdin must not be watched. Only an interactive terminal can deliver
 // a deliberate Ctrl-D; a non-TTY stdin (CI, `< /dev/null`, a background job) is
 // already at EOF, so watching it would cancel the run immediately (#387). It is
 // a seam so tests can drive both paths.
 var serveOnlyStdinReader = func() io.Reader {
-	if term.IsTerminal(int(os.Stdin.Fd())) {
+	if serveOnlyIsTerminal(int(os.Stdin.Fd())) {
 		return os.Stdin
 	}
 	return nil
