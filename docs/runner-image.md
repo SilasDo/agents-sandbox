@@ -273,7 +273,8 @@ suppresses a Dockerfile signal rather than letting it re-enable the engine.
 Only a marker in the final stage (after the last `FROM`) enables Docker and places the injection block. A marker in an
 earlier stage is ignored, with a warning telling you to move it into the final stage. Enablement is case-sensitive:
 `# agents-sandbox:docker` enables and a case variant such as `# Agents-Sandbox:docker` does not, though it is reported as
-a near-miss warning so a typo does not fail silently.
+a near-miss warning so a case variant of the marker is caught. A typo inside the token (`# agents-sandbox:dockr`) is not
+caught and leaves the engine off without a diagnostic.
 
 The deprecated aliases `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND` still work with lower precedence and
 print a one-time warning. A project Dockerfile using the legacy `runner-base-dind` base or the `# agents-sandbox:dind`

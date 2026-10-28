@@ -190,7 +190,8 @@ base without `curl` fails the image build naming the tool instead of failing at 
 The capability installs and runs the Docker engine inside the microsandbox VM, which is not literal Docker-in-Docker, so
 the canonical token is **`docker`** everywhere: CLI flag `--docker` (on `build`, `run`, `shell`, and `build dockerfile`),
 config key `docker`, env `AGENTS_SANDBOX_DOCKER`, and the Go names `BuildOptions.Docker`, `options.Docker`,
-`Resolver.Docker()`, `RenderDockerfile(..., docker bool)`, `dockerBlock`, `injectDockerBlock`, `dockerFinalizationBlock`.
+`Resolver.Docker()`, `RenderDockerfile(a, agentVersion, projectDockerfile []byte, docker options.DockerSetting)`,
+`dockerBlock`, `injectDockerBlock`, `dockerFinalizationBlock`.
 The provenance file `docker-source` already uses this token.
 
 Deprecated aliases stay accepted at lower precedence with a one-time warning, mirroring the `OPENCODE_SANDBOX_` →
