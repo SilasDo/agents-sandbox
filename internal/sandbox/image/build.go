@@ -648,9 +648,10 @@ func logBuildDecision(
 // content matches (see imageRefCandidates for the content, name, and legacy
 // prefixed refs), otherwise it loads the Docker image under info.Ref. The
 // comparison uses the content digest microsandbox records for the image, the
-// same value as Docker's image ID; only a legacy image that exposes no digest
-// falls back to the dockerfile-id label. Loading directly avoids removing a
-// manifest that an existing VM may still reference.
+// same value as Docker's image ID; a cached image that records no digest is
+// unknown content and is reloaded, never trusted via the source-signature
+// dockerfile-id label. Loading directly avoids removing a manifest that an
+// existing VM may still reference.
 func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui termio.UI) (ImageInfo, error) {
 	anyCandidateCached := false
 	for _, candidate := range imageRefCandidates(info) {
@@ -691,18 +692,18 @@ func EnsureLoaded(ctx context.Context, mclient msb.Client, info ImageInfo, ui te
 // cachedImageMatches reports whether the microsandbox image under ref holds
 // the same content as the Docker image described by info. Docker's image ID and
 // the microsandbox config digest are the same content identity, so they are
-// compared directly; the dockerfile-id label (a source signature, not a content
-// identity) is only consulted when microsandbox records no digest at all. A
-// digest mismatch is never overridden by a label match.
+// compared directly. A nil inspect result, or one that records no digest, is
+// unknown content and never counts as a match: the dockerfile-id label is a
+// source signature, not a content identity, and can match while the bytes
+// differ (a floating base tag, or the dev user's uid/gid), so it must not stand
+// in for the digest. The cost is one reload — a load records a digest, so the
+// image matches next time.
 func cachedImageMatches(ctx context.Context, mclient msb.Client, ref string, info ImageInfo) bool {
 	mInspect, err := mclient.ImageInspect(ctx, ref)
 	if err != nil {
 		return false
 	}
-	if mInspect.Digest != "" {
-		return mInspect.Digest == info.Digest
-	}
-	return info.DockerfileID != "" && mInspect.Labels[dockerfileIDLabelKey] == info.DockerfileID
+	return mInspect != nil && mInspect.Digest != "" && mInspect.Digest == info.Digest
 }
 
 // EnsureImage builds/inspects the runner Docker image and returns an ImageInfo

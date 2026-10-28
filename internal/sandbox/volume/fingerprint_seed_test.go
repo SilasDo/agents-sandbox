@@ -41,7 +41,7 @@ func TestEnsureNewHomeSeedsFingerprints(t *testing.T) {
 		client,
 		k,
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
-		true, // dryRunVM
+		true, // skipVM
 		desired,
 		ui,
 	)

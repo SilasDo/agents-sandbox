@@ -68,6 +68,24 @@ func TestMockImageHandleNewAccessors(t *testing.T) {
 	}
 }
 
+func TestMockSandboxHandleDestroyFn(t *testing.T) {
+	called := false
+	wantErr := errors.New("destroy boom")
+	h := &MockSandboxHandle{DestroyFn: func(context.Context) error {
+		called = true
+		return wantErr
+	}}
+	if err := h.Destroy(context.Background()); !errors.Is(err, wantErr) {
+		t.Fatalf("Destroy() error = %v, want %v", err, wantErr)
+	}
+	if !called {
+		t.Fatal("Destroy() did not call DestroyFn")
+	}
+	if h.DidDestroy() {
+		t.Error("Destroy() with a DestroyFn must not mark the handle destroyed")
+	}
+}
+
 func TestMockSandboxHandleConfig(t *testing.T) {
 	cfg := &msbSdk.SandboxConfig{Image: "agents-sandbox/runner-proj:opencode-latest"}
 	h := &MockSandboxHandle{Cfg: cfg}

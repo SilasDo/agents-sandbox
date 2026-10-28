@@ -18,7 +18,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
-	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -296,7 +295,7 @@ func TestApplyHomeActionAbortsWhenHomeVolumeChangedConcurrently(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -334,7 +333,7 @@ func TestApplyHomeAction_KeepReturnsOldVolume(t *testing.T) {
 		"agents-sandbox-home-myproj-old",
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionKeep,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -383,7 +382,7 @@ func TestApplyHomeAction_ExecutesAndKeepsOld(t *testing.T) {
 				oldVol,
 				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 				tt.action,
-				options.RunOptions{},
+				false,
 				&termio.Mock{},
 			)
 			if err != nil {
@@ -418,7 +417,9 @@ func TestApplyHomeAction_ExecutesAndKeepsOld(t *testing.T) {
 	}
 }
 
-func TestApplyHomeAction_Reset_DryRun_NoWrites(t *testing.T) {
+// TestApplyHomeAction_Reset_SkipVM_NoWrites pins the skip-VM gate: the chosen
+// reset is deferred without a VM, so the old volume and the state are untouched.
+func TestApplyHomeAction_Reset_SkipVM_NoWrites(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "myproj"
@@ -444,17 +445,17 @@ func TestApplyHomeAction_Reset_DryRun_NoWrites(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{DryRun: true},
+		true,
 		&termio.Mock{},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if newVol != oldVol {
-		t.Errorf("dry-run should keep old volume, got %q", newVol)
+		t.Errorf("skip-VM should keep old volume, got %q", newVol)
 	}
 	if createdVols != 0 {
-		t.Errorf("dry-run should not create volumes, got %d", createdVols)
+		t.Errorf("skip-VM should not create volumes, got %d", createdVols)
 	}
 
 	st, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -462,14 +463,17 @@ func TestApplyHomeAction_Reset_DryRun_NoWrites(t *testing.T) {
 		t.Fatalf("ReadState: %v", err)
 	}
 	if st.HomeVolume != oldVol {
-		t.Errorf("dry-run should not change state HomeVolume, got %q", st.HomeVolume)
+		t.Errorf("skip-VM should not change state HomeVolume, got %q", st.HomeVolume)
 	}
 	if st.ImageDigest != "sha256:old" {
-		t.Errorf("dry-run should not change state ImageDigest, got %q", st.ImageDigest)
+		t.Errorf("skip-VM should not change state ImageDigest, got %q", st.ImageDigest)
 	}
 }
 
-func TestApplyHomeAction_Migrate_DryRunVM_NoStateWrite(t *testing.T) {
+// TestApplyHomeAction_Migrate_SkipVM_NoStateWrite pins the migrate variant of
+// the skip-VM gate: the copy would spawn a VM, so it is deferred and the state
+// keeps the old volume and digest.
+func TestApplyHomeAction_Migrate_SkipVM_NoStateWrite(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "myproj"
@@ -489,17 +493,17 @@ func TestApplyHomeAction_Migrate_DryRunVM_NoStateWrite(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionMigrate,
-		options.RunOptions{DryRunVM: true},
+		true,
 		&termio.Mock{},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if newVol != oldVol {
-		t.Errorf("dry-run-vm should keep old volume, got %q", newVol)
+		t.Errorf("skip-VM should keep old volume, got %q", newVol)
 	}
 	if len(mock.CreatedSandboxes) != 0 {
-		t.Errorf("dry-run-vm should not spawn VMs, got %v", mock.CreatedSandboxes)
+		t.Errorf("skip-VM should not spawn VMs, got %v", mock.CreatedSandboxes)
 	}
 
 	st, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
@@ -507,10 +511,10 @@ func TestApplyHomeAction_Migrate_DryRunVM_NoStateWrite(t *testing.T) {
 		t.Fatalf("ReadState: %v", err)
 	}
 	if st.HomeVolume != oldVol {
-		t.Errorf("dry-run-vm should not write state HomeVolume, got %q", st.HomeVolume)
+		t.Errorf("skip-VM should not write state HomeVolume, got %q", st.HomeVolume)
 	}
 	if st.ImageDigest != "sha256:old" {
-		t.Errorf("dry-run-vm should not write state ImageDigest, got %q", st.ImageDigest)
+		t.Errorf("skip-VM should not write state ImageDigest, got %q", st.ImageDigest)
 	}
 }
 
@@ -548,7 +552,7 @@ func TestApplyHomeAction_Migrate_CopyFails_RemovesNewVolume(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionMigrate,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1538,7 +1542,7 @@ func TestApplyHomeAction_Reset_Success(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -1597,7 +1601,7 @@ func TestApplyHomeAction_PreservesFingerprints(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1642,7 +1646,7 @@ func TestApplyHomeAction_PrefillFails_RemovesVolume(t *testing.T) {
 		oldVol,
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:new"},
 		ActionReset,
-		options.RunOptions{},
+		false,
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1678,7 +1682,7 @@ func TestEnsureNewHome_PrefillFails(t *testing.T) {
 	}
 }
 
-func TestEnsureNewHome_DryRunVM_NoSandbox(t *testing.T) {
+func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	mock := &msb.MockMsbClient{}
@@ -1689,7 +1693,7 @@ func TestEnsureNewHome_DryRunVM_NoSandbox(t *testing.T) {
 		mock,
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
-		true, // dryRunVM
+		true, // skipVM
 		state.Fingerprints{},
 		&termio.Mock{},
 	)

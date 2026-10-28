@@ -82,21 +82,29 @@ func decideVMAction(notFoundErr error, status msbSdk.SandboxStatus) (vmAction, e
 	}
 }
 
+// acquireProjectVMLock takes the per-(slug, agent) creation lock that serializes
+// a project VM's create and destroy. It is a behavior seam so tests can observe
+// the lock boundary; production uses the shared host flock.
+var acquireProjectVMLock = func(k state.Key) (func(), error) {
+	return hostlock.AcquireExclusive(state.ProjectVMLockDir(k), state.ProjectVMLockName)
+}
+
 // ensureProjectVM returns a live *msb.Sandbox for the project VM and how it
 // entered the running state this run: vmBootCreated on first boot or
 // recreation, vmBootStarted when this invocation booted an existing VM, or
-// vmBootConnected when an already-running VM was merely attached to. A
-// per-project host-side flock guards the first-boot race between concurrent
-// invocations.
+// vmBootConnected when an already-running VM was merely attached to (and when
+// skipVM leaves the lifecycle alone). A per-project host-side flock guards the
+// first-boot race and the recreate destroy between concurrent invocations.
 func ensureProjectVM(
 	ctx context.Context,
 	opts options.RunOptions,
 	info image.ImageInfo, homeVol, repoPath string,
 	k state.Key,
 	repoSlug string,
+	skipVM bool,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
-	if opts.DryRunVM {
+	if skipVM {
 		ui.Verbosef("dry-run: VM lifecycle skipped")
 		return nil, vmBootConnected, nil
 	}
@@ -115,22 +123,10 @@ func ensureProjectVM(
 	if found {
 		name = handle.Name()
 	}
-	notFound := !found
 
-	// Fast path: attach to or start an existing VM without the flock, replacing
-	// it first when the config changed.
-	if !notFound && opts.Recreate {
-		notFound, err = replaceSandboxForReconfig(handle, name, ui, spin)
-		if err != nil {
-			return nil, vmBootConnected, err
-		}
-		if notFound {
-			// The replaced VM may have carried a legacy name; recreate under
-			// the prefix-free scheme so the rename takes effect.
-			name = projectVMName(k)
-		}
-	}
-	if !notFound {
+	// Non-mutating fast path: attach to, wait for, or start an existing VM
+	// without the flock. A recreate is mutating, so it always takes the lock.
+	if found && !opts.Recreate {
 		return resolveExistingVM(ctx, handle, opts, name, ui, spin)
 	}
 
@@ -141,47 +137,35 @@ func ensureProjectVM(
 		return nil, vmBootConnected, fmt.Errorf("microsandbox runtime: %w", ensureErr)
 	}
 
-	// Slow path: VM doesn't exist → create. Hold a flock so concurrent
-	// invocations don't both create (and clobber via WithReplace).
-	release, lockErr := hostlock.AcquireExclusive(state.ProjectVMLockDir(k), state.ProjectVMLockName)
+	// Slow path: hold the per-project flock so concurrent invocations don't both
+	// create (and clobber via WithReplace), and so a recreate destroy cannot race
+	// a VM another invocation just created.
+	release, lockErr := acquireProjectVMLock(k)
 	if lockErr != nil {
 		return nil, vmBootConnected, fmt.Errorf("acquire project flock: %w", lockErr)
 	}
 	defer release()
 
+	// Recreate: destroy the handle this session held, under the lock. The
+	// destroy keeps context.Background() — a cancelled run must not leave a
+	// half-replaced VM — and the pre-lock handle: per specs/sandbox-identity.md
+	// the launcher never re-looks-up the name to adopt a replacement.
+	if found {
+		alreadyGone, destroyErr := destroyProjectVMHandle(context.Background(), handle, name, "rerun to reconfigure it")
+		if destroyErr != nil {
+			return nil, vmBootConnected, destroyErr
+		}
+		if alreadyGone {
+			ui.Verbosef("project VM %s was already gone; recreating from new config", name)
+		} else {
+			ui.Verbosef("replaced project VM %s; recreating from new config", name)
+		}
+		// The replaced VM may have carried a legacy name; recreate under the
+		// prefix-free scheme so the rename takes effect.
+		name = projectVMName(k)
+	}
+
 	return createOrAttachAfterLock(ctx, client, name, k, repoSlug, info, homeVol, repoPath, opts, ui)
-}
-
-// replaceSandboxForReconfig destroys an existing VM whose config changed,
-// reporting notFound=true so the caller recreates it. The destroy is the shared
-// identity-safe one (destroyProjectVMHandle): an already-gone name is treated
-// like a successful removal, and a name whose held identity was replaced now
-// refers to a sandbox this session did not create for this config, so the
-// reconfiguration fails closed rather than silently adopting it.
-func replaceSandboxForReconfig(
-	handle msb.SandboxHandle,
-	name string,
-	ui termio.UI,
-	spin termio.Spinner,
-) (bool, error) {
-	ui.Verbosef("config changed; replacing project VM %s", name)
-
-	alreadyGone, destroyErr := destroyProjectVMHandle(
-		context.Background(),
-		handle,
-		name,
-		"rerun to reconfigure it",
-	)
-	if destroyErr != nil {
-		spin.StopError(destroyErr)
-		return false, destroyErr
-	}
-	if alreadyGone {
-		ui.Verbosef("project VM %s was already gone; recreating from new config", name)
-	} else {
-		ui.Verbosef("replaced project VM %s; recreating from new config", name)
-	}
-	return true, nil
 }
 
 // destroyProjectVMHandle destroys a project VM handle identity-safely and
