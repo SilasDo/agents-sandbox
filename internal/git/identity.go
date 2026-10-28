@@ -1,6 +1,7 @@
 package git
 
 import (
+	"fmt"
 	"path/filepath"
 )
 
@@ -34,31 +35,42 @@ type Identity struct {
 }
 
 // ResolveIdentity derives the workspace layout and both project slugs for cwd in
-// a single pass. It never returns an error: a directory outside a repository, or
-// one whose .git entry is malformed, resolves to the non-repo identity (both
-// slugs derived from the resolved path). A linked worktree outside its checkout
-// is reported through OutsideWorktree and scoped as its own checkout (its
-// checkout slug hashes the worktree root), so it simply runs as its own project
-// and nothing refuses on the flag.
+// a single pass. A directory outside a repository, or one whose .git entry is
+// malformed, resolves to the non-repo identity (both slugs derived from the
+// resolved path). A linked worktree outside its checkout is reported through
+// OutsideWorktree and scoped as its own checkout (its checkout slug hashes the
+// worktree root), so it simply runs as its own project and nothing refuses on
+// the flag.
+//
+// It returns an error when cwd or the checkout's git dir cannot be resolved,
+// instead of hashing a fallback path: a transient symlink or permission failure
+// would otherwise yield a different checkout slug — a new state file, VM and
+// home volume — for an existing project, with no diagnostic (#354).
 //
 // Symlinks are resolved internally so every entry point (run, stop, kill, volume
 // ops, build) hashes the same physical path — otherwise /tmp and /private/tmp on
 // macOS would produce different checkout slugs. Derivation is plain-file
 // inspection; no git binary is invoked.
-func ResolveIdentity(cwd string) Identity {
-	resolved := resolvePath(cwd)
+func ResolveIdentity(cwd string) (Identity, error) {
+	resolved, err := resolvePath(cwd)
+	if err != nil {
+		return Identity{}, fmt.Errorf("resolve project directory: %w", err)
+	}
 	worktreeRoot := findWorktreeRoot(resolved)
 	if worktreeRoot == "" {
-		return nonRepoIdentity(resolved)
+		return nonRepoIdentity(resolved), nil
 	}
 	commonGitDir := resolveGitDir(worktreeRoot)
 	if commonGitDir == "" {
-		return nonRepoIdentity(resolved)
+		return nonRepoIdentity(resolved), nil
 	}
 	// Resolve the common dir too: git writes a linked worktree's gitdir path as
 	// given, so an unresolved temp path on macOS would not match the path the
 	// main checkout hashes, and the worktree would not share its checkout slug.
-	commonGitDir = resolvePath(commonGitDir)
+	commonGitDir, err = resolvePath(commonGitDir)
+	if err != nil {
+		return Identity{}, fmt.Errorf("resolve git directory: %w", err)
+	}
 
 	checkoutRoot, bindRoot, outsideWorktree := bindLayout(worktreeRoot, commonGitDir)
 	// An outside worktree hashes its own root: hashing the shared common dir
@@ -91,38 +103,55 @@ func ResolveIdentity(cwd string) Identity {
 			identity.LegacyRepoSlugs = []string{legacy}
 		}
 	}
-	return identity
+	return identity, nil
 }
 
-// RepoSlug returns the repo slug of the current working directory: the value
-// shared by every clone of the same origin.
+// MustRepoSlug returns the repo slug of the current working directory: the value
+// shared by every clone of the same origin. It is a cwd-derived convenience for
+// tests; production reads the ResolveIdentity fields. An unresolvable cwd panics
+// rather than returning a slug derived from a degraded path (#354).
 //
 //deadcode:ignore reason="cwd-derived convenience for tests; production reads the ResolveIdentity fields"
-func RepoSlug() string {
-	return ResolveIdentity(".").RepoSlug
+func MustRepoSlug() string {
+	identity, err := ResolveIdentity(".")
+	if err != nil {
+		panic(fmt.Sprintf("git.MustRepoSlug: %v", err))
+	}
+	return identity.RepoSlug
 }
 
-// CheckoutSlug returns the checkout slug of the current working directory.
+// MustCheckoutSlug returns the checkout slug of the current working directory.
+// It is a cwd-derived convenience for tests; production reads the
+// ResolveIdentity fields. An unresolvable cwd panics rather than returning a
+// slug derived from a degraded path (#354).
 //
 //deadcode:ignore reason="cwd-derived convenience for tests; production reads the ResolveIdentity fields"
-func CheckoutSlug() string {
-	return ResolveIdentity(".").CheckoutSlug
+func MustCheckoutSlug() string {
+	identity, err := ResolveIdentity(".")
+	if err != nil {
+		panic(fmt.Sprintf("git.MustCheckoutSlug: %v", err))
+	}
+	return identity.CheckoutSlug
 }
 
 // resolvePath returns path as an absolute, symlink-resolved path. Both steps
-// matter: an absolute result keeps the cwd-derived callers (RepoSlug and
-// CheckoutSlug pass ".") from hashing a relative path, and resolving symlinks
-// makes /tmp and /private/tmp hash alike.
-func resolvePath(path string) string {
-	abs, err := filepath.Abs(path)
+// matter: an absolute result keeps the cwd-derived callers (MustRepoSlug and
+// MustCheckoutSlug pass ".") from hashing a relative path, and resolving
+// symlinks makes /tmp and /private/tmp hash alike.
+//
+// It reports an error rather than substituting a fallback. A degraded path —
+// the raw input or the unresolved absolute path — would be hashed into a slug
+// and silently change a project's identity, so the error is the point (#354).
+func resolvePath(path string) (string, error) {
+	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return path
+		return "", fmt.Errorf("make path absolute: %w", err)
 	}
-	resolved, err := filepath.EvalSymlinks(abs)
+	resolved, err := filepath.EvalSymlinks(absolute)
 	if err != nil {
-		return abs
+		return "", fmt.Errorf("resolve symlinks: %w", err)
 	}
-	return resolved
+	return resolved, nil
 }
 
 // nonRepoIdentity is the identity of a directory that is not in a repository:

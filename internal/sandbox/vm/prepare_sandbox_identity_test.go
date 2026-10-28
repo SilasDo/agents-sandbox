@@ -14,7 +14,6 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
-	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -167,8 +166,8 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 
 	firstClone := newOriginClone(t)
 	secondClone := newOriginClone(t)
-	firstIdentity := git.ResolveIdentity(firstClone)
-	secondIdentity := git.ResolveIdentity(secondClone)
+	firstIdentity := mustIdentity(t, firstClone)
+	secondIdentity := mustIdentity(t, secondClone)
 	if firstIdentity.RepoSlug != secondIdentity.RepoSlug {
 		t.Fatalf("repo slugs differ for one origin: %q vs %q", firstIdentity.RepoSlug, secondIdentity.RepoSlug)
 	}
@@ -184,7 +183,7 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 	firstKey := state.Key{Slug: firstIdentity.CheckoutSlug, Agent: "opencode"}
 	seedMatchingHomeState(t, firstKey)
 	firstMock := installPrepareSandboxMSBMock(t)
-	firstSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	firstSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in first clone: %v", err)
 	}
@@ -197,7 +196,7 @@ func TestPrepareSandboxUsesCheckoutSlugForStateAndRepoSlugForLabel(t *testing.T)
 	secondKey := state.Key{Slug: secondIdentity.CheckoutSlug, Agent: "opencode"}
 	seedMatchingHomeState(t, secondKey)
 	secondMock := installPrepareSandboxMSBMock(t)
-	secondSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	secondSession, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in second clone: %v", err)
 	}
@@ -248,8 +247,8 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	outside := filepath.Join(t.TempDir(), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", outside)
 
-	identity := git.ResolveIdentity(outside)
-	checkoutIdentity := git.ResolveIdentity(repo)
+	identity := mustIdentity(t, outside)
+	checkoutIdentity := mustIdentity(t, repo)
 	if !identity.OutsideWorktree {
 		t.Fatalf("expected %q to resolve as an outside worktree", outside)
 	}
@@ -270,7 +269,7 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	seedMatchingHomeState(t, key)
 	mock := installPrepareSandboxMSBMock(t)
 
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox in an outside worktree: %v", err)
 	}
@@ -298,14 +297,14 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	}
 }
 
-// TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending pins the
-// side-effect-free dry run: a pending migration prints the "would" notice and
-// the rest of the pipeline keeps the legacy repo slug, so no post-migration
-// artifact is presented as if the migration had run.
-func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) {
+// TestPrepareSandboxSkipVMKeepsLegacySlugWhileMigrationPending pins the
+// read-only prepare: with the VM skipped, a pending migration prints the "would"
+// notice and the rest of the pipeline keeps the legacy repo slug, so no
+// post-migration artifact is presented as if the migration had run.
+func TestPrepareSandboxSkipVMKeepsLegacySlugWhileMigrationPending(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	if identity.RepoSlug == identity.CheckoutSlug {
 		t.Fatalf("fixture must produce distinct repo/checkout slugs, both %q", identity.RepoSlug)
 	}
@@ -319,9 +318,9 @@ func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) 
 	t.Chdir(clone)
 	installPrepareSandboxMSBMock(t)
 
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", DryRun: true}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, true, &ui)
 	if err != nil {
-		t.Fatalf("PrepareSandbox (dry-run): %v", err)
+		t.Fatalf("PrepareSandbox (skip VM): %v", err)
 	}
 	defer session.Cleanup()
 
@@ -353,7 +352,7 @@ func TestPrepareSandboxDryRunKeepsLegacySlugWhileMigrationPending(t *testing.T) 
 func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 
 	legacyKey := state.Key{Slug: identity.RepoSlug, Agent: "opencode"}
 	checkoutKey := state.Key{Slug: identity.CheckoutSlug, Agent: "opencode"}
@@ -377,7 +376,7 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 	}
 
 	t.Chdir(clone)
-	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	session, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (migrate): %v", err)
 	}
@@ -407,7 +406,7 @@ func TestPrepareSandboxMigratesOnFirstRun(t *testing.T) {
 func TestPrepareSandboxAdoptionFailureReturnsError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	clone := newOriginClone(t)
-	identity := git.ResolveIdentity(clone)
+	identity := mustIdentity(t, clone)
 	t.Chdir(clone)
 	installPrepareSandboxMSBMock(t)
 
@@ -418,7 +417,7 @@ func TestPrepareSandboxAdoptionFailureReturnsError(t *testing.T) {
 	testutil.WriteFile(t, legacyDir, "state.yaml", `": [`)
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil ||
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil ||
 		!strings.Contains(err.Error(), "check for a pending legacy identity") {
 		t.Fatalf(
 			"PrepareSandbox with an unreadable legacy state: error = %v, want the fail-closed predicate error",

@@ -34,7 +34,7 @@ func TestPrepareSandboxImageError(t *testing.T) {
 	})
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected error when the opencode version cannot be resolved")
 	}
 }
@@ -46,7 +46,7 @@ func TestPrepareSandboxImageError(t *testing.T) {
 func TestPrepareSandboxVersionResolutionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.0.0", AgentSource: agentSourceTool},
 	)
 	origUpgradeInfo := agentLatestVersion
@@ -60,7 +60,7 @@ func TestPrepareSandboxVersionResolutionError(t *testing.T) {
 		},
 	}
 
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, ui); err == nil {
 		t.Fatal("expected error when the opencode version prompt fails")
 	}
 }
@@ -112,7 +112,7 @@ func TestPrepareSandboxReconfigDecisionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	k := state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"}
+	k := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
 	existing := existingProjectVMHandle(k)
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -147,7 +147,7 @@ func TestPrepareSandboxReconfigDecisionError(t *testing.T) {
 		return "q", nil
 	}
 
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected PrepareSandbox to fail when the rebuild prompt is quit")
 	}
 }
@@ -160,7 +160,7 @@ func TestPrepareSandboxReconfigApplyHomeActionError(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	k := state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"}
+	k := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
 	existing := existingProjectVMHandle(k)
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -194,7 +194,7 @@ func TestPrepareSandboxReconfigApplyHomeActionError(t *testing.T) {
 		return "", nil
 	}
 
-	_, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	_, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err == nil {
 		t.Fatal("expected PrepareSandbox to fail when the home-volume migrate fails")
 	}

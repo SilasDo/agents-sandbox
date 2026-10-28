@@ -9,6 +9,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/sandbox/pruning"
 	"github.com/inoio/agents-sandbox/internal/termio"
+	"github.com/inoio/agents-sandbox/internal/view"
 )
 
 // minimumCompactionLayers is the smallest layer count the runtime can merge.
@@ -43,7 +44,7 @@ func buildSandboxCompactCmd(ui termio.UI) *cobra.Command {
 			}
 			cliout.RenderPruneReport(ui, mode,
 				func() { pruning.RenderCompactReport(ui, report) },
-				cliout.NewCompactReportJSON(report))
+				view.NewCompactReportJSON(report))
 			return nil
 		},
 	}

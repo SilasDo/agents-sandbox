@@ -242,8 +242,8 @@ func TestNewConfigSetsUserDirs(t *testing.T) {
 	if cfg.UserConfigDir() != "/testhome/.config/agents-sandbox" {
 		t.Errorf("unexpected user config dir: %q", cfg.UserConfigDir())
 	}
-	if cfg.UserAgentConfigDir(a) != "/testhome/.config/agents-sandbox/opencode" {
-		t.Errorf("unexpected agent config dir: %q", cfg.UserAgentConfigDir(a))
+	if configpaths.MustDir(cfg.UserAgentConfigDir(a)) != "/testhome/.config/agents-sandbox/opencode" {
+		t.Errorf("unexpected agent config dir: %q", configpaths.MustDir(cfg.UserAgentConfigDir(a)))
 	}
 	if cfg.UserCacheDir() != "/testhome/.cache/agents-sandbox" {
 		t.Errorf("unexpected cache dir: %q", cfg.UserCacheDir())
@@ -264,8 +264,8 @@ func TestNewConfigHonorsXdgEnv(t *testing.T) {
 	if cfg.UserConfigDir() != "/xdg/config/agents-sandbox" {
 		t.Errorf("unexpected user config dir: %q", cfg.UserConfigDir())
 	}
-	if cfg.UserAgentConfigDir(a) != "/xdg/config/agents-sandbox/opencode" {
-		t.Errorf("unexpected agent config dir: %q", cfg.UserAgentConfigDir(a))
+	if configpaths.MustDir(cfg.UserAgentConfigDir(a)) != "/xdg/config/agents-sandbox/opencode" {
+		t.Errorf("unexpected agent config dir: %q", configpaths.MustDir(cfg.UserAgentConfigDir(a)))
 	}
 	if cfg.UserCacheDir() != "/xdg/cache/agents-sandbox" {
 		t.Errorf("unexpected cache dir: %q", cfg.UserCacheDir())

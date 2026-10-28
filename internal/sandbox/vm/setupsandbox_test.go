@@ -201,7 +201,7 @@ func setUpSandboxProvisionsConfig(t *testing.T, provisionMsg string) {
 	sb := &msb.MockSandbox{Name_: "test-vm", FSValue_: fs}
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	snippet := filepath.Join(cp.UserAgentConfigDir(opencodeAgent(t)), "opencode-x.json5")
+	snippet := filepath.Join(configpaths.MustDir(cp.UserAgentConfigDir(opencodeAgent(t))), "opencode-x.json5")
 	if err := os.MkdirAll(filepath.Dir(snippet), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -257,9 +257,10 @@ func TestRestartDaemonsRestartsServe(t *testing.T) {
 		&ui,
 	)
 
-	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
+	if len(*calls) != 1 {
 		t.Errorf("expected one opencode serve launch, got %+v", *calls)
 	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 }
 
 func TestSetUpSandboxRestartsDaemonsOnReuseDecision(t *testing.T) {
@@ -292,9 +293,10 @@ func TestSetUpSandboxRestartsDaemonsOnReuseDecision(t *testing.T) {
 	if target == "" {
 		t.Error("expected a resolved target")
 	}
-	if len(*calls) != 1 || (*calls)[0].Cmd != "opencode" {
+	if len(*calls) != 1 {
 		t.Errorf("expected opencode serve restart on restartDaemons=true, got %+v", *calls)
 	}
+	assertDetachedHelperLaunch(t, *calls, "agent-daemon", "opencode")
 }
 
 // TestSetUpSandboxSkipsRestartOnProvisionError verifies that when a daemon
@@ -368,7 +370,7 @@ func TestSetUpSandboxProvisionsUpdatedConfigOnKeep(t *testing.T) {
 
 	configpaths.WithMockConfigPaths(t)
 	cp := configpaths.Get()
-	snippet := filepath.Join(cp.UserAgentConfigDir(opencodeAgent(t)), "opencode-x.json5")
+	snippet := filepath.Join(configpaths.MustDir(cp.UserAgentConfigDir(opencodeAgent(t))), "opencode-x.json5")
 	if err := os.MkdirAll(filepath.Dir(snippet), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -16,15 +16,11 @@ import (
 // pending image upgrade.
 var errUpgradeQuit = errors.New("agent upgrade cancelled")
 
-// agentLatestVersion returns the newest release version for the agent via its
-// own UpgradeChecker.
-var agentLatestVersion = func(ctx context.Context, a agent.Agent) (string, error) {
-	checker, ok := agent.AsUpgradeChecker(a)
-	if !ok {
-		return "", nil
-	}
-	return checker.LatestVersion(ctx)
-}
+// agentLatestVersion resolves an agent's newest release for the upgrade check.
+// It is the same resolution the image build uses for a deferred version
+// (agent.LatestVersion), so a change to how a release is resolved lands in one
+// place; the alias keeps the lookup injectable, so no test hits the network.
+var agentLatestVersion = agent.LatestVersion
 
 // SetAgentLatestVersion replaces the agent-latest-version seam and returns the
 // previous value. Tests use it to keep the upgrade check off the network.
@@ -169,14 +165,15 @@ func promptUpgrade(ui termio.UI, a agent.Agent, current, latest string) (string,
 // per-project (HomeState), so the prompt never names another project's version.
 //
 // The two documents are written in two separate transactions, never nested: the
-// host-only root lock is held only for the network-check bookkeeping (see
-// checkAgentUpgrade), then released before the home transaction records the
-// offered mark. Within the home document, reading the offered set and appending
-// the new release happen in one transaction, so the offer is claimed atomically
-// and concurrent launches cannot both prompt. A held root lock (e.g. an
-// in-flight runtime-home copy campaign) defers the whole step to the next run
-// rather than racing it. An offline or failed check never fails the session and
-// leaves the once-per-day window open.
+// host-only root lock is taken only to read and to write the network-check
+// bookkeeping, never across the version request itself (see checkAgentUpgrade),
+// and is released before the home transaction records the offered mark. Within
+// the home document, reading the offered set and appending the new release happen
+// in one transaction, so the offer is claimed atomically and concurrent launches
+// cannot both prompt. A held root lock (e.g. an in-flight runtime-home copy
+// campaign) defers the whole step to the next run rather than racing it. An
+// offline or failed check never fails the session and leaves the once-per-day
+// window open.
 func pendingUpgrade(
 	ctx context.Context,
 	a agent.Agent,
@@ -228,63 +225,94 @@ func pendingUpgrade(
 	return latest, true
 }
 
-// checkAgentUpgrade runs the machine-global network check under the host-only
-// root transaction and returns this agent's cached check state. The bool is true
-// whenever the root lock was acquired and the state read succeeded — even for a
-// checker-less agent, in which case the returned state is the zero value (no
-// entry is ever persisted without a checker), so a caller must also consult
-// whether a checker exists (as pendingUpgrade does). The bool is false when the
-// check could not run — the lock was held, the root state was unreadable, or the
-// network check failed — and the caller must then defer the upgrade step. A
-// root-state write failure is warned and does not suppress the offer: the
-// freshly fetched version is still used this run.
+// checkAgentUpgrade runs the machine-global version check and returns this
+// agent's cached check state. The host-only root lock is never held across the
+// version request: the cached state is read under a non-blocking transaction to
+// decide whether the check is due, the lock is released for the request, and the
+// result is persisted under a second non-blocking transaction that re-checks
+// DueForCheck first, so two concurrent due checks persist at most one refresh.
+//
+// The bool is true whenever the cached state was read — even for a checker-less
+// agent, in which case the returned state is the zero value (no entry is ever
+// persisted without a checker), so a caller must also consult whether a checker
+// exists (as pendingUpgrade does). The bool is false when the check could not run
+// — the lock was held, the root state was unreadable, or the version request
+// failed — and the caller must then defer the upgrade step. A root-state write
+// failure is warned and does not suppress the offer: the freshly fetched version
+// is still used this run.
 func checkAgentUpgrade(
 	ctx context.Context,
 	a agent.Agent,
 	hasChecker bool,
 	ui termio.UI,
 ) (state.AgentCheckState, bool) {
-	var (
-		entry       state.AgentCheckState
-		checkFailed bool
-	)
+	entry, ok := readAgentCheck(a, ui)
+	if !ok {
+		return state.AgentCheckState{}, false
+	}
+	if !hasChecker || !entry.DueForCheck(now()) {
+		return entry, true
+	}
+
+	latest, latestErr := agentLatestVersion(ctx, a)
+	if latestErr != nil {
+		// Offline or unreachable: never fail the session, and leave the
+		// once-per-day window open so the next online run retries.
+		ui.Warnf("could not check for %s updates: %v", a.Name(), latestErr)
+		return state.AgentCheckState{}, false
+	}
+	// A successful check refreshes the once-per-day window regardless of whether
+	// an upgrade is available.
+	refreshed := state.AgentCheckState{LastChecked: now(), LatestVersion: latest}
+	return recordAgentCheck(a, refreshed, ui)
+}
+
+// readAgentCheck reads this agent's cached machine-global check state under a
+// non-blocking root transaction. The bool is false when the root lock is held or
+// the root state is unreadable, so the caller defers the step to the next run.
+func readAgentCheck(a agent.Agent, ui termio.UI) (state.AgentCheckState, bool) {
+	var entry state.AgentCheckState
 	ok, err := state.WithRootState(false, func(txn *state.RootTxn) error {
-		root := txn.State()
-		entry = root.AgentCheck(a.Name())
-		if !hasChecker || !entry.DueForCheck(now()) {
-			// Nothing to refresh: reuse the cached entry (if any). Not due, so no
-			// write and no need to checkpoint.
+		entry = txn.State().AgentCheck(a.Name())
+		return nil
+	})
+	if err != nil {
+		// An unreadable root state must never be overwritten: a zero-value
+		// rewrite would discard the migrations registry and every other agent's
+		// cached check.
+		ui.Warnf("could not read upgrade check state (root lock/read failed): %v (skipping check)", err)
+		return state.AgentCheckState{}, false
+	}
+	return entry, ok
+}
+
+// recordAgentCheck persists a refreshed check state under a non-blocking root
+// transaction, unless another process already refreshed the window while the
+// version request ran. In that case the write is skipped and the freshest cached
+// entry is returned, so concurrent due checks persist at most one refresh. A held
+// lock or unreadable state defers the step; a write failure is warned but the
+// freshly fetched entry is still returned, so the offer is not suppressed.
+func recordAgentCheck(a agent.Agent, refreshed state.AgentCheckState, ui termio.UI) (state.AgentCheckState, bool) {
+	entry := refreshed
+	ok, err := state.WithRootState(false, func(txn *state.RootTxn) error {
+		current := txn.State().AgentCheck(a.Name())
+		if !current.DueForCheck(now()) {
+			// Another process refreshed the window while the version request ran:
+			// keep its fresher entry and write nothing.
+			entry = current
 			return nil
 		}
-		latest, latestErr := agentLatestVersion(ctx, a)
-		if latestErr != nil {
-			// Offline or unreachable: never fail the session, and leave the
-			// once-per-day window open so the next online run retries.
-			ui.Warnf("could not check for %s updates: %v", a.Name(), latestErr)
-			checkFailed = true
-			return nil
-		}
-		// A successful check refreshes the once-per-day window regardless of
-		// whether an upgrade is available.
-		entry.LastChecked = now()
-		entry.LatestVersion = latest
-		root.SetAgentCheck(a.Name(), entry)
+		txn.State().SetAgentCheck(a.Name(), entry)
 		if commitErr := txn.Commit(); commitErr != nil {
 			ui.Warnf("could not persist upgrade check state: %v (continuing)", commitErr)
 		}
 		return nil
 	})
 	if err != nil {
-		// The error is either a lock-acquisition failure or an unreadable root
-		// state. Either way, never persist over it: a zero-value rewrite would
-		// discard the migrations registry and every other agent's cached check.
 		ui.Warnf("could not read upgrade check state (root lock/read failed): %v (skipping check)", err)
 		return state.AgentCheckState{}, false
 	}
-	if !ok || checkFailed {
-		return state.AgentCheckState{}, false
-	}
-	return entry, true
+	return entry, ok
 }
 
 // currentAgentVersion returns the agent version recorded for this project's

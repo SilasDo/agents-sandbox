@@ -1,5 +1,5 @@
 ---
-description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims, unparameterized clamp bounds, yaml.v3's partial decode, and map-iteration randomization), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, internal/sandbox/vm, internal/termio, and the turn-2 packages.
+description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims, unparameterized clamp bounds, yaml.v3's partial decode, map-iteration randomization, seam call-counting, a guard whose error is re-derived downstream, and a blocking-flock seam), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, internal/sandbox/vm, internal/termio, the turn-2 packages, and the #333 adoption-lock PR sweep.
 read_if: Triaging LIVED mutants from a `make mutation` sweep, or deciding whether to strengthen a test or record a `// gomutants:disable` reason.
 ---
 
@@ -176,6 +176,26 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `now.Add(time.Hour)` so `time.Since` is negative, and the fall-through returns true — that single subtest kills the
   `BRANCH_IF`, the `<=`→`<` boundary, and the `0`→`-1`/`0`→`1` decrement/increment. Only the downstream `<` vs `<=` on
   the final comparison (nanosecond equality, no injectable clock) still needs a record.
+- **Two calls to the same test seam need an invocation count, not a presence flag.** `adoptKeysLockedHook` fires once
+  before the destroy and again after the state move; a test that sets `probed = true` in the hook passes when either
+  call alone is removed, so the `BRANCH_IF` and `STATEMENT_REMOVE` at *both* sites stayed LIVED. Count the calls and
+  assert the exact number.
+- **A guard whose error is re-derived identically by the step it protects is unobservable until the guard adds its own
+  context.** `adoptLegacyIdentity`'s `if err != nil { return err }` after the lock-set derivation falls through, under
+  the mutant, into the migration that re-derives the same enumeration and fails with the same message — so a
+  message-only assertion still passes. Wrap the guard's error (`fmt.Errorf("derive adoption lock set: %w", err)`),
+  assert the wrapper's text to kill the `BRANCH_IF`, and assert `errors.Is` to the cause to kill the `ERRORF_WRAP`
+  (`%w`→`%v`) the wrapper itself introduces.
+- **Assert a mode literal through the injected seam, not by `os.Stat`.** `os.MkdirAll(dir, 0o700)` /
+  `OpenFile(…, 0o600)` mutate to `0o701`/`0o601`, which the process umask may or may not preserve (`0o701 &^ 0o022`
+  is `0o701`, but `&^ 0o077` is `0o700`). Replacing the `mkdir`/`open` seams with a recorder makes the argument
+  assertion deterministic and umask-free.
+- **A `blocking bool` flock seam's blocking branch is observable in-process.** Mutating `if blocking { return
+  hostlock.Exclusive(f) }` to fall through to the non-blocking call is invisible while the lock is free (both succeed)
+  and unreachable through the same-process registry (it fails before the flock), but a test that holds a raw flock on a
+  second open file description and calls the seam from a goroutine with `blocking=true` sees an immediate contention
+  error under the mutant and a block-then-success under the original. The "must not have returned" window costs
+  nothing and cannot be flaky: the correct code cannot return while the lock is held.
 
 ## Operational
 

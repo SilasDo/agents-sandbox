@@ -69,7 +69,7 @@ func TestPrepareSandboxLoadConfigFilesError(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{
 			HomeVolume:   "home-vol",
 			ImageDigest:  "sha256:abc123",
@@ -79,7 +79,7 @@ func TestPrepareSandboxLoadConfigFilesError(t *testing.T) {
 	)
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected error for a malformed home manifest")
 	}
 }

@@ -55,7 +55,7 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -87,7 +87,7 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{DryRunVM: true}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, true, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (dry-run-vm): %v", err)
 	}
@@ -113,7 +113,7 @@ func TestPrepareSandboxDryRunVMServeOnlyPublishesPort(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	stubPrepareSandboxImage(t)
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
@@ -137,8 +137,8 @@ func TestPrepareSandboxDryRunVMServeOnlyPublishesPort(t *testing.T) {
 	}
 
 	ui := termio.NewTestMock(t)
-	opts := options.RunOptions{Agent: "opencode", DryRunVM: true, ServeOnly: true}
-	sess, err := PrepareSandbox(context.Background(), opts, &ui)
+	opts := options.RunOptions{Agent: "opencode", ServeOnly: true}
+	sess, err := PrepareSandbox(context.Background(), opts, true, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (dry-run-vm, serve-only): %v", err)
 	}
@@ -185,7 +185,7 @@ func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -217,7 +217,7 @@ func TestPrepareSandboxDryRunVMLaunchSubdirectory(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{DryRunVM: true}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, true, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox (dry-run-vm, subdirectory): %v", err)
 	}
@@ -271,7 +271,7 @@ func TestPrepareSandboxVolumeError(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
 	)
 
@@ -284,7 +284,7 @@ func TestPrepareSandboxVolumeError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{DryRunVM: true}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, true, &ui); err == nil {
 		t.Fatal("expected error when the home volume cannot be created")
 	}
 }
@@ -316,7 +316,7 @@ func TestPrepareSandboxEnsureVMError(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	mock := &msb.MockMsbClient{
 		ImageGetFn: func(_ context.Context, _ string) error { return nil },
 		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
@@ -351,7 +351,7 @@ func TestPrepareSandboxEnsureVMError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected error when the VM lookup fails")
 	}
 }
@@ -383,7 +383,7 @@ func TestPrepareSandboxSetUpError(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellErr: errors.New("shell failed")}
 	sh := &msb.MockSandboxHandle{
@@ -423,7 +423,7 @@ func TestPrepareSandboxSetUpError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui); err == nil {
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui); err == nil {
 		t.Fatal("expected error when setUpSandbox fails")
 	}
 }

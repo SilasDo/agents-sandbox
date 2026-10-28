@@ -51,8 +51,11 @@ candidate references expands so an upgrade reimports nothing:
 3. The legacy prefixed Docker-tag ref `info.DockerTag` (`<DockerImagePrefix><slug>:<agent>-latest`): the reference a
    pre-0.6 install cached under.
 
-A candidate is reused only when its cached content matches (`cachedImageMatches`, digest-first with the `dockerfile-id`
-label fallback for a legacy image with no digest), never overridden by a label match alone. `EnsureLoaded` derives the
+A candidate is reused only when its cached content matches (`cachedImageMatches`): the microsandbox config digest must
+equal `info.Digest`. A cached image that records no digest is unknown content and is reloaded — the `dockerfile-id`
+label is a source signature, not a content identity, and must not stand in for the digest (a floating base tag can move
+the bytes under a matching label). Reloading is the deliberate cost: a load records a digest, so such an image matches
+on the next run instead. `EnsureLoaded` derives the
 name ref by parsing `info.DockerTag` for its `(slug, agent)` (the Docker tag still names them), since it cannot derive it
 from `Ref` once that is content-addressed; no new `ImageInfo` field is needed.
 
@@ -85,7 +88,9 @@ digest is unchanged — the recreate the spec's migration clause forbids.
 The parsed `Slug`/`Agent` are what ownership and liveness key on, so `image.ListImages` (foreign-image exclusion),
 `image.RemoveImages`/`refuseNonRunnerRefs`, `naming.SandboxIdentity`, and `pruning` keep resolving content refs to the
 same `state.Key{Slug, Agent}` without a `ContentID` term. Ownership stays positional in the private runtime home; a
-content ref is a runner image exactly when it parses to a single-segment slug.
+content ref is a runner image exactly when its parsed slug embeds the launcher's 14-character slug hash
+(`naming.IsRunnerImageRef`), the predicate `image/list.go`, `image/remove.go` and `pruning/images.go` all apply
+(#350, #383).
 
 `state.ImageReferences` keeps protecting the project's legacy refs (the prefix-free name ref and the prefixed Docker-tag
 ref). It need not enumerate every content ref: the in-use guard unions it with the live-sandbox scan
@@ -119,8 +124,9 @@ does not end in `-latest`, and ownership already implies the per-agent tag. This
   bytes differ (base tag move + `--rebuild`); keying the cache on it would silently reuse the wrong content.
 - `ImageInfo.DockerTag` remains the stable Docker tag; only `ImageInfo.Ref` is content-addressed.
 - Ownership/liveness resolve from `(slug, agent)` alone; `ContentID` never participates in a `state.Key`.
-- No legacy msb image is reimported by this change: the name ref and the prefixed ref are still reused when their content
-  matches.
+- No legacy msb image with a recorded digest is reimported by this change: the name ref and the prefixed ref are still
+  reused when their content matches. An image that records no digest is reloaded once (a load records a digest), because
+  a missing digest is unknown content and the source-signature label cannot vouch for it.
 
 ## Non-goals / limitations
 

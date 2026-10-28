@@ -19,7 +19,8 @@ network-reachable, any opencode client — including Opencode Desktop — can at
 to the same VM, so Desktop connects to the sandbox with no extra plumbing.
 `run --serve-only` (or `-s`) starts the project VM with the opencode port
 published on the host, prints the URL for Opencode Desktop, and stays running
-(no in-VM TUI) until you press `Ctrl-D`:
+(no in-VM TUI) until you press `Ctrl-D` (or send `SIGINT`/`SIGTERM` when stdin
+is not a terminal, such as in a script or background job):
 
 ```console
 agents-sandbox run --serve-only

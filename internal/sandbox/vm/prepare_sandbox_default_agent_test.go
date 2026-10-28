@@ -41,7 +41,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 	detached := &[]msb.MockDetachedCall{}
 	created.ExecDetachedCalls = detached
-	seedMatchingHomeState(t, state.Key{Slug: git.CheckoutSlug(), Agent: agent.DefaultAgentName})
+	seedMatchingHomeState(t, state.Key{Slug: git.MustCheckoutSlug(), Agent: agent.DefaultAgentName})
 
 	// The first probe reports not-ready so the run takes the start-then-poll
 	// path, exercising both the start and health commands; later probes report
@@ -63,7 +63,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox(default %q): %v", agent.DefaultAgentName, err)
 	}
@@ -72,13 +72,7 @@ func TestPrepareSandboxRunsDefaultAgentDaemon(t *testing.T) {
 	}
 	defer sess.Cleanup()
 
-	if want := provider.DaemonCommand(false).Binary; len(*detached) == 0 || (*detached)[0].Cmd != want {
-		t.Errorf(
-			"default agent %q daemon was not started as a detached job; calls = %v",
-			agent.DefaultAgentName,
-			*detached,
-		)
-	}
+	assertDetachedHelperLaunch(t, *detached, "agent-daemon", provider.DaemonCommand(false).Binary)
 	if !slices.Contains(commands, provider.DaemonHealthCmd()) {
 		t.Errorf("default agent %q daemon health was not probed; commands = %v", agent.DefaultAgentName, commands)
 	}

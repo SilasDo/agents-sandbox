@@ -68,9 +68,11 @@ func ensureDaemon(
 
 	command := provider.DaemonCommand(serveOnly)
 	ui.Verbosef("starting %s serve daemon", a.Name())
-	killJobsByCommand(ctx, sb, command.Binary, command.Args, ui)
+	helper := agentDaemonHelper(command.Binary)
+	killJobs(ctx, sb, helper, ui)
 
-	job, startErr := sb.ExecDetached(ctx, command.Binary, command.Args)
+	binary, args := helper.markedCommand(command.Args)
+	job, startErr := sb.ExecDetached(ctx, binary, args)
 	if startErr != nil {
 		return fmt.Errorf("start %s serve: %w", a.Name(), startErr)
 	}

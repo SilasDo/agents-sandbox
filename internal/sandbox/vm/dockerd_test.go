@@ -179,17 +179,16 @@ func TestStartDockerdIfPresentProbesBeforeWaiting(t *testing.T) {
 	}
 }
 
-func TestStartDockerdIfPresentKillsStaleJob(t *testing.T) {
+func TestStartDockerdIfPresentKillsStaleJobWithChangedArgs(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	stale := &msb.MockJob{ID_: "stale-dockerd"}
 	running := &msb.MockJob{ID_: "new-dockerd"}
 	sb := newCountingSandbox(1)
-	args, err := dockerdArgs(context.Background(), sb)
-	if err != nil {
-		t.Fatalf("dockerdArgs: %v", err)
-	}
+	// The stale job was launched by a release whose dockerd arguments differ
+	// from this one's (no storage-driver flag), which is exactly the case the
+	// old binary+args matcher missed (#343).
 	sb.Jobs = []msbSdk.JobInfo{
-		{ID: "stale-dockerd", Command: append([]string{dockerdBinary}, args...)},
+		{ID: "stale-dockerd", Command: []string{dockerdBinary, "-H", "unix:///var/run/docker.sock"}},
 	}
 	sb.GetJobFn = func(context.Context, string) (msb.Job, error) { return stale, nil }
 	sb.Job_ = running
@@ -200,6 +199,21 @@ func TestStartDockerdIfPresentKillsStaleJob(t *testing.T) {
 	if !stale.DidKill {
 		t.Error("stale dockerd job was not killed before restart")
 	}
+}
+
+// TestStartDockerdIfPresentLaunchesMarkedJob pins the launch shape: the job is
+// started under dockerd's identity marker, so a later release can target it
+// whatever arguments it uses.
+func TestStartDockerdIfPresentLaunchesMarkedJob(t *testing.T) {
+	ui := termio.NewTestMock(t)
+	sb := newCountingSandbox(1)
+	calls := &[]msb.MockDetachedCall{}
+	sb.ExecDetachedCalls = calls
+
+	if err := startDockerdIfPresent(context.Background(), sb, &ui); err != nil {
+		t.Fatalf("startDockerdIfPresent: %v", err)
+	}
+	assertDetachedHelperLaunch(t, *calls, "dockerd", dockerdBinary)
 }
 
 func TestStartDockerdIfPresentContinuesAfterCleanupError(t *testing.T) {

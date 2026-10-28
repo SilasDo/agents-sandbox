@@ -62,7 +62,7 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -104,7 +104,7 @@ func TestPrepareSandboxReusesStoredOpenCodeVersion(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -151,7 +151,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -192,7 +192,7 @@ func TestPrepareSandboxUpgradeRebuildsImage(t *testing.T) {
 	})
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 
 	// The msb image cache already holds the digest image (ImageGet succeeds),
 	// so EnsureImage short-circuits before exporting/loading anything. The
@@ -296,7 +296,7 @@ func TestPrepareSandboxLoadsHomeYamlOnce(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -354,7 +354,7 @@ func TestPrepareSandboxRunsStartupHook(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -397,7 +397,7 @@ func TestPrepareSandboxRunsStartupHook(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -489,7 +489,7 @@ func TestPrepareSandboxInvokesRuntimeHomeMigrationOffer(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -540,7 +540,7 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 	msb.WithMsbMock(t, mock)
 
 	seedHomeState(
-		state.Key{Slug: git.CheckoutSlug(), Agent: "opencode"},
+		state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"},
 		state.HomeState{AgentVersion: "1.5.0", AgentSource: agentSourceTool},
 	)
 
@@ -554,6 +554,7 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 	if _, err := PrepareSandbox(
 		context.Background(),
 		options.RunOptions{Agent: "opencode"},
+		false,
 		&ui,
 	); !errors.Is(
 		err,
@@ -595,7 +596,7 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	connectSb := &msb.MockSandbox{Name_: "vm", FSValue_: vmFS, ShellOut: map[string]msb.ShellResult{
 		dockerdBinaryCheckCmd: msb.NewTestResult(false, 1, "", "", nil),
@@ -652,7 +653,7 @@ func TestPrepareSandboxRuntimeHomeMigrationStateErrorIsNonFatal(t *testing.T) {
 		return "", nil
 	}
 
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox() error = %v, want success despite a corrupt root state", err)
 	}
@@ -752,7 +753,7 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	createdSb := &msb.MockSandbox{
 		Name_:    projectVMName(state.Key{Slug: slug, Agent: "opencode"}),
@@ -791,7 +792,7 @@ func TestPrepareSandboxPersistsMountFingerprintOnVMCreation(t *testing.T) {
 		"/home/dev/.m2": {Source: filepath.Join(t.TempDir(), "m2")},
 	}
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", Mounts: mnts}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode", Mounts: mnts}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -843,7 +844,7 @@ func TestPrepareSandboxRecordsBakedAgentVersion(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	vmFS := msb.NewTestFS(nil, nil)
 	createdSb := &msb.MockSandbox{
 		Name_:    projectVMName(state.Key{Slug: slug, Agent: "opencode"}),
@@ -874,7 +875,7 @@ func TestPrepareSandboxRecordsBakedAgentVersion(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, &ui)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "opencode"}, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}
@@ -917,7 +918,7 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 		},
 	})
 
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 	k := state.Key{Slug: slug, Agent: "opencode"}
 
 	// The existing VM's persisted mounts carry the previous tmp size. Its image
@@ -979,7 +980,7 @@ func TestPrepareSandboxRecreatesVMOnLiveMountChange(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	sess, err := PrepareSandbox(context.Background(), opts, &ui)
+	sess, err := PrepareSandbox(context.Background(), opts, false, &ui)
 	if err != nil {
 		t.Fatalf("PrepareSandbox: %v", err)
 	}

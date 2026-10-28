@@ -22,7 +22,7 @@ import (
 )
 
 // upgradeCheckerAgent implements both the core Agent interface and the
-// UpgradeChecker capability so agentLatestVersion's real closure reaches its
+// UpgradeChecker capability so the shared release resolver reaches its
 // LatestVersion call without touching the network.
 type upgradeCheckerAgent struct{}
 
@@ -34,8 +34,8 @@ func (upgradeCheckerAgent) ImageSpec() agent.ImageSpec {
 func (upgradeCheckerAgent) LatestVersion(context.Context) (string, error) { return "9.9.9", nil }
 func (upgradeCheckerAgent) NewerThan(_, _ string) (bool, error)           { return true, nil }
 
-// TestAgentLatestVersionCheckerAgent covers the real agentLatestVersion closure
-// branch where the agent is an UpgradeChecker: it returns the checker's latest
+// TestAgentLatestVersionCheckerAgent covers the real agentLatestVersion branch
+// where the agent is an UpgradeChecker: it returns the checker's latest
 // version.
 func TestAgentLatestVersionCheckerAgent(t *testing.T) {
 	got, err := agentLatestVersion(context.Background(), upgradeCheckerAgent{})
@@ -106,7 +106,7 @@ func TestResolveReconfigDecisionConfigErrorPromptsAttachedClients(t *testing.T) 
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 
 	release, err := state.AcquireClientLease(state.Key{Slug: slug, Agent: "opencode"})
 	if err != nil {
@@ -249,7 +249,7 @@ func TestResolveReconfigDecisionQuitAtRecreatePrompt(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	tmpRepo := testutil.InitRepo(t)
 	t.Chdir(tmpRepo)
-	slug := git.CheckoutSlug()
+	slug := git.MustCheckoutSlug()
 
 	release, err := state.AcquireClientLease(state.Key{Slug: slug, Agent: "opencode"})
 	if err != nil {
@@ -342,7 +342,7 @@ func TestApplyReconfigHomeActionError(t *testing.T) {
 		state.Key{Slug: "testproj", Agent: "opencode"},
 		"vol",
 		image.ImageInfo{DockerTag: "img:new", Ref: "img:new", Digest: "sha256:new"},
-		options.RunOptions{Agent: "opencode"},
+		false,
 		decision,
 		ui,
 	)

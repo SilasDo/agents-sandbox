@@ -413,13 +413,11 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 	}
 }
 
-// TestAgentLatestVersionDefaultClosureNoChecker covers the default
-// agentLatestVersion closure branch for an agent that is not an UpgradeChecker:
-// it returns an empty version without error.
-func TestAgentLatestVersionDefaultClosureNoChecker(t *testing.T) {
-	orig := agentLatestVersion
-	defer func() { agentLatestVersion = orig }()
-	got, err := orig(context.Background(), &fakeAgent{})
+// TestAgentLatestVersionDefaultNoChecker covers the default agentLatestVersion
+// branch for an agent that is not an UpgradeChecker: it returns an empty version
+// without error.
+func TestAgentLatestVersionDefaultNoChecker(t *testing.T) {
+	got, err := agentLatestVersion(context.Background(), &fakeAgent{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -435,7 +433,12 @@ func TestPrepareSandboxUnknownAgent(t *testing.T) {
 	t.Chdir(tmpRepo)
 	ui := termio.NewTestMock(t)
 
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{Agent: "no-such-agent"}, &ui); err == nil {
+	if _, err := PrepareSandbox(
+		context.Background(),
+		options.RunOptions{Agent: "no-such-agent"},
+		false,
+		&ui,
+	); err == nil {
 		t.Fatal("expected error for an unknown agent")
 	}
 }

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"gopkg.in/yaml.v3"
+	"go.yaml.in/yaml/v3"
 )
 
 // FuzzParseState drives arbitrary bytes through both persisted-state parsers:
