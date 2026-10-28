@@ -317,6 +317,31 @@ worktree_commit_age() {
   [[ -n "$committed" ]] || committed="$NOW"
   printf '%s' "$((NOW - committed))"
 }
+worktree_creation_age() {
+  local path="$1" oldest birth
+  # The oldest HEAD reflog entry is the worktree's creation checkout.
+  oldest="$(git -C "$path" reflog show --date=unix HEAD 2>/dev/null | tail -1 || true)"
+  if [[ "$oldest" =~ HEAD@\{([0-9]+)\} ]]; then
+    printf '%s' "$((NOW - BASH_REMATCH[1]))"
+    return 0
+  fi
+  birth="$(stat -c %W "$path" 2>/dev/null || true)"
+  [[ "$birth" =~ ^[0-9]+$ ]] || birth="$(stat -f %B "$path" 2>/dev/null || true)"
+  if [[ "$birth" =~ ^[0-9]+$ ]] && ((birth > 0)); then
+    printf '%s' "$((NOW - birth))"
+    return 0
+  fi
+  # Unknown creation time: fall back to the tip's age to stay conservative.
+  worktree_commit_age "$path"
+}
+worktree_is_fresh_session() {
+  local path="$1" branch="$2"
+  # A: tip is the local default branch or newer.
+  git merge-base --is-ancestor "$local_default" "$branch" 2>/dev/null && return 0
+  # B: created within the fresh window.
+  ((fresh_after_seconds > 0)) || return 1
+  (($(worktree_creation_age "$path") < fresh_after_seconds))
+}
 older_than_allows() { ((older_than_seconds == 0 || $1 >= older_than_seconds)); }
 is_stale() { (($1 >= stale_after_seconds)); }
 
@@ -374,6 +399,8 @@ current_worktree="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$P
 current_worktree="$(cd "$current_worktree" && pwd -P)"
 current_branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
 
+local_default="${default_ref#origin/}"
+
 # --- plan: worktrees --------------------------------------------------------
 
 plan_wt_path=()
@@ -410,6 +437,8 @@ for i in "${!worktree_path[@]}"; do
       note="unmerged"
     elif is_excluded "$branch"; then
       note="excluded (merged)"
+    elif [[ "$method" == ancestry ]] && worktree_is_fresh_session "$path" "$branch"; then
+      note="fresh session; kept"
     elif ! older_than_allows "$age"; then
       note="younger than --older-than (merged)"
     elif [[ -n "$(git -C "$path" status --porcelain)" ]] && ! $force; then
@@ -449,7 +478,6 @@ rem_lb_name=()
 rem_lb_age=()
 rem_lb_stale=()
 rem_lb_note=()
-local_default="${default_ref#origin/}"
 
 while IFS= read -r branch; do
   [[ -n "$branch" ]] || continue
