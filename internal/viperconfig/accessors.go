@@ -29,6 +29,10 @@ func (c Config) IdleTimeout() time.Duration {
 	return 10 * time.Second
 }
 
+// DockerExplicit reports whether the config's docker value came from an
+// explicit source, so it overrides any project-Dockerfile content signal.
+func (c Config) DockerExplicit() bool { return c.dockerExplicit }
+
 func (r *Resolver) Yes() bool { return r.cfg.Yes }
 
 func (r *Resolver) Quiet() bool { return r.cfg.Quiet }
@@ -38,6 +42,11 @@ func (r *Resolver) LogLevel() string { return r.cfg.LogLevel }
 func (r *Resolver) Agent() string { return r.cfg.Agent }
 
 func (r *Resolver) Docker() bool { return r.cfg.Docker }
+
+// DockerExplicit reports whether the resolved docker value came from an
+// explicit source (config key, --docker/--dind flag, or AGENTS_SANDBOX_DOCKER/
+// _DIND env), so it overrides any project-Dockerfile content signal.
+func (r *Resolver) DockerExplicit() bool { return r.cfg.dockerExplicit }
 
 func (r *Resolver) ProvisionHostConfig() bool { return r.cfg.ProvisionHostConfig }
 

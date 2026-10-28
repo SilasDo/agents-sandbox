@@ -1088,19 +1088,19 @@ func TestBuildPropagatesConfigResourceLimits(t *testing.T) {
 	}
 }
 
-// applyDeprecatedDindFlag tolerates a command that never registered --dind.
+// resolveDockerSetting tolerates a command that never registered --dind.
 func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
 	opts := options.RunOptions{}
 
-	applyDeprecatedDindFlag(&cobra.Command{Use: "run"}, &opts)
+	resolveDockerSetting(&cobra.Command{Use: "run"}, nil, &opts)
 
 	if opts.Docker.Enabled {
 		t.Error("Docker.Enabled = true; want the missing --dind flag to be ignored")
 	}
 }
 
-// applyDeprecatedDindFlag tolerates a command that registered --dind but not
-// the canonical --docker flag.
+// resolveDockerSetting tolerates a command that registered --dind but not the
+// canonical --docker flag.
 func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "run"}
 	cmd.Flags().Bool("dind", false, "")
@@ -1109,10 +1109,24 @@ func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
 	}
 	opts := options.RunOptions{}
 
-	applyDeprecatedDindFlag(cmd, &opts)
+	resolveDockerSetting(cmd, nil, &opts)
 
 	if !opts.Docker.Enabled {
 		t.Error("Docker.Enabled = false; want true from the deprecated --dind flag")
+	}
+}
+
+func TestBuildDockerSettingFromFlagsWithoutConfig(t *testing.T) {
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("docker", "true"); err != nil {
+		t.Fatal(err)
+	}
+	opts, err := Build(nil, cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if !opts.Docker.Enabled || !opts.Docker.Explicit {
+		t.Errorf("got %+v, want enabled and explicit from --docker with nil config", opts.Docker)
 	}
 }
 

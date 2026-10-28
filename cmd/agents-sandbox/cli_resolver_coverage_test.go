@@ -42,34 +42,36 @@ func TestResolveConfigAgentNameResolverEmptyAgent(t *testing.T) {
 	}
 }
 
-func TestResolveBuildDockerDefault(t *testing.T) {
+func TestResolveBuildDockerSettingDefault(t *testing.T) {
 	cmd := buildDockerfileCmd(&termio.Mock{})
-	if resolveBuildDocker(cmd).Enabled {
-		t.Error("resolveBuildDocker = true, want false (no flag, no resolver)")
+	if resolveBuildDockerSetting(cmd).Enabled {
+		t.Error("resolveBuildDockerSetting = true, want false (no flag, no resolver)")
 	}
 }
 
-func TestResolveBuildDockerFlag(t *testing.T) {
+func TestResolveBuildDockerSettingFlag(t *testing.T) {
 	cmd := buildDockerfileCmd(&termio.Mock{})
 	if err := cmd.Flags().Set(flagDocker, "true"); err != nil {
 		t.Fatalf("set docker: %v", err)
 	}
-	if !resolveBuildDocker(cmd).Enabled {
-		t.Error("resolveBuildDocker = false, want true (flag set)")
+	got := resolveBuildDockerSetting(cmd)
+	if !got.Enabled || !got.Explicit {
+		t.Errorf("resolveBuildDockerSetting = %+v, want enabled and explicit (flag set)", got)
 	}
 }
 
-func TestResolveBuildDeprecatedDindFlag(t *testing.T) {
+func TestResolveBuildDeprecatedDindFlagSetting(t *testing.T) {
 	cmd := buildDockerfileCmd(&termio.Mock{})
 	if err := cmd.Flags().Set(flagDind, "true"); err != nil {
 		t.Fatalf("set dind: %v", err)
 	}
-	if !resolveBuildDocker(cmd).Enabled {
-		t.Error("resolveBuildDocker = false, want true (deprecated --dind flag set)")
+	got := resolveBuildDockerSetting(cmd)
+	if !got.Enabled || !got.Explicit {
+		t.Errorf("resolveBuildDockerSetting = %+v, want enabled and explicit (deprecated --dind set)", got)
 	}
 }
 
-func TestResolveBuildDockerFlagWinsOverDind(t *testing.T) {
+func TestResolveBuildDockerSettingFlagWinsOverDind(t *testing.T) {
 	cmd := buildDockerfileCmd(&termio.Mock{})
 	if err := cmd.Flags().Set(flagDind, "true"); err != nil {
 		t.Fatalf("set dind: %v", err)
@@ -77,19 +79,19 @@ func TestResolveBuildDockerFlagWinsOverDind(t *testing.T) {
 	if err := cmd.Flags().Set(flagDocker, "false"); err != nil {
 		t.Fatalf("set docker: %v", err)
 	}
-	if resolveBuildDocker(cmd).Enabled {
-		t.Error("resolveBuildDocker = true, want --docker to win over --dind")
+	if resolveBuildDockerSetting(cmd).Enabled {
+		t.Error("resolveBuildDockerSetting = true, want --docker to win over --dind")
 	}
 }
 
-func TestResolveBuildDockerFromResolver(t *testing.T) {
+func TestResolveBuildDockerSettingFromResolver(t *testing.T) {
 	ui := &termio.Mock{}
 	cmd := buildDockerfileCmd(ui)
 	ctx := context.WithValue(context.Background(), (*launcherConfigKey)(nil),
 		launcherconfig.NewResolverWithConfig(launcherconfig.Config{Docker: true}))
 	cmd.SetContext(ctx)
-	if !resolveBuildDocker(cmd).Enabled {
-		t.Error("resolveBuildDocker = false, want true (from resolver)")
+	if !resolveBuildDockerSetting(cmd).Enabled {
+		t.Error("resolveBuildDockerSetting = false, want true (from resolver)")
 	}
 }
 

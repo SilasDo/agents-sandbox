@@ -85,7 +85,6 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.WorkspaceQuota = cfg.WorkspaceQuota
 		opts.ReapPolicy = options.NewReapPolicy(cfg.AutoStopOnActiveSessions, cfg.AutoStopMaxSessionRetries)
 		opts.IdleTimeout = cfg.IdleTimeout()
-		opts.Docker = options.DockerSetting{Enabled: cfg.Docker, Explicit: false}
 		opts.Mounts, err = mounts.ResolveBindMounts(cfg.Mounts)
 		if err != nil {
 			return options.RunOptions{}, err
@@ -97,7 +96,7 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.OpenLinks, _ = cmd.Flags().GetBool(FlagOpenLinks)
 	}
 
-	applyDeprecatedDindFlag(cmd, &opts)
+	resolveDockerSetting(cmd, cfg, &opts)
 
 	if err := resolveNetwork(cfg, cmd, &opts); err != nil {
 		return options.RunOptions{}, err
@@ -110,20 +109,24 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 	return opts, nil
 }
 
-// applyDeprecatedDindFlag folds the deprecated --dind flag into opts.Docker.
-// The canonical --docker flag wins when both are set. The deprecated flag is
-// not bound to viper, so it is resolved here. Cobra emits the deprecation
-// warning for the flag itself.
-func applyDeprecatedDindFlag(cmd *cobra.Command, opts *options.RunOptions) {
-	dindFlag := cmd.Flags().Lookup(viperconfig.KeyDind)
-	if dindFlag == nil || !dindFlag.Changed {
+// resolveDockerSetting resolves the docker capability with precedence
+// flag > env/config. A changed --docker or --dind is explicit; otherwise the
+// resolver's value and explicitness are used. A nil config leaves the flag
+// result (or zero) in place, so --docker is not dropped in flag-only runs.
+func resolveDockerSetting(cmd *cobra.Command, cfg *viperconfig.Config, opts *options.RunOptions) {
+	if flag := cmd.Flags().Lookup(viperconfig.KeyDocker); flag != nil && flag.Changed {
+		v, _ := cmd.Flags().GetBool(viperconfig.KeyDocker)
+		opts.Docker = options.DockerSetting{Enabled: v, Explicit: true}
 		return
 	}
-	if dockerFlag := cmd.Flags().Lookup(viperconfig.KeyDocker); dockerFlag != nil && dockerFlag.Changed {
+	if flag := cmd.Flags().Lookup(viperconfig.KeyDind); flag != nil && flag.Changed {
+		v, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
+		opts.Docker = options.DockerSetting{Enabled: v, Explicit: true}
 		return
 	}
-	dind, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
-	opts.Docker = options.DockerSetting{Enabled: dind, Explicit: false}
+	if cfg != nil {
+		opts.Docker = options.DockerSetting{Enabled: cfg.Docker, Explicit: cfg.DockerExplicit()}
+	}
 }
 
 // resolveFlags reads the direct-run flags off the command and returns the

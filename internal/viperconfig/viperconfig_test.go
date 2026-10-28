@@ -959,6 +959,59 @@ func TestDockerExplicitFromFlag(t *testing.T) {
 	}
 }
 
+func writeUserConfig(t *testing.T, values map[string]any) {
+	t.Helper()
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", values)
+}
+
+func TestDockerExplicit(t *testing.T) {
+	t.Run("canonical config key", func(t *testing.T) {
+		writeUserConfig(t, map[string]any{"docker": false})
+		r, err := NewResolver(nil, "")
+		if err != nil {
+			t.Fatalf("NewResolver: %v", err)
+		}
+		if !r.DockerExplicit() {
+			t.Error("docker key present must be explicit")
+		}
+		if r.Docker() {
+			t.Error("docker key false must resolve off")
+		}
+	})
+	t.Run("dind config key", func(t *testing.T) {
+		writeUserConfig(t, map[string]any{"dind": false})
+		r, err := NewResolver(nil, "")
+		if err != nil {
+			t.Fatalf("NewResolver: %v", err)
+		}
+		if !r.DockerExplicit() {
+			t.Error("dind key present must be explicit")
+		}
+	})
+	t.Run("nothing set", func(t *testing.T) {
+		configpaths.WithMockConfigPaths(t)
+		r, err := NewResolver(nil, "")
+		if err != nil {
+			t.Fatalf("NewResolver: %v", err)
+		}
+		if r.DockerExplicit() {
+			t.Error("no docker source must not be explicit")
+		}
+	})
+	t.Run("dind env", func(t *testing.T) {
+		configpaths.WithMockConfigPaths(t)
+		t.Setenv("AGENTS_SANDBOX_DIND", "true")
+		r, err := NewResolver(nil, "")
+		if err != nil {
+			t.Fatalf("NewResolver: %v", err)
+		}
+		if !r.DockerExplicit() {
+			t.Error("AGENTS_SANDBOX_DIND must be explicit")
+		}
+	})
+}
+
 // TestDindFromEnvAlias verifies AGENTS_SANDBOX_DIND enables docker and is
 // reported as the deprecated source.
 func TestDindFromEnvAlias(t *testing.T) {
