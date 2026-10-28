@@ -1,6 +1,6 @@
 ---
 description: Contract for how the per-project runner Dockerfile is composed into per-tool multistage stages so tool-owned layers (apt tools, node, agent, docker) cache independently of the user body, the base, and each other; includes when the node stage is emitted (agent node dependency), the native vs npm agent install methods, and the `dind` → `docker` rename with deprecated aliases.
-read_if: Changing RenderDockerfile/stage composition, image layer caching, which agents need node, agent install methods (native installer vs npm), the dind/docker switch or marker, custom-base handling, the node pin/libatomic dependency (node-removal direction), tool install paths (/opt/agents-sandbox), login-shell PATH handling (AGENTS_SANDBOX_IMAGE_PATH, the /etc/profile.d merge script), or the dockerd vfs storage driver.
+read_if: Changing RenderDockerfile/stage composition, image layer caching, which agents need node, agent install methods (native installer vs npm), the dind/docker switch or marker, the Dockerfile-content docker enablement and its explicit-config precedence, the unified dockerfile diagnostics, custom-base handling, the node pin/libatomic dependency (node-removal direction), tool install paths (/opt/agents-sandbox), login-shell PATH handling (AGENTS_SANDBOX_IMAGE_PATH, the /etc/profile.d merge script), or the dockerd vfs storage driver.
 ---
 
 # Runner image composition and tool-layer caching
@@ -135,11 +135,37 @@ into that tree and overwrites any same-named file a base placed inside it, which
 
 ## Docker marker
 
-The heavy docker install lives in the `agents-sandbox-docker` stage. A `# agents-sandbox:docker` marker in the final-stage
-body injects only a thin `COPY --from=agents-sandbox-docker` plus adopt step, so steps after the marker see `docker`;
-without a marker that copy+adopt is appended after the body, matching the previous default. The legacy
-`# agents-sandbox:dind` marker is still recognized. The marker retains its documented purpose (place post-engine steps
-correctly) while the download itself stays cacheable.
+The heavy docker install lives in the `agents-sandbox-docker` stage. The final-stage `# agents-sandbox:docker` marker
+(and the legacy `# agents-sandbox:dind`) inject a thin `COPY --from=agents-sandbox-docker` plus adopt step at the marker,
+so steps after it see `docker`; without a marker that copy+adopt is appended after the body, matching the previous
+default. The download itself stays cacheable.
+
+The marker is also an **enable** signal, not only a position. `effectiveDocker(projectDockerfile, DockerSetting)` is the
+single decision site: the capability is on when the final-stage body carries either marker **or** the final stage's base
+resolves to the managed `runner-base-docker`/`runner-base-dind` alias (`referencesImage`). Both content signals work for
+a custom base and a managed base alike. Only the final-stage body is scanned, so a marker in an earlier stage neither
+enables nor positions.
+
+**Precedence.** Explicit launcher config wins in both directions:
+`explicit config/flag/env (either value) > Dockerfile content > off`. "Explicit" is the canonical `docker` source (config
+key present, `--docker` changed, `AGENTS_SANDBOX_DOCKER` non-empty) **or** any deprecated `dind` source present (`dind`
+config key, `--dind` changed, `AGENTS_SANDBOX_DIND` non-empty), including a present-but-`false` value, so a project
+configured `dind: false` suppresses a content signal rather than having it re-enabled by a marker. This is a deliberate
+inversion of the earlier OR: a `runner-base-docker` base no longer beats an explicit `docker: false`.
+
+**Case.** Enablement is case-sensitive (`dockerMarkerKind` matches the exact token); near-miss detection is deliberately
+case-insensitive (`nearMissDockerMarker`) so a case variant is still surfaced and told the exact spelling. Typos inside
+the token (`dockr`) are not caught.
+
+**Diagnostics.** One pure classifier and one emitter, both in `internal/sandbox/image`
+(`DiagnoseDockerfile`/`DockerfileDiagnostics` and `EmitDockerfileDiagnostics`), serve every emission site:
+`EnsureImageWithClient` (every ensure, cached reuse included), the dry-run preview, and `build dockerfile` (through
+`EmitProjectDockerfileDiagnostics`, which reads the file before diagnosing). Messages are the capability line
+(`docker: on (project Dockerfile marker)` / `docker: on (project Dockerfile base)`) or the suppression notice
+(`docker: off (config); project Dockerfile asks for docker`); the legacy base and marker deprecation warnings; exactly
+one ignored-marker message per earlier-stage marker, which replaces that line's deprecation warning; and one near-miss
+message per offending line. `build dockerfile` writes every message to stderr, keeping stdout a pasteable Dockerfile.
+`RenderDockerfile` stays pure.
 
 The docker **runtime** prerequisite check (`iptables git ps xz`) lives in the adoption block in the final stage, not in
 the install stage. The install stage runs on the tool base, which carries `curl` and `tar`, so the download imposes no
@@ -169,8 +195,8 @@ The provenance file `docker-source` already uses this token.
 
 Deprecated aliases stay accepted at lower precedence with a one-time warning, mirroring the `OPENCODE_SANDBOX_` →
 `AGENTS_SANDBOX_` env-prefix deprecation: `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND`. User-authored
-inputs with no warning: the `# agents-sandbox:dind` marker and a `FROM agents-sandbox/runner-base-dind` (both still
-imply docker); `agents-sandbox/runner-base-docker` is also recognized as the new-name variant.
+inputs that keep working: the `# agents-sandbox:dind` marker and a `FROM agents-sandbox/runner-base-dind` both still
+enable the engine, and each warns on every ensure; `agents-sandbox/runner-base-docker` is the new-name variant.
 
 ## vfs storage driver
 

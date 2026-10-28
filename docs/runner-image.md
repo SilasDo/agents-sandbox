@@ -259,12 +259,26 @@ commands, not only in non-login agent-executed commands.
 
 ## Docker-in-Docker
 
-Enable the Docker engine (Docker-in-Docker) in the runner image with the `--docker` flag (on `build`, `run`, `shell`, or
-`build dockerfile`) or the `docker: true` config key, or the `AGENTS_SANDBOX_DOCKER` environment variable. The
-deprecated aliases `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND` still work with lower precedence and print a
-one-time warning. A project Dockerfile still starting `FROM .../runner-base-dind:latest` keeps working and implies it, but
-warns on every run that ensures the runner image (including cached reuse); the newer `FROM .../runner-base-docker:latest`
-implies it silently.
+Your project Dockerfile declares the Docker engine on its own. The engine is enabled when the final stage starts `FROM
+agents-sandbox/runner-base-docker:latest` (or the deprecated `runner-base-dind`) or when the final-stage body carries a
+`# agents-sandbox:docker` comment line. This holds for a custom base and a managed base alike, so a Dockerfile that asks
+for Docker needs no launcher config.
+
+Explicit config overrides that declaration **in both directions**. The `--docker` flag (on `build`, `run`, `shell`, or
+`build dockerfile`), the `docker` config key, and the `AGENTS_SANDBOX_DOCKER` environment variable — or a `dind`
+spelling — turn the engine off even when the Dockerfile asks for it, and on with no Dockerfile signal. The precedence is
+explicit config > Dockerfile content > off. A present-but-`false` value counts as explicit, so `docker: false`
+suppresses a Dockerfile signal rather than letting it re-enable the engine.
+
+Only a marker in the final stage (after the last `FROM`) enables Docker and places the injection block. A marker in an
+earlier stage is ignored, with a warning telling you to move it into the final stage. Enablement is case-sensitive:
+`# agents-sandbox:docker` enables and a case variant such as `# Agents-Sandbox:docker` does not, though it is reported as
+a near-miss warning so a typo does not fail silently.
+
+The deprecated aliases `--dind`, the `dind` config key, and `AGENTS_SANDBOX_DIND` still work with lower precedence and
+print a one-time warning. A project Dockerfile using the legacy `runner-base-dind` base or the `# agents-sandbox:dind`
+marker keeps working and enables the engine, but warns on every run that ensures the runner image (including cached
+reuse).
 
 The Docker stage installs the engine from a docker static binary tarball. The `vfs` storage driver is forced **inside
 the VM** at start-up — the image never writes `/etc/docker/daemon.json`, so your edits to it are preserved. If your
