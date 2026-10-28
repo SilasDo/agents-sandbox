@@ -1,5 +1,5 @@
 ---
-description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims, unparameterized clamp bounds, yaml.v3's partial decode, and map-iteration randomization), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, internal/sandbox/vm, and the turn-2 packages.
+description: How to close gomutants survivors in this repo — the recurring mutant types, the assertion that kills each, the equivalent/near-equivalent traps (including false "returns nil on error" equivalence claims, unparameterized clamp bounds, yaml.v3's partial decode, and map-iteration randomization), and the record-with-a-reason fallback; grown across the full sweeps of internal/agent, internal/filewalk, internal/sandbox/vm, internal/termio, and the turn-2 packages.
 read_if: Triaging LIVED mutants from a `make mutation` sweep, or deciding whether to strengthen a test or record a `// gomutants:disable` reason.
 ---
 
@@ -80,6 +80,10 @@ This is the field guide for doing it. It was distilled from the first full sweep
 - **A caller guard duplicated by the callee is an equivalent `BRANCH_IF`.** When `if _, ok := asX(a); !ok { return }`
   merely precedes a call that performs the same guard internally, removing the caller's branch is unobservable; delete
   the redundant guard rather than recording it (the callee's own branch still kills the mutant's intent).
+- **An assertion in a *consumer* package does not kill a mutant in a *test-support* package.** gomutants runs only the
+  mutated package's tests, so `termio.Mock`'s spinner recording (asserted from `internal/sandbox/vm`) stayed LIVED when
+  `internal/termio` was swept — and the double's new guard `return`s were the codecov patch lines, uncovered the same way.
+  Assert a test double's recording where the double lives, in the double's own `*_test.go`.
 - **`--detect-equivalent` compares assembly, not behaviour.** A mutation that is logically equivalent but compiles to
   different code still reports LIVED, and must be closed by hand (delete or record).
 - **A "restore the factory" mutant (`Get = orig` removed from a `t.Cleanup`) needs a type or behavioural check, not a
