@@ -191,6 +191,9 @@
 - `vm-idle-timeout-default.md`
   - Description: Contract for the single VM idle-timeout default: it lives only in `options.DefaultVMIdleTimeout`, the config layer carries `auto-stop-timeout` as-is with no fallback, the VM lifecycle applies the default (required because the SDK treats zero as unlimited), and the documented 10s value is that constant (#365).
   - Read If: Changing the idle timeout default, `Config.AutoStopTimeout`/`Config.IdleTimeout`, `RunOptions.IdleTimeout`, `runoptions.Build`, or the VM lifecycle's `WithIdleTimeout` wiring.
+- `yaml-library.md`
+  - Description: Contract for the YAML dependency: every parse/serialize goes through the maintained `go.yaml.in/yaml/v3`, never `gopkg.in/yaml.v3` v3.0.1, whose emitter drops a leading blank line on marshal.
+  - Read If: Adding a YAML parse/serialize path, touching `go.mod`'s YAML dependency, or triaging a `FuzzParseState` serialization-stability failure.
 
 ### `plans/` - TDD implementation plans
 

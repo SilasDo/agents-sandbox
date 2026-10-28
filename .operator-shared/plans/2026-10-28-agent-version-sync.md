@@ -6,7 +6,7 @@
 
 **Architecture:** The image's `org.agents-sandbox.identity.agent-version` label becomes the authority for an existing image and `HomeState.agent_version` its cache. The image-ensuring paths record the label value after home resolution; `resolveBuildVersion` reconciles a disagreeing (stale) cache from the label before the upgrade check; `recoverAgentVersion` widens from "empty only" to "empty or disagreeing".
 
-**Tech Stack:** Go 1.26, Docker SDK (`github.com/moby/moby/client`), `gopkg.in/yaml.v3`, testify-free standard `testing`, the repo's `docker.MockDockerClient` / `msb.MockMsbClient` fixtures.
+**Tech Stack:** Go 1.26, Docker SDK (`github.com/moby/moby/client`), `go.yaml.in/yaml/v3`, testify-free standard `testing`, the repo's `docker.MockDockerClient` / `msb.MockMsbClient` fixtures.
 
 **Spec:** `.operator-shared/specs/agent-version-sync.md`
 
