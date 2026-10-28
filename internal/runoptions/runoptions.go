@@ -121,11 +121,13 @@ func ResolveDockerSetting(cmd *cobra.Command, cfg *viperconfig.Config) options.D
 	// An explicit config source contributes its value ranked by the layer it
 	// came from, so a canonical config key or AGENTS_SANDBOX_DOCKER beats the
 	// deprecated --dind flag.
-	if cfg != nil && cfg.DockerExplicit() {
-		sources = append(sources, viperconfig.DockerSourceValue{
-			Source: cfg.DockerSource(),
-			Value:  cfg.Docker,
-		})
+	if cfg != nil {
+		if cfg.DockerExplicit() {
+			sources = append(sources, viperconfig.DockerSourceValue{
+				Source: cfg.DockerSource(),
+				Value:  cfg.Docker,
+			})
+		}
 	}
 	winner := viperconfig.EffectiveDockerSource(sources...)
 	if winner.Source != viperconfig.DockerSourceNone {

@@ -135,15 +135,16 @@ func NewResolver(cmd *cobra.Command, slug string) (*Resolver, error) {
 // source it came from, and the deprecated source name to warn about (empty when
 // the canonical setting won).
 //
+// With no source at all the winner is the zero DockerSourceValue — docker off
+// with DockerSourceNone — and that equals the unmarshaled value: a true docker
+// value always carries a canonical source, since viper's docker default is the
+// --docker flag's false default.
+//
 // The --dind flag is not among the sources here: it is not bound to viper, so
 // the run and build paths fold it in over this resolver with the same
 // precedence.
 func resolveDockerAlias(v *viper.Viper, cmd *cobra.Command, value bool) (bool, DockerSource, string) {
 	winner := EffectiveDockerSource(dockerSources(v, cmd, value)...)
-	if winner.Source == DockerSourceNone {
-		// value is the unmarshaled default (false) when no source is present.
-		return value, DockerSourceNone, ""
-	}
 	legacy := ""
 	if winner.Source.Deprecated() {
 		legacy = dockerLegacySource(v)
@@ -180,6 +181,7 @@ func canonicalDockerSource(v *viper.Viper, cmd *cobra.Command) DockerSource {
 	case v.InConfig(KeyDocker):
 		return DockerSourceDockerConfig
 	}
+	// gomutants:disable-next-line RETURN_ZERO reason="DockerSourceNone is the DockerSource zero value, so the mutant is the identical constant"
 	return DockerSourceNone
 }
 

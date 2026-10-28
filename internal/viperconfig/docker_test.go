@@ -78,6 +78,22 @@ func TestEffectiveDockerSourcePrecedence(t *testing.T) {
 			},
 			want: DockerSourceValue{Source: DockerSourceDockerFlag, Value: false},
 		},
+		{
+			name: "the first of two equal-precedence sources wins",
+			sources: []DockerSourceValue{
+				{Source: DockerSourceDockerEnv, Value: true},
+				{Source: DockerSourceDockerEnv, Value: false},
+			},
+			want: DockerSourceValue{Source: DockerSourceDockerEnv, Value: true},
+		},
+		{
+			name: "a later equal-precedence source does not displace an earlier one",
+			sources: []DockerSourceValue{
+				{Source: DockerSourceDindConfig, Value: false},
+				{Source: DockerSourceDindConfig, Value: true},
+			},
+			want: DockerSourceValue{Source: DockerSourceDindConfig, Value: false},
+		},
 	}
 
 	for _, tt := range tests {

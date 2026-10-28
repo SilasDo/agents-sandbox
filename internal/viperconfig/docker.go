@@ -45,7 +45,8 @@ type DockerSourceValue struct {
 // or the zero DockerSourceValue when no source is present. A source counts as
 // present as soon as it is passed, a present-but-false one included, so an
 // explicit "off" suppresses every lower-precedence source instead of being
-// re-enabled by it.
+// re-enabled by it. Sources are examined in order, so the first of several with
+// equal precedence wins.
 func EffectiveDockerSource(sources ...DockerSourceValue) DockerSourceValue {
 	var winner DockerSourceValue
 	for _, source := range sources {
