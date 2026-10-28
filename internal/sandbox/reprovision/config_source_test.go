@@ -220,6 +220,40 @@ func TestResolveConfigSourceCarriesPrimaryDirs(t *testing.T) {
 	}
 }
 
+// The candidate accessors fail only for a profile whose config-dir name is not
+// a single clean path element. These sentinels let a test assert the error was
+// propagated as-is, rather than a later fall-through error standing in for it.
+var (
+	errInvalidUserConfigDirName    = errors.New("invalid user config-dir name")
+	errInvalidProjectConfigDirName = errors.New("invalid project config-dir name")
+)
+
+// userErrorCandidates serves a usable project candidate list but errors on the
+// user list, exercising the first candidate call's error path.
+type userErrorCandidates struct {
+	configpaths.ConfigPaths
+}
+
+func (userErrorCandidates) UserAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return nil, errInvalidUserConfigDirName
+}
+
+func (userErrorCandidates) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
+	return []string{"/nonexistent/opencode2"}, nil
+}
+
+func TestResolveConfigSourcePropagatesUserCandidateError(t *testing.T) {
+	orig := configpaths.Get
+	configpaths.Get = func() configpaths.ConfigPaths { return userErrorCandidates{} }
+	t.Cleanup(func() { configpaths.Get = orig })
+
+	a, _ := agent.Lookup("opencode2")
+	_, err := ResolveConfigSource(a)
+	if !errors.Is(err, errInvalidUserConfigDirName) {
+		t.Fatalf("ResolveConfigSource with a failing user candidate = %v, want the candidate error", err)
+	}
+}
+
 // projectErrorCandidates serves a usable user candidate list but errors on the
 // project list, exercising the second candidate call's error path.
 type projectErrorCandidates struct {
@@ -231,7 +265,7 @@ func (projectErrorCandidates) UserAgentConfigDirCandidates(agent.Agent) ([]strin
 }
 
 func (projectErrorCandidates) ProjectAgentConfigDirCandidates(agent.Agent) ([]string, error) {
-	return nil, errors.New("invalid project config-dir name")
+	return nil, errInvalidProjectConfigDirName
 }
 
 func TestResolveConfigSourcePropagatesProjectCandidateError(t *testing.T) {
@@ -240,8 +274,19 @@ func TestResolveConfigSourcePropagatesProjectCandidateError(t *testing.T) {
 	t.Cleanup(func() { configpaths.Get = orig })
 
 	a, _ := agent.Lookup("opencode2")
-	if _, err := ResolveConfigSource(a); err == nil {
-		t.Fatal("ResolveConfigSource with a failing project candidate = nil error, want error")
+	_, err := ResolveConfigSource(a)
+	if !errors.Is(err, errInvalidProjectConfigDirName) {
+		t.Fatalf("ResolveConfigSource with a failing project candidate = %v, want the candidate error", err)
+	}
+}
+
+// TestBaseUserConfigDirIsParentOfUserDir pins the derivation: home files and
+// hooks resolve relative to the tool's user config dir, one level above the
+// agent subdir the resolved source names.
+func TestBaseUserConfigDirIsParentOfUserDir(t *testing.T) {
+	src := ConfigSource{UserDir: filepath.Join(t.TempDir(), "agents-sandbox", "opencode2")}
+	if got, want := baseUserConfigDir(src), filepath.Dir(src.UserDir); got != want {
+		t.Errorf("baseUserConfigDir = %q, want %q", got, want)
 	}
 }
 
