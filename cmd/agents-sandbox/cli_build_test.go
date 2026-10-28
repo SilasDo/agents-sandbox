@@ -279,8 +279,9 @@ func TestBuildCommandRecordsPinnedAgentVersion(t *testing.T) {
 	initTestProjectDir(t)
 	cmd, _ := setupCommandFixtures(t, cmdBuild, "--agent-version", "9.9.9")
 
-	// The fixture's resolver returns its own build version, so the recorded
-	// value can only come from the built image's agent-version label. No label
+	// The mocked image label and the requested --agent-version pin are both
+	// 9.9.9, so this test cannot distinguish which supplied the recorded value —
+	// only that it is not the fixture's freshly resolved 0.0.0-test. No label
 	// matches the dockerfile-id, so the build genuinely runs and inspects.
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {

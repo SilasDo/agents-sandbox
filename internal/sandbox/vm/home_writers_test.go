@@ -91,6 +91,18 @@ func TestHomeWritersPreserveUnrelatedFields(t *testing.T) {
 			},
 		},
 		{
+			name: "persistAgentVersion",
+			run: func(t *testing.T, k state.Key) {
+				t.Helper()
+				persistAgentVersion(k, "2.0.0", &termio.Mock{})
+			},
+			want: func() state.HomeState {
+				w := seed()
+				w.AgentVersion = "2.0.0"
+				return w
+			},
+		},
+		{
 			name: "recordImageProvenance",
 			run: func(t *testing.T, k state.Key) {
 				t.Helper()

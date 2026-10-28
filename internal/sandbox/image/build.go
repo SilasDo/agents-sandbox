@@ -706,8 +706,9 @@ func cachedImageMatches(ctx context.Context, mclient msb.Client, ref string, inf
 }
 
 // EnsureImage builds/inspects the runner Docker image and returns an ImageInfo
-// describing its tag, digest, and ENV map (read from the Docker image config).
-// It does not load the image into microsandbox.
+// describing the resulting image — its tag, reference, digest, content identity,
+// baked agent release, and ENV map, read from the Docker image config. It does
+// not load the image into microsandbox.
 func EnsureImage(
 	ctx context.Context,
 	a agent.Agent,
