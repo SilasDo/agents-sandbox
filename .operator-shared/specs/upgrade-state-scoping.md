@@ -118,9 +118,12 @@ before home resolution: creating a state here would leave a fingerprint-less par
 would adopt as a `prior` and copy empty fingerprints forward, spuriously detecting a config change (#183). A genuine
 first run (no image, no label) still returns `""` and resolves at build time.
 
-The label is a *recovery fallback only*: `HomeState.agent_version` remains the single source of truth once recorded.
-This does not resurrect the rejected "read the current version from the image label on every run" design; it only
-bridges the gap left by dropping the global version.
+The label is the **authority for an existing image** and `HomeState.agent_version` is a cache that follows it
+([agent-version-sync.md](agent-version-sync.md)). Recovery widens from "empty only" to "empty **or disagreeing**": a
+recorded value that disagrees with a present image's label is stale, the label wins, and the cache is rewritten, so a
+stale record can never pull the build toward an older release. The recorded cache stays authoritative only when the
+image is absent (pruned, host docker cleaned), which keeps offline reuse working. This supersedes the earlier
+"one-time recovery fallback" reading: the label is consulted whenever the image is present.
 
 ### State write serialization
 
@@ -167,8 +170,9 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
   when a prior state exists). A volume op or a recovered volume does not change the image, so dropping the fields would
   falsely reset the baseline and the offered set.
 - **No silent rebuild; offline reuse.** A project with an existing runner image never silently rebuilds to the latest
-  release: when no baseline is recorded it is recovered from the image label so the normal prompt fires, and an offline
-  check reuses the existing image (the recovered, non-empty `current` short-circuits release resolution).
+  release: the image's `agent-version` label is the baseline for a present image (recovered when empty and reconciled
+  when it disagrees), so the normal prompt fires and a disagreeing cache cannot select an older build. An offline
+  check reuses the existing image (the non-empty `current` short-circuits release resolution).
 - **Migration never loses the cadence.** `last_checked` is folded only when unset; the legacy file is deleted only
   after a successful root-state write.
 - **Serialized HomeState writes.** Every `HomeState` read-modify-write goes through the locked transaction API and
@@ -218,8 +222,9 @@ The presence of `<root>/updater.yaml` is the trigger. No user choice, no `migrat
 - No project identity data (origin URL, workspace path, recency) is introduced.
 - No `migrations` registry entry; the legacy file itself is the trigger.
 - No `sandbox create`/`run` prompt-order change; the prompt still fires before the image is built.
-- Reading the version from the image label is not the source of truth; `HomeState.agent_version` remains the baseline.
-  The label is read only as a one-time recovery fallback when no baseline is recorded (see Baseline recovery).
+- Reading the version from the image label is the source of truth for a present image; `HomeState.agent_version` is a
+  cache that follows it and remains the fallback when the image is absent (see [agent-version-sync.md](agent-version-sync.md)
+  and Baseline recovery).
 - `config harden`, `upgrade.json`, and launcher self-upgrade are untouched.
 
 ## Docs and changelog

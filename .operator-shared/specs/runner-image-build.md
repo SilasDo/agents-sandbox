@@ -71,10 +71,12 @@ user-provided agent (`agent-source=user`) ignores the requested version and retu
    does not own the agent, so a pin cannot change what is baked).
 2. **`--agent-version <v>` pin** → `v`, no upgrade check.
 3. **No upgrade checker** → recorded version, no check.
-4. **No recorded baseline** → recover the version from the existing image's `agent-version` label
-   (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`), then continue to the upgrade check below;
-   only when that also yields nothing, empty (resolved to latest at build time).
-5. **Recorded or recovered baseline** → upgrade check; may prompt to rebuild with a newer release.
+4. **No recorded baseline, or one that disagrees with the existing image's label** → take the release the image reports
+   through its `agent-version` label (`vm.recoverAgentVersion` via `image.ExistingAgentVersion`) and rewrite the cache,
+   then continue to the upgrade check below. The image is the authority; a disagreeing record is stale and never drives
+   a build. Only when no image (or no release label) yields a version does an empty record resolve to latest at build
+   time.
+5. **Recorded (or label-reconciled) baseline** → upgrade check; may prompt to rebuild with a newer release.
 
 `--agent-version` is available on `build`, `run`, and `shell`. `--rebuild` is orthogonal: it only forces a clean rebuild of
 whichever version is selected and does **not** suppress the upgrade check. `build` has no upgrade check, but it is not
