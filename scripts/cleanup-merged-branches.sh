@@ -26,9 +26,11 @@
 #   cleanup-merged-branches.sh [options]
 #
 # Options:
-#   -n, --dry-run            Print the plan and change nothing.
+#   -n, --dry-run            Print the plan and change nothing. Skips the remote
+#                            refresh too, so remote-tracking refs stay untouched.
 #   -f, --force              Remove worktrees that have uncommitted/untracked changes.
-#   -y, --yes                Skip the interactive confirmation.
+#   -y, --yes                Skip the interactive confirmation. Required when stdin
+#                            or stdout is not a terminal, or the run aborts.
 #   --older-than <dur>       Only act on entries whose tip is at least this old
 #                            (default 0 = no age filter). Suffixes: s m h d w.
 #   --stale <dur>            Age at/after which a remaining entry is stale (default 14d).
@@ -212,11 +214,15 @@ fi
 
 # --- refresh remote state ---------------------------------------------------
 
-if $do_fetch; then
+# --dry-run promises to change nothing, so it neither prunes remote-tracking refs
+# (`git fetch --prune`) nor updates origin/HEAD.
+if ! $dry_run && $do_fetch; then
   git fetch --prune --quiet origin 2>/dev/null ||
     printf 'warning: git fetch --prune origin failed; merge detection may be stale\n' >&2
 fi
-git remote set-head origin -a >/dev/null 2>&1 || true
+if ! $dry_run; then
+  git remote set-head origin -a >/dev/null 2>&1 || true
+fi
 
 default_ref="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
 [[ -n "$default_ref" ]] || default_ref="origin/main"
@@ -282,7 +288,11 @@ local_merge_method() {
   }
   for target in ${targets[@]+"${targets[@]}"}; do
     output="$(git cherry "$target" "$branch" 2>/dev/null || true)"
-    if [[ -n "$output" ]] && ! grep -q '^+' <<<"$output"; then
+    # git cherry ignores merge commits, so a branch that merged a ref other than the
+    # target and added a unique conflict resolution can look patch-equivalent. Only
+    # trust the patch check when no merge commits remain beyond the target.
+    if [[ -n "$output" ]] && ! grep -q '^+' <<<"$output" &&
+      [[ -z "$(git rev-list --merges "$target..$branch" 2>/dev/null)" ]]; then
       printf 'patch'
       return 0
     fi
@@ -323,6 +333,7 @@ worktree_creation_age() {
   # The oldest HEAD reflog entry is the worktree's creation checkout. If the worktree
   # has no reflog of its own, git reports the branch reflog instead (the branch's
   # creation, i.e. older, so the worktree is never seen as fresher than it is).
+  # Prints the age in seconds, or nothing when it cannot be established.
   oldest="$(git -C "$path" reflog show --date=unix HEAD 2>/dev/null | tail -1 || true)"
   if [[ "$oldest" =~ HEAD@\{([0-9]+)\} ]]; then
     printf '%s' "$((NOW - BASH_REMATCH[1]))"
@@ -334,17 +345,20 @@ worktree_creation_age() {
     printf '%s' "$((NOW - birth))"
     return 0
   fi
-  # Unknown creation time: fall back to the tip's age to stay conservative.
-  worktree_commit_age "$path"
+  return 0
 }
 worktree_at_or_ahead_of_default() {
   # A: the branch tip is the local default branch or a descendant of it.
   git merge-base --is-ancestor "$local_default" "$1" 2>/dev/null
 }
 worktree_created_recently() {
-  # B: the worktree was created within the fresh window.
+  # B: the worktree was created within the fresh window. When the creation time
+  # cannot be established, keep the worktree: its tip may be an old ancestor.
   ((fresh_after_seconds > 0)) || return 1
-  (($(worktree_creation_age "$1") < fresh_after_seconds))
+  local age
+  age="$(worktree_creation_age "$1")"
+  [[ -n "$age" ]] || return 0
+  ((age < fresh_after_seconds))
 }
 older_than_allows() { ((older_than_seconds == 0 || $1 >= older_than_seconds)); }
 is_stale() { (($1 >= stale_after_seconds)); }
@@ -527,6 +541,7 @@ done < <(git for-each-ref --format='%(refname:short)' refs/heads)
 # --- plan: origin branches --------------------------------------------------
 
 plan_rb_name=()
+plan_rb_sha=()
 rem_rb_name=()
 rem_rb_age=()
 rem_rb_stale=()
@@ -563,6 +578,7 @@ while IFS= read -r ref; do
     note="protected on origin"
   else
     plan_rb_name+=("$name")
+    plan_rb_sha+=("$(git rev-parse "$ref" 2>/dev/null || true)")
     continue
   fi
 
@@ -589,11 +605,15 @@ rem_rb_order="$(age_desc_indices rem_rb_age)"
 # --- confirm ----------------------------------------------------------------
 
 action_count=$((${#plan_wt_path[@]} + ${#plan_lb_name[@]} + ${#plan_rb_name[@]}))
-if ! $dry_run && ! $assume_yes && [[ -t 0 && -t 1 ]] && ((action_count > 0)); then
-  printf 'About to remove %d worktree(s), delete %d local and %d origin branch(es). Continue? [y/N] ' \
-    "${#plan_wt_path[@]}" "${#plan_lb_name[@]}" "${#plan_rb_name[@]}"
-  read -r reply
-  [[ "$reply" == [yY] || "$reply" == [yY][eE][sS] ]] || die "aborted"
+if ! $dry_run && ! $assume_yes && ((action_count > 0)); then
+  if [[ -t 0 && -t 1 ]]; then
+    printf 'About to remove %d worktree(s), delete %d local and %d origin branch(es). Continue? [y/N] ' \
+      "${#plan_wt_path[@]}" "${#plan_lb_name[@]}" "${#plan_rb_name[@]}"
+    read -r reply
+    [[ "$reply" == [yY] || "$reply" == [yY][eE][sS] ]] || die "aborted"
+  else
+    die "refusing to delete without a terminal; re-run with --yes to confirm"
+  fi
 fi
 
 # --- execute ----------------------------------------------------------------
@@ -636,10 +656,12 @@ for branch in ${plan_lb_name[@]+"${plan_lb_name[@]}"}; do
   fi
 done
 
-for name in ${plan_rb_name[@]+"${plan_rb_name[@]}"}; do
+for i in "${!plan_rb_name[@]}"; do
+  name="${plan_rb_name[$i]}"
+  # Pin the expected tip: a push that landed after planning must not be deleted.
   if $dry_run; then
     ex_rb+=("$name")
-  elif git push --quiet origin --delete "$name"; then
+  elif git push --quiet origin --delete --force-with-lease="refs/heads/$name:${plan_rb_sha[$i]}" "$name"; then
     ex_rb+=("$name")
   else
     printf 'error: could not delete origin/%s\n' "$name" >&2
@@ -699,35 +721,35 @@ json_strings() {
   fi
 }
 
-json_worktree_plan() {
-  if ((${#plan_wt_path[@]} == 0)); then
+json_removed_worktrees() {
+  if ((${#ex_wt[@]} == 0)); then
+    printf '[]'
+    return 0
+  fi
+  local path
+  for path in "${ex_wt[@]}"; do
+    jq -cn --arg path "$path" '{path:$path}'
+  done | jq -sc '.'
+}
+
+json_removed_local() {
+  if ((${#ex_lb_name[@]} == 0)); then
     printf '[]'
     return 0
   fi
   local i
-  for i in "${!plan_wt_path[@]}"; do
-    jq -cn --arg path "${plan_wt_path[$i]}" '{path:$path}'
+  for i in "${!ex_lb_name[@]}"; do
+    jq -cn --arg name "${ex_lb_name[$i]}" --arg sha "${ex_lb_sha[$i]}" '{name:$name,sha:$sha}'
   done | jq -sc '.'
 }
 
-json_local_plan() {
-  if ((${#plan_lb_name[@]} == 0)); then
+json_removed_origin() {
+  if ((${#ex_rb[@]} == 0)); then
     printf '[]'
     return 0
   fi
   local name
-  for name in "${plan_lb_name[@]}"; do
-    jq -cn --arg name "$name" --arg sha "$(git rev-parse --short "$name")" '{name:$name,sha:$sha}'
-  done | jq -sc '.'
-}
-
-json_origin_plan() {
-  if ((${#plan_rb_name[@]} == 0)); then
-    printf '[]'
-    return 0
-  fi
-  local name
-  for name in "${plan_rb_name[@]}"; do
+  for name in "${ex_rb[@]}"; do
     jq -cn --arg name "$name" '{name:$name}'
   done | jq -sc '.'
 }
@@ -783,9 +805,9 @@ if [[ "$output" == json ]]; then
   jq -n \
     --argjson dryRun "$dry_json" \
     --argjson targets "$(json_strings ${targets[@]+"${targets[@]}"})" \
-    --argjson removedWorktrees "$(json_worktree_plan)" \
-    --argjson removedLocalBranches "$(json_local_plan)" \
-    --argjson removedOriginBranches "$(json_origin_plan)" \
+    --argjson removedWorktrees "$(json_removed_worktrees)" \
+    --argjson removedLocalBranches "$(json_removed_local)" \
+    --argjson removedOriginBranches "$(json_removed_origin)" \
     --argjson skipped "$(json_strings ${skip[@]+"${skip[@]}"})" \
     --argjson remainingWorktrees "$(json_remaining_worktrees)" \
     --argjson remainingLocalBranches "$(json_remaining_local)" \
