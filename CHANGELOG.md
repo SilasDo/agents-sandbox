@@ -10,6 +10,11 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- CI: `main` merges through a **merge queue**. A queued PR is built on top of the current `main` plus the pull requests
+  ahead of it, and the required checks — `lint`, `test`, `race`, `deadcode` — run on that combined tree before it
+  merges, so two independently-green PRs can no longer combine into a broken `main`. `race` and `deadcode` are now
+  required and always run, since a gated required check would report success without running; the `integration` suites
+  still run after the merge. See `CONTRIBUTING.md`.
 - `sandbox compact [name]` merges the sealed copy-on-write disk layers of project VMs (`--dry-run`, `--disk`,
   `--root-only`, `--layers N`, `--format json`). It is opt-in only and never runs on the prune path; named volumes such
   as the home volume are not compacted. See `docs/commands.md`.
