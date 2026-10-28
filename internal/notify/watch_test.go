@@ -74,13 +74,12 @@ func TestWatchDrivesBackend(t *testing.T) {
 			{Kind: msb.StreamEventStdout, Data: sseBlock("session.idle")},
 		},
 	}
-	sb := msb.NewMockSandbox(msb.SandboxOpts{StreamHandle_: stream})
 	backend := &recordBackend{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- Watch(ctx, sb, opencodeSpec(), backend) }()
+	go func() { done <- Watch(ctx, stubStreams{handle: stream}, opencodeSpec(), backend) }()
 
 	// Wait for the done notification, then stop the watcher.
 	deadline := time.Now().Add(2 * time.Second)
@@ -121,7 +120,7 @@ func TestWatchDedupClearsOnBusy(t *testing.T) {
 	defer cancel()
 
 	done := make(chan error, 1)
-	go func() { done <- Watch(ctx, sb, opencodeSpec(), dedup) }()
+	go func() { done <- Watch(ctx, SandboxStreamOpener{Sandbox: sb}, opencodeSpec(), dedup) }()
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -166,7 +165,7 @@ func TestWatchOnceSeedsChildrenFromListCommand(t *testing.T) {
 	backend := &recordBackend{}
 	// The scripted StreamEventExited ends the stream with an error; the
 	// assertion is on notifications, not the error.
-	_ = watchOnce(context.Background(), sb, NewTracker(spec), backend, spec)
+	_ = watchOnce(context.Background(), SandboxStreamOpener{Sandbox: sb}, NewTracker(spec), backend, spec)
 	if backend.count() != 0 {
 		t.Fatalf("seeded child notified: %+v", backend.got)
 	}
@@ -186,7 +185,7 @@ func seedFailureStream() *streamStub {
 func assertOneDoneNotification(t *testing.T, sb *msb.MockSandbox, spec agent.EventStreamSpec) {
 	t.Helper()
 	backend := &recordBackend{}
-	_ = watchOnce(context.Background(), sb, NewTracker(spec), backend, spec)
+	_ = watchOnce(context.Background(), SandboxStreamOpener{Sandbox: sb}, NewTracker(spec), backend, spec)
 	if len(*sb.ShellCalls) != 1 || (*sb.ShellCalls)[0] != "seed-cmd" {
 		t.Fatalf("expected the seed command to run, got %v", *sb.ShellCalls)
 	}
@@ -284,7 +283,8 @@ func TestWatchReconnectsOnStreamExit(t *testing.T) {
 		<-secondAttempt
 		cancel()
 	}()
-	if err := Watch(ctx, sb, spec, backend); err != nil && !strings.Contains(err.Error(), "dropped") {
+	streams := SandboxStreamOpener{Sandbox: sb}
+	if err := Watch(ctx, streams, spec, backend); err != nil && !strings.Contains(err.Error(), "dropped") {
 		t.Fatalf("Watch() error = %v", err)
 	}
 	if attempts.Load() < 2 {
@@ -312,7 +312,7 @@ func TestWatchOnceReportsCleanStreamEnd(t *testing.T) {
 	sb := msb.NewMockSandbox(msb.SandboxOpts{StreamHandle_: eofStreamHandle{}})
 	spec := opencodeSpec()
 
-	err := watchOnce(context.Background(), sb, NewTracker(spec), &recordBackend{}, spec)
+	err := watchOnce(context.Background(), SandboxStreamOpener{Sandbox: sb}, NewTracker(spec), &recordBackend{}, spec)
 	if err == nil || err.Error() != "stream ended cleanly" {
 		t.Fatalf("watchOnce() error = %v, want %q", err, "stream ended cleanly")
 	}

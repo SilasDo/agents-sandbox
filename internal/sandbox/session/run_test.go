@@ -778,7 +778,7 @@ func TestRunStartsNotifyWatcher(t *testing.T) {
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
 	started := make(chan struct{})
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		close(started)
 		return nil
 	}
@@ -812,7 +812,7 @@ func TestRunDoesNotStartNotifyWatcherWhenInactive(t *testing.T) {
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
 	called := false
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		called = true
 		return nil
 	}
@@ -834,7 +834,7 @@ func TestStartNotifyWatcherNoOpWithoutSpec(t *testing.T) {
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
 	called := false
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		called = true
 		return nil
 	}
@@ -865,7 +865,7 @@ func TestStartNotifyWatcherUsesSpec(t *testing.T) {
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
 	got := make(chan agent.EventStreamSpec, 1)
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, spec agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, spec agent.EventStreamSpec, _ notify.Backend) error {
 		got <- spec
 		return nil
 	}
@@ -913,7 +913,7 @@ func TestRunLogsNotifyWatcherErrorAfterStop(t *testing.T) {
 
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		return errors.New("watch boom")
 	}
 
@@ -950,7 +950,7 @@ func TestRunDoesNotStartNotifyWatcherWithoutEventStreamProvider(t *testing.T) {
 	origWatch := notifyWatch
 	defer func() { notifyWatch = origWatch }()
 	called := false
-	notifyWatch = func(_ context.Context, _ msb.Sandbox, _ agent.EventStreamSpec, _ notify.Backend) error {
+	notifyWatch = func(_ context.Context, _ notify.StreamOpener, _ agent.EventStreamSpec, _ notify.Backend) error {
 		called = true
 		return nil
 	}

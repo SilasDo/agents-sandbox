@@ -73,6 +73,9 @@ command reports the bare version (e.g. `0.1.0`).
   `*cobra.Command`-driven `BuildRunOptions` pipeline moved from `internal/viperconfig` to `internal/runoptions`, and the
   config loader was split from one 1132-line file into focused files (types, loading, env, flags, decode, validation,
   accessors) (#356).
+- Internal: the notify watcher's entry point (`notify.Watch`) now depends on a two-method `notify.StreamOpener` seam
+  (`ShellStream`, `Shell`) instead of the whole `msb.Sandbox`, so a fake with those two operations can drive it; the run
+  path adapts the sandbox with `notify.SandboxStreamOpener` (#358).
 - Internal: the pre-lock and post-lock VM start/connect transitions are one function, so a connect failure recovers
   through refresh-and-resume on both instead of only on the fast path — the post-lock re-check (the path every first
   boot and concurrent start takes) no longer falls through to a bare start — and the post-lock re-check reports its
