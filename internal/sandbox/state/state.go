@@ -199,22 +199,47 @@ func writeState(k Key, state HomeState) error {
 	return nil
 }
 
-// RemoveHomeState removes the state file and its per-agent directory, taking
-// the blocking home lock, like every other state mutation, so a concurrent
-// writer cannot resurrect the removed state. Lock files under locksDir are
-// never removed. Legacy agent-less keys remove only the legacy state file so
-// per-project claims and other agents' state survive.
-func RemoveHomeState(k Key) error {
+// RemoveHomeStateIf removes the state file and its per-agent directory only
+// when shouldRemove reports true for the current document. The read, the
+// decision, and the removal all run under one blocking home lock, so the
+// decision cannot interleave with a concurrent writer that recreates or
+// re-references the state between them.
+//
+// shouldRemove is called with the document read under the lock. A missing
+// document removes nothing and is not passed to shouldRemove. An unreadable or
+// unparsable document is returned as an error and nothing is removed, so an
+// unknown document is never discarded.
+//
+// Lock files under locksDir are never removed. Legacy agent-less keys remove
+// only the legacy state file so per-project claims and other agents' state
+// survive.
+func RemoveHomeStateIf(k Key, shouldRemove func(cur *HomeState) bool) error {
 	return withHomeLock(k, func() error {
-		if k.Agent != "" {
-			return os.RemoveAll(KeyDir(k))
-		}
-		// Legacy agent-less state lived directly under the slug dir; remove
-		// only the legacy state file, leaving per-project claims and sibling
-		// per-agent state intact.
-		if err := os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml")); err != nil && !os.IsNotExist(err) {
+		cur, err := ReadState(k)
+		if err != nil {
+			if errors.Is(err, ErrStateNotFound) {
+				return nil
+			}
 			return err
 		}
-		return nil
+		if !shouldRemove(cur) {
+			return nil
+		}
+		return removeHomeStateLocked(k)
 	})
+}
+
+// removeHomeStateLocked removes the state file and its per-agent directory, run
+// by its caller while the home lock is held.
+func removeHomeStateLocked(k Key) error {
+	if k.Agent != "" {
+		return os.RemoveAll(KeyDir(k))
+	}
+	// Legacy agent-less state lived directly under the slug dir; remove only the
+	// legacy state file, leaving per-project claims and sibling per-agent state
+	// intact.
+	if err := os.Remove(filepath.Join(slugDir(k.Slug), "state.yaml")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

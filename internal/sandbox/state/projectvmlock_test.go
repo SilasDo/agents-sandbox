@@ -10,7 +10,7 @@ import (
 
 // TestProjectVMLockDirLivesUnderLocksDir pins the project-VM creation lock to
 // the never-deleted locks tree. It lived under KeyDir before #330, so prune's
-// RemoveHomeState unlinked the lock a concurrent VM creation held.
+// state removal unlinked the lock a concurrent VM creation held.
 func TestProjectVMLockDirLivesUnderLocksDir(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := testKey()

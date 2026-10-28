@@ -198,8 +198,10 @@ func TestRemoveStateForGoneKeysRemovesEveryKey(t *testing.T) {
 		{Slug: "b-1mjusbm3wikhb0"},
 		{Slug: "c-1mjusbm3wikhb0"},
 	}
+	// A state that records no home volume is the one prune removes; the loop
+	// must process every such key.
 	for _, k := range keys {
-		if err := seedHomeState(k, state.HomeState{HomeVolume: "v-" + k.Slug}); err != nil {
+		if err := seedHomeState(k, state.HomeState{}); err != nil {
 			t.Fatalf("seedHomeState: %v", err)
 		}
 	}
@@ -214,6 +216,24 @@ func TestRemoveStateForGoneKeysRemovesEveryKey(t *testing.T) {
 		if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
 			t.Errorf("state for %v should be removed, got err=%v", k, err)
 		}
+	}
+}
+
+// TestRemoveStateForGoneKeysKeepsStateNamingAVolume pins the #335 guard at the
+// unit level: even when the count guard would remove the state, a state that
+// names a home volume is kept, so a concurrently created volume is never
+// orphaned.
+func TestRemoveStateForGoneKeysKeepsStateNamingAVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	kept := state.Key{Slug: "names-a-volume"}
+	if err := seedHomeState(kept, state.HomeState{HomeVolume: "vol-1"}); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
+
+	removeStateForGoneKeys(&termio.Mock{}, map[state.Key]int{kept: 1}, map[state.Key]int{kept: 1})
+
+	if _, err := state.ReadState(kept); err != nil {
+		t.Errorf("state naming a home volume must survive, got err=%v", err)
 	}
 }
 

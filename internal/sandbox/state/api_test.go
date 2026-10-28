@@ -11,7 +11,7 @@ import (
 
 // TestNoExportedRawWriters guards the final state-mutation surface: the only
 // exported mutators are the transaction primitives (WithHomeState,
-// RecoverHomeState, WithRootState, RemoveHomeState). The raw writers and lock
+// RecoverHomeState, WithRootState, RemoveHomeStateIf). The raw writers and lock
 // primitives must stay unexported.
 func TestNoExportedRawWriters(t *testing.T) {
 	forbidden := map[string]bool{
