@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -55,7 +56,7 @@ func PreviewImage(
 // matches the plan this package computes.
 //
 //deadcode:ignore reason="exported for higher-layer preview tests to seed an image whose label matches this package's plan"
-func RunnerDockerfileID(a agent.Agent, agentVersion string, docker bool) (string, error) {
+func RunnerDockerfileID(a agent.Agent, agentVersion string, docker options.DockerSetting) (string, error) {
 	rendered, err := RenderProjectDockerfile(a, agentVersion, docker)
 	if err != nil {
 		return "", err

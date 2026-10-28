@@ -85,7 +85,7 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.WorkspaceQuota = cfg.WorkspaceQuota
 		opts.ReapPolicy = options.NewReapPolicy(cfg.AutoStopOnActiveSessions, cfg.AutoStopMaxSessionRetries)
 		opts.IdleTimeout = cfg.IdleTimeout()
-		opts.Docker = cfg.Docker
+		opts.Docker = options.DockerSetting{Enabled: cfg.Docker, Explicit: false}
 		opts.Mounts, err = mounts.ResolveBindMounts(cfg.Mounts)
 		if err != nil {
 			return options.RunOptions{}, err
@@ -123,7 +123,7 @@ func applyDeprecatedDindFlag(cmd *cobra.Command, opts *options.RunOptions) {
 		return
 	}
 	dind, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
-	opts.Docker = dind
+	opts.Docker = options.DockerSetting{Enabled: dind, Explicit: false}
 }
 
 // resolveFlags reads the direct-run flags off the command and returns the

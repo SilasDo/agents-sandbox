@@ -13,6 +13,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
 // managedBaseRef, managedBaseDindRef, and managedBaseDockerRef are the base
@@ -210,10 +211,10 @@ const (
 )
 
 // effectiveDocker reports whether the docker capability is enabled, either by
-// the flag or implied by a project Dockerfile that extends the managed docker
-// or legacy dind base.
-func effectiveDocker(projectDockerfile []byte, docker bool) bool {
-	return docker ||
+// the resolved setting or implied by a project Dockerfile that extends the
+// managed docker or legacy dind base.
+func effectiveDocker(projectDockerfile []byte, docker options.DockerSetting) bool {
+	return docker.Enabled ||
 		referencesImage(projectDockerfile, managedBaseDindRef) ||
 		referencesImage(projectDockerfile, managedBaseDockerRef)
 }
@@ -278,11 +279,16 @@ func hasDockerMarker(data []byte, want string) bool {
 //
 // It returns an error when the project Dockerfile declares a reserved stage
 // alias.
-func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []byte, docker bool) ([]byte, error) {
+func RenderDockerfile(
+	a agent.Agent,
+	agentVersion string,
+	projectDockerfile []byte,
+	docker options.DockerSetting,
+) ([]byte, error) {
 	if err := checkReservedAliases(projectDockerfile); err != nil {
 		return nil, err
 	}
-	docker = effectiveDocker(projectDockerfile, docker)
+	dockerEnabled := effectiveDocker(projectDockerfile, docker)
 
 	managed := len(bytes.TrimSpace(projectDockerfile)) == 0 || isManagedBase(projectDockerfile)
 	earlier, baseFrom, body := splitFinalStage(projectDockerfile)
@@ -294,7 +300,7 @@ func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []by
 		baseStage, baseAlias = customBaseStage(baseFrom)
 	}
 
-	body, dockerInjected := injectDockerBlock(body, docker)
+	body, dockerInjected := injectDockerBlock(body, dockerEnabled)
 
 	blocks := make([]string, 0, 7)
 	blocks = append(blocks, earlier, toolbaseStage())
@@ -304,10 +310,10 @@ func RenderDockerfile(a agent.Agent, agentVersion string, projectDockerfile []by
 		agentParent = nodeStageAlias
 	}
 	blocks = append(blocks, agentStage(a, agentParent, agentVersion))
-	if docker {
+	if dockerEnabled {
 		blocks = append(blocks, dockerStage())
 	}
-	blocks = append(blocks, baseStage, runnerStage(a, baseAlias, body, docker, dockerInjected))
+	blocks = append(blocks, baseStage, runnerStage(a, baseAlias, body, dockerEnabled, dockerInjected))
 	return []byte(joinBlocks(blocks...)), nil
 }
 
@@ -704,7 +710,7 @@ LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
 // the on-disk project Dockerfile (if any), and the docker switch. It is the
 // single source of truth for previewing and building the image. An empty
 // version renders the agent instance stage without a pinned default.
-func RenderProjectDockerfile(a agent.Agent, agentVersion string, docker bool) ([]byte, error) {
+func RenderProjectDockerfile(a agent.Agent, agentVersion string, docker options.DockerSetting) ([]byte, error) {
 	return RenderDockerfile(a, agentVersion, readProjectDockerfile(), docker)
 }
 

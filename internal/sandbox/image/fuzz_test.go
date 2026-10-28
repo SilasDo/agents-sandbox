@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
 // FuzzRenderDockerfile drives arbitrary user project-Dockerfile bytes through
@@ -34,7 +35,7 @@ func FuzzRenderDockerfile(f *testing.F) {
 		if !ok {
 			t.Fatal("agent opencode is not registered")
 		}
-		out, err := RenderDockerfile(a, "1.2.3", []byte(projectDockerfile), docker)
+		out, err := RenderDockerfile(a, "1.2.3", []byte(projectDockerfile), options.DockerSetting{Enabled: docker})
 		if err != nil {
 			return
 		}

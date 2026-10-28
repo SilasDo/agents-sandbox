@@ -97,7 +97,7 @@ func TestPreviewSandboxReportsReuse(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	a := opencodeAgent(t)
 
-	id, err := sandboximage.RunnerDockerfileID(a, "1.0.0", false)
+	id, err := sandboximage.RunnerDockerfileID(a, "1.0.0", options.DockerSetting{})
 	if err != nil {
 		t.Fatalf("RunnerDockerfileID: %v", err)
 	}
@@ -340,7 +340,7 @@ func TestPreviewSandboxUserProvidedAgentIgnoresPin(t *testing.T) {
 	a := opencodeAgent(t)
 	k := previewKey()
 
-	id, err := sandboximage.RunnerDockerfileID(a, "1.0.0", false)
+	id, err := sandboximage.RunnerDockerfileID(a, "1.0.0", options.DockerSetting{})
 	if err != nil {
 		t.Fatalf("RunnerDockerfileID: %v", err)
 	}

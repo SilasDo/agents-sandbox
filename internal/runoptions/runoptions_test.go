@@ -394,8 +394,8 @@ func TestBuildPropagatesDocker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.Docker {
-		t.Error("opts.Docker = false, want true from resolver")
+	if !opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = false, want true from resolver")
 	}
 }
 
@@ -408,8 +408,8 @@ func TestBuildDeprecatedDindFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if !opts.Docker {
-		t.Error("opts.Docker = false, want true from the deprecated --dind flag")
+	if !opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = false, want true from the deprecated --dind flag")
 	}
 }
 
@@ -425,8 +425,8 @@ func TestBuildDockerFlagWinsOverDind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if opts.Docker {
-		t.Error("opts.Docker = true, want --docker to win over --dind")
+	if opts.Docker.Enabled {
+		t.Error("opts.Docker.Enabled = true, want --docker to win over --dind")
 	}
 }
 
@@ -1094,8 +1094,8 @@ func TestApplyDeprecatedDindFlagWithoutDindFlag(t *testing.T) {
 
 	applyDeprecatedDindFlag(&cobra.Command{Use: "run"}, &opts)
 
-	if opts.Docker {
-		t.Error("Docker = true; want the missing --dind flag to be ignored")
+	if opts.Docker.Enabled {
+		t.Error("Docker.Enabled = true; want the missing --dind flag to be ignored")
 	}
 }
 
@@ -1111,8 +1111,8 @@ func TestApplyDeprecatedDindFlagWithoutDockerFlag(t *testing.T) {
 
 	applyDeprecatedDindFlag(cmd, &opts)
 
-	if !opts.Docker {
-		t.Error("Docker = false; want true from the deprecated --dind flag")
+	if !opts.Docker.Enabled {
+		t.Error("Docker.Enabled = false; want true from the deprecated --dind flag")
 	}
 }
 

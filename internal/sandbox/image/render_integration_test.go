@@ -12,6 +12,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 )
 
 // TestRenderDockerfileBuilds builds a real image for every Dockerfile
@@ -48,46 +49,50 @@ func TestRenderDockerfileBuilds(t *testing.T) {
 	cases := []struct {
 		name              string
 		projectDockerfile []byte
-		docker            bool
+		docker            options.DockerSetting
 	}{
-		{"no-dockerfile", nil, false},
-		{"no-dockerfile-docker", nil, true},
-		{"managed-base", []byte("FROM agents-sandbox/runner-base:latest\nRUN echo managed\n"), false},
+		{"no-dockerfile", nil, dockerOff},
+		{"no-dockerfile-docker", nil, dockerOn},
+		{"managed-base", []byte("FROM agents-sandbox/runner-base:latest\nRUN echo managed\n"), dockerOff},
 		{
 			"managed-base-docker-implied",
 			[]byte("FROM agents-sandbox/runner-base-docker:latest\nRUN echo managed\n"),
-			false,
+			dockerOff,
 		},
-		{"managed-base-dind-implied", []byte("FROM agents-sandbox/runner-base-dind:latest\nRUN echo managed\n"), false},
+		{
+			"managed-base-dind-implied",
+			[]byte("FROM agents-sandbox/runner-base-dind:latest\nRUN echo managed\n"),
+			dockerOff,
+		},
 		// The daemon agent's only checked guest runtime tool is curl; Fedora's
 		// base already ships curl and tar (procps is over-installed, no longer
 		// a requirement since the job owns daemon start/stop).
 		{"custom-base-fedora", []byte(
 			"FROM fedora:latest\n" +
-				"RUN dnf install -y curl tar procps-ng && dnf clean all\n"), false},
+				"RUN dnf install -y curl tar procps-ng && dnf clean all\n"), dockerOff},
 		// #143: the image build's downloads run on the tool base, so a custom
 		// base needs no tar; curl is installed only because the daemon agent's
 		// in-VM runtime tool (curl) is checked at build time.
 		{"custom-base-slim-no-tar", []byte(
 			"FROM debian:trixie-slim\n" +
-				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps && rm -rf /var/lib/apt/lists/*\n"), false},
+				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps && rm -rf /var/lib/apt/lists/*\n"), dockerOff},
 		{"custom-base-slim-no-tar-docker", []byte(
 			"FROM debian:trixie-slim\n" +
-				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps iptables git xz-utils && rm -rf /var/lib/apt/lists/*\n"), true},
+				"RUN apt-get update && apt-get install -y --no-install-recommends curl procps iptables git xz-utils && rm -rf /var/lib/apt/lists/*\n"), dockerOn},
 		{"custom-base-fedora-docker", []byte(
 			"FROM fedora:latest\n" +
-				"RUN dnf install -y curl tar iptables git procps-ng xz && dnf clean all\n"), true},
+				"RUN dnf install -y curl tar iptables git procps-ng xz && dnf clean all\n"), dockerOn},
 		{"custom-base-docker-marker", []byte(
 			"FROM fedora:latest\n" +
 				"RUN dnf install -y curl tar iptables git procps-ng xz && dnf clean all\n" +
 				"# agents-sandbox:docker\n" +
-				"RUN echo after-docker\n"), true},
+				"RUN echo after-docker\n"), dockerOn},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			rendered := renderBytesVersion(t, a, version, tc.projectDockerfile, tc.docker)
-			buildDockerfile(t, a, rendered, version, tc.docker)
+			buildDockerfile(t, a, rendered, version, tc.docker.Enabled)
 		})
 	}
 }
@@ -122,7 +127,7 @@ func TestRenderDockerfileMissingGuestToolFailsBuild(t *testing.T) {
 	var lines []string
 	buildErr := buildImage(
 		ctx, a,
-		renderBytesVersion(t, a, version, []byte("FROM debian:trixie-slim\n"), false),
+		renderBytesVersion(t, a, version, []byte("FROM debian:trixie-slim\n"), dockerOff),
 		tag, false, version, "", "", false, imageIdentity{},
 		func(s string) { lines = append(lines, s) },
 	)
@@ -162,7 +167,7 @@ func TestRenderDockerfileNodeAgentNodeRuns(t *testing.T) {
 	tag := "agents-sandbox/it-npm-agent-node"
 	t.Cleanup(func() { removeTestImage(tag) })
 
-	buildDockerfileTag(t, a, renderBytes(t, a, nil, false), version, false, tag)
+	buildDockerfileTag(t, a, renderBytes(t, a, nil, dockerOff), version, false, tag)
 
 	for _, command := range []string{"node --version", "npm --version"} {
 		out, err := exec.Command("docker", "run", "--rm", tag, "bash", "-lc", command).CombinedOutput()
@@ -205,11 +210,11 @@ func TestRenderDockerfileToolLayersStayCached(t *testing.T) {
 	t.Cleanup(func() { removeTestImage(tag) })
 
 	// Prime the cache with the first body.
-	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, base, true), version, true, tag)
+	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, base, dockerOn), version, true, tag)
 
 	// Rebuild with a changed body, capturing the streamed build output.
 	var lines []string
-	buildDockerfileTagOutput(t, a, renderBytesVersion(t, a, version, changed, true), version, true, tag, &lines)
+	buildDockerfileTagOutput(t, a, renderBytesVersion(t, a, version, changed, dockerOn), version, true, tag, &lines)
 
 	for _, stage := range []string{nodeStageAlias, agentStageAlias, dockerStageAlias} {
 		if !stageStepCached(lines, stage) {
@@ -257,11 +262,11 @@ func TestRenderDockerfileAgentVersionRebuildsInstall(t *testing.T) {
 	// are real published pi releases and differ, so the rebuild has a version
 	// change to fold in.
 	oldVersion, newVersion := "1.0.0", "1.1.0"
-	buildDockerfileTag(t, a, renderBytesVersion(t, a, oldVersion, project, true), oldVersion, true, tag)
+	buildDockerfileTag(t, a, renderBytesVersion(t, a, oldVersion, project, dockerOn), oldVersion, true, tag)
 
 	var lines []string
 	buildDockerfileTagOutput(
-		t, a, renderBytesVersion(t, a, newVersion, project, true), newVersion, true, tag, &lines,
+		t, a, renderBytesVersion(t, a, newVersion, project, dockerOn), newVersion, true, tag, &lines,
 	)
 
 	if got := imageAgentVersion(t, tag, a); got != newVersion {
@@ -405,7 +410,7 @@ func TestRenderDockerfileLoginShellHasImagePath(t *testing.T) {
 
 	tag := "agents-sandbox/it-login-path"
 	t.Cleanup(func() { removeTestImage(tag) })
-	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, project, false), version, false, tag)
+	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, project, dockerOff), version, false, tag)
 
 	out, err := exec.Command("docker", "run", "--rm", tag, "bash", "-lc", `printf '%s' "$PATH"`).Output()
 	if err != nil {
@@ -443,7 +448,7 @@ func TestRenderDockerfileTrustHelperRunsInImage(t *testing.T) {
 
 	tag := "agents-sandbox/it-trust-helper"
 	t.Cleanup(func() { removeTestImage(tag) })
-	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, nil, false), version, false, tag)
+	buildDockerfileTag(t, a, renderBytesVersion(t, a, version, nil, dockerOff), version, false, tag)
 
 	out, err := exec.Command("docker", "run", "--rm", tag, "msb-trust", "java", "--help").CombinedOutput()
 	if err != nil {

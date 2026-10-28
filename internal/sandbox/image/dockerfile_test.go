@@ -5,6 +5,14 @@ import (
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
+)
+
+// dockerOn and dockerOff are the docker settings most tests pass to the render
+// entry points.
+var (
+	dockerOn  = options.DockerSetting{Enabled: true}
+	dockerOff = options.DockerSetting{}
 )
 
 func agentOpencode(t *testing.T) agent.Agent {
@@ -23,14 +31,20 @@ const testAgentVersion = "1.2.3"
 
 // renderBytes renders a runner Dockerfile for tests with the default test
 // version, failing on a render error.
-func renderBytes(t *testing.T, a agent.Agent, project []byte, docker bool) []byte {
+func renderBytes(t *testing.T, a agent.Agent, project []byte, docker options.DockerSetting) []byte {
 	t.Helper()
 	return renderBytesVersion(t, a, testAgentVersion, project, docker)
 }
 
 // renderBytesVersion renders a runner Dockerfile for a pinned agent version,
 // failing on a render error.
-func renderBytesVersion(t *testing.T, a agent.Agent, version string, project []byte, docker bool) []byte {
+func renderBytesVersion(
+	t *testing.T,
+	a agent.Agent,
+	version string,
+	project []byte,
+	docker options.DockerSetting,
+) []byte {
 	t.Helper()
 	out, err := RenderDockerfile(a, version, project, docker)
 	if err != nil {

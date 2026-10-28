@@ -20,6 +20,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
@@ -27,8 +28,9 @@ import (
 type BuildOptions struct {
 	// Force rebuilds the image regardless of cache state.
 	Force bool
-	// Docker bakes the tool's Docker engine block when the image is built.
-	Docker bool
+	// Docker is the resolved docker capability baked into the image when it is
+	// built, and whether that value was set explicitly.
+	Docker options.DockerSetting
 	// AgentVersion pins the agent version baked into the image. When empty, the
 	// latest release is resolved at build time unless UserProvided allows image
 	// reuse to defer resolution until a rebuild is needed.
@@ -561,7 +563,7 @@ type buildPlan struct {
 func renderBuildPlan(
 	a agent.Agent,
 	projectDockerfile []byte,
-	docker bool,
+	docker options.DockerSetting,
 	agentVersion, identityVersion string,
 ) (buildPlan, error) {
 	rendered, err := RenderDockerfile(a, agentVersion, projectDockerfile, docker)
@@ -584,7 +586,7 @@ func planRunnerImage(
 	a agent.Agent,
 	projectDockerfile []byte,
 	projectSlug string,
-	dockerFlag bool,
+	dockerFlag options.DockerSetting,
 	agentVersion, identityVersion string,
 	force bool,
 ) (buildPlan, string, bool, []string, error) {
@@ -615,7 +617,7 @@ func buildFromPlan(
 	}
 	return buildDockerImage(
 		ctx, a, plan.rendered, rTag, "Ensuring runner image",
-		buildOpts.Force, agentVersion, baseDigest, plan.dockerfileID, buildOpts.Docker, plan.identity, ui,
+		buildOpts.Force, agentVersion, baseDigest, plan.dockerfileID, buildOpts.Docker.Enabled, plan.identity, ui,
 	)
 }
 

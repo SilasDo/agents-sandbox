@@ -66,7 +66,7 @@ func TestEnsureImageVerboseReportsReuse(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	WithMockAgentVersion(t, "1.2.3")
 	a := agentOpencode(t)
-	rendered, err := RenderDockerfile(a, testAgentVersion, nil, false)
+	rendered, err := RenderDockerfile(a, testAgentVersion, nil, dockerOff)
 	if err != nil {
 		t.Fatalf("render Dockerfile: %v", err)
 	}

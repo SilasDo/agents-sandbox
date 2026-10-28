@@ -44,13 +44,13 @@ func identityLabels(id imageIdentity) map[string]string {
 
 func TestEffectiveDindImpliedByManagedDindBase(t *testing.T) {
 	project := []byte("FROM agents-sandbox/runner-base-dind:latest\n")
-	if !effectiveDocker(project, false) {
+	if !effectiveDocker(project, dockerOff) {
 		t.Error("expected docker to be implied by the managed dind base")
 	}
-	if effectiveDocker(nil, false) {
+	if effectiveDocker(nil, dockerOff) {
 		t.Error("expected docker to be off without a flag or managed docker base")
 	}
-	if !effectiveDocker(nil, true) {
+	if !effectiveDocker(nil, dockerOn) {
 		t.Error("expected docker to be on when the flag is set")
 	}
 }

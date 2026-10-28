@@ -78,7 +78,7 @@ func TestEnsureImageSkipsBuildWhenDockerfileIDMatches(t *testing.T) {
 		ImageInspectFn: func(_ context.Context, ref string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
 			id := "sha256:existing"
 			labels := map[string]string{
-				dockerfileIDLabelKey: computeDockerfileID(renderBytes(t, a, nil, false), "1.2.3"),
+				dockerfileIDLabelKey: computeDockerfileID(renderBytes(t, a, nil, dockerOff), "1.2.3"),
 			}
 			if ref == "debian:trixie-slim" {
 				return client.ImageInspectResult{ID: "sha256:base"}, nil
@@ -221,7 +221,7 @@ func TestEnsureImageReusesUnknownUserAgentWithoutResolvingVersion(t *testing.T) 
 	a := agentOpencode(t)
 	// The deferred path renders before the version is known, so the identity
 	// uses the version-less render.
-	rendered := renderBytesVersion(t, a, "", nil, false)
+	rendered := renderBytesVersion(t, a, "", nil, dockerOff)
 	wantID := computeDockerfileID(rendered, userProvidedImageIdentity)
 	buildCalled := false
 	resolverCalled := false
@@ -299,7 +299,7 @@ func TestEnsureImageResolvesUnknownUserAgentOnlyForARebuild(t *testing.T) {
 	if gotArgs == nil || gotArgs["OPENCODE_VERSION"] == nil || *gotArgs["OPENCODE_VERSION"] != "1.2.3" {
 		t.Errorf("OPENCODE_VERSION build arg = %v, want 1.2.3", gotArgs)
 	}
-	wantID := computeDockerfileID(renderBytes(t, a, nil, false), "1.2.3")
+	wantID := computeDockerfileID(renderBytes(t, a, nil, dockerOff), "1.2.3")
 	if gotDockerfileID != wantID {
 		t.Errorf("DOCKERFILE_ID = %q, want resolved-version identity %q", gotDockerfileID, wantID)
 	}
@@ -321,7 +321,13 @@ func TestEnsureImageDockerAddsDockerVersionArg(t *testing.T) {
 			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
 		},
 	})
-	if _, err := EnsureImage(context.Background(), a, "proj", BuildOptions{Docker: true}, &termio.Mock{}); err != nil {
+	if _, err := EnsureImage(
+		context.Background(),
+		a,
+		"proj",
+		BuildOptions{Docker: dockerOn},
+		&termio.Mock{},
+	); err != nil {
 		t.Fatalf("EnsureImage: %v", err)
 	}
 	if gotArgs == nil || gotArgs["DOCKER_VERSION"] == nil || *gotArgs["DOCKER_VERSION"] != "29.7.2" {
@@ -382,11 +388,11 @@ func TestResolveBaseDigestKeepsUnparseableRef(t *testing.T) {
 
 func TestBaseImageRef(t *testing.T) {
 	a := agentOpencode(t)
-	if got := baseImageRef(renderBytes(t, a, nil, false)); got != distroBaseRef {
+	if got := baseImageRef(renderBytes(t, a, nil, dockerOff)); got != distroBaseRef {
 		t.Errorf("default baseImageRef = %q, want %q", got, distroBaseRef)
 	}
 	custom := []byte("FROM ubuntu:24.04\nRUN echo hi\n")
-	if got := baseImageRef(renderBytes(t, a, custom, false)); got != "ubuntu:24.04" {
+	if got := baseImageRef(renderBytes(t, a, custom, dockerOff)); got != "ubuntu:24.04" {
 		t.Errorf("custom baseImageRef = %q", got)
 	}
 }
