@@ -7,8 +7,9 @@ what `AGENTS.md` does not cover.
 
 - Agree on the approach before large or creative work; proceed directly on small, clear,
   well-specified changes.
-- When dispatching subagents, always use the `litellm/deepseek-v4-1-flash-0910-greenpt`
-  model.
+- When dispatching subagents, always use the `litellm/DeepSeek v4.1 Flash 0910 (GreenPT)`
+  model (the exact id the `models` tool reports; a slug like
+  `litellm/deepseek-v4-1-flash-0910-greenpt` is rejected).
 
 ## Brain
 
