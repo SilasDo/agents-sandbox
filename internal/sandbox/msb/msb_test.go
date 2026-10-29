@@ -553,6 +553,30 @@ func TestIsVolumeNotFound(t *testing.T) {
 	}
 }
 
+func TestIsVolumeAlreadyExists(t *testing.T) {
+	volumeExists := &msbSdk.Error{Kind: msbSdk.ErrVolumeAlreadyExists, Message: "volume exists"}
+	sandboxExists := &msbSdk.Error{Kind: msbSdk.ErrSandboxAlreadyExists, Message: "sandbox exists"}
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"volume already exists kind", volumeExists, true},
+		{"wrapped volume already exists", fmt.Errorf("outer: %w", volumeExists), true},
+		{"sandbox already exists kind", sandboxExists, false},
+		{"plain error", errors.New("some other failure"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsVolumeAlreadyExists(tt.err); got != tt.want {
+				t.Errorf("IsVolumeAlreadyExists(%v) = %v, want %v", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsReplaced(t *testing.T) {
 	replaced := &msbSdk.Error{Kind: msbSdk.ErrSandboxReplaced, Message: "handle was replaced"}
 	other := &msbSdk.Error{Kind: msbSdk.ErrSandboxNotFound, Message: "no such sandbox"}

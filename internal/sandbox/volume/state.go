@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -209,6 +210,11 @@ var recoverHomeState = state.RecoverHomeState
 // installed-but-not-durable document (state.WriteInstalled): the installed state
 // already names it, so rolling it back would strand the state on a removed
 // volume (see specs/atomicwrite-durability.md).
+//
+// The commit is a compare-and-set against the home volume recorded before the
+// volume was created (#431): when a concurrent session committed its own fresh
+// volume meanwhile, that volume is adopted and this one removed, so neither is
+// left unrecorded.
 func (vm *Manager) EnsureNewHome(
 	ctx context.Context,
 	client msb.Client,
@@ -218,19 +224,17 @@ func (vm *Manager) EnsureNewHome(
 	fingerprints state.Fingerprints,
 	ui termio.UI,
 ) (string, state.HomeState, error) {
-	volName := HomeVolumeName(k)
-	vol, err := client.CreateVolume(ctx, volName,
-		msbSdk.WithVolumeKind(msbSdk.VolumeKindDir),
-	)
+	snapshotVolume := recordedHomeVolume(k)
+	volName, err := createHomeVolume(ctx, client, k)
 	if err != nil {
-		return "", state.HomeState{}, fmt.Errorf("create volume %s: %w", volName, err)
+		return "", state.HomeState{}, err
 	}
 
 	if !skipVM {
-		if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
+		if err := vm.PrefillVolume(ctx, client, k, volName, info, ui); err != nil {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
 			defer cancel()
-			vm.cleanupVolume(cleanupCtx, client, vol.Name(), ui)
+			vm.cleanupVolume(cleanupCtx, client, volName, ui)
 			return "", state.HomeState{}, err
 		}
 	} else {
@@ -238,17 +242,71 @@ func (vm *Manager) EnsureNewHome(
 	}
 
 	hs := fingerprints.Apply(state.NewHomeState(volName, info.Digest))
+	var concurrentState *state.HomeState
 	// Replace wholesale through the recovery transaction: a fresh home volume's
 	// state is authoritative, and the path is also reached to repair a malformed
 	// state file.
-	if err := recoverHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
+	if err := recoverHomeState(k, func(cur *state.HomeState, exists bool) (bool, error) {
+		if committedConcurrently(cur, exists, snapshotVolume) {
+			adopted := *cur
+			concurrentState = &adopted
+			return false, nil
+		}
 		*cur = hs
 		return true, nil
 	}); err != nil {
-		vm.cleanupUncommittedVolume(ctx, client, vol.Name(), err, ui)
+		vm.cleanupUncommittedVolume(ctx, client, volName, err, ui)
 		return "", state.HomeState{}, err
 	}
+	if concurrentState != nil {
+		ui.Infof("home volume %q was created concurrently, using it", concurrentState.HomeVolume)
+		vm.cleanupVolume(ctx, client, volName, ui)
+		return concurrentState.HomeVolume, *concurrentState, nil
+	}
 	return volName, hs, nil
+}
+
+// recordedHomeVolume is the home volume the state names before a fresh volume
+// is created, or "" when the state is missing or unreadable. It is the
+// compare-and-set snapshot of EnsureNewHome.
+func recordedHomeVolume(k state.Key) string {
+	st, err := state.ReadState(k)
+	if err != nil {
+		return ""
+	}
+	return st.HomeVolume
+}
+
+// committedConcurrently reports whether the state names a home volume other
+// than the snapshot, i.e. another session committed a fresh volume since.
+func committedConcurrently(cur *state.HomeState, exists bool, snapshotVolume string) bool {
+	return exists && cur.HomeVolume != "" && cur.HomeVolume != snapshotVolume
+}
+
+// homeVolumeNameAttempts bounds the retries when a generated home volume name is
+// already taken.
+const homeVolumeNameAttempts = 3
+
+// waitForNextHomeVolumeName waits until HomeVolumeName yields a new name. It is
+// a seam so tests do not sleep.
+var waitForNextHomeVolumeName = func() { time.Sleep(time.Second) }
+
+// createHomeVolume creates a fresh home volume and returns its name.
+// HomeVolumeName has second granularity, so two sessions starting in the same
+// second generate the same name (#431); the loser retries with the next name.
+func createHomeVolume(ctx context.Context, client msb.Client, k state.Key) (string, error) {
+	var err error
+	for attempt := 1; ; attempt++ {
+		volName := HomeVolumeName(k)
+		_, err = client.CreateVolume(ctx, volName, msbSdk.WithVolumeKind(msbSdk.VolumeKindDir))
+		if err == nil {
+			return volName, nil
+		}
+		if !msb.IsVolumeAlreadyExists(err) || attempt == homeVolumeNameAttempts {
+			return "", fmt.Errorf("create volume %s: %w", volName, err)
+		}
+		waitForNextHomeVolumeName()
+	}
 }
 
 // RecordHomeImage updates the stored image digest for a project to the

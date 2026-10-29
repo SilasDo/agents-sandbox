@@ -119,6 +119,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Two sessions starting a new project at the same time no longer leak a home volume. Previously both created a fresh
+  home volume and the later state write replaced the earlier one, leaving a volume unrecorded; in the same second, the
+  generated names collided and the second session failed. The later session now uses the volume the first one recorded
+  and removes its own, and a colliding name is retried with the next timestamp (#431).
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with
