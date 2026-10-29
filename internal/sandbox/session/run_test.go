@@ -227,6 +227,17 @@ func assertInfoCalls(t *testing.T, ui *termio.Mock, want []string) {
 	}
 }
 
+// hasDryRunMessage reports whether any info line is the skip-VM dry-run notice
+// that Run and Shell print only for a skip-VM mode.
+func hasDryRunMessage(infoCalls []string) bool {
+	for _, line := range infoCalls {
+		if strings.HasPrefix(line, "dry-run: Would start") {
+			return true
+		}
+	}
+	return false
+}
+
 func TestRunDryRunRendersPreview(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	ui := &termio.Mock{}
@@ -565,6 +576,9 @@ func TestRunNormalCallsRunAttach(t *testing.T) {
 	if gotSkipVM {
 		t.Error("prepareSandbox got skipVM=true on a real run, want false")
 	}
+	if hasDryRunMessage(ui.InfoCalls) {
+		t.Errorf("a real run must not take the dry-run-vm path, got info calls %v", ui.InfoCalls)
+	}
 	found := false
 	for _, v := range ui.VerboseCalls {
 		if strings.Contains(v, "opencode attach") {
@@ -682,6 +696,9 @@ func TestShellNormalCallsRunAttach(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("Shell normal: %v", err)
+	}
+	if hasDryRunMessage(ui.InfoCalls) {
+		t.Errorf("a real shell run must not take the dry-run-vm path, got info calls %v", ui.InfoCalls)
 	}
 }
 

@@ -19,6 +19,15 @@ This is the field guide for doing it. It was distilled from the first full sweep
 - **`BRANCH_IF` (body removal)** hides behind a *later* error on the same path: deleting an `if resp.StatusCode != 200`
   guard still fails, later, while decoding the error body, so `err != nil` stays true. Kill it by asserting the branch's
   own message (`strings.Contains(err.Error(), "unexpected status")`) or a value the branch alone produces.
+- **A `return err` branch whose fall-through wraps the same error with `%w` is invisible to `errors.Is`: assert
+  identity.** `prepareHomeVolume` deliberately returns the sentinel `runtimemigration.ErrMigrationPending` unwrapped so
+  the user sees its guidance, and the fall-through wraps it as `fmt.Errorf("…: %w", err)`; `errors.Is(err, sentinel)`
+  therefore accepts both and the branch survives. `err != sentinel` (or the absence of the wrap phrase) is the
+  assertion that kills it.
+- **`RETURN_ZERO` on a constant that is already the type's zero value compiles to the identical constant — record it.**
+  `vmBootConnected` is the first `iota` constant of `vmBoot`, so a `RETURN_ZERO` replacement of a `return …,
+  vmBootConnected, …` is literally the same value; place a `// gomutants:disable-next-line RETURN_ZERO reason="…"` on
+  the return.
 - **`STATEMENT_REMOVE` on `req.Header.Set`** needs the test server to assert what it received
   (`Accept: application/json`, `User-Agent: agents-sandbox`).
 - **`RETURN_TRUE` / `RETURN_FALSE` / `RETURN_ZERO`** need the *value* asserted alongside the error: the returned `ok`,
@@ -44,6 +53,13 @@ This is the field guide for doing it. It was distilled from the first full sweep
   would also suppress the killable `cfg != nil` sibling, so **nest the guards** (`if cfg != nil { if cfg.DockerExplicit()
   { … } }`): the `&&` mutant family ceases to exist, the inner body stays load-bearing, and the predicate stays
   production-reachable.
+- **Two operands that are equivalent under a documented invariant leave no killable mutant — keep the one that states
+  the intent.** `session.Run`/`Shell` guarded `if mode.SkipsVM() && sb == nil`, but `PrepareSandbox`'s skipVM contract
+  already makes `sb == nil` true exactly when the mode skips the VM, so both operand removals and the `&&`→`||`
+  inversion were equivalent (three mutants per guard). Keeping only `mode.SkipsVM()` — the dry-run intent — removed the
+  whole family; the guard body stays covered by the dry-run-vm tests, and a real-run path is asserted not to take it.
+  Note each table entry "`mode.SkipsVM()` → `true`" was an operand removal *of the `&&`*, not a standalone expression
+  replacement — once the `&&` is gone no condition mutant is generated at all.
 - **A selector argument that every caller ORs across calls is redundant — drop the parameter.** `hasDockerMarker(data,
   want)` had exactly two callers, each `OR`-ing the current and legacy forms (`... dockerMarker`) `|| (... legacyDockerMarker)`,
   so its `ok && marker == want` was equivalent to `marker != ""`: any match satisfied both calls' `OR`. Returning "any

@@ -184,7 +184,11 @@ func Run(ctx context.Context, opts options.RunOptions, mode options.Mode, ui ter
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if mode.SkipsVM() && sb == nil {
+	// A skip-VM prepare leaves sb nil (PrepareSandbox's skipVM contract), so
+	// this mode check alone decides the dry-run-vm path. Keeping only
+	// mode.SkipsVM() avoids a redundant sb == nil operand whose mutations cannot
+	// change behaviour.
+	if mode.SkipsVM() {
 		ui.Infof("dry-run: Would start agent session in VM")
 		return nil
 	}
@@ -263,7 +267,9 @@ func Shell(ctx context.Context, opts options.RunOptions, mode options.Mode, ui t
 	defer ses.Cleanup()
 	sb := ses.Sandbox()
 
-	if mode.SkipsVM() && sb == nil {
+	// See Run: the skip-VM mode alone decides this path because a skip-VM
+	// prepare leaves sb nil.
+	if mode.SkipsVM() {
 		ui.Infof("dry-run: Would start interactive shell session")
 		return nil
 	}

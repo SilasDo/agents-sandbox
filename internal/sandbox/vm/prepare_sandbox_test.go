@@ -2,7 +2,6 @@ package vm
 
 import (
 	"context"
-	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -750,11 +749,11 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 		options.RunOptions{Agent: "opencode"},
 		false,
 		&ui,
-	); !errors.Is(
-		err,
-		runtimemigration.ErrMigrationPending,
-	) {
-		t.Fatalf("PrepareSandbox() error = %v, want ErrMigrationPending", err)
+	); err != runtimemigration.ErrMigrationPending { //nolint:errorlint // identity is the assertion: a wrapped error must fail here
+		// Identity, not errors.Is: the branch returns the sentinel unchanged so
+		// the user sees its guidance, while the fall-through would wrap it. A
+		// wrapping assertion would accept both, hiding the deliberate block.
+		t.Fatalf("PrepareSandbox() error = %v, want the bare ErrMigrationPending (unwrapped)", err)
 	}
 	if createdVolumes != 0 {
 		t.Errorf("CreateVolume called %d times, want 0 (no fresh home created)", createdVolumes)

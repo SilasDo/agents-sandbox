@@ -1190,6 +1190,10 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 	if want := projectVMName(testVMKey()); createdName != want {
 		t.Errorf("recreated sandbox name = %q, want %q", createdName, want)
 	}
+	// The already-gone teardown must be logged distinctly from a replace.
+	if !verboseContains(ui.VerboseCalls, "was already gone; recreating from new config") {
+		t.Errorf("verbose output = %v, want the already-gone note", ui.VerboseCalls)
+	}
 }
 
 // TestEnsureProjectVMRecreateReplacedIdentityFailsClosed covers the recreate path
@@ -1316,6 +1320,10 @@ func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
 	if !created {
 		t.Fatal("expected the recreate to create a replacement VM under the lock")
 	}
+	// A successful teardown of a still-present VM logs the replace note.
+	if !verboseContains(ui.VerboseCalls, "replaced project VM vm-test-opencode; recreating from new config") {
+		t.Errorf("verbose output = %v, want the replaced-VM note", ui.VerboseCalls)
+	}
 }
 
 // TestEnsureProjectVMCreateEnsureLoadedError covers the image-load failure
@@ -1351,4 +1359,14 @@ func TestEnsureProjectVMCreateEnsureLoadedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when loading the image into microsandbox fails")
 	}
+}
+
+// verboseContains reports whether any recorded verbose line contains want.
+func verboseContains(lines []string, want string) bool {
+	for _, line := range lines {
+		if strings.Contains(line, want) {
+			return true
+		}
+	}
+	return false
 }
