@@ -88,10 +88,13 @@ func TestRepairRootStateReportsRenameFailure(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	seedFile(t, rootStateFile(), []byte("migrations: [unterminated"))
 	withFixedNow(t, time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC))
-	blocker := rootStateFile() + ".corrupt-20261029T120000.000000000Z"
-	seedFile(t, blocker+"/occupied", nil)
-	if _, err := RepairRootState(); err == nil || !strings.Contains(err.Error(), "quarantine root state file") {
-		t.Fatalf("error = %v, want quarantine failure", err)
+	wantErr := errors.New("rename blocked")
+	original := renameRootStateFile
+	renameRootStateFile = func(string, string) error { return wantErr }
+	t.Cleanup(func() { renameRootStateFile = original })
+	_, err := RepairRootState()
+	if err == nil || !strings.Contains(err.Error(), "quarantine root state file") || !errors.Is(err, wantErr) {
+		t.Fatalf("error = %v, want quarantine failure wrapping %v", err, wantErr)
 	}
 }
 

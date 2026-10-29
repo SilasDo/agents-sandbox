@@ -41,6 +41,9 @@ func TestStateRepairQuarantinesCorruptRootState(t *testing.T) {
 	if !containsNormalized(ui.OutCalls, "Moved the corrupt launcher state to "+quarantined[0]+".") {
 		t.Errorf("OutCalls missing quarantine path; got: %v", ui.OutCalls)
 	}
+	if !containsNormalized(ui.OutCalls, "Update checks, migration records, and adoption claims start fresh on the next run.") {
+		t.Errorf("OutCalls missing fresh-start notice; got: %v", ui.OutCalls)
+	}
 	if _, err := state.ReadRootState(); err != nil {
 		t.Errorf("root state still unreadable after repair: %v", err)
 	}

@@ -18,6 +18,10 @@ const quarantineSuffixLayout = "20060102T150405.000000000Z"
 // now is a seam over time.Now for deterministic quarantine names in tests.
 var now = time.Now
 
+// renameRootStateFile is a seam over os.Rename so tests can exercise the
+// quarantine's rename-failure path deterministically.
+var renameRootStateFile = os.Rename
+
 // RepairRootState is the explicit recovery path for a corrupt launcher-global
 // document (#332). Under the blocking root lock it moves an unparsable
 // <root>/state.yaml aside to state.yaml.corrupt-<UTC timestamp> and returns that
@@ -36,16 +40,16 @@ func RepairRootState() (string, error) {
 	defer release()
 
 	_, err = ReadRootState()
-	if err == nil {
-		return "", nil
+	if errors.Is(err, ErrStateUnparsable) {
+		path := rootStateFile()
+		quarantinedPath := path + ".corrupt-" + now().UTC().Format(quarantineSuffixLayout)
+		if err := renameRootStateFile(path, quarantinedPath); err != nil {
+			return "", fmt.Errorf("quarantine root state file: %w", err)
+		}
+		return quarantinedPath, nil
 	}
-	if !errors.Is(err, ErrStateUnparsable) {
+	if err != nil {
 		return "", err
 	}
-	path := rootStateFile()
-	quarantinedPath := path + ".corrupt-" + now().UTC().Format(quarantineSuffixLayout)
-	if err := os.Rename(path, quarantinedPath); err != nil {
-		return "", fmt.Errorf("quarantine root state file: %w", err)
-	}
-	return quarantinedPath, nil
+	return "", nil
 }

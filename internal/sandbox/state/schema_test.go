@@ -166,6 +166,27 @@ func TestParseRejectsNegativeSchemaAsUnparsable(t *testing.T) {
 	}
 }
 
+// TestCheckDocumentSchemaReportsMalformedDocumentsAsUnparsable pins that a
+// schema header the YAML decoder cannot read is classified ErrStateUnparsable
+// — the classification RepairRootState quarantines on — and that the decoder's
+// cause stays reachable through the error chain.
+func TestCheckDocumentSchemaReportsMalformedDocumentsAsUnparsable(t *testing.T) {
+	for name, document := range map[string]string{
+		"syntax error": "schema: [\n",
+		"type error":   "schema: [1, 2]\n",
+	} {
+		if err := checkDocumentSchema([]byte(document), RootStateSchema); !errors.Is(err, ErrStateUnparsable) {
+			t.Errorf("%s: checkDocumentSchema error = %v, want ErrStateUnparsable", name, err)
+		}
+	}
+
+	err := checkDocumentSchema([]byte("schema: [1, 2]\n"), RootStateSchema)
+	var typeErr *yaml.TypeError
+	if !errors.As(err, &typeErr) {
+		t.Errorf("checkDocumentSchema error = %v, want its *yaml.TypeError cause reachable", err)
+	}
+}
+
 func TestWriteStampsCurrentSchema(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	k := Key{Slug: "proj", Agent: "opencode"}
