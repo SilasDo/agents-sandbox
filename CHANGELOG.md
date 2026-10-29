@@ -110,6 +110,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: a project's first run no longer persists a `state.yaml` holding only config fingerprints with an empty
+  `home_volume`. Recording the fingerprints and the image provenance after a VM is created is now a no-op when no state
+  file exists yet — matching the other pre-home-resolution writers — so the next run no longer resolves the empty volume
+  name, which either failed the run or warned about a missing `""` volume (#430).
 - Networking: a user `egress-deny` carve-out now takes precedence over the profile allow rules. microsandbox matches the
   first applicable rule, and the deny entries were emitted after the profile's broad allow, so under `public`,
   `private`, or `host` (and the default) an `egress-deny` entry silently blocked nothing. The generated rule order is now

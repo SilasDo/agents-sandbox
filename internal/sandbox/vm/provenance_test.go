@@ -2,6 +2,9 @@ package vm
 
 import (
 	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -24,6 +27,9 @@ func TestRecordImageProvenanceDetectsToolAgentVersion(t *testing.T) {
 		},
 	}
 	k := state.Key{Slug: "proj", Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 	recordImageProvenance(context.Background(), k, opencodeAgent(t), sb, &termio.Mock{})
 
 	hs, err := state.ReadState(k)
@@ -35,6 +41,28 @@ func TestRecordImageProvenanceDetectsToolAgentVersion(t *testing.T) {
 	}
 }
 
+// TestRecordImageProvenanceSkipsMissingState pins that a first boot with no
+// prior state.yaml writes nothing: the provenance write must not create a
+// document with home_volume: "" (#430).
+func TestRecordImageProvenanceSkipsMissingState(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "freshproj", Agent: "opencode"}
+	fs := msb.NewTestFS(map[string][]byte{
+		agentSourcePath:  []byte(agentSourceUser + "\n"),
+		dockerSourcePath: []byte(agentSourceUser + "\n"),
+	}, nil)
+	sb := &msb.MockSandbox{FSValue_: fs}
+
+	recordImageProvenance(context.Background(), k, opencodeAgent(t), sb, &termio.Mock{})
+
+	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
+		t.Fatalf("ReadState error = %v, want ErrStateNotFound (no state created)", err)
+	}
+	if _, err := os.Stat(filepath.Join(state.KeyDir(k), "state.yaml")); !os.IsNotExist(err) {
+		t.Errorf("state.yaml exists after provenance recording with no prior state: err = %v", err)
+	}
+}
+
 func TestRecordImageProvenanceSkipsVersionForUserAgent(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	fs := msb.NewTestFS(map[string][]byte{
@@ -42,6 +70,9 @@ func TestRecordImageProvenanceSkipsVersionForUserAgent(t *testing.T) {
 	}, nil)
 	sb := &msb.MockSandbox{FSValue_: fs}
 	k := state.Key{Slug: "proj", Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 	recordImageProvenance(context.Background(), k, opencodeAgent(t), sb, &termio.Mock{})
 
 	hs, err := state.ReadState(k)

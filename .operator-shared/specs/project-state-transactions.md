@@ -119,6 +119,13 @@ Because `fn` mutates the *current* document in place, a writer that touches only
 concurrency half of finding 3 is gone by construction. `RecoverHomeState` is the sole wholesale/repair entry, so
 "recovery is the only wholesale writer" is enforced at the API, not by convention.
 
+Only home resolution and recovery may **create** the document, because they are the writers that own the volume-naming
+write. Every other writer takes the `UpdateExistingHomeState` shape (`if !exists { return false, nil }`), including the
+two that run after a VM is created: `vm.persistFingerprints` (the post-creation fingerprint record) and
+`vm.recordImageProvenance` (the boot provenance record). Creating a document there would persist
+`home_volume: ""` — `HomeVolume` has no `omitempty` — and the next run's home resolution would then try to resolve the
+empty name, hard-failing on a non-absence error or warning about a missing `""` volume (#430).
+
 `EnsureNewHome` intentionally writes a fresh fingerprint-seeded state with no upgrade carry-forward: it runs only when a
 readable state's recorded volume is gone **and** no live volume can be recovered, so there is no prior home to preserve.
 The resulting `agent_version` loss self-heals via `recordImageProvenance` on the next boot, and `offered_versions` loss is
