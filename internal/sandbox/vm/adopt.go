@@ -603,6 +603,9 @@ func adoptionNotice(identity git.Identity, agentName, legacyVolume string, apply
 
 	var extraStateRows, configRow strings.Builder
 	for _, slug := range identity.LegacyRepoSlugs {
+		if slug == identity.CheckoutSlug {
+			continue
+		}
 		fmt.Fprintf(
 			&extraStateRows,
 			"\n                %s  ->  %s",

@@ -620,12 +620,12 @@ func TestMustSlugsPanicWhenCwdUnresolvable(t *testing.T) {
 
 // newNamedBareClone clones a bare repository into a sibling "<name>.git"
 // directory: the git dir is the directory itself, with no ".git" entry (#433).
-func newNamedBareClone(t *testing.T) string {
+func newNamedBareClone(t *testing.T, name string) string {
 	t.Helper()
 	origin := testutil.InitRepo(t)
 	tmp := mustResolvePath(t, t.TempDir())
-	testutil.RunGit(t, tmp, "clone", "--bare", origin, "widget.git")
-	return filepath.Join(tmp, "widget.git")
+	testutil.RunGit(t, tmp, "clone", "--bare", origin, name)
+	return filepath.Join(tmp, name)
 }
 
 // TestResolveIdentityNamedBareRootMatchesItsWorktrees pins #433: a bare
@@ -634,7 +634,7 @@ func newNamedBareClone(t *testing.T) string {
 // worktrees inside it, and still adopts the path-derived slug it was keyed
 // under before.
 func TestResolveIdentityNamedBareRootMatchesItsWorktrees(t *testing.T) {
-	bare := newNamedBareClone(t)
+	bare := newNamedBareClone(t, "widget.git")
 	worktree := filepath.Join(bare, "main")
 	testutil.RunGit(t, bare, "worktree", "add", worktree)
 
@@ -652,7 +652,7 @@ func TestResolveIdentityNamedBareRootMatchesItsWorktrees(t *testing.T) {
 }
 
 func TestResolveIdentityNamedBareRootSubdirectoryMatchesRoot(t *testing.T) {
-	bare := newNamedBareClone(t)
+	bare := newNamedBareClone(t, "widget.git")
 
 	got := mustResolveIdentity(t, filepath.Join(bare, "refs", "heads"))
 
@@ -663,7 +663,7 @@ func TestResolveIdentityNamedBareRootSubdirectoryMatchesRoot(t *testing.T) {
 // origin both slugs already are the path-derived ones the bare root was keyed
 // under, so there is nothing extra to adopt.
 func TestResolveIdentityNamedBareRootWithoutOriginKeepsPathSlug(t *testing.T) {
-	bare := newNamedBareClone(t)
+	bare := newNamedBareClone(t, "widget.git")
 	testutil.RunGit(t, bare, "remote", "remove", "origin")
 
 	got := mustResolveIdentity(t, bare)
@@ -692,4 +692,20 @@ func TestResolveIdentityDirectoryWithStrayBareConfigIsNotARepo(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "config"), []byte("[core]\n\tbare = true\n"), 0o644))
 
 	require.Equal(t, nonRepoIdentity(dir), mustResolveIdentity(t, dir))
+}
+
+// TestResolveIdentityNamedBareRootKeepsLegacySlugEqualToCheckoutSlug: when the
+// bare dir's name matches its origin's, the old path slug equals the checkout
+// slug, so no state moves, but it must stay listed: the per-slug config is
+// looked up through the repo slug and the legacy slugs only.
+func TestResolveIdentityNamedBareRootKeepsLegacySlugEqualToCheckoutSlug(t *testing.T) {
+	bare := newNamedBareClone(t, "widget")
+	testutil.RunGit(t, bare, "remote", "set-url", "origin", "https://example.com/acme/widget.git")
+
+	got := mustResolveIdentity(t, bare)
+
+	pathSlug := nonRepoIdentity(bare).CheckoutSlug
+	require.Equal(t, pathSlug, got.CheckoutSlug)
+	require.NotEqual(t, pathSlug, got.RepoSlug)
+	require.Equal(t, []string{pathSlug}, got.LegacyRepoSlugs)
 }
