@@ -109,6 +109,12 @@ plus the session line) so it is asserted as data in unit tests and as the render
 - Project identity is resolved read-only too: the preview runs `AdoptLegacyIdentity` with `apply=false`, so it reports
   against the slug a real run would find first (the legacy slug while a migration is pending) without moving state, and
   an error from that resolution (e.g. a corrupt legacy state document) surfaces rather than being ignored.
+- The root preflight provisions no runtime for a preview (#424): `cmd/agents-sandbox/commands.go` checks
+  `runoptions.ResolveMode(cmd).Previews()` and, instead of `PrepareRuntime`, only applies the private `MSB_HOME`
+  (`runtime.ApplyPreviewHome`, inspect/install skipped). A fresh host thus renders the plan with no download and no
+  runtime install, while the preview's read-only msb inspection (volumes, sandboxes) still resolves against the
+  private home rather than the user's `~/.microsandbox`. `shell --dry-run` is unaffected: the root preflight installs
+  nothing, and shell's own `doctor.CheckAll` preflight is what may still install the runtime.
 
 ### Test seam
 
@@ -147,8 +153,9 @@ contract. Tests cover that `--dry-run` performs no `ImageInspect`/`ImageBuild` a
 
 - No change to `--dry-run-vm` behavior.
 - No change to a real run.
-- No change to prune/stop/kill/`image build`/`build dockerfile` `--dry-run` (already pure previews with their own
-  local flags).
+- No change to what prune/stop/kill/`image build`/`build dockerfile` `--dry-run` print or report: they are already pure
+  previews with their own local flags. They do share the preview-mode preflight change above (#424) — none of them
+  provisions the runtime — since they all reach the same root preflight.
 - No change to what a real build decides (same `buildDecision`, same reasons).
 - No new user flag and no `--dry-run-vm` deprecation.
 

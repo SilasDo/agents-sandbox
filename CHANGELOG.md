@@ -119,6 +119,13 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
+  prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
+  download and install the preview promises not to perform — and an offline host aborted with
+  `install msb runtime: …` instead of the plan. The preview now points the SDK at the private home without provisioning
+  it, so it still reports the image and home-volume decisions a real run would make. Only the root preflight skips the
+  runtime install for a preview; commands that run their own `doctor` preflight (`shell --dry-run`,
+  `volume migrate/reset/edit --dry-run`) still provision the runtime (#424).
 - State: a project's first run no longer persists a `state.yaml` holding only config fingerprints with an empty
   `home_volume`. Recording the fingerprints and the image provenance after a VM is created is now a no-op when no state
   file exists yet — matching the other pre-home-resolution writers — so the next run no longer resolves the empty volume

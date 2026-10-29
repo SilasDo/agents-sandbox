@@ -369,6 +369,51 @@ func TestPrepareRuntimePublicGateUsesRealClient(t *testing.T) {
 	}
 }
 
+func TestApplyPreviewHomeSkipsMockClient(t *testing.T) {
+	oldReal := runtimeClientIsReal
+	runtimeClientIsReal = func() bool { return false }
+	t.Cleanup(func() { runtimeClientIsReal = oldReal })
+
+	unsetEnv(t, "MSB_HOME")
+
+	if err := ApplyPreviewHome(); err != nil {
+		t.Fatalf("ApplyPreviewHome() error = %v", err)
+	}
+	if got := os.Getenv("MSB_HOME"); got != "" {
+		t.Errorf("MSB_HOME = %q; want unset for a mock client", got)
+	}
+}
+
+func TestApplyPreviewHomePointsAtPrivateHome(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	unsetEnv(t, "MSB_HOME")
+	oldReal := runtimeClientIsReal
+	runtimeClientIsReal = func() bool { return true }
+	t.Cleanup(func() { runtimeClientIsReal = oldReal })
+
+	if err := ApplyPreviewHome(); err != nil {
+		t.Fatalf("ApplyPreviewHome() error = %v", err)
+	}
+	if got := os.Getenv("MSB_HOME"); got != PrivateHome() {
+		t.Errorf("MSB_HOME = %q; want the private home %q", got, PrivateHome())
+	}
+}
+
+func TestApplyPreviewHomeWrapsApplyHomeError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	oldReal := runtimeClientIsReal
+	runtimeClientIsReal = func() bool { return true }
+	t.Cleanup(func() { runtimeClientIsReal = oldReal })
+	orig := setenv
+	setenv = func(string, string) error { return errors.New("setenv boom") }
+	t.Cleanup(func() { setenv = orig })
+
+	err := ApplyPreviewHome()
+	if err == nil || !strings.Contains(err.Error(), "apply microsandbox home") {
+		t.Fatalf("ApplyPreviewHome() error = %v, want a wrapped ApplyHome failure", err)
+	}
+}
+
 func TestPrepareRuntimeMissingInstallsAndValidates(t *testing.T) {
 	resetRuntimeState(t)
 	home := mockRuntimeHome(t)
