@@ -749,7 +749,7 @@ func TestPrepareSandboxBlocksOnPendingRuntimeHomeMigration(t *testing.T) {
 		options.RunOptions{Agent: "opencode"},
 		false,
 		&ui,
-	); err != runtimemigration.ErrMigrationPending {
+	); err != runtimemigration.ErrMigrationPending { //nolint:errorlint // identity is the assertion: a wrapped error must fail here
 		// Identity, not errors.Is: the branch returns the sentinel unchanged so
 		// the user sees its guidance, while the fall-through would wrap it. A
 		// wrapping assertion would accept both, hiding the deliberate block.
