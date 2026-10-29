@@ -211,7 +211,7 @@ command reports the bare version (e.g. `0.1.0`).
   format), the old process was no longer matched and both raced for the socket or port, so the run failed with
   "exited before becoming ready" (#343).
 - Docs: the bare-worktrees recipe no longer claims a worktree outside its checkout is unsupported and warned about. It
-  now says such a worktree runs as its own project, names the remaining limit (the checkout's shared git dir is not
+  now says such a worktree runs as its own checkout, names the remaining limit (the checkout's shared git dir is not
   reachable inside the VM), and links the code-fix issue (#435, #426).
 
 ## [0.6.0] - 2026-10-25

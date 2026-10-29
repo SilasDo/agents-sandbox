@@ -87,8 +87,8 @@ agents-sandbox
 - Project config (`.agents-sandbox/`: `Dockerfile`, `config.yaml`, `env`, `env.secret`, home sources, agent config) is
   read from the **bare root**, next to `.git` — not from the worktree you launched from. A `.agents-sandbox/` inside a
   worktree is ignored, and agents-sandbox warns and names it.
-- A worktree that lives *outside* its checkout runs as its own project: agents-sandbox binds the worktree directory and
-  gives it its own project VM and identity rather than sharing the checkout's. The checkout's shared git dir sits outside
+- A worktree that lives *outside* its checkout runs as its own checkout: agents-sandbox binds the worktree directory and
+  gives it its own project VM and home volume rather than sharing the checkout's. The checkout's shared git dir sits outside
   that bind, so git commands inside the VM may fail to resolve the repository. Keep worktrees inside the checkout to
   avoid this; the outside case is tracked in [#426](https://github.com/inoio/agents-sandbox/issues/426).
 
