@@ -21,7 +21,7 @@ deny-by-default, allowlist-only policy.
 |---------------------|----------|----------------------------------------------------------------------------------------------------------------------|
 | `profile`           | string or []string | One or more of `public`, `private`, and `host`, or the terminal `none`. Defaults to `public` when unset. Accepts a scalar, a comma-separated string, or a list. |
 | `egress-allow`      | []string | Egress destinations to allow: `host`, a CIDR (e.g. `123.123.0.0/16`), or a `.suffix` (e.g. `.internal`).              |
-| `egress-deny`       | []string | Egress carve-outs, same destination forms as `egress-allow`. Emitted **before** allow rules (deny-before-allow).     |
+| `egress-deny`       | []string | Egress carve-outs, same destination forms as `egress-allow`. Emitted **before** the profile rules and the explicit allow rules, so a carve-out wins over a profile's broad allow. |
 | `dns-servers`       | []string | DNS upstream resolvers: a bare IP (auto-appends `:53`) or `host:port`. Overrides microsandbox's default resolver.     |
 
 - `public` (the default) allows egress to the public internet only; `private` allows the private/LAN ranges (RFC 1918,
@@ -37,9 +37,11 @@ deny-by-default, allowlist-only policy.
 - **`host` opens every host port to the VM.** The group allows the whole host gateway, not a single service, so a VM
   that reaches a host MCP bridge can also reach anything else listening on the host. Combine it with `public` only when
   the VM must call a host service.
-- Rule order in the generated firewall: profile rules (including gateway DNS), then `egress-deny`, then `egress-allow`.
-  So `egress-allow: [123.123.0.0/16]` together with `egress-deny: [123.123.123.0/24]` denies `123.123.123.5` while
-  allowing `123.123.200.5` (a carve-out).
+- Rule order in the generated firewall: gateway DNS, then `egress-deny`, then the profile allow rules, then `egress-allow`.
+  microsandbox matches the first rule that applies, so a deny entry takes precedence over the profile's broad allow. With
+  `profile: public` and `egress-deny: [123.123.123.0/24]`, `123.123.123.5` is blocked even though the public profile would
+  otherwise allow it. Likewise `egress-allow: [123.123.0.0/16]` with `egress-deny: [123.123.123.0/24]` denies
+  `123.123.123.5` while allowing `123.123.200.5` (a carve-out).
 
 For example, to allow only a single API host:
 
@@ -78,7 +80,7 @@ time. It is also configurable via the `AGENTS_SANDBOX_NETWORK_DNS_SERVERS` envir
 network:
   profile: none
   egress-allow: []          # host, CIDR, or .suffix
-  egress-deny: []           # deny entries; emitted before allow rules
+  egress-deny: []           # deny entries; emitted before profile and allow rules
   dns-servers:              # custom upstream resolvers (default: microsandbox's)
     - 1.1.1.1
     - 8.8.8.8:5353

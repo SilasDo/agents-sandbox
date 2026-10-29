@@ -22,10 +22,12 @@ Mounts are the exception: they are read live from the persisted config JSON (`sp
 - `EnvState`, `SecretState`, `MountState` — content hashes. Empty applied means "no persisted state yet" and counts as
   changed **only when the desired setting is non-empty**.
 - `NetworkState` — a `network.Policy.Fingerprint()` hash. Empty applied counts as changed **unconditionally**, to force
-  one-time migration of VMs created before the deny-by-default network change (#86). `BuildNetworkState` applies
-  `Policy.Effective()`, so an unset profile fingerprints as the `public` default; `Fingerprint` sorts its lines, so
-  profile and list order do not matter. Profile composition and its fingerprint-stability rule are in
-  `specs/network-profiles.md`.
+  one-time migration of VMs created before the deny-by-default network change (#86). A deny-bearing profiled policy's
+  fingerprint additionally carries a `rule-order` marker, so a VM built before the egress-deny-before-profile-allow fix
+  (#231) recreates once to adopt the corrected rule order; a policy whose emitted rules did not change keeps its
+  historical hash and is not recreated. `BuildNetworkState` applies `Policy.Effective()`, so an unset profile fingerprints
+  as the `public` default; `Fingerprint` sorts its lines, so profile and list order do not matter. Profile composition and
+  its fingerprint-stability rule are in `specs/network-profiles.md`.
 
 The host env and secret files are read once per run (`envsecret.LoadEnvAndSecrets`, in `PrepareSandbox`) and the one
 `envsecret.EnvSecrets` value is threaded to the fingerprint seed, `resolveReconfigDecision`, and VM creation. The

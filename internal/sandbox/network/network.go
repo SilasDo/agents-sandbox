@@ -100,6 +100,16 @@ func (p Policy) Effective() Policy {
 // Fingerprint returns a stable SHA-256 hex digest of the policy, for detecting
 // changes across runs. It hashes the profile and the sorted allow/deny/dns
 // lists, independent of the microsandbox SDK's canonical NetworkConfig shape.
+//
+// A deny-bearing policy that composes a profile also contributes a rule-order
+// marker. The marker is not policy content: it records that the policy is
+// emitted with egress-deny ahead of the profile allow rules, a change from the
+// pre-#231 order that an existing VM has not baked in. Including it makes the
+// fingerprint differ from the one persisted before that fix, so the VM is
+// recreated once to pick up the corrected order; the marker reaches state after
+// the recreate, so it fires only once. Policies whose emitted rules are
+// identical before and after (no deny entries, or the terminal `none` profile)
+// get no marker and keep their historical fingerprint.
 func (p Policy) Fingerprint() string {
 	p = p.Effective()
 	var lines []string
@@ -115,9 +125,29 @@ func (p Policy) Fingerprint() string {
 	for _, d := range p.EgressDeny {
 		lines = append(lines, "deny="+d)
 	}
+	if p.denyPrecedesProfileAllow() {
+		lines = append(lines, "rule-order=deny-before-profile")
+	}
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:])
+}
+
+// denyPrecedesProfileAllow reports whether the policy takes advantage of the
+// egress-deny-before-profile-allow emission order (#231): it has at least one
+// deny entry and at least one profile that contributes allow rules. When either
+// is absent the emitted rules are identical to the pre-fix order, so the policy
+// needs no migration marker.
+func (p Policy) denyPrecedesProfileAllow() bool {
+	if len(p.EgressDeny) == 0 {
+		return false
+	}
+	for _, prof := range dedupeProfiles(p.Profiles) {
+		if prof != ProfileNone {
+			return true
+		}
+	}
+	return false
 }
 
 // NormalizeDNSServers validates and normalizes DNS upstream resolvers. Bare IPs
@@ -177,10 +207,13 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(msbProfiles) == 0 {
-		// none contributes no SDK profile rules, so the SDK adds no gateway DNS;
-		// add it here so named allow-listed hosts can resolve.
-		cfg.Rules = append(cfg.Rules, msbSdk.Rule.AllowDNS())
+	// FromProfilesChecked returns the gateway-DNS rule first, then the profile
+	// allow rules. Drop that DNS rule and re-emit our own at the front so the
+	// deny carve-outs can sit between them (#231); `none` selects no profile,
+	// so the SDK contributes no rules at all.
+	profileRules := cfg.Rules
+	if len(msbProfiles) > 0 {
+		profileRules = cfg.Rules[1:]
 	}
 	if len(p.DNSServers) > 0 {
 		nameservers, err := NormalizeDNSServers(p.DNSServers)
@@ -191,12 +224,25 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 			Nameservers: nameservers,
 		}
 	}
+	// microsandbox evaluates rules first-match-wins in list order, so the
+	// user's egress-deny carve-outs must come before the profile allow rules;
+	// otherwise a profile's broad allow shadows the carve-out and the deny
+	// never fires (#231). The order is: gateway DNS, deny, profile allows,
+	// explicit allows.
+	denyRules := make([]msbSdk.PolicyRule, 0, len(p.EgressDeny))
 	for _, d := range dedupe(p.EgressDeny) {
-		cfg.Rules = append(cfg.Rules, egressRule(msbSdk.PolicyActionDeny, d))
+		denyRules = append(denyRules, egressRule(msbSdk.PolicyActionDeny, d))
 	}
+	allowRules := make([]msbSdk.PolicyRule, 0, len(p.EgressAllow))
 	for _, d := range dedupe(p.EgressAllow) {
-		cfg.Rules = append(cfg.Rules, egressRule(msbSdk.PolicyActionAllow, d))
+		allowRules = append(allowRules, egressRule(msbSdk.PolicyActionAllow, d))
 	}
+	cfg.Rules = slices.Concat(
+		[]msbSdk.PolicyRule{msbSdk.Rule.AllowDNS()},
+		denyRules,
+		profileRules,
+		allowRules,
+	)
 	return cfg, nil
 }
 

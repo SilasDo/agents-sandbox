@@ -1,6 +1,7 @@
 package network
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -159,23 +160,143 @@ func TestConfigDenyBeforeAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
-	var denyIdx, allowIdx int
-	foundDeny, foundAllow := false, false
+	var denyIdx, explicitAllowIdx, profileAllowIdx int
+	foundDeny, foundExplicitAllow, foundProfileAllow := false, false, false
 	for i, r := range cfg.Rules {
-		if r.Direction == msbSdk.PolicyDirectionEgress && r.Destination == "123.123.123.0/24" &&
-			r.Action == msbSdk.PolicyActionDeny {
+		if r.Direction != msbSdk.PolicyDirectionEgress {
+			continue
+		}
+		switch {
+		case r.Destination == "123.123.123.0/24" && r.Action == msbSdk.PolicyActionDeny:
 			denyIdx, foundDeny = i, true
-		}
-		if r.Direction == msbSdk.PolicyDirectionEgress && r.Destination == "123.123.0.0/16" &&
-			r.Action == msbSdk.PolicyActionAllow {
-			allowIdx, foundAllow = i, true
+		case r.Destination == "123.123.0.0/16" && r.Action == msbSdk.PolicyActionAllow:
+			explicitAllowIdx, foundExplicitAllow = i, true
+		case r.Destination == "public" && r.Action == msbSdk.PolicyActionAllow:
+			profileAllowIdx, foundProfileAllow = i, true
 		}
 	}
-	if !foundDeny || !foundAllow {
-		t.Fatalf("expected both deny and allow rules, found deny=%v allow=%v", foundDeny, foundAllow)
+	if !foundDeny || !foundExplicitAllow || !foundProfileAllow {
+		t.Fatalf("expected deny, explicit allow, and profile allow rules; found deny=%v explicit=%v profile=%v",
+			foundDeny, foundExplicitAllow, foundProfileAllow)
 	}
-	if denyIdx >= allowIdx {
-		t.Fatalf("deny rule (idx %d) must precede allow rule (idx %d)", denyIdx, allowIdx)
+	if denyIdx >= explicitAllowIdx {
+		t.Fatalf("deny rule (idx %d) must precede explicit allow rule (idx %d)", denyIdx, explicitAllowIdx)
+	}
+	// First-match-wins: the profile's broad allow must not shadow the carve-out.
+	if denyIdx >= profileAllowIdx {
+		t.Fatalf("deny rule (idx %d) must precede profile allow rule (idx %d)", denyIdx, profileAllowIdx)
+	}
+}
+
+func TestConfigDenyPrecedesProfileAllow(t *testing.T) {
+	const denyDestination = "10.0.0.0/8"
+	cases := []struct {
+		name     string
+		profiles []Profile
+	}{
+		{name: "public", profiles: []Profile{ProfilePublic}},
+		{name: "private", profiles: []Profile{ProfilePrivate}},
+		{name: "host", profiles: []Profile{ProfileHost}},
+		{name: "unset defaults to public"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := (Policy{Profiles: tc.profiles, EgressDeny: []string{denyDestination}}).Config()
+			if err != nil {
+				t.Fatalf("Config: %v", err)
+			}
+			denyIdx := -1
+			var profileAllowIdxs []int
+			for i, r := range cfg.Rules {
+				if r.Direction != msbSdk.PolicyDirectionEgress {
+					continue
+				}
+				if r.Action == msbSdk.PolicyActionDeny && r.Destination == denyDestination {
+					denyIdx = i
+				}
+				// Profile allow rules carry a destination group name as the
+				// whole destination; the gateway-DNS allow rule is the one
+				// with a port.
+				if r.Action == msbSdk.PolicyActionAllow && r.Port == "" && isProfileDestination(r.Destination) {
+					profileAllowIdxs = append(profileAllowIdxs, i)
+				}
+			}
+			if denyIdx < 0 {
+				t.Fatalf("egress-deny rule not found in %+v", cfg.Rules)
+			}
+			if len(profileAllowIdxs) == 0 {
+				t.Fatalf("expected at least one profile allow rule, got %+v", cfg.Rules)
+			}
+			for _, idx := range profileAllowIdxs {
+				if denyIdx >= idx {
+					t.Fatalf(
+						"deny rule (idx %d) must precede profile allow rule (idx %d): %+v",
+						denyIdx,
+						idx,
+						cfg.Rules,
+					)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigRuleOrder(t *testing.T) {
+	type rule struct {
+		action      msbSdk.PolicyAction
+		destination string
+		port        string
+	}
+	// The exact list order is the contract: microsandbox matches the first
+	// applicable rule, so the gateway-DNS rule leads, then the user deny
+	// carve-outs, then the profile allow rules, then the explicit allows (#231).
+	cases := []struct {
+		name   string
+		policy Policy
+		want   []rule
+	}{
+		{
+			name: "profile with deny and allow",
+			policy: Policy{
+				Profiles:    []Profile{ProfilePublic},
+				EgressDeny:  []string{"10.0.0.0/8"},
+				EgressAllow: []string{"api.example.com"},
+			},
+			want: []rule{
+				{msbSdk.PolicyActionAllow, "host", "53"},
+				{msbSdk.PolicyActionDeny, "10.0.0.0/8", ""},
+				{msbSdk.PolicyActionAllow, "public", ""},
+				{msbSdk.PolicyActionAllow, "api.example.com", ""},
+			},
+		},
+		{
+			name: "none with deny and allow",
+			policy: Policy{
+				Profiles:    []Profile{ProfileNone},
+				EgressDeny:  []string{"10.0.0.0/8"},
+				EgressAllow: []string{"api.example.com"},
+			},
+			want: []rule{
+				{msbSdk.PolicyActionAllow, "host", "53"},
+				{msbSdk.PolicyActionDeny, "10.0.0.0/8", ""},
+				{msbSdk.PolicyActionAllow, "api.example.com", ""},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := tc.policy.Config()
+			if err != nil {
+				t.Fatalf("Config: %v", err)
+			}
+			got := make([]rule, 0, len(cfg.Rules))
+			for _, r := range cfg.Rules {
+				got = append(got, rule{r.Action, r.Destination, r.Port})
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("rule order = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -546,6 +667,36 @@ func TestFingerprintSingleProfileMatchesLegacyFormat(t *testing.T) {
 	}
 }
 
+// TestFingerprintDenyPolicyMigratesFromLegacy pins the pre-#231 fingerprint for
+// a deny-bearing profiled policy and asserts the current fingerprint diverges
+// from it, so an existing VM (whose persisted NetworkState holds the old hash)
+// is recreated once to pick up the egress-deny-before-profile-allow order.
+func TestFingerprintDenyPolicyMigratesFromLegacy(t *testing.T) {
+	const legacyDenyPublic = "440e1b21984eb6657c69098f6e9ddd813c90b39ebc3f6f575ad640ec97528498"
+	p := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"123.123.123.0/24"}}
+	if got := p.Fingerprint(); got == legacyDenyPublic {
+		t.Fatalf("deny-bearing fingerprint %q must diverge from the pre-fix value", got)
+	}
+	// The marker is content-independent: a reordered deny list still hashes the
+	// same.
+	reordered := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"10.0.0.0/8", "123.123.123.0/24"}}
+	other := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"123.123.123.0/24", "10.0.0.0/8"}}
+	if reordered.Fingerprint() != other.Fingerprint() {
+		t.Fatal("deny order must not change the fingerprint")
+	}
+}
+
+// TestFingerprintDenyWithoutProfileRulesKeepsLegacyFormat verifies the migration
+// marker is omitted when the emitted rules do not change: a `none` policy emits
+// no profile allow rules, so its deny rules already came first.
+func TestFingerprintDenyWithoutProfileRulesKeepsLegacyFormat(t *testing.T) {
+	const legacyNoneDeny = "d825326a2c0b481774b194a7cbb7597bbad1558e38726d0ea7b6e4be792ff3a7"
+	p := Policy{Profiles: []Profile{ProfileNone}, EgressDeny: []string{"123.123.123.0/24"}}
+	if got := p.Fingerprint(); got != legacyNoneDeny {
+		t.Fatalf("none deny fingerprint = %q, want legacy %q", got, legacyNoneDeny)
+	}
+}
+
 func TestFingerprintEmptyUsesPublicDefault(t *testing.T) {
 	if (Policy{}).Fingerprint() != (Policy{Profiles: []Profile{ProfilePublic}}).Fingerprint() {
 		t.Fatal("unset policy and explicit public policy must have the same fingerprint")
@@ -567,5 +718,17 @@ func TestFingerprintDistinguishesDNSServers(t *testing.T) {
 	different := Policy{Profiles: []Profile{ProfilePublic}, DNSServers: []string{"8.8.8.8"}}
 	if different.Fingerprint() == withDNS.Fingerprint() {
 		t.Fatal("different dns-servers must change the fingerprint")
+	}
+}
+
+// isProfileDestination reports whether a rule destination names one of the
+// composable profile groups (as opposed to a user allow/deny destination or
+// the gateway-DNS rule, which shares the "host" destination but carries a port).
+func isProfileDestination(destination string) bool {
+	switch destination {
+	case "public", "private", "host":
+		return true
+	default:
+		return false
 	}
 }
