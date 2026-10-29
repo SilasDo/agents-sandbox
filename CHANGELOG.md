@@ -214,6 +214,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
   removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
   longer leaves an orphaned volume that every retry added to (#427).
+- Home volume: a first run whose fresh home volume is created but whose state write fails now surfaces the error and
+  removes the uncommitted volume, instead of warning and continuing against a volume the launcher has no record of. The
+  volume is kept when the write reports an installed-but-not-durable document (`state.WriteInstalled`), since that state
+  already names it (#428).
 
 ## [0.6.0] - 2026-10-25
 
