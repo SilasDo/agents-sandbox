@@ -44,6 +44,7 @@ func TestCommandNeedsMSBRuntimeSkipsLauncherOnlyCommands(t *testing.T) {
 		{name: "completion", cmd: &cobra.Command{Use: cmdCompletion}, want: false},
 		{name: "doctor", cmd: &cobra.Command{Use: cmdDoctor}, want: false},
 		{name: "config child", cmd: configChildCommand(), want: false},
+		{name: "state child", cmd: stateChildCommand(), want: false},
 		{name: "run", cmd: &cobra.Command{Use: cmdRun}, want: true},
 	}
 	for _, test := range tests {
@@ -158,6 +159,13 @@ func configChildCommand() *cobra.Command {
 	config := &cobra.Command{Use: cmdConfig}
 	child := &cobra.Command{Use: cmdHome}
 	config.AddCommand(child)
+	return child
+}
+
+func stateChildCommand() *cobra.Command {
+	stateCmd := &cobra.Command{Use: cmdState}
+	child := &cobra.Command{Use: cmdRepair}
+	stateCmd.AddCommand(child)
 	return child
 }
 

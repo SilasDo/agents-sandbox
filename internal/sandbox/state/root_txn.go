@@ -31,7 +31,7 @@ func (t *RootTxn) Commit() error { return writeRootState(*t.state) }
 //
 // A missing file hands fn a zero RootState. A corrupt or unreadable document is
 // returned as an error and fn is never called, so an unknown document is never
-// clobbered.
+// clobbered; RepairRootState is the explicit way to quarantine a corrupt one.
 //
 //nolint:nonamedreturns // the documented (ok, err) signature is the contract
 func WithRootState(blocking bool, fn func(*RootTxn) error) (ok bool, err error) {
