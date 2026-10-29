@@ -125,10 +125,10 @@ func anyDirExists(dirs ...string) (bool, error) {
 // omitted rather than named as if read.
 func describeConfigScopes(userDir, projectDir string, onlyExisting bool) string {
 	parts := make([]string, 0, 2)
-	if !onlyExisting || isDir(userDir) {
+	if !onlyExisting || IsDir(userDir) {
 		parts = append(parts, fmt.Sprintf("user: %q", userDir))
 	}
-	if !onlyExisting || isDir(projectDir) {
+	if !onlyExisting || IsDir(projectDir) {
 		parts = append(parts, fmt.Sprintf("project: %q", projectDir))
 	}
 	if len(parts) == 0 {
@@ -154,7 +154,14 @@ func baseUserConfigDir(src ConfigSource) string {
 }
 
 // isDir reports whether path names an existing directory.
-func isDir(path string) bool {
+// noLauncherConfigDir reports whether the agent has no launcher config dir in
+// either scope: neither primary dir exists and no legacy fallback was found.
+func noLauncherConfigDir(src ConfigSource) bool {
+	return src.Fallback == "" && !IsDir(src.PrimaryUserDir) && !IsDir(src.PrimaryProjectDir)
+}
+
+// IsDir reports whether path names an existing directory.
+func IsDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }
@@ -267,6 +274,13 @@ func LoadConfigFilesForHost(
 			a.ConfigDirName(),
 			a.ConfigDirName(),
 			describeConfigScopes(src.PrimaryUserDir, src.PrimaryProjectDir, false),
+		)
+	}
+	if noLauncherConfigDir(src) {
+		ui.Infof(
+			"No launcher config dir for agent %s yet (user: %q, project: %q); create one to add config snippets, "+
+				"mirrored files, and hooks. Run 'agents-sandbox config agent' to inspect what gets provisioned.",
+			a.Name(), src.PrimaryUserDir, src.PrimaryProjectDir,
 		)
 	}
 	return &ConfigFiles{

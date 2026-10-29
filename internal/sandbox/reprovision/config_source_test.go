@@ -2,6 +2,7 @@ package reprovision
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -29,6 +30,24 @@ func TestDescribeConfigScopes(t *testing.T) {
 	}
 	if strings.Contains(targets, "relative to CWD") {
 		t.Errorf("targets should show explicit absolute paths, got %q", targets)
+	}
+	// A missing user dir must still be named when onlyExisting is false: the
+	// project scope being the only one present must not drop the user scope.
+	if got, want := describeConfigScopes(
+		missing,
+		existing,
+		false,
+	), fmt.Sprintf(
+		"user: %q, project: %q",
+		missing,
+		existing,
+	); got != want {
+		t.Errorf("targets with only the project present = %q, want %q", got, want)
+	}
+	// An existing project dir must be named when onlyExisting is true: the
+	// user scope being absent must not drop the project scope.
+	if got, want := describeConfigScopes(missing, existing, true), fmt.Sprintf("project: %q", existing); got != want {
+		t.Errorf("onlyExisting with only the project present = %q, want %q", got, want)
 	}
 }
 

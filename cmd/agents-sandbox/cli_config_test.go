@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -362,5 +363,35 @@ func TestSlugHasUserConfigEmptySlugIsFalse(t *testing.T) {
 
 	if slugHasUserConfig("") {
 		t.Error("an empty slug has no per-slug user config layer")
+	}
+}
+
+func TestConfigAgentMarksMissingConfigDirs(t *testing.T) {
+	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config agent --agent opencode2: %v", err)
+	}
+	cp := configpaths.Get()
+	userDir := filepath.Join(cp.UserConfigDir(), "opencode2")
+	projectDir := filepath.Join(cp.ProjectConfigDirAbs(), "opencode2")
+	want := fmt.Sprintf("config dir: user=%q (missing)  project=%q (missing)  (primary)", userDir, projectDir)
+	if !slices.Contains(ui.OutCalls, want) {
+		t.Errorf("expected line %q, got:\n%s", want, strings.Join(ui.OutCalls, "\n"))
+	}
+}
+
+func TestConfigAgentDoesNotMarkExistingConfigDir(t *testing.T) {
+	cmd, ui := setupCommandFixtures(t, "config", "agent", "--agent", "opencode2")
+	userDir := configpaths.MustDir(configpaths.Get().UserAgentConfigDir(mustOpencode2(t)))
+	if err := os.MkdirAll(userDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("config agent --agent opencode2: %v", err)
+	}
+	projectDir := filepath.Join(configpaths.Get().ProjectConfigDirAbs(), "opencode2")
+	want := fmt.Sprintf("config dir: user=%q  project=%q (missing)  (primary)", userDir, projectDir)
+	if !slices.Contains(ui.OutCalls, want) {
+		t.Errorf("expected line %q, got:\n%s", want, strings.Join(ui.OutCalls, "\n"))
 	}
 }

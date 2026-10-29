@@ -57,6 +57,9 @@ command reports the bare version (e.g. `0.1.0`).
   receives them already split by the host shell and the guest shell splits the joined line again, so an argument
   containing spaces (`agents-sandbox run -- chat -q "explain this function"`) used to reach the agent as several words.
   `opencode`, `opencode2`, `pi`, `claude-code`, and `codex` share the quoting.
+- A first session no longer stays silent when the agent has no launcher config dir: `run` and `shell` print an info
+  line naming the user and project dirs (`~/.config/agents-sandbox/<agent>/`, `.agents-sandbox/<agent>/`), and
+  `config agent` marks each missing dir `(missing)` (#432).
 - `stop --force` and `kill --force` now remove the persisted state of an already-stopped or never-started project VM.
   Previously they printed "already stopped" and left it in place, so `--force` never cleaned up such a VM; they now
   skip the stop or kill, remove the sandbox, and say so. `--dry-run` still removes nothing. See `docs/commands.md`.
