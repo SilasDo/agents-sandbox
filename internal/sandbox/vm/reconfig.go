@@ -148,7 +148,9 @@ type reconfigDecision struct {
 // choice against any attached clients, and — when the VM will be recreated for
 // a changed image — resolves the home-volume action. It performs no
 // home-volume side effects; applyReconfigHomeAction applies the resolved
-// action.
+// action. The desired env and secrets are the caller's single load
+// (envsecret.LoadEnvAndSecrets), so the change comparison and the VM creation
+// it leads to agree on one reading of the host files.
 //
 // It re-fetches the existing sandbox handle to read live VM files: no
 // passed-in msb.Sandbox is available at the call site, which runs before
@@ -161,6 +163,7 @@ func resolveReconfigDecision(
 	opts options.RunOptions,
 	imageInfo image.ImageInfo, homeVol string, hs state.HomeState,
 	cfs *reprovision.ConfigFiles,
+	env envsecret.EnvSecrets,
 	ui termio.UI,
 ) (reconfigDecision, error) {
 	handle, _, lookupErr := findProjectVM(ctx, client, k)
@@ -186,9 +189,8 @@ func resolveReconfigDecision(
 		}
 	}
 
-	desiredEnv, desiredSecrets := envsecret.LoadEnvAndSecrets(ui)
-	envHasChanged := state.EnvChanged(hs.EnvState, desiredEnv)
-	secretsHasChanged := state.SecretsChanged(hs.SecretState, desiredSecrets)
+	envHasChanged := state.EnvChanged(hs.EnvState, env.Vars)
+	secretsHasChanged := state.SecretsChanged(hs.SecretState, env.Secrets)
 	networkHasChanged := state.NetworkChanged(hs.NetworkState, opts.Network)
 	mountsHaveChanged := state.MountsChanged(hs.MountState, opts.Mounts)
 

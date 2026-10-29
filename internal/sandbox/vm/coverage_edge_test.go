@@ -11,6 +11,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/git"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -99,6 +100,7 @@ func TestEnsureProjectVMFlockError(t *testing.T) {
 		k,
 		k.Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {

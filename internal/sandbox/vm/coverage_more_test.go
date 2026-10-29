@@ -14,6 +14,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -382,6 +383,7 @@ func TestCreateProjectVMNetworkError(t *testing.T) {
 			Memory:  "1G",
 			Network: network.Policy{Profiles: []network.Profile{network.Profile("bogus-profile")}},
 		},
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -406,6 +408,7 @@ func TestCreateProjectVMCreateError(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -466,6 +469,7 @@ func TestCreateProjectVMServeOnlyAndNetwork(t *testing.T) {
 			ServeOnly: true,
 			Network:   network.Policy{Profiles: []network.Profile{network.ProfilePublic}},
 		},
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -509,6 +513,7 @@ func TestCreateProjectVMServeOnlyPublishesExactPort(t *testing.T) {
 			ServeOnly:     true,
 			ServeHostPort: 4097,
 		},
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {

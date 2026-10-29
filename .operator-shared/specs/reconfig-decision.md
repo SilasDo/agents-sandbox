@@ -27,6 +27,13 @@ Mounts are the exception: they are read live from the persisted config JSON (`sp
   profile and list order do not matter. Profile composition and its fingerprint-stability rule are in
   `specs/network-profiles.md`.
 
+The host env and secret files are read once per run (`envsecret.LoadEnvAndSecrets`, in `PrepareSandbox`) and the one
+`envsecret.EnvSecrets` value is threaded to the fingerprint seed, `resolveReconfigDecision`, and VM creation. The
+persisted `EnvState`/`SecretState` hashes and the host env and secrets baked into a newly created VM therefore come from
+the same read and cannot disagree. The image's Dockerfile `ENV`, which `buildProjectVMEnv` merges on top of that host env
+(winning on collisions), is not part of the fingerprint; a change there is caught by the image-digest recreate path. The
+loader's warnings are emitted once instead of once per consumer (#342).
+
 A read of an existing VM's persisted config can fail (`msb.SandboxHandle.Config()`), and `findProjectVM` can fail to
 locate a VM it cannot confirm absent. Both are treated fail-closed by `resolveReconfigDecision`: a non-not-found
 lookup error is returned (the run aborts) rather than treated as "no VM"; and a `Config()` failure is surfaced as a

@@ -62,19 +62,32 @@ func MergeEnvMaps(mapsToMerge ...map[string]string) map[string]string {
 	return result
 }
 
+// EnvSecrets is the project VM's desired host configuration: the merged env
+// vars and the built secret entries read from the host env and secret files. A
+// run loads it once and threads the one value to the config fingerprints, the
+// reconfig change detection, and VM creation, so those files are read (and
+// warned about) once per run.
+//
+//exhaustruct:ignore
+type EnvSecrets struct {
+	Vars    map[string]string
+	Secrets []msbSdk.SecretEntry
+}
+
 // LoadEnvAndSecrets reads the user and project env files and secret-spec files
-// and merges them into the desired env map and built secret entries. The
-// project files override the user files.
-func LoadEnvAndSecrets(ui termio.UI) (map[string]string, []msbSdk.SecretEntry) {
-	env := MergeEnvMaps(
-		BuildEnvMap(cp.Get().UserEnvFile()),
-		BuildEnvMap(cp.Get().ProjectEnvFile()),
-	)
-	secrets := BuildSecretsFromSpecs(MergeSecretSpecs(
-		ParseSecretSpecLegacy(cp.Get().UserEnvSecretFile(), ui),
-		ParseSecretSpecLegacy(cp.Get().ProjectEnvSecretFile(), ui),
-		ParseSecretSpecYAML(cp.Get().UserEnvSecretYAMLFile(), ui),
-		ParseSecretSpecYAML(cp.Get().ProjectEnvSecretYAMLFile(), ui),
-	), ui)
-	return env, secrets
+// and merges them into the desired env and secrets. The project files override
+// the user files.
+func LoadEnvAndSecrets(ui termio.UI) EnvSecrets {
+	return EnvSecrets{
+		Vars: MergeEnvMaps(
+			BuildEnvMap(cp.Get().UserEnvFile()),
+			BuildEnvMap(cp.Get().ProjectEnvFile()),
+		),
+		Secrets: BuildSecretsFromSpecs(MergeSecretSpecs(
+			ParseSecretSpecLegacy(cp.Get().UserEnvSecretFile(), ui),
+			ParseSecretSpecLegacy(cp.Get().ProjectEnvSecretFile(), ui),
+			ParseSecretSpecYAML(cp.Get().UserEnvSecretYAMLFile(), ui),
+			ParseSecretSpecYAML(cp.Get().ProjectEnvSecretYAMLFile(), ui),
+		), ui),
+	}
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -52,6 +53,7 @@ func TestEnsureProjectVMFlockDirError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -83,6 +85,7 @@ func TestEnsureProjectVMDecideActionError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -120,6 +123,7 @@ func TestEnsureProjectVMWaitsForStartingVM(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -168,6 +172,7 @@ func TestEnsureProjectVMStartingReconcileWarning(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -201,6 +206,7 @@ func TestEnsureProjectVMStartingStatusError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -237,6 +243,7 @@ func TestEnsureProjectVMStartsAfterConcurrentBootFails(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -284,6 +291,7 @@ func TestEnsureProjectVMConvergesCreatedStartRace(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -321,6 +329,7 @@ func TestEnsureProjectVMConnectRetryRejectsRefreshedPausedVM(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -364,6 +373,7 @@ func TestEnsureProjectVMConnectRetryWaitsForStartingVM(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil || sb == nil || boot != vmBootConnected {
@@ -407,6 +417,7 @@ func TestEnsureProjectVMPostLockWaitsForStartingVM(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -448,6 +459,7 @@ func TestEnsureProjectVMPostLockWaitError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -493,6 +505,7 @@ func TestEnsureProjectVMPostLockWaitReconcileWarning(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -648,6 +661,7 @@ func TestEnsureProjectVMStartError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -676,6 +690,7 @@ func TestEnsureProjectVMEnsureInstalledError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -707,6 +722,7 @@ func TestEnsureProjectVMConnectRetryReconnectError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -746,6 +762,7 @@ func TestEnsureProjectVMConnectRetryStartAfterRefresh(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -785,6 +802,7 @@ func TestEnsureProjectVMPostLockRecheckConnect(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -830,6 +848,7 @@ func TestEnsureProjectVMPostLockRecheckStart(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -878,6 +897,7 @@ func TestEnsureProjectVMRecreateStopError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -915,6 +935,7 @@ func TestEnsureProjectVMStartSucceedsWithReconcile(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -954,6 +975,7 @@ func TestEnsureProjectVMConnectReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -995,6 +1017,7 @@ func TestEnsureProjectVMStartReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -1034,6 +1057,7 @@ func TestEnsureProjectVMRecheckNonNotFoundError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -1061,6 +1085,7 @@ func TestEnsureProjectVMCreateError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -1099,6 +1124,7 @@ func TestEnsureProjectVMRecreateDestroyError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -1147,6 +1173,7 @@ func TestEnsureProjectVMRecreateGoneIdentity(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -1212,6 +1239,7 @@ func TestEnsureProjectVMRecreateReplacedIdentityFailsClosed(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -1281,7 +1309,7 @@ func TestEnsureProjectVMRecreateHoldsCreationLock(t *testing.T) {
 		context.Background(),
 		options.RunOptions{Recreate: true, CPUs: 1, Memory: "2G"},
 		image.ImageInfo{DockerTag: "new:tag", Ref: "new:tag"},
-		"homevol", "/workspace", testVMKey(), testVMKey().Slug, false, &ui,
+		"homevol", "/workspace", testVMKey(), testVMKey().Slug, false, envsecret.EnvSecrets{}, &ui,
 	); err != nil {
 		t.Fatalf("ensureProjectVM recreate: %v", err)
 	}
@@ -1317,6 +1345,7 @@ func TestEnsureProjectVMCreateEnsureLoadedError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {

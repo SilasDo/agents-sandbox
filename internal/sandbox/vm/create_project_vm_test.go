@@ -11,6 +11,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/homeconfig"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -57,6 +58,7 @@ func TestCreateProjectVMUsesResolvedRef(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err != nil {
@@ -115,6 +117,7 @@ func TestCreateProjectVMIdleTimeout(t *testing.T) {
 				"test-home-vol",
 				t.TempDir(),
 				options.RunOptions{Memory: "1G", IdleTimeout: tc.opts},
+				envsecret.EnvSecrets{},
 				ui,
 			)
 			if err != nil {
@@ -148,6 +151,7 @@ func TestCreateProjectVMCreateSandboxError(t *testing.T) {
 		"test-home-vol",
 		t.TempDir(),
 		options.RunOptions{Memory: "1G"},
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err == nil {
@@ -177,6 +181,7 @@ func TestCreateProjectVMNetworkConfigError(t *testing.T) {
 			Memory:  "1G",
 			Network: network.Policy{Profiles: []network.Profile{network.Profile("bogus-profile")}},
 		},
+		envsecret.EnvSecrets{},
 		ui,
 	)
 	if err == nil {

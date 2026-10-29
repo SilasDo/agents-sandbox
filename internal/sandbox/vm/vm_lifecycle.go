@@ -102,6 +102,7 @@ func ensureProjectVM(
 	k state.Key,
 	repoSlug string,
 	skipVM bool,
+	env envsecret.EnvSecrets,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
 	if skipVM {
@@ -165,7 +166,7 @@ func ensureProjectVM(
 		name = projectVMName(k)
 	}
 
-	return createOrAttachAfterLock(ctx, client, name, k, repoSlug, info, homeVol, repoPath, opts, ui)
+	return createOrAttachAfterLock(ctx, client, name, k, repoSlug, info, homeVol, repoPath, opts, env, ui)
 }
 
 // destroyProjectVMHandle destroys a project VM handle identity-safely and
@@ -353,6 +354,7 @@ func createOrAttachAfterLock(
 	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
+	env envsecret.EnvSecrets,
 	ui termio.UI,
 ) (msb.Sandbox, vmBoot, error) {
 	handle, err := client.GetSandbox(ctx, name)
@@ -363,7 +365,7 @@ func createOrAttachAfterLock(
 		return nil, vmBootConnected, fmt.Errorf("re-check sandbox %q: %w", name, err)
 	}
 
-	sb, created, err := createProjectVM(ctx, client, name, key, repoSlug, info, homeVol, repoPath, opts, ui)
+	sb, created, err := createProjectVM(ctx, client, name, key, repoSlug, info, homeVol, repoPath, opts, env, ui)
 	if err != nil {
 		return nil, vmBootConnected, err
 	}
@@ -454,6 +456,7 @@ func createProjectVM(
 	repoSlug string,
 	info image.ImageInfo, homeVol, repoPath string,
 	opts options.RunOptions,
+	env envsecret.EnvSecrets,
 	ui termio.UI,
 ) (msb.Sandbox, bool, error) {
 	info, err := image.EnsureLoaded(ctx, client, info, ui)
@@ -467,9 +470,8 @@ func createProjectVM(
 	}
 	maxMemoryGiB := sysinfo.TotalMemoryGiB()
 
-	envMap, secrets := envsecret.LoadEnvAndSecrets(ui)
+	vmEnv := buildProjectVMEnv(env.Vars, info.Env)
 	ui.Verbosef("adding docker env definitions to project VM environment: %s", info.Env)
-	buildProjectVMEnv(envMap, info.Env)
 
 	mountConfigs := buildMounts(
 		homeVol,
@@ -493,8 +495,8 @@ func createProjectVM(
 		// origin.
 		msbSdk.WithLabels(naming.ProjectSandboxLabels(key.Slug, key.Agent, repoSlug, info.Ref)),
 		msbSdk.WithMounts(mountConfigs),
-		msbSdk.WithSecrets(secrets...),
-		msbSdk.WithEnv(envMap),
+		msbSdk.WithSecrets(env.Secrets...),
+		msbSdk.WithEnv(vmEnv),
 		msbSdk.WithWorkdir(defaultTargetDir),
 		msbSdk.WithCPUs(cpus),
 		msbSdk.WithMaxCPUs(numCPUs),

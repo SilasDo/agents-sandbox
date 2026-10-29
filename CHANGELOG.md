@@ -115,6 +115,9 @@ command reports the bare version (e.g. `0.1.0`).
   an error instead of hashing a fallback path, which silently gave the same physical project a different checkout
   slug — and so a new state file, VM and home volume — with no diagnostic (#354). The project-config directory
   read stays tolerant and degrades to its relative base, since it is not identity-keyed.
+- Env and secrets: the host `env` and `env.secret`/`env.secret.yaml` files are read once per run instead of three
+  times, so a malformed entry is warned about once instead of up to three times. The fingerprints a run persists and
+  the host env and secrets baked into a newly created VM now come from that one read and cannot disagree (#342).
 - Docker: the canonical `docker` setting now beats the deprecated `dind` alias whichever layer each came from, so
   `--dind` no longer overrides an explicit `docker` config key or `AGENTS_SANDBOX_DOCKER` (and vice versa) — the
   deprecation policy's "replacement wins" rule held across the config and env layers but not across the flags. The

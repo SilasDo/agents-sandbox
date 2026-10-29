@@ -24,13 +24,14 @@ func TestLoadEnvAndSecretsMergesUserAndProject(t *testing.T) {
 	testutil.WritePath(t, cp.ProjectEnvSecretYAMLFile(), "SECRET_D:\n  value: value-d\n  hosts: [project.example]\n")
 
 	ui := termio.NewTestMock(t)
-	env, secrets := LoadEnvAndSecrets(&ui)
+	loaded := LoadEnvAndSecrets(&ui)
 
 	wantEnv := map[string]string{"A": "user", "B": "project", "SHARED": "project"}
-	if !reflect.DeepEqual(env, wantEnv) {
-		t.Errorf("env = %#v, want %#v", env, wantEnv)
+	if !reflect.DeepEqual(loaded.Vars, wantEnv) {
+		t.Errorf("env = %#v, want %#v", loaded.Vars, wantEnv)
 	}
 
+	secrets := loaded.Secrets
 	if len(secrets) != 4 {
 		t.Fatalf("expected 4 secrets, got %d: %#v", len(secrets), secrets)
 	}
@@ -55,12 +56,12 @@ func TestLoadEnvAndSecretsEmptyWhenNoFiles(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	ui := termio.NewTestMock(t)
-	env, secrets := LoadEnvAndSecrets(&ui)
+	loaded := LoadEnvAndSecrets(&ui)
 
-	if len(env) != 0 {
-		t.Errorf("expected empty env, got %#v", env)
+	if len(loaded.Vars) != 0 {
+		t.Errorf("expected empty env, got %#v", loaded.Vars)
 	}
-	if len(secrets) != 0 {
-		t.Errorf("expected empty secrets, got %#v", secrets)
+	if len(loaded.Secrets) != 0 {
+		t.Errorf("expected empty secrets, got %#v", loaded.Secrets)
 	}
 }

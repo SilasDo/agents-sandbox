@@ -8,6 +8,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/envsecret"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -71,6 +72,7 @@ func TestEnsureProjectVMConnectRetryReconnectSucceeds(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -114,6 +116,7 @@ func TestEnsureProjectVMConnectRetryThenStart(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -157,6 +160,7 @@ func TestEnsureProjectVMPostLockDecideError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -211,6 +215,7 @@ func TestEnsureProjectVMPostLockConnectFailThenStart(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -259,6 +264,7 @@ func TestEnsureProjectVMPostLockConnectRetryReconnectSucceeds(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -298,6 +304,7 @@ func TestEnsureProjectVMPostLockConnectRetryRefreshError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -336,6 +343,7 @@ func TestEnsureProjectVMPostLockStartError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -376,6 +384,7 @@ func TestEnsureProjectVMPostLockConnectReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -425,6 +434,7 @@ func TestEnsureProjectVMPostLockStartReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -466,6 +476,7 @@ func TestEnsureProjectVMConnectRetryRefreshError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -505,6 +516,7 @@ func TestEnsureProjectVMConnectRetryReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
@@ -551,6 +563,7 @@ func TestEnsureProjectVMConnectRetryStartError(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err == nil {
@@ -590,6 +603,7 @@ func TestEnsureProjectVMConnectRetryStartReconcileWarn(t *testing.T) {
 		testVMKey(),
 		testVMKey().Slug,
 		false,
+		envsecret.EnvSecrets{},
 		&ui,
 	)
 	if err != nil {
