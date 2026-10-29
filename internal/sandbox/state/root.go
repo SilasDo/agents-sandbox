@@ -255,8 +255,13 @@ func ReadRootState() (*RootState, error) {
 // RootState: a mirror silently drops any field it does not restate, so adding a
 // field to RootState would lose that field's data on every read.
 //
-// A document with a newer schema is refused with ErrStateSchemaUnsupported.
+// The schema is checked before any field is decoded, so a newer document whose
+// fields changed shape is refused with ErrStateSchemaUnsupported, never misread
+// as unparsable (which RepairRootState would quarantine).
 func parseRootState(data []byte) (RootState, error) {
+	if err := checkDocumentSchema(data, RootStateSchema); err != nil {
+		return RootState{}, err
+	}
 	var state RootState
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
@@ -269,9 +274,6 @@ func parseRootState(data []byte) (RootState, error) {
 			return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
 		}
 		state.Updates.Agents = legacy.Agents
-	}
-	if err := checkDocumentSchema(data, RootStateSchema); err != nil {
-		return RootState{}, err
 	}
 	return state, nil
 }

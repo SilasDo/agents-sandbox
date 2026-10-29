@@ -16,12 +16,13 @@ import (
 )
 
 // homeStateSchemaFields and rootStateSchemaFields pin the persisted field set of
-// the current schema versions. A field change that does not bump the schema lets
-// an older binary read the new document as current and silently erase the new
-// field on its next write (#337). When this test fails, bump HomeStateSchema or
-// RootStateSchema and update the pinned list together.
+// every schema version, keyed by version. A field change that does not bump the
+// schema lets an older binary read the new document as current and silently
+// erase the new field on its next write (#337). When the test fails, bump
+// HomeStateSchema or RootStateSchema and add the new field set under the new
+// version; released versions' entries are history and must not be edited.
 var (
-	homeStateSchemaFields = []string{
+	homeStateSchemaFields = map[int][]string{1: {
 		"agent_source",
 		"agent_version",
 		"docker_source",
@@ -42,8 +43,8 @@ var (
 		"secret_state",
 		"secret_state.hash",
 		"secret_state.names",
-	}
-	rootStateSchemaFields = []string{
+	}}
+	rootStateSchemaFields = map[int][]string{1: {
 		"adopted_home_volumes",
 		"adopted_home_volumes[].checkout_slug",
 		"adopted_home_volumes[].volume",
@@ -60,24 +61,30 @@ var (
 		"updates.launcher",
 		"updates.launcher.dismissed_versions",
 		"updates.launcher.last_checked",
-	}
+	}}
 )
 
 func TestHomeStateSchemaFieldsArePinned(t *testing.T) {
-	assertSchemaFields(t, "HomeStateSchema", reflect.TypeFor[HomeState](), homeStateSchemaFields)
+	assertSchemaFields(t, "HomeStateSchema", HomeStateSchema, reflect.TypeFor[HomeState](), homeStateSchemaFields)
 }
 
 func TestRootStateSchemaFieldsArePinned(t *testing.T) {
-	assertSchemaFields(t, "RootStateSchema", reflect.TypeFor[RootState](), rootStateSchemaFields)
+	assertSchemaFields(t, "RootStateSchema", RootStateSchema, reflect.TypeFor[RootState](), rootStateSchemaFields)
 }
 
-func assertSchemaFields(t *testing.T, schemaConstant string, documentType reflect.Type, pinned []string) {
+func assertSchemaFields(
+	t *testing.T, schemaConstant string, schema int, documentType reflect.Type, pinnedByVersion map[int][]string,
+) {
 	t.Helper()
+	pinned, ok := pinnedByVersion[schema]
+	if !ok {
+		t.Fatalf("no pinned field set for %s = %d; add one", schemaConstant, schema)
+	}
 	got := append(yamlFieldPaths(documentType, ""), "schema")
 	slices.Sort(got)
 	if !slices.Equal(got, pinned) {
-		t.Fatalf("persisted fields changed; bump %s and update the pinned list.\ngot:    %v\npinned: %v",
-			schemaConstant, got, pinned)
+		t.Fatalf("persisted fields differ from the pinned set of %s = %d; bump %s and pin the new set "+
+			"under the new version.\ngot:    %v\npinned: %v", schemaConstant, schema, schemaConstant, got, pinned)
 	}
 }
 
@@ -119,10 +126,23 @@ func TestParseRejectsNewerSchema(t *testing.T) {
 	}
 }
 
-func TestParseRejectsNewerSchemaIsNotUnparsable(t *testing.T) {
-	_, err := parseHomeState([]byte("schema: 99\n"))
-	if errors.Is(err, ErrStateUnparsable) {
-		t.Fatalf("a newer-schema document must not be classified unparsable (recovery would discard it): %v", err)
+// TestParseRejectsNewerSchemaWithChangedFieldShapes pins that the schema is
+// checked before decoding: a newer schema may change an existing field's shape,
+// and classifying that document as unparsable would let recovery discard it.
+func TestParseRejectsNewerSchemaWithChangedFieldShapes(t *testing.T) {
+	for name, parse := range map[string]func([]byte) error{
+		"parseHomeState": func(data []byte) error { _, err := parseHomeState(data); return err },
+		"parseRootState": func(data []byte) error { _, err := parseRootState(data); return err },
+	} {
+		for _, document := range []string{
+			"schema: 99\nhome_volume: {name: vol}\n",
+			"schema: 99\nmigrations: [runtime_home]\nagents: [opencode]\n",
+		} {
+			err := parse([]byte(document))
+			if !errors.Is(err, ErrStateSchemaUnsupported) || errors.Is(err, ErrStateUnparsable) {
+				t.Errorf("%s(%q) error = %v, want ErrStateSchemaUnsupported only", name, document, err)
+			}
+		}
 	}
 }
 

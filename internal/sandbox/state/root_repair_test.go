@@ -63,7 +63,7 @@ func TestRepairRootStateLeavesHealthyAndMissingDocumentsAlone(t *testing.T) {
 
 func TestRepairRootStateRefusesNewerSchema(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	newer := []byte("schema: 99\n")
+	newer := []byte("schema: 99\nmigrations: [changed, shape]\n")
 	seedFile(t, rootStateFile(), newer)
 	if _, err := RepairRootState(); !errors.Is(err, ErrStateSchemaUnsupported) {
 		t.Fatalf("error = %v, want ErrStateSchemaUnsupported", err)

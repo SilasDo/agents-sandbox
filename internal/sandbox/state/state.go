@@ -177,15 +177,16 @@ func ReadState(k Key) (*HomeState, error) {
 
 // parseHomeState is the pure unmarshal step of ReadState: arbitrary bytes in,
 // HomeState or ErrStateUnparsable-wrapped error out, no file I/O. Kept separate
-// so FuzzParseState can drive it without a filesystem. A document with a newer
-// schema is refused with ErrStateSchemaUnsupported.
+// so FuzzParseState can drive it without a filesystem. The schema is checked
+// before the fields are decoded, so a newer document whose fields changed shape
+// is refused with ErrStateSchemaUnsupported, never misread as unparsable.
 func parseHomeState(data []byte) (HomeState, error) {
+	if err := checkDocumentSchema(data, HomeStateSchema); err != nil {
+		return HomeState{}, err
+	}
 	var state HomeState
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return HomeState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
-	}
-	if err := checkDocumentSchema(data, HomeStateSchema); err != nil {
-		return HomeState{}, err
 	}
 	return state, nil
 }
