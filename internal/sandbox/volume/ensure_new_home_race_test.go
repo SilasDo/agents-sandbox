@@ -26,19 +26,19 @@ func commitConcurrentHome(t *testing.T, k state.Key, volume string) {
 }
 
 // withFakeHomeVolumeClock freezes the clock HomeVolumeName timestamps from and
-// replaces the wait between colliding names with a one-second clock advance, so
+// replaces the sleep between colliding names with a clock advance, so
 // collision tests do not sleep. It returns the number of waits.
 func withFakeHomeVolumeClock(t *testing.T) *int {
 	t.Helper()
 	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	waits := 0
-	restoreClock, restoreWait := homeVolumeClock, waitForNextHomeVolumeName
+	restoreClock, restoreSleep := homeVolumeClock, sleepForNextHomeVolumeName
 	homeVolumeClock = func() time.Time { return now }
-	waitForNextHomeVolumeName = func() {
+	sleepForNextHomeVolumeName = func(duration time.Duration) {
 		waits++
-		now = now.Add(time.Second)
+		now = now.Add(duration)
 	}
-	t.Cleanup(func() { homeVolumeClock, waitForNextHomeVolumeName = restoreClock, restoreWait })
+	t.Cleanup(func() { homeVolumeClock, sleepForNextHomeVolumeName = restoreClock, restoreSleep })
 	return &waits
 }
 

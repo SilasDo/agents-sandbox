@@ -290,9 +290,12 @@ func committedConcurrently(cur *state.HomeState, observedHomeVolume string) bool
 // already taken.
 const homeVolumeNameAttempts = 3
 
-// waitForNextHomeVolumeName waits until HomeVolumeName yields a new name. It is
-// a seam so tests do not sleep.
-var waitForNextHomeVolumeName = func() { time.Sleep(time.Second) }
+// homeVolumeNameGranularity is the timestamp resolution of HomeVolumeName:
+// waiting this long yields a new name.
+const homeVolumeNameGranularity = time.Second
+
+// sleepForNextHomeVolumeName is time.Sleep, a seam so tests do not sleep.
+var sleepForNextHomeVolumeName = time.Sleep
 
 // createHomeVolume creates a fresh home volume and returns its name.
 // HomeVolumeName has second granularity, so two sessions starting in the same
@@ -308,7 +311,7 @@ func createHomeVolume(ctx context.Context, client msb.Client, k state.Key) (stri
 		if !msb.IsVolumeAlreadyExists(err) || attempt == homeVolumeNameAttempts {
 			return "", fmt.Errorf("create volume %s: %w", volName, err)
 		}
-		waitForNextHomeVolumeName()
+		sleepForNextHomeVolumeName(homeVolumeNameGranularity)
 	}
 }
 
