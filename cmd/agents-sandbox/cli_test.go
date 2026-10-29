@@ -64,10 +64,50 @@ func TestRootCommandReturnsRuntimePreparationError(t *testing.T) {
 	}
 	t.Cleanup(func() { prepareMSBRuntime = oldPrepare })
 	root := buildRootCmd(ui)
-	root.SetArgs([]string{"run", "--dry-run"})
+	root.SetArgs([]string{"run"})
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "runtime mismatch") {
 		t.Fatalf("Execute() error = %v, want runtime mismatch", err)
 	}
+}
+
+// TestDryRunPreviewsSkipPreflightRuntimeInstall pins #424: a dry-run preview
+// must not install the microsandbox runtime in the root preflight. The preview
+// is documented to make no network request and no private-home write, so the
+// runtime install — which downloads into the private runtime home — must be
+// skipped before the command body renders the plan.
+func TestDryRunPreviewsSkipPreflightRuntimeInstall(t *testing.T) {
+	skipRuntimeInstall := func(t *testing.T) {
+		t.Helper()
+		oldPrepare := prepareMSBRuntime
+		prepareMSBRuntime = func(context.Context, termio.UI, string) error {
+			t.Fatal("a dry-run preview must not install the msb runtime (#424)")
+			return nil
+		}
+		t.Cleanup(func() { prepareMSBRuntime = oldPrepare })
+	}
+
+	t.Run("run", func(t *testing.T) {
+		initTestProjectDir(t)
+		mock := &msb.MockMsbClient{}
+		root, ui := setupRunMocks(t, mock, &msb.MockSandbox{}, "run", "--dry-run")
+		setupAbsentImagePreviewMocks(t, mock)
+		skipRuntimeInstall(t)
+
+		if err := root.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+		assertPreviewInfoLines(t, ui, false)
+	})
+
+	t.Run("build", func(t *testing.T) {
+		initTestProjectDir(t)
+		root, _ := setupCommandFixtures(t, "build", "--dry-run")
+		skipRuntimeInstall(t)
+
+		if err := root.Execute(); err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+	})
 }
 
 func TestRootCommandReturnsInvalidCLISettingsError(t *testing.T) {

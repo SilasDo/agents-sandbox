@@ -54,7 +54,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--worktree`   | `-w`  | `""`     | Isolated agent worktree named <name>, optionally starting from base ref <name>:<base>                                  |
 | `--rebuild`    | `-r`  | `false`  | Rebuild runner image before starting (clean rebuild; still offers an agent upgrade if one is available)                                                                                                       |
 | `--agent-version` | —  | `""`     | Pin the version agents-sandbox installs into the runner image (default: latest). Ignored for a user-provided agent. |
-| `--dry-run`    | `-n`  | `false`  | Read-only preview of a run: report the agent version (or that it resolves at build time), whether the runner image would build (with the reasons a real build logs) or be reused, and whether the home volume would be created or reused — without building, creating a volume, writing state, starting a VM, attaching, or making any network request. When the reported version is a known, non-pinned one, its line notes `(upgrade check not run)` |
+| `--dry-run`    | `-n`  | `false`  | Read-only preview of a run: report the agent version (or that it resolves at build time), whether the runner image would build (with the reasons a real build logs) or be reused, and whether the home volume would be created or reused — without building, creating a volume, writing state, starting a VM, attaching, or making any network request. It also installs no microsandbox runtime, so a fresh host gets the plan without the download. When the reported version is a known, non-pinned one, its line notes `(upgrade check not run)` |
 | `--cpus`       | `-c`  | `0`      | vCPUs for the sandbox (0 = all)                                                                                                            |
 | `--memory`     | `-m`  | `4G`     | Memory limit, e.g. `4G`, `512M`                                                                                                            |
 | `--disk-size`  | —     | `""`     | Project VM root disk size (e.g. 16G). Empty = microsandbox runtime default (~4 GiB). Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
@@ -108,7 +108,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 | Flag                 | Short | Default  | Purpose                                                         |
 |----------------------|-------|----------|-----------------------------------------------------------------|
 | `--rebuild`          | `-r`  | `false`  | Force a clean rebuild                                           |
-| `--dry-run`          | `-n`  | `false`  | Dry run without building                                        |
+| `--dry-run`          | `-n`  | `false`  | Dry run without building or installing the microsandbox runtime |
 | `--agent`            | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`. |
 | `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest). Ignored for a user-provided agent |
 | `--docker`           | —     | `false`  | Bake the Docker engine into the runner image; overrides the project Dockerfile's declaration in both directions (`--dind` is a deprecated alias) |

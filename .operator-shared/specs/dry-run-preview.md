@@ -109,6 +109,12 @@ plus the session line) so it is asserted as data in unit tests and as the render
 - Project identity is resolved read-only too: the preview runs `AdoptLegacyIdentity` with `apply=false`, so it reports
   against the slug a real run would find first (the legacy slug while a migration is pending) without moving state, and
   an error from that resolution (e.g. a corrupt legacy state document) surfaces rather than being ignored.
+- The root preflight provisions no runtime for a preview (#424): `cmd/agents-sandbox/commands.go` checks
+  `runoptions.ResolveMode(cmd).Previews()` and, instead of `PrepareRuntime`, only applies the private `MSB_HOME`
+  (`runtime.ApplyPreviewHome`, inspect/install skipped). A fresh host thus renders the plan with no download and no
+  private-home write, while the preview's read-only msb inspection (volumes, sandboxes) still resolves against the
+  private home rather than the user's `~/.microsandbox`. `shell --dry-run` is unaffected: the root preflight installs
+  nothing, and shell's own `doctor.CheckAll` preflight is what may still install the runtime.
 
 ### Test seam
 
