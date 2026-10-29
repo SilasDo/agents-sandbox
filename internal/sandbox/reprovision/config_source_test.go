@@ -33,7 +33,15 @@ func TestDescribeConfigScopes(t *testing.T) {
 	}
 	// A missing user dir must still be named when onlyExisting is false: the
 	// project scope being the only one present must not drop the user scope.
-	if got, want := describeConfigScopes(missing, existing, false), fmt.Sprintf("user: %q, project: %q", missing, existing); got != want {
+	if got, want := describeConfigScopes(
+		missing,
+		existing,
+		false,
+	), fmt.Sprintf(
+		"user: %q, project: %q",
+		missing,
+		existing,
+	); got != want {
 		t.Errorf("targets with only the project present = %q, want %q", got, want)
 	}
 	// An existing project dir must be named when onlyExisting is true: the
