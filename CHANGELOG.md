@@ -123,6 +123,10 @@ command reports the bare version (e.g. `0.1.0`).
   filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
   for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
   and fills it (#429).
+- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
+  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
+  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
+
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with
