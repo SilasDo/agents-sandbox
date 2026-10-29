@@ -223,6 +223,10 @@ command reports the bare version (e.g. `0.1.0`).
   `Wait`), so a registry failure delivered inside it is no longer drained away and re-reported by a follow-up inspect
   (#425).
 
+- Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
+  removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
+  longer leaves an orphaned volume that every retry added to (#427).
+
 ## [0.6.0] - 2026-10-25
 
 ### Added
