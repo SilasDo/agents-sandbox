@@ -42,6 +42,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- `stop --force` and `kill --force` now remove the persisted state of an already-stopped or never-started project VM.
+  Previously they printed "already stopped" and left it in place, so `--force` never cleaned up such a VM; they now
+  skip the stop or kill, remove the sandbox, and say so. `--dry-run` still removes nothing. See `docs/commands.md`.
 - CI: the `ci` workflow cancels a superseded pull-request run when a PR is pushed again (main, tag, and dispatch runs are
   never cancelled), and a change that touches no code — docs, the operator brain, the Homebrew formula, issue templates,
   or `.gitignore` only — now skips the two ~16-minute integration jobs and the non-required `race`/`vulncheck`/`deadcode`

@@ -144,9 +144,12 @@ agents-sandbox build dockerfile --agent claude-code
 
 Gracefully stop the project VM. State remains for future reuse.
 
+With `--force`, also remove the VM's persisted state. A VM that is already stopped — or that never fully started — is
+not stopped again, only removed.
+
 ```console
 agents-sandbox stop
-agents-sandbox stop -f     # stop and remove VM state
+agents-sandbox stop -f     # stop and remove VM state (also a stopped or never-started VM)
 ```
 
 **Aliases:** `sandbox stop`
@@ -155,7 +158,7 @@ agents-sandbox stop -f     # stop and remove VM state
 
 | Flag        | Short | Default     | Purpose                                     |
 |-------------|-------|-------------|---------------------------------------------|
-| `--force`   | `-f`  | `false`     | Remove VM's persisted state                 |
+| `--force`   | `-f`  | `false`     | Remove VM's persisted state, also for a stopped or never-started VM |
 | `--dry-run` | `-n`  | `false`     | Show what would be stopped without stopping |
 | `--agent`   | —     | `opencode2`  | Coding-agent profile to stop                |
 
@@ -165,9 +168,12 @@ agents-sandbox stop -f     # stop and remove VM state
 
 Force-kill the project VM. Equivalent to powering off. State may be corrupted.
 
+With `--force`, also remove the VM's persisted state. A VM that is already inactive — stopped, or never fully started —
+is not killed again, only removed.
+
 ```console
 agents-sandbox kill
-agents-sandbox kill -f     # kill and remove VM state
+agents-sandbox kill -f     # kill and remove VM state (also a stopped or never-started VM)
 ```
 
 **Aliases:** `sandbox kill`
@@ -176,7 +182,7 @@ agents-sandbox kill -f     # kill and remove VM state
 
 | Flag        | Short | Default     | Purpose                                   |
 |-------------|-------|-------------|-------------------------------------------|
-| `--force`   | `-f`  | `false`     | Remove VM's persisted state               |
+| `--force`   | `-f`  | `false`     | Remove VM's persisted state, also for a stopped or never-started VM |
 | `--dry-run` | `-n`  | `false`     | Show what would be killed without killing |
 | `--agent`   | —     | `opencode2`  | Coding-agent profile to kill              |
 

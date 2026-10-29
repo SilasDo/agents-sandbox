@@ -107,7 +107,8 @@ agents-sandbox sandbox remove <name>   # remove the sandbox
 
 `stop` is graceful and keeps the sandbox's state, so the next run starts from where you left off. `kill` powers the
 sandbox off immediately, without a graceful shutdown, and its state may be corrupted. The `-f` (`--force`) flag on `stop`
-or `kill` also removes the sandbox's persisted state. `sandbox remove` deletes the sandbox but leaves that state in
+or `kill` also removes the sandbox's persisted state; for a sandbox that is already stopped or never fully started it
+skips the stop or kill and removes the state on its own. `sandbox remove` deletes the sandbox but leaves that state in
 place, so the next run recreates the sandbox against the same recorded home volume, and it refuses a running sandbox
 unless `--force` is set, which stops it first.
 

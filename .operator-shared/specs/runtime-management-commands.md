@@ -281,7 +281,10 @@ The full per-group contract, as the slices deliver it.
 `sandbox`:
 
 - `sandbox list`, `sandbox run`, `sandbox shell`, `sandbox stop`,
-  `sandbox kill` **exist**. Unchanged (list gains the Slice 0 flags).
+  `sandbox kill` **exist**. Here `-f/--force` is a remove-state toggle, not a
+  guard override: on an inactive VM (`Created`/`Stopped`/`Crashed`) it skips
+  the stop/kill and removes the persisted state, and `--dry-run` removes
+  nothing (#161).
 - `sandbox remove <name>` (`rm`) — Slice 4; project VMs only, refuses a running
   VM unless `-f/--force` (stops it first), leaves persisted state intact.
 - `sandbox inspect <name>` — Slice 3.
