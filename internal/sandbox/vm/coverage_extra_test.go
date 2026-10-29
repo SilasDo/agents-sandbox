@@ -94,10 +94,14 @@ func TestPersistConfigHashesCoversEnvSecretAndNetwork(t *testing.T) {
 	ui := termio.NewTestMock(t)
 
 	slug := "hashproj"
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 
 	persistConfigHashes(
-		state.Key{Slug: slug, Agent: "opencode"},
+		k,
 		state.Fingerprints{
 			Network: state.BuildNetworkState(policy),
 			Mount:   state.BuildMountState(nil),
@@ -105,7 +109,7 @@ func TestPersistConfigHashesCoversEnvSecretAndNetwork(t *testing.T) {
 		&ui,
 	)
 
-	st, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
+	st, err := state.ReadState(k)
 	if err != nil {
 		t.Fatalf("ReadState after persistConfigHashes: %v", err)
 	}
