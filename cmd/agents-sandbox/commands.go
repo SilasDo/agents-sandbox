@@ -179,6 +179,7 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 	rootCmd.AddCommand(buildPruneCmd(ui))
 	rootCmd.AddCommand(buildDFCmd(ui))
 	rootCmd.AddCommand(buildStorageCmd(ui))
+	rootCmd.AddCommand(buildStateCmd(ui))
 
 	rootCmd.SetOut(ui.StdOut())
 	rootCmd.SetErr(ui.StdErr())
@@ -190,7 +191,8 @@ var prepareMSBRuntime = msbruntime.PrepareRuntime
 
 // commandNeedsMSBRuntime reports whether the root preflight should provision the
 // microsandbox runtime before the command body runs. Commands that only inspect
-// launcher state must remain usable when the runtime is broken. `doctor` is
+// launcher state must remain usable when the runtime is broken; that includes
+// `state repair`, the recovery path for a corrupt launcher state file. `doctor` is
 // included among those: it runs the runtime check itself, so an install failure
 // is reported with its troubleshooting link alongside the KVM and Docker results
 // instead of aborting the preflight with a raw error (#423).
@@ -199,7 +201,7 @@ func commandNeedsMSBRuntime(cmd *cobra.Command) bool {
 		return false
 	}
 	for current := cmd; current != nil; current = current.Parent() {
-		if current.Name() == cmdConfig || current.Name() == cmdCompletion {
+		if current.Name() == cmdConfig || current.Name() == cmdCompletion || current.Name() == cmdState {
 			return false
 		}
 	}

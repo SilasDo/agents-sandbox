@@ -16,6 +16,7 @@ The commands are grouped by area; jump to a group:
 - **Build and images:** [`build`](#build), [`image`](#image)
 - **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune), [`sandbox compact`](#sandbox-compact)
 - **Storage:** [`df`](#df), [`storage`](#storage)
+- **State:** [`state repair`](#state-repair)
 - **Configuration:** [`config`](#config), [`config paths`](#config-paths)
 - **Agents:** [`config agent`](#config-agent-name), [`config home`](#config-home)
 - **Volumes:** [`volume`](#volume)
@@ -334,6 +335,21 @@ Storage maintenance group. `storage df` and `storage prune` are aliases for the 
 ```console
 agents-sandbox storage df --verbose
 agents-sandbox storage prune --older-than 24h --yes
+```
+
+---
+
+### state repair
+
+Quarantine a corrupt launcher-global state file (`~/.local/state/agents-sandbox/state.yaml`). An unparsable file
+blocks update checks, the runtime migration, and identity adoption; the error names this command. `state repair` renames
+the file to `state.yaml.corrupt-<timestamp>` and the next run starts from a fresh launcher state, so recorded update
+checks, migration progress, and adoption claims are lost. Nothing is deleted. A healthy or missing file is left alone,
+and a file written by a newer agents-sandbox is refused: upgrade instead. The command does not need the microsandbox
+runtime.
+
+```console
+agents-sandbox state repair
 ```
 
 ---

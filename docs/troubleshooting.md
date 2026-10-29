@@ -154,6 +154,22 @@ agents-sandbox run --log-level verbose
 Common causes:
 - Not enough system memory — reduce with `-m 2G`
 
+## State file errors
+
+agents-sandbox keeps host state in YAML files under `~/.local/state/agents-sandbox/`: one launcher-global `state.yaml`
+and one `state.yaml` per project and agent. It never overwrites a state file it cannot read.
+
+### "state file was written by a newer agents-sandbox"
+
+A newer agents-sandbox wrote the file with a schema this version does not know. To keep that version's data intact,
+this version refuses to change the file. Upgrade with `agents-sandbox upgrade`, or run the newer binary.
+
+### "parse root state file ... run `agents-sandbox state repair`"
+
+The launcher-global `state.yaml` is corrupt, which blocks update checks, the runtime migration, and identity adoption.
+Run [`agents-sandbox state repair`]({% link commands.md %}#state-repair) to move it aside as
+`state.yaml.corrupt-<timestamp>`. The next run starts from a fresh launcher state.
+
 ## Stale sandboxes consume resources
 
 A sandbox that is no longer in use is stopped by its idle policy and reclaimed by auto-pruning. To list, stop, or

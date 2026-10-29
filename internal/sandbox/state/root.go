@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -219,7 +220,8 @@ var marshalRootState = yaml.Marshal
 
 // ReadRootState loads the launcher-global state. A missing file yields a zero
 // RootState with no error; a parse failure is wrapped with ErrStateUnparsable
-// (as in ReadState) and other I/O failures are returned plain.
+// (as in ReadState) and names RepairRootStateCommand as the way out, and other
+// I/O failures are returned plain.
 func ReadRootState() (*RootState, error) {
 	path := rootStateFile()
 	data, err := os.ReadFile(path)
@@ -230,6 +232,10 @@ func ReadRootState() (*RootState, error) {
 		return nil, fmt.Errorf("read root state file %s: %w", path, err)
 	}
 	state, err := parseRootState(data)
+	if errors.Is(err, ErrStateUnparsable) {
+		return nil, fmt.Errorf("parse root state file %s (run `%s` to quarantine it): %w",
+			path, RepairRootStateCommand, err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("parse root state file %s: %w", path, err)
 	}

@@ -10,6 +10,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- `state repair` quarantines a corrupt launcher-global `state.yaml` by renaming it to `state.yaml.corrupt-<timestamp>`,
+  so update checks, the runtime migration, and identity adoption are no longer blocked until manual deletion. The
+  parse error names the command. See `docs/commands.md` (#332).
+- State files carry a `schema:` version. A version of agents-sandbox refuses to change a state file written by a newer
+  version, instead of erasing fields it does not know on its next write (#337).
+
 - CI: `main` merges through a **merge queue**. A queued PR is built on top of the current `main` plus the pull requests
   ahead of it, and the required checks — `lint`, `test`, `race`, `deadcode` — run on that combined tree before it
   merges, so two independently-green PRs can no longer combine into a broken `main`. `race` and `deadcode` are now
