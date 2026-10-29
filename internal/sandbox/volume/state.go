@@ -213,6 +213,7 @@ func (vm *Manager) EnsureNewHome(
 
 	if !skipVM {
 		if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
+			vm.cleanupVolume(ctx, client, vol.Name(), ui)
 			return "", state.HomeState{}, err
 		}
 	} else {

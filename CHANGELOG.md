@@ -211,6 +211,10 @@ command reports the bare version (e.g. `0.1.0`).
   format), the old process was no longer matched and both raced for the socket or port, so the run failed with
   "exited before becoming ready" (#343).
 
+- Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
+  removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
+  longer leaves an orphaned volume that every retry added to (#427).
+
 ## [0.6.0] - 2026-10-25
 
 ### Added

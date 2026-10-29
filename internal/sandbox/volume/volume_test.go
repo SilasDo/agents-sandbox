@@ -1657,12 +1657,17 @@ func TestApplyHomeAction_PrefillFails_RemovesVolume(t *testing.T) {
 	}
 }
 
-func TestEnsureNewHome_PrefillFails(t *testing.T) {
+func TestEnsureNewHome_PrefillFails_RemovesVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
 
 	mock := &msb.MockMsbClient{}
 	mock.CreateSandboxErr = errors.New("prefill sandbox creation failed")
+	var createdVolume string
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		createdVolume = name
+		return &msb.MockVolumeHandle{Name_: name}, nil
+	}
 	vm := NewManager(&termio.Mock{})
 
 	_, _, err := vm.EnsureNewHome(
@@ -1679,6 +1684,9 @@ func TestEnsureNewHome_PrefillFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "prefill") {
 		t.Errorf("unexpected error: %v", err)
+	}
+	if len(mock.RemovedVolumes) != 1 || mock.RemovedVolumes[0] != createdVolume {
+		t.Errorf("expected created volume %q to be removed, got %v", createdVolume, mock.RemovedVolumes)
 	}
 }
 
