@@ -26,7 +26,10 @@ cannot. Resolution order (`volume.Manager.ResolveHomeVolume`):
 
 A fresh prefill that fails removes the volume it just created before returning the error (the same cleanup
 `ApplyHomeAction` performs), so an unreferenced volume is never left behind and each retry does not accumulate one
-(#427).
+(#427). A fresh prefill whose final state write fails does the same — it surfaces the error and removes the
+uncommitted volume — so a run never proceeds against a volume with no state record; the volume is kept when the
+write error is an installed-but-not-durable document (`state.WriteInstalled`), because the state that already names
+it must not point at a removed volume (#428).
 
 Absence is only the SDK's `ErrVolumeNotFound` kind (`msb.IsVolumeNotFound`). Any other lookup error — daemon,
 timeout, permission, cancellation — **fails closed**: resolution returns an error and performs no create, prefill, or
