@@ -188,9 +188,12 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 
 var prepareMSBRuntime = msbruntime.PrepareRuntime
 
-// commandNeedsMSBRuntime reports whether the command can reach the
-// microsandbox SDK. Commands that only inspect launcher state must remain
-// usable when the selected microsandbox runtime is broken.
+// commandNeedsMSBRuntime reports whether the root preflight should provision the
+// microsandbox runtime before the command body runs. Commands that only inspect
+// launcher state must remain usable when the runtime is broken. `doctor` is
+// included among those: it runs the runtime check itself, so an install failure
+// is reported with its troubleshooting link alongside the KVM and Docker results
+// instead of aborting the preflight with a raw error (#423).
 func commandNeedsMSBRuntime(cmd *cobra.Command) bool {
 	if cmd == nil {
 		return false
@@ -201,7 +204,7 @@ func commandNeedsMSBRuntime(cmd *cobra.Command) bool {
 		}
 	}
 	switch cmd.Name() {
-	case cmdVersion, cmdUpgrade, cmdTree, cmdHelp, cmdDockerfile:
+	case cmdVersion, cmdUpgrade, cmdTree, cmdHelp, cmdDockerfile, cmdDoctor:
 		return false
 	default:
 		return true

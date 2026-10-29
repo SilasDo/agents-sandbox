@@ -114,6 +114,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- `doctor` runs its own checks instead of provisioning the microsandbox runtime in the root preflight. On a host whose
+  private runtime home is absent or broken, a failed runtime install is now reported as `msb runtime setup failed: …`
+  with its troubleshooting link while the KVM and Docker checks still run, instead of aborting the command with a raw
+  `install msb runtime: …` error before any check ran (#423).
 - Networking: a user `egress-deny` carve-out now takes precedence over the profile allow rules. microsandbox matches the
   first applicable rule, and the deny entries were emitted after the profile's broad allow, so under `public`,
   `private`, or `host` (and the default) an `egress-deny` entry silently blocked nothing. The generated rule order is now
