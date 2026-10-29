@@ -1,5 +1,5 @@
 ---
-description: Contract for making git worktrees a contained, host-and-VM-consistent thing (issue #145): a bare checkout whose worktrees live inside it, bound as `/workspace`, plus the minimal mount rule that makes worktrees the source of truth. Covers the pattern priority order (non-bare checkout default, non-repo folder, bare-with-worktrees esoteric), the generalized bind rule (bind the smallest enclosing checkout that contains the CWD, so a worktree session always exposes its worktree), guest-CWD derivation for subdirectories, the decision to leave outside-checkout worktrees on current behavior with a termio warning, unchanged VM/state/home-volume/image identity (no scoping, no migration), the deliberately convention-only folder taxonomy (recipe + skill + AGENTS.md), and non-goals.
+description: Contract for making git worktrees a contained, host-and-VM-consistent thing (issue #145): a bare checkout whose worktrees live inside it, bound as `/workspace`, plus the minimal mount rule that makes worktrees the source of truth. Covers the pattern priority order (non-bare checkout default, non-repo folder, bare-with-worktrees esoteric), the generalized bind rule (bind the smallest enclosing checkout that contains the CWD, so a worktree session always exposes its worktree), guest-CWD derivation for subdirectories, the outside-worktree case (bind its own root, run it as its own checkout, with a shared git dir that stays unmounted — #426; identity is superseded by checkout-identity.md), the deliberately convention-only folder taxonomy (recipe + skill + AGENTS.md), and non-goals.
 read_if: Implementing or reviewing issue #145 (bare checkout with worktrees inside), the `/workspace` bind-source resolution, guest-CWD derivation, or the worktree-layout recipe/skill.
 ---
 
@@ -86,18 +86,21 @@ Then:
 | Not in a repository (non-repo folder) | `cwd` (unchanged) |
 | In the main checkout, at its root or a subdirectory | `checkoutRoot` (unchanged at root; **root instead of CWD** in a subdirectory) |
 | In a worktree **nested inside** the checkout (`worktreeRoot` within `checkoutRoot`) | `checkoutRoot` (so all sibling worktrees stay visible) |
-| In a worktree **outside** the checkout (`worktreeRoot` not within `checkoutRoot`) | `cwd` (unchanged) **+ a `termio` warning** (unsupported; see below) |
+| In a worktree **outside** the checkout (`worktreeRoot` not within `checkoutRoot`) | `worktreeRoot` (**root instead of CWD** in a subdirectory); scoped as its own checkout (see below) |
 | At the bare root itself (no working tree) | `cwd` (== `checkoutRoot`) |
 
 For the supported cases the unifying invariant is: **`/workspace` must always expose the worktree the session is in.**
 For the bare layout the bare root contains every worktree, so all sessions share one root; for a nested non-bare worktree
 the main checkout contains it.
 
-**Outside worktrees are out of scope and warned.** When the resolved worktree sits outside its checkout, binding only
-the worktree leaves its `.git` pointer aimed at a shared git dir that is not mounted, so `git` cannot resolve the common
-dir inside the VM. Rather than handle this case (which would require mounting the common git dir), the launcher keeps
-today's binding and emits a **`termio` warning** that a worktree outside its checkout is unsupported and that git may not
-work in the VM. This is not a regression: today's launcher already binds the CWD (the worktree) in this case.
+**Outside worktrees bind their own root.** When the resolved worktree sits outside its checkout, the launcher binds the
+worktree itself. That leaves its `.git` pointer aimed at a shared git dir outside the mount, so `git` commands inside the
+VM may not resolve the repository.
+
+> **Superseded by [`checkout-identity.md`](checkout-identity.md) (#144).** This section originally had the launcher also
+> emit a `termio` warning that an outside worktree is unsupported. That warning no longer exists: under per-checkout
+> identity an outside worktree runs as its own checkout, hashing its worktree root, with its own VM and home volume. The
+> unmounted shared git dir is the remaining limitation, tracked in #426 (the recipe page states it to readers).
 
 The `git rev-parse` phrasing above describes the *facts*, not the implementation. The derivation reuses the existing
 host-side, go-git-based repository inspection (`projectSlugAt` / `resolveGitDir` in `internal/git`); a host `git`
@@ -125,7 +128,9 @@ guestCWD = "/workspace" + <cwd relative to bindRoot>
 
 At the root, `guestCWD == "/workspace"` (identical to today); a `filepath.Rel` failure between `bindRoot` and `cwd`
 degrades to `/workspace` too. In a subdirectory, the full repository remains visible above the agent while it works in
-the subdirectory. For an outside worktree (binding unchanged), `bindRoot == cwd`, so `guestCWD == "/workspace"` as today.
+the subdirectory. An outside worktree binds `worktreeRoot`, so `bindRoot == worktreeRoot`: a launch from a subdirectory
+yields that subdirectory's relative `guestCWD`, exactly like any other checkout, and only a launch at the worktree root
+yields `guestCWD == "/workspace"`.
 
 How `guestCWD` reaches the agent (see Background):
 
@@ -202,8 +207,8 @@ is out of scope beyond not regressing it.
   subdirectory; host/VM see the same files.
 - Nested non-bare worktree and bare-with-worktrees: `/workspace` is the enclosing root; all sibling worktrees are
   visible; the session reuses the project's shared VM; the agent starts in the launched worktree.
-- Outside non-bare worktree: binding is **unchanged** (the worktree/CWD) and a `termio` warning is emitted; the session
-  still shares the project VM.
+- Outside non-bare worktree: the worktree root is bound and the worktree runs as its own checkout — its own VM and home
+  volume; `git` inside the VM may not resolve the repository (#426).
 - Naming: VM/volume/state/image names are **unchanged** for every case (no migration); the name parsers are untouched.
 - The recipe page and the skill are present and identical in content; docs link check passes.
 

@@ -235,6 +235,9 @@ command reports the bare version (e.g. `0.1.0`).
 - Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
   removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
   longer leaves an orphaned volume that every retry added to (#427).
+- Docs: the bare-worktrees recipe no longer claims a worktree outside its checkout is unsupported and warned about. It
+  now says such a worktree runs as its own checkout, names the remaining limit (the checkout's shared git dir is not
+  reachable inside the VM), and links the code-fix issue (#435, #426).
 
 ## [0.6.0] - 2026-10-25
 
