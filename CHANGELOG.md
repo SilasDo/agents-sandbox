@@ -119,6 +119,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Without an `origin` remote, a linked worktree inside its checkout now shares the checkout's repo slug, as documented,
+  so both see the same `~/.config/agents-sandbox/<repo-slug>/` config dir and `org.agents-sandbox.project` label. It
+  previously derived the slug from the worktree's own folder (#434).
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with

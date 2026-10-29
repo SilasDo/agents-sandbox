@@ -199,24 +199,20 @@ func checkoutRootOf(commonGitDir string) string {
 	return commonGitDir
 }
 
-// identitySlugs builds the repo slug and the checkout slug. The repo slug
-// derives entirely from the worktree root: the origin's last path segment and
-// the origin URL when there is one, otherwise the worktree root's own name and
-// path (today's ProjectSlug fallback, unchanged). The checkout slug's folder
-// comes from checkoutFolderSource — the bind root, i.e. the checkout root for a
-// plain or inside-worktree checkout — and its hash from checkoutHashInput, the
-// resolved common git dir those share (or the worktree root for an outside
-// worktree, which is its own checkout). Both folders come from the origin when
-// there is one, so two clones read "foo-<hashA>"/"foo-<hashB>".
-func identitySlugs(worktreeRoot, checkoutFolderSource, checkoutHashInput string) (string, string) {
-	url := originURL(worktreeRoot)
-	repoFolder := sanitizeFolderName(filepath.Base(worktreeRoot))
-	checkoutFolder := sanitizeFolderName(filepath.Base(checkoutFolderSource))
-	repoHash := worktreeRoot
-	if url != "" {
-		repoFolder = sanitizeFolderName(lastPathSegment(url))
-		checkoutFolder = repoFolder
+// identitySlugs builds the repo slug and the checkout slug. With an origin,
+// both folders come from the origin's last path segment, so two clones read
+// "foo-<hashA>"/"foo-<hashB>", and the repo slug hashes the origin URL. Without
+// one, both fall back to bindRoot — the checkout root for a plain checkout or an
+// inside-worktree, the worktree root for an outside worktree — so an
+// inside-worktree shares its checkout's repo slug (#434). The checkout slug
+// hashes checkoutHashInput: the resolved common git dir a checkout and its
+// inside-worktrees share, or the worktree root for an outside worktree.
+func identitySlugs(worktreeRoot, bindRoot, checkoutHashInput string) (string, string) {
+	folder := sanitizeFolderName(filepath.Base(bindRoot))
+	repoHash := bindRoot
+	if url := originURL(worktreeRoot); url != "" {
+		folder = sanitizeFolderName(lastPathSegment(url))
 		repoHash = url
 	}
-	return projectSlug(repoFolder, repoHash), projectSlug(checkoutFolder, checkoutHashInput)
+	return projectSlug(folder, repoHash), projectSlug(folder, checkoutHashInput)
 }
