@@ -1407,17 +1407,24 @@ func TestAdoptLegacyIdentityClaimsSharedVolumeOnce(t *testing.T) {
 
 // TestAdoptionNoticeSkipsLegacySlugThatIsTheCheckoutSlug: a bare root whose old
 // path slug already is its checkout slug (#433) moves no state from it, so the
-// notice lists no "X -> X" state row, but still names the config dir move.
+// notice lists no "X -> X" state row, but still names the config dir move. A
+// second legacy slug that is not the checkout slug still gets its own row, so the
+// skip applies to the matching entry only rather than aborting the listing.
 func TestAdoptionNoticeSkipsLegacySlugThatIsTheCheckoutSlug(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	const otherLegacySlug = "widget-legacy"
 	identity := adoptIdentity()
-	identity.LegacyRepoSlugs = []string{adoptCheckoutSlug}
+	identity.LegacyRepoSlugs = []string{adoptCheckoutSlug, otherLegacySlug}
 
 	notice := adoptionNotice(identity, adoptAgentName, adoptLegacyVolume, true)
 
 	selfMove := state.SlugDir(adoptCheckoutSlug) + "  ->  " + state.SlugDir(adoptCheckoutSlug)
 	if strings.Contains(notice, selfMove) {
 		t.Errorf("notice lists a state move onto itself:\n%s", notice)
+	}
+	otherMove := state.SlugDir(otherLegacySlug) + "  ->  " + state.SlugDir(adoptCheckoutSlug)
+	if !strings.Contains(notice, otherMove) {
+		t.Errorf("notice missing the state move %q for a later legacy slug:\n%s", otherMove, notice)
 	}
 	configMove := configpaths.Get().UserSlugConfigDir(adoptCheckoutSlug) + "  ->  " +
 		configpaths.Get().UserSlugConfigDir(adoptRepoSlug)
