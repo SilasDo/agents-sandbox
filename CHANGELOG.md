@@ -516,10 +516,6 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
-- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
-  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
-  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
-
 - Client leases: a client that attached while the reaper was counting active clients could be missed, so a sandbox
   could be reaped with a client still attached. A lease is created before it is flocked, and a count landing in that
   window unlinked the fresh file, leaving the client holding a flock on a file no later count could see. A count now
@@ -645,10 +641,6 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
-- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
-  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
-  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
-
 - Bugfix: bind-mount sources (the workspace directory and any configured `mounts`) are now canonicalized
   (`filepath.EvalSymlinks`) before they are handed to microsandbox. A path containing a symlink (e.g. macOS
   `/tmp` → `/private/tmp`) previously made the VM fail to start with `mount workspace_...: Not a directory
@@ -670,10 +662,6 @@ command reports the bare version (e.g. `0.1.0`).
   bookkeeping stays accurate (#66).
 
 ### Fixed
-
-- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
-  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
-  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
 
 - Bugfix: the Docker endpoint is now resolved like the `docker` CLI resolves it — `DOCKER_HOST` first, then
   the active docker context (`DOCKER_CONTEXT` or the CLI's `currentContext`), then the default socket.

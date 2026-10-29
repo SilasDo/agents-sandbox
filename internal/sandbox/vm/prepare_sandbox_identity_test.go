@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -18,7 +17,6 @@ import (
 	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
-	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -249,6 +247,7 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	testutil.RunGit(t, repo, "remote", "add", "origin", cloneOrigin)
 	outside := filepath.Join(t.TempDir(), "wt")
 	testutil.RunGit(t, repo, "worktree", "add", outside)
+	recordSharedGitDirOutsideManagedMounts(t, repo, outside)
 
 	identity := mustIdentity(t, outside)
 	checkoutIdentity := mustIdentity(t, repo)
@@ -298,35 +297,38 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	if got := mountConfig.Volumes[defaultTargetDir].Bind; got != worktreeRoot {
 		t.Errorf("%s mount source = %q, want the worktree root %q", defaultTargetDir, got, worktreeRoot)
 	}
-	assertSharedGitDirMountWired(t, identity, mountConfig.Volumes, ui.WarnCalls)
+	assertSharedGitDirMountWired(t, identity, mountConfig.Volumes)
 }
 
-// assertSharedGitDirMountWired checks that PrepareSandbox routes an outside
-// worktree through withSharedGitDirMount (#426): the shared git dir is bound at
-// its recorded path, or — where the temp dir lies under a managed guest mount
-// such as /tmp on Linux — the session warns instead.
-func assertSharedGitDirMountWired(
-	t *testing.T,
-	identity git.Identity,
-	volumes map[string]msbSdk.MountConfig,
-	warnings []string,
-) {
+// recordSharedGitDirOutsideManagedMounts rewrites the worktree's .git file to
+// reach the shared git dir through a symlink under /var/tmp. t.TempDir lies
+// under the managed /tmp guest mount on Linux, where the shared git dir cannot
+// be mounted, so without this the test could not observe the mount (#426).
+func recordSharedGitDirOutsideManagedMounts(t *testing.T, repo, worktree string) {
 	t.Helper()
-	target, err := mounts.ResolveMountTarget(identity.RecordedSharedGitDir)
+	//nolint:usetesting // t.TempDir lies under the managed /tmp guest mount on Linux
+	linkDir, err := os.MkdirTemp("/var/tmp", "agents-sandbox-test-")
 	if err != nil {
-		if !slices.ContainsFunc(warnings, func(warning string) bool {
-			return strings.Contains(warning, identity.RecordedSharedGitDir)
-		}) {
-			t.Errorf(
-				"warnings = %q, want one naming the unmountable git dir %q",
-				warnings,
-				identity.RecordedSharedGitDir,
-			)
-		}
-		return
+		t.Skipf("no writable /var/tmp: %v", err)
 	}
-	if got := volumes[target].Bind; got != identity.SharedGitDir {
-		t.Errorf("%s mount source = %q, want the shared git dir %q", target, got, identity.SharedGitDir)
+	t.Cleanup(func() { _ = os.RemoveAll(linkDir) })
+	link := filepath.Join(linkDir, "repo")
+	if err := os.Symlink(repo, link); err != nil {
+		t.Fatalf("symlink %q: %v", link, err)
+	}
+	gitdir := filepath.Join(link, ".git", "worktrees", filepath.Base(worktree))
+	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: "+gitdir+"\n"), 0o644); err != nil {
+		t.Fatalf("rewrite %s/.git: %v", worktree, err)
+	}
+}
+
+// assertSharedGitDirMountWired checks that PrepareSandbox binds an outside
+// worktree's shared git dir at the path its .git file records (#426).
+func assertSharedGitDirMountWired(t *testing.T, identity git.Identity, volumes map[string]msbSdk.MountConfig) {
+	t.Helper()
+	if got := volumes[identity.RecordedSharedGitDir].Bind; got != identity.SharedGitDir {
+		t.Errorf("%s mount source = %q, want the shared git dir %q",
+			identity.RecordedSharedGitDir, got, identity.SharedGitDir)
 	}
 }
 

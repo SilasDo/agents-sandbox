@@ -56,11 +56,11 @@ func TestWithSharedGitDirMountMountsAtRecordedPath(t *testing.T) {
 
 func TestWithSharedGitDirMountWarnsOnRelativeGitdir(t *testing.T) {
 	ui := termio.NewTestMock(t)
-	configured := mounts.Mounts{}
+	configured := mounts.Mounts{"/data": {Source: "/host/data", Readonly: true}}
 
 	got := withSharedGitDirMount(configured, outsideWorktreeIdentity("../repo/.git"), &ui)
 
-	require.Empty(t, got)
+	require.Equal(t, configured, got)
 	require.Len(t, ui.WarnCalls, 1)
 	require.Contains(t, ui.WarnCalls[0], "relative")
 	require.Contains(t, ui.WarnCalls[0], "/srv/worktrees/wt")
@@ -69,9 +69,11 @@ func TestWithSharedGitDirMountWarnsOnRelativeGitdir(t *testing.T) {
 func TestWithSharedGitDirMountWarnsOnManagedTargetConflict(t *testing.T) {
 	ui := termio.NewTestMock(t)
 
-	got := withSharedGitDirMount(mounts.Mounts{}, outsideWorktreeIdentity("/tmp/repo/.git"), &ui)
+	configured := mounts.Mounts{"/data": {Source: "/host/data", Readonly: true}}
 
-	require.Empty(t, got)
+	got := withSharedGitDirMount(configured, outsideWorktreeIdentity("/tmp/repo/.git"), &ui)
+
+	require.Equal(t, configured, got)
 	require.Len(t, ui.WarnCalls, 1)
 	require.Contains(t, ui.WarnCalls[0], "/tmp/repo/.git")
 	require.Contains(t, ui.WarnCalls[0], "git may not resolve")
@@ -85,4 +87,14 @@ func TestWithSharedGitDirMountKeepsConfiguredMountAtSameTarget(t *testing.T) {
 
 	require.Equal(t, configured, got)
 	require.Empty(t, ui.WarnCalls)
+}
+
+// TestWithSharedGitDirMountWithoutConfiguredMounts covers a run with no mounts
+// configured: the nil map must still receive the shared git dir mount.
+func TestWithSharedGitDirMountWithoutConfiguredMounts(t *testing.T) {
+	ui := termio.NewTestMock(t)
+
+	got := withSharedGitDirMount(nil, outsideWorktreeIdentity("/srv/repo/.git"), &ui)
+
+	require.Equal(t, mounts.Mounts{"/srv/repo/.git": {Source: "/srv/repo/.git", Readonly: false}}, got)
 }
