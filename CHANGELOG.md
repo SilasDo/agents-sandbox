@@ -121,6 +121,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Without an `origin` remote, a linked worktree inside its checkout now shares the checkout's repo slug, as documented,
+  so both see the same `~/.config/agents-sandbox/<repo-slug>/` config dir and `org.agents-sandbox.project` label. It
+  previously derived the slug from the worktree's own folder (#434).
 - Two sessions starting a new project at the same time no longer leak a home volume. Previously both created a fresh
   home volume and the later state write replaced the earlier one, leaving a volume unrecorded; in the same second, the
   generated names collided and the second session failed. The later session now uses the volume the first one recorded
