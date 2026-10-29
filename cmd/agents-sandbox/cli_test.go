@@ -12,6 +12,7 @@ import (
 	"github.com/inoio/agents-sandbox/internal/configpaths"
 	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
+	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
 	"github.com/inoio/agents-sandbox/internal/testutil"
@@ -41,6 +42,7 @@ func TestCommandNeedsMSBRuntimeSkipsLauncherOnlyCommands(t *testing.T) {
 		{name: "version", cmd: &cobra.Command{Use: cmdVersion}, want: false},
 		{name: "upgrade", cmd: &cobra.Command{Use: cmdUpgrade}, want: false},
 		{name: "completion", cmd: &cobra.Command{Use: cmdCompletion}, want: false},
+		{name: "doctor", cmd: &cobra.Command{Use: cmdDoctor}, want: false},
 		{name: "config child", cmd: configChildCommand(), want: false},
 		{name: "run", cmd: &cobra.Command{Use: cmdRun}, want: true},
 	}
@@ -81,6 +83,34 @@ func TestRootCommandReturnsInvalidCLISettingsError(t *testing.T) {
 	root.SetArgs([]string{"run", "--log-level", "invalid", "--dry-run"})
 	if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "invalid log level") {
 		t.Fatalf("Execute() error = %v, want invalid log level", err)
+	}
+}
+
+// TestDoctorRunsItsOwnChecksWithoutPreflightRuntimeInstall pins #423: doctor
+// must run its own checks instead of provisioning the msb runtime in the root
+// preflight, so a failing runtime install is reported by doctor (with its
+// troubleshooting link) alongside the KVM and Docker results rather than
+// aborting the command with a raw preflight error.
+func TestDoctorRunsItsOwnChecksWithoutPreflightRuntimeInstall(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	msb.WithMsbMock(t, &msb.MockMsbClient{})
+	docker.WithNoopDockerMock(t)
+	doctor.MockedCheckAll(t, false)
+
+	oldPrepare := prepareMSBRuntime
+	prepareMSBRuntime = func(context.Context, termio.UI, string) error {
+		t.Fatal("doctor must not provision the msb runtime in the root preflight (#423)")
+		return nil
+	}
+	t.Cleanup(func() { prepareMSBRuntime = oldPrepare })
+
+	ui := &termio.Mock{}
+	root := buildRootCmd(ui)
+	root.SetArgs([]string{cmdDoctor})
+
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "preflight failed") {
+		t.Fatalf("Execute() error = %v, want preflight failed", err)
 	}
 }
 

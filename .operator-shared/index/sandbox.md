@@ -64,7 +64,7 @@ read_if: Working in internal/sandbox (VM lifecycle, image building, docker/msb c
 
 ### `pruning/` — Cleanup and prune of images, sandboxes, volumes
 
-- `cleanup.go`, `helpers.go`, `images.go`, `prune.go`, `report.go`, `sandboxes.go`, `state.go`, `volumes.go`
+- `cleanup.go`, `helpers.go`, `images.go`, `prune.go`, `report.go`, `sandboxes.go`, `state.go`, `storage.go`, `volumes.go` — `storage.go` is the age-gated runtime-RAM phase (`PruneStorage`) that enriches the top-level `prune` (#156)
 
 ### `reconfig/` — Reconfiguration planning
 

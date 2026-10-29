@@ -146,7 +146,7 @@ func (opencodeProfile) NewerThan(a, b string) (bool, error) { return newerOpenCo
 
 func (opencodeProfile) AttachCommand(target string, args []string) string {
 	parts := []string{opencodeCmdName, "attach", "http://127.0.0.1:4096", "--dir", shellQuote(target)}
-	parts = append(parts, args...)
+	parts = append(parts, shellQuoteArgs(args)...)
 	return strings.Join(parts, " ")
 }
 

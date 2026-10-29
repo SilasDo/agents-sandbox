@@ -50,7 +50,7 @@ Unknown statuses are treated as unsafe and are not pruned or reused automaticall
 
 ### Pruning
 
-Reclaim stale sandboxes, home volumes, and images:
+Reclaim stale sandboxes, home volumes, images, and unused runtime RAM:
 
 ```console
 agents-sandbox prune                       # use manual-prune-age from config (default: 7d)
@@ -86,6 +86,10 @@ Pruning removes:
   boundary `image list` and `image remove` enforce.
 - Dangling Docker images: after a rebuild the previous runner image is no longer referenced by any tag and is reclaimed
   by a scoped Docker image prune. Tagged images (base images and the current `:latest` runner) are left untouched.
+- Unused runtime RAM: the published branch/snapshot memory backings that no live VM holds and that are older than the
+  age threshold are reclaimed. The runtime revalidates ownership under its own locks, so the phase never races a live
+  VM. The report also carries the native image-prune data — the image data skipped because a live sandbox holds it, and
+  the bytes reclaimed; a byte count the runtime cannot measure renders as unknown (`-`), never `0`.
 
 Age is applied when deciding which sandboxes are stale, and that decision is shared across sandboxes and home volumes:
 a project whose sandbox has activity in the age threshold is left alone entirely. Home volumes are reclaimed only when

@@ -5,12 +5,37 @@ import (
 	"context"
 	"errors"
 	"io"
+	"iter"
 	"strings"
 	"testing"
 
 	dockerspec "github.com/moby/docker-image-spec/specs-go/v1"
+	"github.com/moby/moby/api/types/jsonstream"
 	"github.com/moby/moby/client"
 )
+
+// PullResponse is a client.ImagePullResponse for tests: reads come from Body and
+// Wait returns WaitErr, modelling the registry failure moby delivers inside the
+// pull stream. JSONMessages is unused by the launcher and yields nothing.
+type PullResponse struct {
+	Body    io.Reader
+	WaitErr error
+}
+
+func (p PullResponse) Read(b []byte) (int, error) {
+	if p.Body == nil {
+		return 0, io.EOF
+	}
+	return p.Body.Read(b)
+}
+
+func (p PullResponse) Close() error { return nil }
+
+func (p PullResponse) Wait(context.Context) error { return p.WaitErr }
+
+func (p PullResponse) JSONMessages(context.Context) iter.Seq2[jsonstream.Message, error] {
+	return func(func(jsonstream.Message, error) bool) {}
+}
 
 func WithDockerMock(t *testing.T, mock Client) {
 	t.Helper() // gomutants:disable STATEMENT_REMOVE reason="t.Helper only adjusts reported stack frames; it cannot change this helper's result"
@@ -69,7 +94,7 @@ func newErrorDockerClient(mockErrs mockErrors) *MockDockerClient {
 		ImageSaveFn: func(_ context.Context, _ []string, saveOpts ...client.ImageSaveOption) (client.ImageSaveResult, error) {
 			return nil, saveErr
 		},
-		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
 			return nil, defaultErr
 		},
 		ImageRemoveFn: func(_ context.Context, _ string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
@@ -92,7 +117,7 @@ type MockDockerClient struct {
 	ImageBuildFn   func(ctx context.Context, r io.Reader, options client.ImageBuildOptions) (client.ImageBuildResult, error)
 	ImageInspectFn func(ctx context.Context, ref string, inspectOpts ...client.ImageInspectOption) (client.ImageInspectResult, error)
 	ImageSaveFn    func(ctx context.Context, refs []string, saveOpts ...client.ImageSaveOption) (client.ImageSaveResult, error)
-	ImagePullFn    func(ctx context.Context, ref string, opts client.ImagePullOptions) (io.ReadCloser, error)
+	ImagePullFn    func(ctx context.Context, ref string, opts client.ImagePullOptions) (client.ImagePullResponse, error)
 	ImageRemoveFn  func(ctx context.Context, ref string, options client.ImageRemoveOptions) (client.ImageRemoveResult, error)
 	ImageTagFn     func(ctx context.Context, opts client.ImageTagOptions) (client.ImageTagResult, error)
 	ImagePruneFn   func(ctx context.Context, opts client.ImagePruneOptions) (client.ImagePruneResult, error)
@@ -152,11 +177,11 @@ func (m *MockDockerClient) ImagePull(
 	ctx context.Context,
 	ref string,
 	opts client.ImagePullOptions,
-) (io.ReadCloser, error) {
+) (client.ImagePullResponse, error) {
 	if m.ImagePullFn != nil {
 		return m.ImagePullFn(ctx, ref, opts)
 	}
-	return io.NopCloser(strings.NewReader("")), nil
+	return PullResponse{Body: strings.NewReader("")}, nil
 }
 
 func (m *MockDockerClient) ImageTag(ctx context.Context, opts client.ImageTagOptions) (client.ImageTagResult, error) {
@@ -230,7 +255,7 @@ func (f *failFastDockerClient) ImagePull(
 	_ context.Context,
 	_ string,
 	_ client.ImagePullOptions,
-) (io.ReadCloser, error) {
+) (client.ImagePullResponse, error) {
 	f.mustMock()
 	return nil, nil
 }
