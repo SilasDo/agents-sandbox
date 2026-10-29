@@ -140,8 +140,9 @@ transaction: re-read, verify the precondition still holds (e.g. `cur.HomeVolume 
 new value or fail with a CAS error (`home volume changed concurrently (want …, have …)`) the caller surfaces. This closes the lost-update in finding 2
 without a minutes-long lock, and is why the callback returns an error rather than only a bool.
 
-`EnsureNewHome` applies the same guard with an adopt-instead-of-fail outcome (#431): it snapshots the recorded
-`home_volume` before creating its volume, and when the commit transaction finds a different, non-empty `home_volume`, a
+`EnsureNewHome` applies the same guard with an adopt-instead-of-fail outcome (#431): its snapshot is the
+`home_volume` that home resolution observed when it decided a fresh volume is needed (`""` for a missing or unreadable
+state), passed in rather than re-read, so a winner committing between that decision and the creation is still seen. When the commit transaction finds a different, non-empty `home_volume`, a
 concurrent session has committed its own fresh volume. Failing would abort a run that has a perfectly usable home, so it
 writes nothing, returns the committed state, and removes the volume it just created. Its generated name has second
 granularity, so a create that fails with `VolumeAlreadyExists` waits for the next second and retries (bounded).

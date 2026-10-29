@@ -43,6 +43,7 @@ func TestEnsureNewHomeSeedsFingerprints(t *testing.T) {
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
 		true, // skipVM
 		desired,
+		"",
 		ui,
 	)
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
@@ -24,16 +25,25 @@ func commitConcurrentHome(t *testing.T, k state.Key, volume string) {
 	require.NoError(t, seedHomeState(k, state.NewHomeState(volume, "sha256:winner")))
 }
 
-// withNoHomeVolumeNameWait replaces the wait between colliding volume names
-// with a counter, so collision tests do not sleep.
-func withNoHomeVolumeNameWait(t *testing.T) *int {
+// withFakeHomeVolumeClock freezes the clock HomeVolumeName timestamps from and
+// replaces the wait between colliding names with a one-second clock advance, so
+// collision tests do not sleep. It returns the number of waits.
+func withFakeHomeVolumeClock(t *testing.T) *int {
 	t.Helper()
+	now := time.Date(2026, 10, 29, 12, 0, 0, 0, time.UTC)
 	waits := 0
-	restore := waitForNextHomeVolumeName
-	waitForNextHomeVolumeName = func() { waits++ }
-	t.Cleanup(func() { waitForNextHomeVolumeName = restore })
+	restoreClock, restoreWait := homeVolumeClock, waitForNextHomeVolumeName
+	homeVolumeClock = func() time.Time { return now }
+	waitForNextHomeVolumeName = func() {
+		waits++
+		now = now.Add(time.Second)
+	}
+	t.Cleanup(func() { homeVolumeClock, waitForNextHomeVolumeName = restoreClock, restoreWait })
 	return &waits
 }
+
+// errVolumeExists is the SDK error CreateVolume returns for a taken name.
+var errVolumeExists = &msbSdk.Error{Kind: msbSdk.ErrVolumeAlreadyExists, Message: "exists"}
 
 // TestEnsureNewHome_ConcurrentCommitAdoptsWinner covers #431: when another
 // session commits a fresh home volume while this one is creating its own, the
@@ -65,7 +75,7 @@ func TestEnsureNewHome_ConcurrentCommitAdoptsWinner(t *testing.T) {
 			ui := &termio.Mock{}
 
 			volName, hs, err := NewManager(ui).EnsureNewHome(
-				context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, ui,
+				context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, tt.priorRecorded, ui,
 			)
 
 			require.NoError(t, err)
@@ -76,6 +86,7 @@ func TestEnsureNewHome_ConcurrentCommitAdoptsWinner(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "winner-vol", persisted.HomeVolume)
 			require.Equal(t, "sha256:winner", persisted.ImageDigest)
+			require.Contains(t, ui.InfoCalls, `home volume "winner-vol" was created concurrently, using it`)
 		})
 	}
 }
@@ -94,7 +105,7 @@ func TestEnsureNewHome_ReplacesStaleRecordedVolume(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, ui,
+		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "gone-vol", ui,
 	)
 
 	require.NoError(t, err)
@@ -105,19 +116,80 @@ func TestEnsureNewHome_ReplacesStaleRecordedVolume(t *testing.T) {
 	require.Equal(t, volName, persisted.HomeVolume)
 }
 
+// TestEnsureNewHome_ReplacesConcurrentEmptyHomeVolume pins that a concurrent
+// document naming no home volume (an identity-adoption marker) is not a
+// committed winner, so the fresh volume is still recorded.
+func TestEnsureNewHome_ReplacesConcurrentEmptyHomeVolume(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "markerproj", Agent: "opencode"}
+	client := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			require.NoError(t, seedHomeState(k, state.HomeState{RecoveredHomeVolume: "legacy-vol"}))
+			return msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	ui := &termio.Mock{}
+
+	volName, _, err := NewManager(ui).EnsureNewHome(
+		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "gone-vol", ui,
+	)
+
+	require.NoError(t, err)
+	require.Empty(t, client.RemovedVolumes)
+	persisted, err := state.ReadState(k)
+	require.NoError(t, err)
+	require.Equal(t, volName, persisted.HomeVolume)
+}
+
+// TestResolveHomeVolume_WinnerCommitsBeforeCreation covers a winner that
+// commits after resolution found the recorded volume gone but before the fresh
+// volume is created: the compare-and-set must use the state resolution
+// observed, not a later re-read that already names the winner.
+func TestResolveHomeVolume_WinnerCommitsBeforeCreation(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	k := state.Key{Slug: "earlyproj", Agent: "opencode"}
+	require.NoError(t, seedHomeState(k, state.NewHomeState("gone-vol", "sha256:old")))
+	var createdVolume string
+	client := &msb.MockMsbClient{
+		GetVolumeFn: func(_ context.Context, name string) (msb.VolumeHandle, error) {
+			if name == "gone-vol" {
+				commitConcurrentHome(t, k, "winner-vol")
+			}
+			return nil, &msbSdk.Error{Kind: msbSdk.ErrVolumeNotFound, Message: "no such volume"}
+		},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			createdVolume = name
+			return msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	ui := &termio.Mock{}
+
+	volName, _, err := NewManager(ui).ResolveHomeVolume(
+		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "winner-vol", volName)
+	require.Equal(t, []string{createdVolume}, client.RemovedVolumes)
+	persisted, err := state.ReadState(k)
+	require.NoError(t, err)
+	require.Equal(t, "winner-vol", persisted.HomeVolume)
+}
+
 // TestEnsureNewHome_NameCollisionRetries covers the same-second case of #431:
 // HomeVolumeName has second granularity, so two racing sessions can generate
 // the same name. The loser waits for the next name instead of failing.
 func TestEnsureNewHome_NameCollisionRetries(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	waits := withNoHomeVolumeNameWait(t)
+	waits := withFakeHomeVolumeClock(t)
 	k := state.Key{Slug: "collideproj", Agent: "opencode"}
-	attempts := 0
+	takenName := HomeVolumeName(k)
+	var attemptedNames []string
 	client := &msb.MockMsbClient{
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
-			attempts++
-			if attempts == 1 {
-				return nil, &msbSdk.Error{Kind: msbSdk.ErrVolumeAlreadyExists, Message: "exists"}
+			attemptedNames = append(attemptedNames, name)
+			if name == takenName {
+				return nil, errVolumeExists
 			}
 			return msb.MockVolumeHandle{Name_: name}, nil
 		},
@@ -125,41 +197,41 @@ func TestEnsureNewHome_NameCollisionRetries(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, ui,
+		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
 	)
 
 	require.NoError(t, err)
-	require.NotEmpty(t, volName)
-	require.Equal(t, 2, attempts)
+	require.NotEqual(t, takenName, volName)
+	require.Equal(t, []string{takenName, volName}, attemptedNames)
 	require.Equal(t, 1, *waits)
 }
 
 func TestEnsureNewHome_NameCollisionGivesUp(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	waits := withNoHomeVolumeNameWait(t)
+	waits := withFakeHomeVolumeClock(t)
 	k := state.Key{Slug: "collideproj", Agent: "opencode"}
 	attempts := 0
 	client := &msb.MockMsbClient{
 		CreateVolumeFn: func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			attempts++
-			return nil, &msbSdk.Error{Kind: msbSdk.ErrVolumeAlreadyExists, Message: "exists"}
+			return nil, errVolumeExists
 		},
 	}
 	ui := &termio.Mock{}
 
 	_, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, ui,
+		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
 	)
 
 	require.Error(t, err)
 	require.True(t, msb.IsVolumeAlreadyExists(err))
-	require.Equal(t, homeVolumeNameAttempts, attempts)
-	require.Equal(t, homeVolumeNameAttempts-1, *waits)
+	require.Equal(t, 3, attempts)
+	require.Equal(t, 2, *waits)
 }
 
 func TestEnsureNewHome_CreateErrorDoesNotRetry(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
-	waits := withNoHomeVolumeNameWait(t)
+	waits := withFakeHomeVolumeClock(t)
 	createErr := errors.New("disk full")
 	client := &msb.MockMsbClient{
 		CreateVolumeFn: func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
@@ -170,7 +242,7 @@ func TestEnsureNewHome_CreateErrorDoesNotRetry(t *testing.T) {
 
 	_, _, err := NewManager(ui).EnsureNewHome(
 		context.Background(), client, state.Key{Slug: "failproj", Agent: "opencode"},
-		raceTestImage, true, state.Fingerprints{}, ui,
+		raceTestImage, true, state.Fingerprints{}, "", ui,
 	)
 
 	require.ErrorIs(t, err, createErr)

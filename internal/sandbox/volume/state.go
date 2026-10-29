@@ -41,7 +41,7 @@ func (vm *Manager) ResolveHomeVolume(
 		if !errors.Is(err, state.ErrStateNotFound) {
 			ui.Warnf("could not read state file for project %q: %v", k.Slug, err)
 		}
-		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, ui)
+		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, "", ui)
 	}
 
 	// A VM-only identity adoption (#144) destroyed the legacy VM and recorded its
@@ -49,7 +49,17 @@ func (vm *Manager) ResolveHomeVolume(
 	// Finish that recovery so the volume becomes the project's HomeVolume with
 	// the current digest and fingerprints.
 	if st.RecoveredHomeVolume != "" {
-		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, st.RecoveredHomeVolume, ui)
+		return vm.recoverOrCreateHome(
+			ctx,
+			client,
+			k,
+			info,
+			skipVM,
+			fingerprints,
+			st.RecoveredHomeVolume,
+			st.HomeVolume,
+			ui,
+		)
 	}
 
 	if _, err := client.GetVolume(ctx, st.HomeVolume); err != nil {
@@ -57,7 +67,7 @@ func (vm *Manager) ResolveHomeVolume(
 			return "", state.HomeState{}, fmt.Errorf("checking home volume %q: %w", st.HomeVolume, err)
 		}
 		ui.Warnf("existing home volume %q not found, creating fresh", st.HomeVolume)
-		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, ui)
+		return vm.recoverOrCreateHome(ctx, client, k, info, skipVM, fingerprints, recoveredVolume, st.HomeVolume, ui)
 	}
 
 	return st.HomeVolume, *st, nil
@@ -81,6 +91,7 @@ func (vm *Manager) recoverOrCreateHome(
 	skipVM bool,
 	fingerprints state.Fingerprints,
 	recoveredVolume string,
+	observedHomeVolume string,
 	ui termio.UI,
 ) (string, state.HomeState, error) {
 	recovered, ok, err := confirmedRecoveredVolume(ctx, client, recoveredVolume)
@@ -88,7 +99,7 @@ func (vm *Manager) recoverOrCreateHome(
 		return "", state.HomeState{}, err
 	}
 	if !ok {
-		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, skipVM, fingerprints, ui)
+		volName, hs, err := vm.EnsureNewHome(ctx, client, k, info, skipVM, fingerprints, observedHomeVolume, ui)
 		if err == nil {
 			clearAdoptionClaim(k, recoveredVolume, ui)
 		}
@@ -211,10 +222,11 @@ var recoverHomeState = state.RecoverHomeState
 // already names it, so rolling it back would strand the state on a removed
 // volume (see specs/atomicwrite-durability.md).
 //
-// The commit is a compare-and-set against the home volume recorded before the
-// volume was created (#431): when a concurrent session committed its own fresh
-// volume meanwhile, that volume is adopted and this one removed, so neither is
-// left unrecorded.
+// The commit is a compare-and-set against observedHomeVolume, the home volume
+// the state named when the caller decided a fresh volume is needed ("" when the
+// state was missing or unreadable) (#431): when a concurrent session committed
+// its own fresh volume since, that volume is adopted and this one removed, so
+// neither is left unrecorded.
 func (vm *Manager) EnsureNewHome(
 	ctx context.Context,
 	client msb.Client,
@@ -222,9 +234,9 @@ func (vm *Manager) EnsureNewHome(
 	info image.ImageInfo,
 	skipVM bool,
 	fingerprints state.Fingerprints,
+	observedHomeVolume string,
 	ui termio.UI,
 ) (string, state.HomeState, error) {
-	snapshotVolume := recordedHomeVolume(k)
 	volName, err := createHomeVolume(ctx, client, k)
 	if err != nil {
 		return "", state.HomeState{}, err
@@ -246,10 +258,11 @@ func (vm *Manager) EnsureNewHome(
 	// Replace wholesale through the recovery transaction: a fresh home volume's
 	// state is authoritative, and the path is also reached to repair a malformed
 	// state file.
-	if err := recoverHomeState(k, func(cur *state.HomeState, exists bool) (bool, error) {
-		if committedConcurrently(cur, exists, snapshotVolume) {
+	if err := recoverHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
+		if committedConcurrently(cur, observedHomeVolume) {
 			adopted := *cur
 			concurrentState = &adopted
+			// gomutants:disable-next-line RETURN_TRUE reason="writing back the unchanged concurrent document leaves the same state on disk"
 			return false, nil
 		}
 		*cur = hs
@@ -266,21 +279,11 @@ func (vm *Manager) EnsureNewHome(
 	return volName, hs, nil
 }
 
-// recordedHomeVolume is the home volume the state names before a fresh volume
-// is created, or "" when the state is missing or unreadable. It is the
-// compare-and-set snapshot of EnsureNewHome.
-func recordedHomeVolume(k state.Key) string {
-	st, err := state.ReadState(k)
-	if err != nil {
-		return ""
-	}
-	return st.HomeVolume
-}
-
 // committedConcurrently reports whether the state names a home volume other
-// than the snapshot, i.e. another session committed a fresh volume since.
-func committedConcurrently(cur *state.HomeState, exists bool, snapshotVolume string) bool {
-	return exists && cur.HomeVolume != "" && cur.HomeVolume != snapshotVolume
+// than the observed one, i.e. another session committed a fresh volume since.
+// A missing or unparsable document reads as an empty HomeVolume.
+func committedConcurrently(cur *state.HomeState, observedHomeVolume string) bool {
+	return cur.HomeVolume != "" && cur.HomeVolume != observedHomeVolume
 }
 
 // homeVolumeNameAttempts bounds the retries when a generated home volume name is

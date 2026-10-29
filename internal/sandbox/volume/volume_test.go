@@ -1677,6 +1677,7 @@ func TestEnsureNewHome_PrefillFails_RemovesVolume(t *testing.T) {
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1737,6 +1738,7 @@ func TestEnsureNewHome_StateWriteFails(t *testing.T) {
 				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 				true, // skipVM: the state write is the failure under test
 				state.Fingerprints{},
+				"",
 				ui,
 			)
 			if err == nil {
@@ -1784,6 +1786,7 @@ func TestEnsureNewHome_PrefillCancelled_RemovesVolumeWithLiveContext(t *testing.
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1813,6 +1816,7 @@ func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		true, // skipVM
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err != nil {
