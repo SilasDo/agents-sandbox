@@ -174,6 +174,12 @@ This is the field guide for doing it. It was distilled from the first full sweep
   direct call with an *incomplete* identity — a slug-only or empty `ImageIdentity`, which the sole production caller's
   `image.Ref() != ""` precondition excludes — makes removing the guard observable; assert that row rather than deleting
   a check that is not redundant as a total function.
+- **A `x != "" && x == y` guard is killable when *both* sides can be empty; "the caller's `y` is never empty" is not proof of redundancy.**
+  `cachedImageMatches` returns `mInspect.Digest != "" && mInspect.Digest == info.Digest` (#410). Each earlier table row varied
+  only one side, so removing the middle operand looked equivalent — but with a cached image that records no digest *and* an
+  empty `info.Digest`, the mutant's bare `"" == ""` returns `true` while the original returns `false` (reload). The
+  distinguishing input is the one where both sides are empty, which is exactly the state the guard exists to reject. Add
+  that row; do not generalize from "only one side is ever empty in production".
 - **`if len(x) > N { x = x[:N] }`: only one of the condition's integer mutants is observable.** `>N`↔`>=N` and `N`→`N-1`
   differ only when `len==N`, where both branches leave the same `N` characters, so they are equivalent — record them
   with `disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT`. Only `N`→`N+1` changes behaviour (an `N+1`-length
