@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1861,6 +1862,10 @@ func TestEnsureNewHome_SkipVM_CreatesNothing(t *testing.T) {
 	}
 	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
 		t.Errorf("ReadState err = %v, want ErrStateNotFound (no state written under skip-VM)", err)
+	}
+	if len(ui.InfoCalls) != 1 ||
+		!strings.Contains(ui.InfoCalls[0], "would create and prefill home volume "+strconv.Quote(volName)) {
+		t.Errorf("InfoCalls = %v, want the deferred create-and-prefill notice for %q", ui.InfoCalls, volName)
 	}
 }
 
