@@ -28,7 +28,9 @@ const (
 // boot and writes them into the project's HomeState, detecting and recording
 // the installed agent version as the upgrade baseline for a tool-installed
 // agent. It is a read-modify-write so the project's fingerprints and offered
-// set survive. Failures are logged, never fatal.
+// set survive, and a no-op when no state file exists: at that point home
+// resolution has not landed, so creating a document here would persist
+// home_volume: "" (#183, #430). Failures are logged, never fatal.
 func recordImageProvenance(ctx context.Context, k state.Key, a agent.Agent, sb msb.Sandbox, ui termio.UI) {
 	agentSource, err := sb.FS().ReadString(ctx, agentSourcePath)
 	if err != nil {
@@ -45,7 +47,10 @@ func recordImageProvenance(ctx context.Context, k state.Key, a agent.Agent, sb m
 		detectedVersion, hasVersion = detectToolAgentVersion(ctx, a, sb, ui)
 	}
 
-	if writeErr := state.WithHomeState(k, func(hs *state.HomeState, _ bool) (bool, error) {
+	if writeErr := state.WithHomeState(k, func(hs *state.HomeState, exists bool) (bool, error) {
+		if !exists {
+			return false, nil
+		}
 		hs.AgentSource = agentSource
 		hs.DockerSource = dockerSource
 		if hasVersion {

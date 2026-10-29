@@ -24,6 +24,10 @@ cannot. Resolution order (`volume.Manager.ResolveHomeVolume`):
    via `liveHomeVolume` (`client.GetSandbox(projectVMName(k))`), because the volume package cannot import vm.
 3. **Fresh prefill** — otherwise `EnsureNewHome` creates a new volume, as before.
 
+A fresh prefill that fails removes the volume it just created before returning the error (the same cleanup
+`ApplyHomeAction` performs), so an unreferenced volume is never left behind and each retry does not accumulate one
+(#427).
+
 Absence is only the SDK's `ErrVolumeNotFound` kind (`msb.IsVolumeNotFound`). Any other lookup error — daemon,
 timeout, permission, cancellation — **fails closed**: resolution returns an error and performs no create, prefill, or
 state rewrite, so a transient error can never be mistaken for a gone volume and orphan the real one (#331). Only a

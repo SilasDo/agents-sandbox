@@ -2,6 +2,8 @@ package pruning
 
 import (
 	"context"
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -266,6 +268,63 @@ func TestPruneAggregateParity(t *testing.T) {
 	}
 }
 
+// TestPruneRunsStoragePhase proves the aggregate prune runs the runtime-memory
+// phase under the same age threshold and folds its result into the report.
+func TestPruneRunsStoragePhase(t *testing.T) {
+	physical := uint64(4096)
+	client := &msb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error) {
+			return &msbSdk.StoragePruneReport{
+				FilesRemoved:           3,
+				LogicalBytesRemoved:    12288,
+				PhysicalBytesReclaimed: &physical,
+			}, nil
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+	cp.WithMockConfigPaths(t)
+
+	report, err := Prune(context.Background(), 7*24*time.Hour, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if len(client.StoragePruneCalls) != 1 {
+		t.Fatalf("StoragePruneCalls = %v, want 1", client.StoragePruneCalls)
+	}
+	if want := uint64((7 * 24 * time.Hour).Seconds()); client.StoragePruneCalls[0].OlderThanSeconds != want {
+		t.Errorf("OlderThanSeconds = %d, want %d", client.StoragePruneCalls[0].OlderThanSeconds, want)
+	}
+	if report.Storage.FilesRemoved != 3 || report.Storage.LogicalBytesRemoved != 12288 {
+		t.Errorf("Storage = %+v, want files 3 logical 12288", report.Storage)
+	}
+	if report.Storage.PhysicalBytesReclaimed == nil || *report.Storage.PhysicalBytesReclaimed != physical {
+		t.Errorf("PhysicalBytesReclaimed = %v, want %d", report.Storage.PhysicalBytesReclaimed, physical)
+	}
+}
+
+// TestPruneJoinsStorageError proves a storage-prune failure is warned and
+// joined into the aggregate error instead of aborting the run.
+func TestPruneJoinsStorageError(t *testing.T) {
+	client := &msb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error) {
+			return nil, errors.New("storage boom")
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+	cp.WithMockConfigPaths(t)
+
+	ui := &termio.Mock{}
+	_, err := Prune(context.Background(), 7*24*time.Hour, false, ui)
+	if err == nil || !strings.Contains(err.Error(), "storage boom") {
+		t.Fatalf("Prune error = %v, want the storage error joined", err)
+	}
+	if !slices.ContainsFunc(ui.WarnCalls, func(s string) bool { return strings.Contains(s, "storage boom") }) {
+		t.Errorf("expected a warning mentioning the failure, got %v", ui.WarnCalls)
+	}
+}
+
 func TestPrune_BuildStateError(t *testing.T) {
 	client := &msb.MockMsbClient{
 		ListSandboxesFn: func(context.Context, map[string]string) ([]msb.SandboxHandle, error) {
@@ -301,6 +360,101 @@ func TestRenderPruneSummary_NilReport(t *testing.T) {
 	RenderPruneSummary(ui, nil, false)
 	if len(ui.OutCalls) != 0 {
 		t.Errorf("RenderPruneSummary with nil report must not emit output, got %v", ui.OutCalls)
+	}
+}
+
+// TestRenderPruneSummaryReportsStorageAndImages pins the extra report lines for
+// the runtime-memory phase and the native image-prune report.
+func TestRenderPruneSummaryReportsStorageAndImages(t *testing.T) {
+	physical := uint64(4096)
+	ui := &termio.Mock{}
+	report := &StaleReport{
+		PrunedSandboxes:     1,
+		SkippedImagesInUse:  4,
+		ImageBytesReclaimed: &physical,
+		Storage: StorageReport{
+			FilesRemoved:           3,
+			LogicalBytesRemoved:    12288,
+			PhysicalBytesReclaimed: &physical,
+		},
+	}
+	RenderPruneSummary(ui, report, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "image data: 4 skipped (in use), 4 KiB reclaimed") {
+		t.Errorf("missing image-data line: %v", ui.OutCalls)
+	}
+	if !strings.Contains(joined, "runtime memory: 3 file(s), 12 KiB logical, 4 KiB reclaimed") {
+		t.Errorf("missing runtime-memory line: %v", ui.OutCalls)
+	}
+}
+
+// TestRenderPruneSummaryUnknownBytesRenderDash pins that unknown byte counts
+// render as "-", never "0".
+func TestRenderPruneSummaryUnknownBytesRenderDash(t *testing.T) {
+	ui := &termio.Mock{}
+	report := &StaleReport{
+		SkippedImagesInUse: 2,
+		Storage:            StorageReport{FilesRemoved: 1, LogicalBytesRemoved: 100},
+	}
+	RenderPruneSummary(ui, report, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if strings.Count(joined, "- reclaimed") != 2 {
+		t.Errorf("unknown bytes must render as '- reclaimed', got: %v", ui.OutCalls)
+	}
+}
+
+// TestRenderPruneSummaryLineBoundaries pins when the image-data and
+// runtime-memory lines appear: for a single skipped image, for known image bytes
+// with no skips, and for each storage figure on its own, not only when all hold.
+func TestRenderPruneSummaryLineBoundaries(t *testing.T) {
+	one := uint64(1)
+	cases := []struct {
+		name        string
+		report      *StaleReport
+		wantImage   bool
+		wantStorage bool
+	}{
+		{"image skipped count one", &StaleReport{SkippedImagesInUse: 1}, true, false},
+		{"image bytes without skips", &StaleReport{ImageBytesReclaimed: &one}, true, false},
+		{"storage files only", &StaleReport{Storage: StorageReport{FilesRemoved: 1}}, false, true},
+		{"storage logical bytes only", &StaleReport{Storage: StorageReport{LogicalBytesRemoved: 1}}, false, true},
+		{
+			"storage physical bytes only",
+			&StaleReport{Storage: StorageReport{PhysicalBytesReclaimed: &one}},
+			false,
+			true,
+		},
+		{"nothing to report", &StaleReport{}, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &termio.Mock{}
+			RenderPruneSummary(ui, tc.report, false)
+			gotImage := slices.ContainsFunc(
+				ui.OutCalls,
+				func(s string) bool { return strings.Contains(s, "image data:") },
+			)
+			gotStorage := slices.ContainsFunc(
+				ui.OutCalls,
+				func(s string) bool { return strings.Contains(s, "runtime memory:") },
+			)
+			if gotImage != tc.wantImage {
+				t.Errorf("image data line present = %v, want %v; out=%v", gotImage, tc.wantImage, ui.OutCalls)
+			}
+			if gotStorage != tc.wantStorage {
+				t.Errorf("runtime memory line present = %v, want %v; out=%v", gotStorage, tc.wantStorage, ui.OutCalls)
+			}
+		})
+	}
+}
+
+// TestRenderPruneSummaryOmitsEmptyStorageLine pins that a phase that reclaimed
+// nothing and reported no bytes stays off the output.
+func TestRenderPruneSummaryOmitsEmptyStorageLine(t *testing.T) {
+	ui := &termio.Mock{}
+	RenderPruneSummary(ui, &StaleReport{PrunedSandboxes: 1}, false)
+	if len(ui.OutCalls) != 1 {
+		t.Errorf("expected only the counts line, got: %v", ui.OutCalls)
 	}
 }
 

@@ -29,16 +29,20 @@ func TestPersistEnvSecrets_RoundTrip(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "roundtripproj"
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 
 	envSt := state.EnvState{Hash: "env-hash-123", Names: []string{"FOO"}}
 	secSt := state.SecretState{Hash: "sec-hash-456", Names: []string{"PASS"}}
 
-	err := persistFingerprints(state.Key{Slug: slug, Agent: "opencode"}, state.Fingerprints{Env: envSt, Secret: secSt})
+	err := persistFingerprints(k, state.Fingerprints{Env: envSt, Secret: secSt})
 	if err != nil {
 		t.Fatalf("persistFingerprints: %v", err)
 	}
 
-	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
+	got, err := state.ReadState(k)
 	if err != nil {
 		t.Fatalf("ReadState after persist: %v", err)
 	}
@@ -50,27 +54,27 @@ func TestPersistEnvSecrets_RoundTrip(t *testing.T) {
 	}
 }
 
-func TestPersistEnvSecrets_CreatesMissingStateDir(t *testing.T) {
+// TestPersistFingerprintsSkipsMissingState pins that a first boot with no prior
+// state.yaml records nothing. Creating a fingerprint-only document there would
+// persist home_volume: "" (HomeVolume has no omitempty) and poison the next
+// run's home resolution with a GetVolume("") failure (#430).
+func TestPersistFingerprintsSkipsMissingState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
-	slug := "newproj-" + makeSlug()
+	k := state.Key{Slug: "newproj-" + makeSlug(), Agent: "opencode"}
 
 	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
 	secSt := state.SecretState{Hash: "h2", Names: []string{"Y"}}
 
-	if err := persistFingerprints(
-		state.Key{Slug: slug, Agent: "opencode"},
-		state.Fingerprints{Env: envSt, Secret: secSt},
-	); err != nil {
+	if err := persistFingerprints(k, state.Fingerprints{Env: envSt, Secret: secSt}); err != nil {
 		t.Fatalf("persistFingerprints: %v", err)
 	}
 
-	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
-	if err != nil {
-		t.Fatalf("ReadState: %v", err)
+	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
+		t.Fatalf("ReadState error = %v, want ErrStateNotFound (no state created)", err)
 	}
-	if got.EnvState.Hash != "h1" {
-		t.Errorf("EnvState.Hash = %q, want %q", got.EnvState.Hash, "h1")
+	if _, err := os.Stat(filepath.Join(state.KeyDir(k), "state.yaml")); !os.IsNotExist(err) {
+		t.Errorf("state.yaml exists after a first boot with no prior state: err = %v", err)
 	}
 }
 
@@ -152,16 +156,20 @@ func TestPersistNetworkState_RoundTrip(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "netproj"
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}, EgressAllow: []string{"api.example.com"}}
 
 	if err := persistFingerprints(
-		state.Key{Slug: slug, Agent: "opencode"},
+		k,
 		state.Fingerprints{Network: state.BuildNetworkState(policy)},
 	); err != nil {
 		t.Fatalf("persistFingerprints: %v", err)
 	}
 
-	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
+	got, err := state.ReadState(k)
 	if err != nil {
 		t.Fatalf("ReadState after persist: %v", err)
 	}
@@ -565,52 +573,19 @@ func TestEnvContentHash_OrderIndependent(t *testing.T) {
 	}
 }
 
-// TestPersistEnvSecrets_NilStateOnNotFound tests persistFingerprints when no state file exists.
-func TestPersistEnvSecrets_NilStateOnNotFound(t *testing.T) {
-	configpaths.WithMockConfigPaths(t)
-
-	slug := "freshproject"
-
-	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
-	secSt := state.SecretState{Hash: "h2", Names: []string{"Y"}}
-
-	if err := persistFingerprints(
-		state.Key{Slug: slug, Agent: "opencode"},
-		state.Fingerprints{Env: envSt, Secret: secSt},
-	); err != nil {
-		t.Fatalf("persistFingerprints: %v", err)
-	}
-
-	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
-	if err != nil {
-		t.Fatalf("ReadState: %v", err)
-	}
-	if got.HomeVolume != "" {
-		t.Error("expected empty HomeVolume for newly created state")
-	}
-	if got.ImageDigest != "" {
-		t.Error("expected empty ImageDigest for newly created state")
-	}
-	if got.EnvState.Hash != "h1" {
-		t.Errorf("EnvState.Hash = %q, want %q", got.EnvState.Hash, "h1")
-	}
-	if got.SecretState.Hash != "h2" {
-		t.Errorf("SecretState.Hash = %q, want %q", got.SecretState.Hash, "h2")
-	}
-}
-
 func TestPersistEnvSecrets_HomeStateOmitsZeroState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "omittestproj"
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 
 	envSt := state.EnvState{Hash: "h1", Names: []string{"X"}}
 	secSt := state.SecretState{}
 
-	if err := persistFingerprints(
-		state.Key{Slug: slug, Agent: "opencode"},
-		state.Fingerprints{Env: envSt, Secret: secSt},
-	); err != nil {
+	if err := persistFingerprints(k, state.Fingerprints{Env: envSt, Secret: secSt}); err != nil {
 		t.Fatalf("persistFingerprints: %v", err)
 	}
 
@@ -984,29 +959,34 @@ func containsStr(s, sub string) bool {
 	return len(s) >= len(sub) && contains(s, sub)
 }
 
-// TestPersistMountState_NilStateOnNotFound tests persistFingerprints when no
-// state file exists yet, e.g. the very first run of a project.
-func TestPersistMountState_NilStateOnNotFound(t *testing.T) {
+// TestPersistMountState_RecordsOnExistingState pins that mount fingerprints are
+// folded into an existing document (the post-home-resolution path); a first boot
+// with no state is a no-op covered by TestPersistFingerprintsSkipsMissingState.
+func TestPersistMountState_RecordsOnExistingState(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
 	slug := "freshmountproject"
+	k := state.Key{Slug: slug, Agent: "opencode"}
+	if err := seedHomeState(k, state.NewHomeState("vol", "digest")); err != nil {
+		t.Fatalf("seedHomeState: %v", err)
+	}
 	mnts := mounts.Mounts{
 		"/home/dev/.m2": {Source: "/host/.m2"},
 	}
 
 	if err := persistFingerprints(
-		state.Key{Slug: slug, Agent: "opencode"},
+		k,
 		state.Fingerprints{Mount: state.BuildMountState(mnts)},
 	); err != nil {
 		t.Fatalf("persistFingerprints: %v", err)
 	}
 
-	got, err := state.ReadState(state.Key{Slug: slug, Agent: "opencode"})
+	got, err := state.ReadState(k)
 	if err != nil {
 		t.Fatalf("ReadState: %v", err)
 	}
-	if got.HomeVolume != "" {
-		t.Error("expected empty HomeVolume for newly created state")
+	if got.HomeVolume != "vol" {
+		t.Errorf("HomeVolume = %q, want the seeded vol", got.HomeVolume)
 	}
 	if got.MountState.Hash != mounts.Fingerprint(mnts) {
 		t.Errorf("MountState.Hash = %q, want %q", got.MountState.Hash, mounts.Fingerprint(mnts))

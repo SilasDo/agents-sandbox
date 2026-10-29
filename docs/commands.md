@@ -190,9 +190,15 @@ agents-sandbox kill -f     # kill and remove VM state (also a stopped or never-s
 
 ### prune
 
-Remove stale VMs, volumes, and images in one pass. Staleness is determined by age — resources older than the threshold
-are pruned. The summary line reads `Pruned N VMs, N home volumes, N docker images, N msb images`. To prune a single
-artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands.
+Remove stale VMs, volumes, images, and unused runtime RAM in one pass. Staleness is determined by age — resources older
+than the threshold are pruned. The summary line reads `Pruned N VMs, N home volumes, N docker images, N msb images`;
+when the runtime reclaims runtime RAM or reports native image-prune data, following `runtime memory:` and `image data:`
+lines carry the file and byte counts. A byte count the runtime cannot measure renders as unknown (`-`), never `0`. To
+prune a single artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands.
+
+The runtime-memory phase reclaims the published branch/snapshot memory backings that no live VM holds, gated by the same
+`--older-than` threshold, and honors `--dry-run` through the runtime's own preview. The runtime's age filter is in whole
+seconds, so a subsecond `--older-than` (for example `500ms`) rounds up to one second rather than collapsing to no filter.
 
 Unless `--dry-run` is set, prune asks for confirmation before removing anything (defaulting to no). Pass the global
 `--yes` to skip the prompt; non-interactively, `--yes` is required or the command fails fast instead of blocking.
@@ -225,7 +231,8 @@ retained, while older variants and surplus digest refs are removed. Ownership fo
 reference whose parsed slug does not embed the launcher's 14-character hash — a manually loaded single-segment image, or a
 registry image — is left untouched. Native microsandbox image pruning also reclaims
 unreferenced manifests and layers left behind by refreshing an image while an older VM still points at the previous
-manifest.
+manifest. Its report is surfaced: `N skipped (in use)` counts the image data retained because a live sandbox holds it,
+and the reclaimed byte count renders as `-` when the runtime cannot measure it.
 
 ```console
 agents-sandbox image prune                      # use manual-prune-age from config (default: 7d)
