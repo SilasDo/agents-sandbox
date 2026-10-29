@@ -104,6 +104,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Networking: a user `egress-deny` carve-out now takes precedence over the profile allow rules. microsandbox matches the
+  first applicable rule, and the deny entries were emitted after the profile's broad allow, so under `public`,
+  `private`, or `host` (and the default) an `egress-deny` entry silently blocked nothing. The generated rule order is now
+  gateway DNS, `egress-deny`, profile allows, `egress-allow`; `none` is unchanged (#231).
 - State: `prune` no longer removes a project's state file while a home volume created since its volume snapshot still exists. The removal decision is made from the state document read under the home lock, so a concurrent `run` that mints a fresh home volume and commits it to state can no longer have that state pruned out from under it and the volume left orphaned (#335).
 - `run --serve-only` no longer aborts its own context when stdin is not an interactive terminal (CI, `< /dev/null`, a background job). The stdin EOF watcher (the "press Ctrl-D to stop" behavior) is now wired only for a TTY, so a closed non-TTY stdin lets the run reach its normal serving state while `SIGINT`/`SIGTERM` still stop it (#387).
 - An invalid agent config-dir name (empty, `.`, `..`, or containing a path separator) is now a returned error instead of

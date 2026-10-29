@@ -159,23 +159,84 @@ func TestConfigDenyBeforeAllow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Config: %v", err)
 	}
-	var denyIdx, allowIdx int
-	foundDeny, foundAllow := false, false
+	var denyIdx, explicitAllowIdx, profileAllowIdx int
+	foundDeny, foundExplicitAllow, foundProfileAllow := false, false, false
 	for i, r := range cfg.Rules {
-		if r.Direction == msbSdk.PolicyDirectionEgress && r.Destination == "123.123.123.0/24" &&
-			r.Action == msbSdk.PolicyActionDeny {
+		if r.Direction != msbSdk.PolicyDirectionEgress {
+			continue
+		}
+		switch {
+		case r.Destination == "123.123.123.0/24" && r.Action == msbSdk.PolicyActionDeny:
 			denyIdx, foundDeny = i, true
-		}
-		if r.Direction == msbSdk.PolicyDirectionEgress && r.Destination == "123.123.0.0/16" &&
-			r.Action == msbSdk.PolicyActionAllow {
-			allowIdx, foundAllow = i, true
+		case r.Destination == "123.123.0.0/16" && r.Action == msbSdk.PolicyActionAllow:
+			explicitAllowIdx, foundExplicitAllow = i, true
+		case r.Destination == "public" && r.Action == msbSdk.PolicyActionAllow:
+			profileAllowIdx, foundProfileAllow = i, true
 		}
 	}
-	if !foundDeny || !foundAllow {
-		t.Fatalf("expected both deny and allow rules, found deny=%v allow=%v", foundDeny, foundAllow)
+	if !foundDeny || !foundExplicitAllow || !foundProfileAllow {
+		t.Fatalf("expected deny, explicit allow, and profile allow rules; found deny=%v explicit=%v profile=%v",
+			foundDeny, foundExplicitAllow, foundProfileAllow)
 	}
-	if denyIdx >= allowIdx {
-		t.Fatalf("deny rule (idx %d) must precede allow rule (idx %d)", denyIdx, allowIdx)
+	if denyIdx >= explicitAllowIdx {
+		t.Fatalf("deny rule (idx %d) must precede explicit allow rule (idx %d)", denyIdx, explicitAllowIdx)
+	}
+	// First-match-wins: the profile's broad allow must not shadow the carve-out.
+	if denyIdx >= profileAllowIdx {
+		t.Fatalf("deny rule (idx %d) must precede profile allow rule (idx %d)", denyIdx, profileAllowIdx)
+	}
+}
+
+func TestConfigDenyPrecedesProfileAllow(t *testing.T) {
+	const denyDestination = "10.0.0.0/8"
+	cases := []struct {
+		name     string
+		profiles []Profile
+	}{
+		{name: "public", profiles: []Profile{ProfilePublic}},
+		{name: "private", profiles: []Profile{ProfilePrivate}},
+		{name: "host", profiles: []Profile{ProfileHost}},
+		{name: "unset defaults to public"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := (Policy{Profiles: tc.profiles, EgressDeny: []string{denyDestination}}).Config()
+			if err != nil {
+				t.Fatalf("Config: %v", err)
+			}
+			denyIdx := -1
+			var profileAllowIdxs []int
+			for i, r := range cfg.Rules {
+				if r.Direction != msbSdk.PolicyDirectionEgress {
+					continue
+				}
+				if r.Action == msbSdk.PolicyActionDeny && r.Destination == denyDestination {
+					denyIdx = i
+				}
+				// Profile allow rules carry a destination group name as the
+				// whole destination; the gateway-DNS allow rule is the one
+				// with a port.
+				if r.Action == msbSdk.PolicyActionAllow && r.Port == "" && isProfileDestination(r.Destination) {
+					profileAllowIdxs = append(profileAllowIdxs, i)
+				}
+			}
+			if denyIdx < 0 {
+				t.Fatalf("egress-deny rule not found in %+v", cfg.Rules)
+			}
+			if len(profileAllowIdxs) == 0 {
+				t.Fatalf("expected at least one profile allow rule, got %+v", cfg.Rules)
+			}
+			for _, idx := range profileAllowIdxs {
+				if denyIdx >= idx {
+					t.Fatalf(
+						"deny rule (idx %d) must precede profile allow rule (idx %d): %+v",
+						denyIdx,
+						idx,
+						cfg.Rules,
+					)
+				}
+			}
+		})
 	}
 }
 
@@ -567,5 +628,17 @@ func TestFingerprintDistinguishesDNSServers(t *testing.T) {
 	different := Policy{Profiles: []Profile{ProfilePublic}, DNSServers: []string{"8.8.8.8"}}
 	if different.Fingerprint() == withDNS.Fingerprint() {
 		t.Fatal("different dns-servers must change the fingerprint")
+	}
+}
+
+// isProfileDestination reports whether a rule destination names one of the
+// composable profile groups (as opposed to a user allow/deny destination or
+// the gateway-DNS rule, which shares the "host" destination but carries a port).
+func isProfileDestination(destination string) bool {
+	switch destination {
+	case "public", "private", "host":
+		return true
+	default:
+		return false
 	}
 }

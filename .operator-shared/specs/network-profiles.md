@@ -37,6 +37,15 @@ back on the viper key so decode cannot disagree with validation. Precedence is u
 viperconfig's derived env-key list from binding `AGENTS_SANDBOX_NETWORK_EGRESS_ALLOW`/`_DENY` (see
 [config-key registry](config-key-registry.md)).
 
+## Rule order: deny carve-outs beat profile allows
+
+microsandbox evaluates `NetworkConfig.Rules` first-match-wins in list order. `Policy.Config()` therefore emits the rules
+as: gateway DNS, then the user's `egress-deny` entries, then the profile allow rules, then the user's `egress-allow`
+entries. The deny entries sit ahead of the profile allows so a carve-out actually fires under `public`/`private`/`host`
+(and the unset default), instead of being shadowed by the profile's broad allow (#231). Deny still precedes the explicit
+allow. The rule set and ordering are unchanged for `none`, which contributes no profile rules, so only the gateway-DNS
+rule precedes the user lists.
+
 ## Fingerprint stability (do not drift)
 
 `Policy.Fingerprint()` emits one sorted, deduplicated `profile=<name>` line per profile. A single-profile policy therefore

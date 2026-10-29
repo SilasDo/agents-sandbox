@@ -177,10 +177,14 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 	if err != nil {
 		return nil, err
 	}
+	// FromProfilesChecked returns the gateway-DNS rule first, then the profile
+	// allow rules. `none` selects no profile, so the SDK returns no rules and
+	// the gateway-DNS rule is added here so named allow-listed hosts resolve.
+	var dnsRules, profileRules []msbSdk.PolicyRule
 	if len(msbProfiles) == 0 {
-		// none contributes no SDK profile rules, so the SDK adds no gateway DNS;
-		// add it here so named allow-listed hosts can resolve.
-		cfg.Rules = append(cfg.Rules, msbSdk.Rule.AllowDNS())
+		dnsRules = []msbSdk.PolicyRule{msbSdk.Rule.AllowDNS()}
+	} else {
+		dnsRules, profileRules = cfg.Rules[:1], cfg.Rules[1:]
 	}
 	if len(p.DNSServers) > 0 {
 		nameservers, err := NormalizeDNSServers(p.DNSServers)
@@ -191,12 +195,20 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 			Nameservers: nameservers,
 		}
 	}
+	// microsandbox evaluates rules first-match-wins in list order, so the
+	// user's egress-deny carve-outs must come before the profile allow rules;
+	// otherwise a profile's broad allow shadows the carve-out and the deny
+	// never fires (#231). The order is: gateway DNS, deny, profile allows,
+	// explicit allows.
+	denyRules := make([]msbSdk.PolicyRule, 0, len(p.EgressDeny))
 	for _, d := range dedupe(p.EgressDeny) {
-		cfg.Rules = append(cfg.Rules, egressRule(msbSdk.PolicyActionDeny, d))
+		denyRules = append(denyRules, egressRule(msbSdk.PolicyActionDeny, d))
 	}
+	allowRules := make([]msbSdk.PolicyRule, 0, len(p.EgressAllow))
 	for _, d := range dedupe(p.EgressAllow) {
-		cfg.Rules = append(cfg.Rules, egressRule(msbSdk.PolicyActionAllow, d))
+		allowRules = append(allowRules, egressRule(msbSdk.PolicyActionAllow, d))
 	}
+	cfg.Rules = slices.Concat(dnsRules, denyRules, profileRules, allowRules)
 	return cfg, nil
 }
 
