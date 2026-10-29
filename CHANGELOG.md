@@ -39,9 +39,18 @@ command reports the bare version (e.g. `0.1.0`).
   On by default; turn it off with `open-links: false`,
   `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim; a
   custom runner base must now provide `curl`, which the image build verifies.
+- `prune` (and its `storage prune` alias) reclaims unused runtime RAM — the published branch/snapshot memory backings —
+  as a fourth phase under the same `--older-than` threshold, and surfaces the native image-prune report: the images it
+  skipped because a live sandbox holds them and the bytes it reclaimed. Byte counts the runtime cannot measure render as
+  unknown (`-` in the human output, `null` in `--format json`), never `0`. The runtime-memory phase honors `--dry-run`
+  through the runtime's own preview flag (#156).
 
 ### Changed
 
+- Agents: forwarded arguments are shell-quoted before they are joined into an agent's attach command. The launcher
+  receives them already split by the host shell and the guest shell splits the joined line again, so an argument
+  containing spaces (`agents-sandbox run -- chat -q "explain this function"`) used to reach the agent as several words.
+  `opencode`, `opencode2`, `pi`, `claude-code`, and `codex` share the quoting.
 - `stop --force` and `kill --force` now remove the persisted state of an already-stopped or never-started project VM.
   Previously they printed "already stopped" and left it in place, so `--force` never cleaned up such a VM; they now
   skip the stop or kill, remove the sandbox, and say so. `--dry-run` still removes nothing. See `docs/commands.md`.
@@ -110,6 +119,14 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- State: a project's first run no longer persists a `state.yaml` holding only config fingerprints with an empty
+  `home_volume`. Recording the fingerprints and the image provenance after a VM is created is now a no-op when no state
+  file exists yet — matching the other pre-home-resolution writers — so the next run no longer resolves the empty volume
+  name, which either failed the run or warned about a missing `""` volume (#430).
+- `doctor` runs its own checks instead of provisioning the microsandbox runtime in the root preflight. On a host whose
+  private runtime home is absent or broken, a failed runtime install is now reported as `msb runtime setup failed: …`
+  with its troubleshooting link while the KVM and Docker checks still run, instead of aborting the command with a raw
+  `install msb runtime: …` error before any check ran (#423).
 - Networking: a user `egress-deny` carve-out now takes precedence over the profile allow rules. microsandbox matches the
   first applicable rule, and the deny entries were emitted after the profile's broad allow, so under `public`,
   `private`, or `host` (and the default) an `egress-deny` entry silently blocked nothing. The generated rule order is now
@@ -210,6 +227,10 @@ command reports the bare version (e.g. `0.1.0`).
   command line. After a release changes a helper's flags (dockerd's storage driver, the daemon's serve hostname or health
   format), the old process was no longer matched and both raced for the socket or port, so the run failed with
   "exited before becoming ready" (#343).
+- Runner image: a failed base-image pull is now reported as the classified "base image not found or not logged in"
+  error with its troubleshooting link, instead of a misleading "No such image". The pull stream is waited on (moby's
+  `Wait`), so a registry failure delivered inside it is no longer drained away and re-reported by a follow-up inspect
+  (#425).
 
 - Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
   removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
@@ -218,6 +239,9 @@ command reports the bare version (e.g. `0.1.0`).
   removes the uncommitted volume, instead of warning and continuing against a volume the launcher has no record of. The
   volume is kept when the write reports an installed-but-not-durable document (`state.WriteInstalled`), since that state
   already names it (#428).
+- Docs: the bare-worktrees recipe no longer claims a worktree outside its checkout is unsupported and warned about. It
+  now says such a worktree runs as its own checkout, names the remaining limit (the checkout's shared git dir is not
+  reachable inside the VM), and links the code-fix issue (#435, #426).
 
 ## [0.6.0] - 2026-10-25
 

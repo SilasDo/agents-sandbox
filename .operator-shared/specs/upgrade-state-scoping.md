@@ -9,8 +9,9 @@ read_if: Changing the agent upgrade prompt, pendingUpgrade/resolveBuildVersion, 
 
 The interactive agent-upgrade prompt can name a version that belongs to a different project. The prompt's `current`
 value comes from `vm.currentUpgradeVersion(a)`, which reads the machine-global `updater.yaml` keyed only by agent name.
-That file is rewritten by `recordImageProvenance` on every VM boot, so it tracks "the last image that booted", not the
-project being launched. Because the runner image is per `(slug, agent)` (`naming.RunnerImageRef`) and the prompt fires
+`recordImageProvenance` rewrote that file on every VM boot, so it tracked "the last image that booted", not the
+project being launched (it now updates the project's `HomeState` in place, skipped when no state file exists; #430).
+Because the runner image is per `(slug, agent)` (`naming.RunnerImageRef`) and the prompt fires
 before this project's image is touched (see `resolveBuildVersion`), a project can be told its image has another project's
 version (PR #225 review finding).
 
@@ -141,9 +142,10 @@ image is absent (pruned, host docker cleaned), which keeps offline reuse working
 ### Provenance (`vm.recordImageProvenance`)
 
 `setUpSandbox` threads the project `state.Key` into `recordImageProvenance` (the caller already holds `k`). On boot it
-reads `HomeState(k)`, sets `agent_source`/`docker_source`, and for a tool-installed agent detects the installed version
-via the agent's `VersionProvider` and writes it to `agent_version`. It is a `WithHomeState` transaction so fingerprints
-and the offered set survive. Warnings remain non-fatal.
+reads `HomeState(k)` and updates it in place — `agent_source`/`docker_source`, and for a tool-installed agent the version
+the `VersionProvider` detects, written to `agent_version` — so fingerprints and the offered set survive. It is a no-op
+when no state file exists, like every other pre-home-resolution writer
+([project-state-transactions.md](project-state-transactions.md), #430). Warnings remain non-fatal.
 
 ## Migration (non-interactive, legacy-file-triggered, no registry entry)
 

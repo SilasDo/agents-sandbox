@@ -100,6 +100,7 @@ type MockMsbClient struct {
 	ImageInspectFn       func(ctx context.Context, ref string) (*msbSdk.ImageConfig, error)
 	ImageInspectDetailFn func(ctx context.Context, ref string) (*ImageDetail, error)
 	StorageUsageFn       func(ctx context.Context) (*msbSdk.StorageUsageReport, error)
+	StoragePruneFn       func(ctx context.Context, options msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error)
 
 	// Pre-populated collections — List* methods return these when the callback is nil.
 	// Tests can append to these fields freely.
@@ -120,6 +121,8 @@ type MockMsbClient struct {
 	RemovedImages []MockRemoveImageCall
 	// LoadedImages holds refs passed to ImageLoad calls.
 	LoadedImages []string
+	// StoragePruneCalls holds the options passed to PruneStorage calls.
+	StoragePruneCalls []msbSdk.StoragePruneOptions
 
 	// Default return values when no error and no callback/got* is set.
 	gotSandbox SandboxHandle
@@ -292,6 +295,21 @@ func (m *MockMsbClient) ImagePrune(ctx context.Context) (*msbSdk.ImagePruneRepor
 		return m.ImagePruneFn(ctx)
 	}
 	return &msbSdk.ImagePruneReport{}, nil
+}
+
+// PruneStorage implements Client, recording every call's options.
+func (m *MockMsbClient) PruneStorage(
+	ctx context.Context,
+	options msbSdk.StoragePruneOptions,
+) (*msbSdk.StoragePruneReport, error) {
+	m.mu.Lock()
+	m.StoragePruneCalls = append(m.StoragePruneCalls, options)
+	// gomutants:disable-next-line STATEMENT_REMOVE reason="a test double's mutex unlock is only observable under concurrency, where a missing unlock deadlocks rather than failing an assertion"
+	m.mu.Unlock()
+	if m.StoragePruneFn != nil {
+		return m.StoragePruneFn(ctx, options)
+	}
+	return &msbSdk.StoragePruneReport{}, nil
 }
 
 // ImageRemove implements Client.
@@ -1004,6 +1022,14 @@ func (f *failFastMsbClient) ImageList(_ context.Context) ([]ImageHandle, error) 
 }
 
 func (f *failFastMsbClient) ImagePrune(_ context.Context) (*msbSdk.ImagePruneReport, error) {
+	f.mustMock()
+	return nil, nil
+}
+
+func (f *failFastMsbClient) PruneStorage(
+	_ context.Context,
+	_ msbSdk.StoragePruneOptions,
+) (*msbSdk.StoragePruneReport, error) {
 	f.mustMock()
 	return nil, nil
 }

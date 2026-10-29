@@ -238,6 +238,10 @@ The old build-time `daemon.json` overwrite is removed; the build-time invariant 
   defeat the skip-build check in `specs/runner-image-build.md`.
 - `baseImageRef`/`resolveBaseDigest` resolve the `agents-sandbox-base` stage's underlying image (the embedded
   `debian:trixie-slim` for managed, the user's image for custom), never the `runner` stage alias or the tool base.
+- `resolveBaseDigest` waits on the pull stream (moby `ImagePullResponse.Wait`) and routes a failed pull — the call error
+  and a registry failure delivered inside the stream alike — through the build-failure classifier, so an unpullable
+  base reports the classified base-image error with its troubleshooting link, not a misleading post-pull inspect
+  failure (#425).
 - `BuildOptions.Force`, `NoCache`, and the `dockerfile-id` skip-build contract are unchanged.
 - The body still runs without node/agent/docker available (they are `COPY`ed after it), preserving prior ordering.
 - The project Dockerfile is scanned for stage headers by a dependency-free walker aligned with BuildKit's

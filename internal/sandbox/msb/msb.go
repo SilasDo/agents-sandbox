@@ -63,6 +63,7 @@ var (
 	realImageInspect  = msbSdk.Image.Inspect
 	imagePrune        = msbSdk.Image.Prune
 	storageUsage      = msbSdk.StorageUsage
+	storagePrune      = msbSdk.PruneStorage
 )
 
 // ValidateInstalled checks the SDK-managed runtime without downloading it.
@@ -94,6 +95,7 @@ type Client interface {
 	ImageInspect(ctx context.Context, ref string) (*msbSdk.ImageConfig, error)
 	ImageInspectDetail(ctx context.Context, ref string) (*ImageDetail, error)
 	StorageUsage(ctx context.Context) (*msbSdk.StorageUsageReport, error)
+	PruneStorage(ctx context.Context, options msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error)
 }
 
 // SandboxHandle is the subset of *msb.SandboxHandle used by the launcher.
@@ -421,6 +423,13 @@ func (realMsbClient) ImageList(ctx context.Context) ([]ImageHandle, error) {
 
 func (realMsbClient) ImagePrune(ctx context.Context) (*msbSdk.ImagePruneReport, error) {
 	return imagePrune(ctx)
+}
+
+func (realMsbClient) PruneStorage(
+	ctx context.Context,
+	options msbSdk.StoragePruneOptions,
+) (*msbSdk.StoragePruneReport, error) {
+	return storagePrune(ctx, options)
 }
 
 func (realMsbClient) ImageRemove(ctx context.Context, ref string, force bool) error {

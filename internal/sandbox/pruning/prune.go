@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/inoio/agents-sandbox/internal/humanize"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
@@ -25,15 +26,19 @@ func Prune(ctx context.Context, threshold time.Duration, dryRun bool, ui termio.
 	vmReport, vmErr := PruneSandboxes(ctx, pruneState, dryRun, ui)
 	volReport, volErr := PruneVolumes(ctx, pruneState, dryRun, ui)
 	imgReport, imgErr := PruneImages(ctx, pruneState, dryRun, ui)
+	storageReport, storageErr := PruneStorage(ctx, pruneState, dryRun, ui)
 
 	report := &StaleReport{
 		PrunedSandboxes:     vmReport.VMsPruned,
 		PrunedVolumes:       volReport.VolumesPruned,
 		PrunedDockerImages:  imgReport.DockerImagesPruned,
 		PrunedSandboxImages: imgReport.MSBImagesPruned,
+		SkippedImagesInUse:  imgReport.SkippedInUse,
+		ImageBytesReclaimed: imgReport.BytesReclaimed,
+		Storage:             storageReport,
 		Details:             append(append(vmReport.Details, volReport.Details...), imgReport.Details...),
 	}
-	return report, errors.Join(vmErr, volErr, imgErr)
+	return report, errors.Join(vmErr, volErr, imgErr, storageErr)
 }
 
 func RenderPruneSummary(ui termio.UI, report *StaleReport, dryRun bool) {
@@ -52,6 +57,22 @@ func RenderPruneSummary(ui termio.UI, report *StaleReport, dryRun bool) {
 		report.PrunedDockerImages,
 		report.PrunedSandboxImages,
 	)
+	if report.SkippedImagesInUse > 0 || report.ImageBytesReclaimed != nil {
+		ui.Outf(
+			"  image data: %d skipped (in use), %s reclaimed",
+			report.SkippedImagesInUse,
+			formatOptionalBytes(report.ImageBytesReclaimed),
+		)
+	}
+	if report.Storage.FilesRemoved > 0 || report.Storage.LogicalBytesRemoved > 0 ||
+		report.Storage.PhysicalBytesReclaimed != nil {
+		ui.Outf(
+			"  runtime memory: %d file(s), %s logical, %s reclaimed",
+			report.Storage.FilesRemoved,
+			humanize.FormatBytes(report.Storage.LogicalBytesRemoved),
+			formatOptionalBytes(report.Storage.PhysicalBytesReclaimed),
+		)
+	}
 	for _, detail := range report.Details {
 		ui.Verbosef("  %s (%s)", detail.Name, detail.Slug)
 	}

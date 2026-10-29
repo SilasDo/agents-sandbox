@@ -1756,6 +1756,50 @@ func TestEnsureNewHome_StateWriteFails(t *testing.T) {
 	}
 }
 
+func TestEnsureNewHome_PrefillCancelled_RemovesVolumeWithLiveContext(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	mock := &msb.MockMsbClient{}
+	mock.CreateVolumeFn = func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+		return &msb.MockVolumeHandle{Name_: name}, nil
+	}
+	mock.CreateSandboxFn = func(_ context.Context, _ string, _ ...msbSdk.SandboxOption) (msb.Sandbox, error) {
+		cancel()
+		return nil, errors.New("prefill sandbox creation failed")
+	}
+	var cleanupCtxErr error
+	mock.RemoveVolumeFn = func(cleanupCtx context.Context, _ string) error {
+		cleanupCtxErr = cleanupCtx.Err()
+		return nil
+	}
+	vm := NewManager(&termio.Mock{})
+
+	_, _, err := vm.EnsureNewHome(
+		ctx,
+		mock,
+		state.Key{Slug: "testproj", Agent: "opencode"},
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
+		false,
+		state.Fingerprints{},
+		&termio.Mock{},
+	)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if ctx.Err() == nil {
+		t.Fatal("expected the caller context to be cancelled during prefill")
+	}
+	if len(mock.RemovedVolumes) != 1 {
+		t.Fatalf("expected the created volume to be removed exactly once, got %v", mock.RemovedVolumes)
+	}
+	if cleanupCtxErr != nil {
+		t.Errorf("cleanup received a cancelled context (%v); want a fresh live context", cleanupCtxErr)
+	}
+}
+
 func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
