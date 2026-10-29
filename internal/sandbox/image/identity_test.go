@@ -43,6 +43,7 @@ func identityLabels(id imageIdentity) map[string]string {
 		agentVersionLabelKey:          id.AgentVersion,
 		dockerLabelKey:                id.Docker,
 		userLabelKey:                  id.User,
+		baseLabelKey:                  id.BaseImage,
 	}
 }
 

@@ -120,6 +120,10 @@ const agentLabelKey = "org.agents-sandbox.agent"
 // image has changed.
 const dockerfileIDLabelKey = "org.agents-sandbox.dockerfile-id"
 
+// baseLabelKey is the image label recording the base image the runner was built
+// from, as "<ref>@<image id>" (resolveBaseDigest).
+const baseLabelKey = "org.agents-sandbox.base"
+
 // Image identity labels record the individual inputs that determine the content
 // identity, so a rebuild can name which input changed. Tool-owned render
 // templates are intentionally not represented: a mismatch with matching
@@ -153,6 +157,9 @@ type imageIdentity struct {
 	Docker                string
 	// User is the host "uid:gid" the dev user is created with (hostUserIdentity).
 	User string
+	// BaseImage is the locally cached base as "<ref>@<image id>", compared with
+	// the base label; empty when the base is not present locally.
+	BaseImage string
 }
 
 // computeImageIdentity derives the identity components from the build inputs.
@@ -162,6 +169,7 @@ func computeImageIdentity(projectDockerfile []byte, agentVersion string, docker 
 		AgentVersion:          valueOrNone(agentVersion),
 		Docker:                strconv.FormatBool(docker),
 		User:                  "", // host-dependent; set by withHostUser
+		BaseImage:             "", // host-dependent; set by planRunnerImage
 	}
 }
 

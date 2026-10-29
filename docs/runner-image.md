@@ -23,8 +23,8 @@ run on the tool base.
 Build the image:
 
 ```console
-agents-sandbox build        # builds if image is missing or base changed
-agents-sandbox build -r     # force rebuild
+agents-sandbox build        # builds if the image is missing or its inputs changed
+agents-sandbox build -r     # force rebuild, pulling the latest base image
 ```
 
 Preview the exact Dockerfile that would be built (without invoking docker):
@@ -95,6 +95,13 @@ The `dev` user is created with your host user's UID and GID, so files it writes 
 image records them in the `org.agents-sandbox.identity.user` label, and a run as a user with a different UID or GID
 rebuilds the image (`host user uid/gid changed`). An image built by an older version has no such label and is reused
 until its next rebuild.
+
+The base image is referenced by tag, so it can move. The image records the base it was built from in the
+`org.agents-sandbox.base` label (`<ref>@<image ID>`), and every run compares it with the base cached in your local
+Docker: when they differ, for example after `docker pull debian:trixie-slim`, the image is rebuilt
+(`base image updated`). This check is local and never contacts a registry. To pick up a newer published base, run
+`agents-sandbox build -r` (or `--rebuild`), which pulls the base before building. If that pull fails, for example
+offline, the build warns and uses the cached base.
 
 ### Content-verified load
 
@@ -379,8 +386,8 @@ would change. The recorded version is only a cache of that label: whenever the i
 it with the label before deciding whether to build, so a recorded version never pulls the image backwards and an offline
 check keeps the existing image instead of rebuilding. Only when the image itself is missing (for example after pruning)
 does the recorded version stand on its own, so an unpinned run still sees the version last used and asks before changing
-the image. `--rebuild` forces a clean rebuild but still offers the upgrade; it only bypasses the build cache, it does not
-pin the version. When `agent-source=user`, the tool never checks for upgrades.
+the image. `--rebuild` forces a clean rebuild but still offers the upgrade; it bypasses the build cache and pulls the base image,
+but does not pin the version. When `agent-source=user`, the tool never checks for upgrades.
 
 `--agent-version` applies when agents-sandbox installs the selected agent. It does not replace an agent already supplied
 by a custom base or project Dockerfile — for a user-provided agent the pin is ignored. If a user-provided agent has no recorded

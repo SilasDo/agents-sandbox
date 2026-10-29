@@ -47,6 +47,8 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Changed
 
+- `--rebuild` (`run`, `build`, ...) now pulls the base image before building, so it picks up a newer published base.
+  If the pull fails, for example offline, the build warns and uses the cached base (#348).
 - Agents: forwarded arguments are shell-quoted before they are joined into an agent's attach command. The launcher
   receives them already split by the host shell and the guest shell splits the joined line again, so an argument
   containing spaces (`agents-sandbox run -- chat -q "explain this function"`) used to reach the agent as several words.
@@ -119,6 +121,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Runner image: an updated base image now rebuilds the image. The base is referenced by a floating tag, but the
+  rebuild check ignored which image the tag pointed to, so a newer base was only picked up by `--rebuild`. Every run now
+  compares the base recorded in the image's `org.agents-sandbox.base` label with the base cached in the local Docker
+  and rebuilds when they differ (`base image updated`). The check is local and never contacts a registry (#348).
 - Runner image: a change of the host user's UID or GID now rebuilds the image. The `dev` user is created with the host
   UID/GID, but the rebuild check ignored them, so the image kept the old UID and files in `/workspace` were no longer
   owned by `dev`. The image records the UID/GID in a new `org.agents-sandbox.identity.user` label; images built before

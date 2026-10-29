@@ -52,7 +52,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | Flag           | Short | Default  | Purpose                                                                                                                                    |
 |----------------|-------|----------|--------------------------------------------------------------------------------------------------------------------------------------------|
 | `--worktree`   | `-w`  | `""`     | Isolated agent worktree named <name>, optionally starting from base ref <name>:<base>                                  |
-| `--rebuild`    | `-r`  | `false`  | Rebuild runner image before starting (clean rebuild; still offers an agent upgrade if one is available)                                                                                                       |
+| `--rebuild`    | `-r`  | `false`  | Rebuild runner image before starting (clean rebuild that pulls the latest base image; still offers an agent upgrade if one is available)                                                                      |
 | `--agent-version` | —  | `""`     | Pin the version agents-sandbox installs into the runner image (default: latest). Ignored for a user-provided agent. |
 | `--dry-run`    | `-n`  | `false`  | Read-only preview of a run: report the agent version (or that it resolves at build time), whether the runner image would build (with the reasons a real build logs) or be reused, and whether the home volume would be created or reused — without building, creating a volume, writing state, starting a VM, attaching, or making any network request. When the reported version is a known, non-pinned one, its line notes `(upgrade check not run)` |
 | `--cpus`       | `-c`  | `0`      | vCPUs for the sandbox (0 = all)                                                                                                            |
@@ -107,7 +107,7 @@ agents-sandbox build --agent-version 0.5.0  # pin a specific agent version
 
 | Flag                 | Short | Default  | Purpose                                                         |
 |----------------------|-------|----------|-----------------------------------------------------------------|
-| `--rebuild`          | `-r`  | `false`  | Force a clean rebuild                                           |
+| `--rebuild`          | `-r`  | `false`  | Force a clean rebuild that pulls the latest base image          |
 | `--dry-run`          | `-n`  | `false`  | Dry run without building                                        |
 | `--agent`            | —     | `opencode2` | Coding-agent profile to build: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`. |
 | `--agent-version`    | —     | `""`     | Pin the version agents-sandbox installs into the image (default: latest). Ignored for a user-provided agent |

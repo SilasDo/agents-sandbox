@@ -578,8 +578,9 @@ func withHostUser(identity imageIdentity) imageIdentity {
 	return identity
 }
 
-// planRunnerImage renders the build plan and computes the local build decision.
-// It performs no build and no network access.
+// planRunnerImage renders the build plan and computes the local build decision,
+// including whether the locally cached base image moved past the one the runner
+// was built from. It performs no build and no network access.
 func planRunnerImage(
 	ctx context.Context,
 	a agent.Agent,
@@ -593,13 +594,15 @@ func planRunnerImage(
 	if err != nil {
 		return buildPlan{}, "", false, nil, err
 	}
+	plan.identity.BaseImage = localBaseImage(ctx, baseImageRef(plan.rendered))
 	tag := runnerTag(projectSlug, a.Name())
 	needsBuild, reasons := buildDecision(ctx, tag, force, plan.dockerfileID, plan.identity)
 	return plan, tag, needsBuild, reasons, nil
 }
 
 // buildFromPlan builds the image described by plan, resolving the base digest
-// for the provenance label first.
+// for the provenance label first. A forced build (--rebuild) refreshes the base
+// from its registry, so it is the way to pick up a newer published base.
 func buildFromPlan(
 	ctx context.Context,
 	a agent.Agent,
@@ -610,7 +613,7 @@ func buildFromPlan(
 	ui termio.UI,
 ) error {
 	baseRef := baseImageRef(plan.rendered)
-	baseDigest, err := resolveBaseDigest(ctx, baseRef, ui)
+	baseDigest, err := resolveBaseDigest(ctx, baseRef, buildOpts.Force, ui)
 	if err != nil {
 		return fmt.Errorf("resolve base image %s: %w", baseRef, err)
 	}
@@ -763,35 +766,79 @@ func finalStageToken(rendered []byte) string {
 }
 
 // resolveBaseDigest returns "<ref>@sha256:<digest>" for the base image, pulling
-// it first when not present locally. The FROM itself stays a tag so it floats;
-// the digest only records what the image was built from. The reference is pulled
-// as given (the rendered FROM token, so the engine resolves build and lookup
-// alike), but the returned label uses the familiar spelling, so the provenance
-// label reads the way the user wrote the base.
+// it first when not present locally, or always when refresh is set. The FROM
+// itself stays a tag so it floats; the digest records what the image was built
+// from and is compared with the locally cached base on later runs
+// (changedHostReasons). The reference is pulled as given (the rendered FROM
+// token, so the engine resolves build and lookup alike), but the returned label
+// uses the familiar spelling, so the provenance label reads the way the user
+// wrote the base.
 //
-// A failed pull is surfaced through buildFailureError: the engine delivers a
-// registry-level failure both as the call error and as a message inside the
-// stream (moby's Wait), and draining the stream without waiting would lose the
-// latter and let the follow-up inspect report a misleading "No such image".
-func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (string, error) {
+// A failed refresh falls back to a locally cached base with a warning, so
+// --rebuild still works offline. A failed pull is surfaced through
+// buildFailureError: the engine delivers a registry-level failure both as the
+// call error and as a message inside the stream (moby's Wait), and draining the
+// stream without waiting would lose the latter and let the follow-up inspect
+// report a misleading "No such image".
+func resolveBaseDigest(ctx context.Context, baseRef string, refresh bool, ui termio.UI) (string, error) {
+	if refresh {
+		pullErr := pullBaseImage(ctx, baseRef)
+		if pullErr == nil {
+			return inspectPulledBase(ctx, baseRef)
+		}
+		local := localBaseImage(ctx, baseRef)
+		if local == "" {
+			return "", pullErr
+		}
+		ui.Warnf("could not refresh base image %s, building from the local copy: %v", baseRef, pullErr)
+		return local, nil
+	}
+	if local := localBaseImage(ctx, baseRef); local != "" {
+		return local, nil
+	}
+	ui.Verbosef("base image %s not present locally, pulling", baseRef)
+	if err := pullBaseImage(ctx, baseRef); err != nil {
+		return "", err
+	}
+	return inspectPulledBase(ctx, baseRef)
+}
+
+// localBaseImage returns the provenance value of the locally cached base image,
+// or "" when it is not present. It never pulls.
+func localBaseImage(ctx context.Context, baseRef string) string {
+	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
+	if err != nil || inspect.ID == "" {
+		return ""
+	}
+	return baseProvenance(baseRef, inspect.ID)
+}
+
+// pullBaseImage pulls baseRef and waits for the pull to finish.
+func pullBaseImage(ctx context.Context, baseRef string) error {
+	pull, err := docker.Get().ImagePull(ctx, baseRef, client.ImagePullOptions{})
+	if err != nil {
+		return buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, err))
+	}
+	waitErr := pull.Wait(ctx)
+	_ = pull.Close()
+	if waitErr != nil {
+		return buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, waitErr))
+	}
+	return nil
+}
+
+// inspectPulledBase returns the provenance value of a just-pulled base image.
+func inspectPulledBase(ctx context.Context, baseRef string) (string, error) {
 	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
 	if err != nil {
-		ui.Verbosef("base image %s not present locally, pulling", baseRef)
-		pull, pullErr := docker.Get().ImagePull(ctx, baseRef, client.ImagePullOptions{})
-		if pullErr != nil {
-			return "", buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, pullErr))
-		}
-		waitErr := pull.Wait(ctx)
-		_ = pull.Close()
-		if waitErr != nil {
-			return "", buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, waitErr))
-		}
-		inspect, err = docker.Get().ImageInspect(ctx, baseRef)
-		if err != nil {
-			return "", fmt.Errorf("inspect pulled base image %s: %w", baseRef, err)
-		}
+		return "", fmt.Errorf("inspect pulled base image %s: %w", baseRef, err)
 	}
-	return familiarImageRef(baseRef) + "@" + inspect.ID, nil
+	return baseProvenance(baseRef, inspect.ID), nil
+}
+
+// baseProvenance renders the base label value "<familiar ref>@<image id>".
+func baseProvenance(baseRef, imageID string) string {
+	return familiarImageRef(baseRef) + "@" + imageID
 }
 
 // familiarImageRef strips the registry from a normalized image reference so the
