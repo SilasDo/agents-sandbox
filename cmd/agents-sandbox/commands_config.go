@@ -216,7 +216,12 @@ func printConfigAgent(
 		sourceKind = fmt.Sprintf("legacy fallback %q", source.Fallback)
 	}
 	ui.Outf("agent: %s", a.Name())
-	ui.Outf("config dir: user=%q  project=%q  (%s)", userDir, projectDir, sourceKind)
+	ui.Outf(
+		"config dir: user=%s  project=%s  (%s)",
+		describeConfigDir(userDir),
+		describeConfigDir(projectDir),
+		sourceKind,
+	)
 	if len(sources) == 0 {
 		ui.Out("No snippet files found; no merged config is provisioned.")
 	} else {
@@ -266,4 +271,13 @@ func resolveConfigAgentName(c *cobra.Command, args []string) (string, error) {
 		}
 	}
 	return name, nil
+}
+
+// describeConfigDir quotes dir and marks it "(missing)" when it does not exist,
+// so a fresh install shows where launcher config would go.
+func describeConfigDir(dir string) string {
+	if reprovision.IsDir(dir) {
+		return fmt.Sprintf("%q", dir)
+	}
+	return fmt.Sprintf("%q (missing)", dir)
 }
