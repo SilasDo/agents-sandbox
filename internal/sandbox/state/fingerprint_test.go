@@ -150,6 +150,25 @@ func TestNetworkChanged(t *testing.T) {
 	}
 }
 
+// TestNetworkChanged_MigratesPreFixDenyPolicy covers the #231 migration: a VM
+// whose persisted NetworkState holds the pre-fix fingerprint of a deny-bearing
+// profiled policy (one that omitted the rule-order marker) must be reported as
+// changed, so it is recreated once to bake in the corrected emission order. Once
+// the post-recreate state is persisted, no further recreation is triggered.
+func TestNetworkChanged_MigratesPreFixDenyPolicy(t *testing.T) {
+	const preFixDenyPublic = "440e1b21984eb6657c69098f6e9ddd813c90b39ebc3f6f575ad640ec97528498"
+	policy := network.Policy{
+		Profiles:   []network.Profile{network.ProfilePublic},
+		EgressDeny: []string{"123.123.123.0/24"},
+	}
+	if !NetworkChanged(NetworkState{Hash: preFixDenyPublic}, policy) {
+		t.Fatal("a persisted pre-fix deny fingerprint must trigger one recreate")
+	}
+	if NetworkChanged(BuildNetworkState(policy), policy) {
+		t.Fatal("the post-recreate fingerprint must not trigger another recreate")
+	}
+}
+
 func TestBuildNetworkState(t *testing.T) {
 	policy := network.Policy{Profiles: []network.Profile{network.ProfileNone}}
 	st := BuildNetworkState(policy)

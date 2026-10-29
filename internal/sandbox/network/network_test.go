@@ -607,6 +607,36 @@ func TestFingerprintSingleProfileMatchesLegacyFormat(t *testing.T) {
 	}
 }
 
+// TestFingerprintDenyPolicyMigratesFromLegacy pins the pre-#231 fingerprint for
+// a deny-bearing profiled policy and asserts the current fingerprint diverges
+// from it, so an existing VM (whose persisted NetworkState holds the old hash)
+// is recreated once to pick up the egress-deny-before-profile-allow order.
+func TestFingerprintDenyPolicyMigratesFromLegacy(t *testing.T) {
+	const legacyDenyPublic = "440e1b21984eb6657c69098f6e9ddd813c90b39ebc3f6f575ad640ec97528498"
+	p := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"123.123.123.0/24"}}
+	if got := p.Fingerprint(); got == legacyDenyPublic {
+		t.Fatalf("deny-bearing fingerprint %q must diverge from the pre-fix value", got)
+	}
+	// The marker is content-independent: a reordered deny list still hashes the
+	// same.
+	reordered := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"10.0.0.0/8", "123.123.123.0/24"}}
+	other := Policy{Profiles: []Profile{ProfilePublic}, EgressDeny: []string{"123.123.123.0/24", "10.0.0.0/8"}}
+	if reordered.Fingerprint() != other.Fingerprint() {
+		t.Fatal("deny order must not change the fingerprint")
+	}
+}
+
+// TestFingerprintDenyWithoutProfileRulesKeepsLegacyFormat verifies the migration
+// marker is omitted when the emitted rules do not change: a `none` policy emits
+// no profile allow rules, so its deny rules already came first.
+func TestFingerprintDenyWithoutProfileRulesKeepsLegacyFormat(t *testing.T) {
+	const legacyNoneDeny = "d825326a2c0b481774b194a7cbb7597bbad1558e38726d0ea7b6e4be792ff3a7"
+	p := Policy{Profiles: []Profile{ProfileNone}, EgressDeny: []string{"123.123.123.0/24"}}
+	if got := p.Fingerprint(); got != legacyNoneDeny {
+		t.Fatalf("none deny fingerprint = %q, want legacy %q", got, legacyNoneDeny)
+	}
+}
+
 func TestFingerprintEmptyUsesPublicDefault(t *testing.T) {
 	if (Policy{}).Fingerprint() != (Policy{Profiles: []Profile{ProfilePublic}}).Fingerprint() {
 		t.Fatal("unset policy and explicit public policy must have the same fingerprint")

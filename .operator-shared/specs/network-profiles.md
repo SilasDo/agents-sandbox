@@ -46,9 +46,18 @@ entries. The deny entries sit ahead of the profile allows so a carve-out actuall
 allow. The rule set and ordering are unchanged for `none`, which contributes no profile rules, so only the gateway-DNS
 rule precedes the user lists.
 
+An existing VM holds the pre-#231 order until it is recreated, and network rules are applied only at VM creation. A
+policy that composes a profile and has at least one `egress-deny` entry therefore contributes an extra
+`rule-order=deny-before-profile` line to `Fingerprint()`, so its hash diverges from the pre-fix value persisted in
+`network_state.hash`, `NetworkChanged` fires, and the VM is recreated once to bake in the corrected order. Policies whose
+emitted rules are identical before and after — no deny entries, or the terminal `none` profile — get no marker and keep
+their historical fingerprint, so they are not recreated.
+
 ## Fingerprint stability (do not drift)
 
-`Policy.Fingerprint()` emits one sorted, deduplicated `profile=<name>` line per profile. A single-profile policy therefore
-hashes exactly as it did before profiles became composable, so upgrading does not change a project's persisted
-`network_state.hash` and does not spuriously recreate its VM. Changing this format is a migration, not a refactor.
-`state.BuildNetworkState` records the profile names for display only; they are never compared for change detection.
+`Policy.Fingerprint()` emits one sorted, deduplicated `profile=<name>` line per profile. A single-profile policy without
+deny entries therefore hashes exactly as it did before profiles became composable, so upgrading does not change a
+project's persisted `network_state.hash` and does not spuriously recreate its VM. Changing this format is a migration, not
+a refactor; the `rule-order` marker above is the one deliberate exception, scoped to the policies whose emitted rules
+changed. `state.BuildNetworkState` records the profile names for display only; they are never compared for change
+detection.

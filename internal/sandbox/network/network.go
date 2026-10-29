@@ -100,6 +100,16 @@ func (p Policy) Effective() Policy {
 // Fingerprint returns a stable SHA-256 hex digest of the policy, for detecting
 // changes across runs. It hashes the profile and the sorted allow/deny/dns
 // lists, independent of the microsandbox SDK's canonical NetworkConfig shape.
+//
+// A deny-bearing policy that composes a profile also contributes a rule-order
+// marker. The marker is not policy content: it records that the policy is
+// emitted with egress-deny ahead of the profile allow rules, a change from the
+// pre-#231 order that an existing VM has not baked in. Including it makes the
+// fingerprint differ from the one persisted before that fix, so the VM is
+// recreated once to pick up the corrected order; the marker reaches state after
+// the recreate, so it fires only once. Policies whose emitted rules are
+// identical before and after (no deny entries, or the terminal `none` profile)
+// get no marker and keep their historical fingerprint.
 func (p Policy) Fingerprint() string {
 	p = p.Effective()
 	var lines []string
@@ -115,9 +125,29 @@ func (p Policy) Fingerprint() string {
 	for _, d := range p.EgressDeny {
 		lines = append(lines, "deny="+d)
 	}
+	if p.denyPrecedesProfileAllow() {
+		lines = append(lines, "rule-order=deny-before-profile")
+	}
 	sort.Strings(lines)
 	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
 	return hex.EncodeToString(sum[:])
+}
+
+// denyPrecedesProfileAllow reports whether the policy takes advantage of the
+// egress-deny-before-profile-allow emission order (#231): it has at least one
+// deny entry and at least one profile that contributes allow rules. When either
+// is absent the emitted rules are identical to the pre-fix order, so the policy
+// needs no migration marker.
+func (p Policy) denyPrecedesProfileAllow() bool {
+	if len(p.EgressDeny) == 0 {
+		return false
+	}
+	for _, prof := range dedupeProfiles(p.Profiles) {
+		if prof != ProfileNone {
+			return true
+		}
+	}
+	return false
 }
 
 // NormalizeDNSServers validates and normalizes DNS upstream resolvers. Bare IPs
