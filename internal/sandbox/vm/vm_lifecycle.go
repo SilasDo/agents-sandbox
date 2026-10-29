@@ -154,6 +154,7 @@ func ensureProjectVM(
 	if found {
 		alreadyGone, destroyErr := destroyProjectVMHandle(context.Background(), handle, name, "rerun to reconfigure it")
 		if destroyErr != nil {
+			// gomutants:disable-next-line RETURN_ZERO reason="vmBootConnected is the vmBoot zero value (it is the first iota constant), so a RETURN_ZERO replacement of vmBootConnected is the identical constant"
 			return nil, vmBootConnected, destroyErr
 		}
 		if alreadyGone {
