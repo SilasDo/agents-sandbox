@@ -208,13 +208,12 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 		return nil, err
 	}
 	// FromProfilesChecked returns the gateway-DNS rule first, then the profile
-	// allow rules. `none` selects no profile, so the SDK returns no rules and
-	// the gateway-DNS rule is added here so named allow-listed hosts resolve.
-	var dnsRules, profileRules []msbSdk.PolicyRule
-	if len(msbProfiles) == 0 {
-		dnsRules = []msbSdk.PolicyRule{msbSdk.Rule.AllowDNS()}
-	} else {
-		dnsRules, profileRules = cfg.Rules[:1], cfg.Rules[1:]
+	// allow rules. Drop that DNS rule and re-emit our own at the front so the
+	// deny carve-outs can sit between them (#231); `none` selects no profile,
+	// so the SDK contributes no rules at all.
+	profileRules := cfg.Rules
+	if len(msbProfiles) > 0 {
+		profileRules = cfg.Rules[1:]
 	}
 	if len(p.DNSServers) > 0 {
 		nameservers, err := NormalizeDNSServers(p.DNSServers)
@@ -238,7 +237,12 @@ func (p Policy) Config() (*msbSdk.NetworkConfig, error) {
 	for _, d := range dedupe(p.EgressAllow) {
 		allowRules = append(allowRules, egressRule(msbSdk.PolicyActionAllow, d))
 	}
-	cfg.Rules = slices.Concat(dnsRules, denyRules, profileRules, allowRules)
+	cfg.Rules = slices.Concat(
+		[]msbSdk.PolicyRule{msbSdk.Rule.AllowDNS()},
+		denyRules,
+		profileRules,
+		allowRules,
+	)
 	return cfg, nil
 }
 

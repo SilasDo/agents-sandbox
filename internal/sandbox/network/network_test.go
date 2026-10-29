@@ -1,6 +1,7 @@
 package network
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -235,6 +236,65 @@ func TestConfigDenyPrecedesProfileAllow(t *testing.T) {
 						cfg.Rules,
 					)
 				}
+			}
+		})
+	}
+}
+
+func TestConfigRuleOrder(t *testing.T) {
+	type rule struct {
+		action      msbSdk.PolicyAction
+		destination string
+		port        string
+	}
+	// The exact list order is the contract: microsandbox matches the first
+	// applicable rule, so the gateway-DNS rule leads, then the user deny
+	// carve-outs, then the profile allow rules, then the explicit allows (#231).
+	cases := []struct {
+		name   string
+		policy Policy
+		want   []rule
+	}{
+		{
+			name: "profile with deny and allow",
+			policy: Policy{
+				Profiles:    []Profile{ProfilePublic},
+				EgressDeny:  []string{"10.0.0.0/8"},
+				EgressAllow: []string{"api.example.com"},
+			},
+			want: []rule{
+				{msbSdk.PolicyActionAllow, "host", "53"},
+				{msbSdk.PolicyActionDeny, "10.0.0.0/8", ""},
+				{msbSdk.PolicyActionAllow, "public", ""},
+				{msbSdk.PolicyActionAllow, "api.example.com", ""},
+			},
+		},
+		{
+			name: "none with deny and allow",
+			policy: Policy{
+				Profiles:    []Profile{ProfileNone},
+				EgressDeny:  []string{"10.0.0.0/8"},
+				EgressAllow: []string{"api.example.com"},
+			},
+			want: []rule{
+				{msbSdk.PolicyActionAllow, "host", "53"},
+				{msbSdk.PolicyActionDeny, "10.0.0.0/8", ""},
+				{msbSdk.PolicyActionAllow, "api.example.com", ""},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := tc.policy.Config()
+			if err != nil {
+				t.Fatalf("Config: %v", err)
+			}
+			got := make([]rule, 0, len(cfg.Rules))
+			for _, r := range cfg.Rules {
+				got = append(got, rule{r.Action, r.Destination, r.Port})
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("rule order = %+v, want %+v", got, tc.want)
 			}
 		})
 	}
