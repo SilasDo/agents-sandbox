@@ -14,6 +14,33 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
+// TestPruneAgeSeconds pins the age-to-seconds conversion, including the
+// boundary that a positive subsecond age must not collapse to zero (which would
+// disable the runtime's age filter).
+func TestPruneAgeSeconds(t *testing.T) {
+	cases := []struct {
+		name string
+		age  time.Duration
+		want uint64
+	}{
+		{"zero disables the filter", 0, 0},
+		{"negative disables the filter", -time.Hour, 0},
+		{"one nanosecond rounds up", time.Nanosecond, 1},
+		{"subsecond rounds up", 500 * time.Millisecond, 1},
+		{"exactly one second", time.Second, 1},
+		{"one second and a nanosecond rounds up", time.Second + time.Nanosecond, 2},
+		{"whole seconds are exact", 2 * time.Second, 2},
+		{"a large age stays exact", 90 * time.Second, 90},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := pruneAgeSeconds(tc.age); got != tc.want {
+				t.Errorf("pruneAgeSeconds(%v) = %d, want %d", tc.age, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestPruneStoragePassesAgeAndDryRun(t *testing.T) {
 	client := &msb.MockMsbClient{}
 	msb.WithMsbMock(t, client)

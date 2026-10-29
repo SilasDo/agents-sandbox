@@ -403,6 +403,51 @@ func TestRenderPruneSummaryUnknownBytesRenderDash(t *testing.T) {
 	}
 }
 
+// TestRenderPruneSummaryLineBoundaries pins when the image-data and
+// runtime-memory lines appear: for a single skipped image, for known image bytes
+// with no skips, and for each storage figure on its own, not only when all hold.
+func TestRenderPruneSummaryLineBoundaries(t *testing.T) {
+	one := uint64(1)
+	cases := []struct {
+		name        string
+		report      *StaleReport
+		wantImage   bool
+		wantStorage bool
+	}{
+		{"image skipped count one", &StaleReport{SkippedImagesInUse: 1}, true, false},
+		{"image bytes without skips", &StaleReport{ImageBytesReclaimed: &one}, true, false},
+		{"storage files only", &StaleReport{Storage: StorageReport{FilesRemoved: 1}}, false, true},
+		{"storage logical bytes only", &StaleReport{Storage: StorageReport{LogicalBytesRemoved: 1}}, false, true},
+		{
+			"storage physical bytes only",
+			&StaleReport{Storage: StorageReport{PhysicalBytesReclaimed: &one}},
+			false,
+			true,
+		},
+		{"nothing to report", &StaleReport{}, false, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &termio.Mock{}
+			RenderPruneSummary(ui, tc.report, false)
+			gotImage := slices.ContainsFunc(
+				ui.OutCalls,
+				func(s string) bool { return strings.Contains(s, "image data:") },
+			)
+			gotStorage := slices.ContainsFunc(
+				ui.OutCalls,
+				func(s string) bool { return strings.Contains(s, "runtime memory:") },
+			)
+			if gotImage != tc.wantImage {
+				t.Errorf("image data line present = %v, want %v; out=%v", gotImage, tc.wantImage, ui.OutCalls)
+			}
+			if gotStorage != tc.wantStorage {
+				t.Errorf("runtime memory line present = %v, want %v; out=%v", gotStorage, tc.wantStorage, ui.OutCalls)
+			}
+		})
+	}
+}
+
 // TestRenderPruneSummaryOmitsEmptyStorageLine pins that a phase that reclaimed
 // nothing and reported no bytes stays off the output.
 func TestRenderPruneSummaryOmitsEmptyStorageLine(t *testing.T) {

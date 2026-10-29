@@ -191,7 +191,8 @@ lines carry the file and byte counts. A byte count the runtime cannot measure re
 prune a single artifact type, use the `image prune`, `volume prune`, or `sandbox prune` subcommands.
 
 The runtime-memory phase reclaims the published branch/snapshot memory backings that no live VM holds, gated by the same
-`--older-than` threshold, and honors `--dry-run` through the runtime's own preview.
+`--older-than` threshold, and honors `--dry-run` through the runtime's own preview. The runtime's age filter is in whole
+seconds, so a subsecond `--older-than` (for example `500ms`) rounds up to one second rather than collapsing to no filter.
 
 Unless `--dry-run` is set, prune asks for confirmation before removing anything (defaulting to no). Pass the global
 `--yes` to skip the prompt; non-interactively, `--yes` is required or the command fails fast instead of blocking.

@@ -38,10 +38,12 @@ func PruneStorage(
 
 // pruneAgeSeconds converts the prune threshold to the whole seconds the runtime
 // API expects. A non-positive age disables the age filter, matching the runtime's
-// zero value and the other phases' zero-age behavior.
+// zero value and the other phases' zero-age behavior. A positive age rounds up to
+// the next whole second so a subsecond threshold (the CLI accepts `500ms`) never
+// collapses to zero and silently disables filtering.
 func pruneAgeSeconds(age time.Duration) uint64 {
 	if age <= 0 {
 		return 0
 	}
-	return uint64(age / time.Second)
+	return uint64((age-1)/time.Second + 1)
 }

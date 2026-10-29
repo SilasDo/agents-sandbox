@@ -304,6 +304,7 @@ func (m *MockMsbClient) PruneStorage(
 ) (*msbSdk.StoragePruneReport, error) {
 	m.mu.Lock()
 	m.StoragePruneCalls = append(m.StoragePruneCalls, options)
+	// gomutants:disable-next-line STATEMENT_REMOVE reason="a test double's mutex unlock is only observable under concurrency, where a missing unlock deadlocks rather than failing an assertion"
 	m.mu.Unlock()
 	if m.StoragePruneFn != nil {
 		return m.StoragePruneFn(ctx, options)

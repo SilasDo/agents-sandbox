@@ -38,7 +38,7 @@ func PruneImages(
 	dryRun bool,
 	ui termio.UI,
 ) (ImageReport, error) {
-	report := ImageReport{MSBImagesPruned: 0, DockerImagesPruned: 0, SkippedInUse: 0, BytesReclaimed: nil, Details: nil}
+	var report ImageReport
 	handles, err := msb.Get().ImageList(ctx)
 	if err != nil {
 		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero ImageReport is identical"

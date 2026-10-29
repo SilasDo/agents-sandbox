@@ -3,6 +3,7 @@ package pruning
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -496,6 +497,32 @@ func TestRenderImageReportSurfacesNativePruneReport(t *testing.T) {
 	joined := strings.Join(ui.OutCalls, "\n")
 	if !strings.Contains(joined, "4") || !strings.Contains(joined, "2 KiB") {
 		t.Errorf("image report missing skipped/bytes: %v", ui.OutCalls)
+	}
+}
+
+// TestRenderImageReportDataLineBoundaries pins when the native-report line
+// appears: for a skipped-in-use count of exactly one, or for known bytes with no
+// skips, not only when both hold.
+func TestRenderImageReportDataLineBoundaries(t *testing.T) {
+	one := uint64(1)
+	cases := []struct {
+		name     string
+		report   ImageReport
+		wantLine bool
+	}{
+		{"skipped count one", ImageReport{SkippedInUse: 1}, true},
+		{"bytes known without skips", ImageReport{BytesReclaimed: &one}, true},
+		{"nothing to report", ImageReport{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &termio.Mock{}
+			RenderImageReport(ui, tc.report, false)
+			got := slices.ContainsFunc(ui.OutCalls, func(s string) bool { return strings.Contains(s, "image data:") })
+			if got != tc.wantLine {
+				t.Errorf("image data line present = %v, want %v; out=%v", got, tc.wantLine, ui.OutCalls)
+			}
+		})
 	}
 }
 
