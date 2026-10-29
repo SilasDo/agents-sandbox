@@ -312,3 +312,7 @@ unqualified-search-registries = ["docker.io"]
 ```
 
 `short_name_mode = "permissive"` on its own does not help while that list is empty.
+
+When the build reports `base image not found or not logged in` for a name that already carries a registry, the registry
+rejected the pull instead: the image does not exist, it is private, or the engine is not logged in. Fix the name and
+retry, or log in to that registry (`docker login <registry>`) before building again.

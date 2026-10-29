@@ -539,9 +539,9 @@ func TestEnsureImageResolvesBaseDigestByRenderedRef(t *testing.T) {
 				}
 				return client.ImageInspectResult{ID: "sha256:base"}, nil
 			}
-			m.ImagePullFn = func(_ context.Context, ref string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+			m.ImagePullFn = func(_ context.Context, ref string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
 				pulled = ref
-				return io.NopCloser(strings.NewReader("")), nil
+				return docker.PullResponse{Body: strings.NewReader("")}, nil
 			}
 			m.ImageBuildFn = func(_ context.Context, _ io.Reader, opts client.ImageBuildOptions) (client.ImageBuildResult, error) {
 				captured = opts.BuildArgs

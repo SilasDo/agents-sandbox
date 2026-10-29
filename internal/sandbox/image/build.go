@@ -263,12 +263,16 @@ func buildImage(
 // (Docker Engine reports "pull access denied"), and an image name with no
 // registry that the engine refused to resolve at all — podman does this when it
 // has no unqualified-search-registries, which Docker Engine never needs because
-// it assumes Docker Hub. The second points at the troubleshooting section naming
-// both remedies. Any other failure stays a plain wrap.
+// it assumes Docker Hub. Both point at the troubleshooting section naming the
+// remedies. Any other failure stays a plain wrap.
 func buildFailureError(err error) error {
 	switch msg := err.Error(); {
 	case strings.Contains(msg, "pull access denied"):
-		return fmt.Errorf("docker image build failed (base image not found or not logged in): %w", err)
+		return fmt.Errorf(
+			"docker image build failed (base image not found or not logged in): %w\n  Docs: %s",
+			err,
+			docslink.SectionURL("troubleshooting", "the-base-image-cannot-be-found"),
+		)
 	case isUnresolvedImageName(msg):
 		return fmt.Errorf(
 			"docker image build failed (the engine could not resolve an image name that has no registry): %w\n  Docs: %s",
@@ -756,19 +760,24 @@ func finalStageToken(rendered []byte) string {
 // as given (the rendered FROM token, so the engine resolves build and lookup
 // alike), but the returned label uses the familiar spelling, so the provenance
 // label reads the way the user wrote the base.
+//
+// A failed pull is surfaced through buildFailureError: the engine delivers a
+// registry-level failure both as the call error and as a message inside the
+// stream (moby's Wait), and draining the stream without waiting would lose the
+// latter and let the follow-up inspect report a misleading "No such image".
 func resolveBaseDigest(ctx context.Context, baseRef string, ui termio.UI) (string, error) {
 	inspect, err := docker.Get().ImageInspect(ctx, baseRef)
 	if err != nil {
 		ui.Verbosef("base image %s not present locally, pulling", baseRef)
 		pull, pullErr := docker.Get().ImagePull(ctx, baseRef, client.ImagePullOptions{})
 		if pullErr != nil {
-			return "", fmt.Errorf("pull base image %s: %w", baseRef, pullErr)
+			return "", buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, pullErr))
 		}
-		if _, drainErr := io.Copy(io.Discard, pull); drainErr != nil {
-			_ = pull.Close()
-			return "", fmt.Errorf("pull base image %s: %w", baseRef, drainErr)
-		}
+		waitErr := pull.Wait(ctx)
 		_ = pull.Close()
+		if waitErr != nil {
+			return "", buildFailureError(fmt.Errorf("pull base image %s: %w", baseRef, waitErr))
+		}
 		inspect, err = docker.Get().ImageInspect(ctx, baseRef)
 		if err != nil {
 			return "", fmt.Errorf("inspect pulled base image %s: %w", baseRef, err)
