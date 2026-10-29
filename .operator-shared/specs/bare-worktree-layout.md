@@ -86,7 +86,7 @@ Then:
 | Not in a repository (non-repo folder) | `cwd` (unchanged) |
 | In the main checkout, at its root or a subdirectory | `checkoutRoot` (unchanged at root; **root instead of CWD** in a subdirectory) |
 | In a worktree **nested inside** the checkout (`worktreeRoot` within `checkoutRoot`) | `checkoutRoot` (so all sibling worktrees stay visible) |
-| In a worktree **outside** the checkout (`worktreeRoot` not within `checkoutRoot`) | `cwd` (unchanged); scoped as its own checkout (see below) |
+| In a worktree **outside** the checkout (`worktreeRoot` not within `checkoutRoot`) | `worktreeRoot` (**root instead of CWD** in a subdirectory); scoped as its own checkout (see below) |
 | At the bare root itself (no working tree) | `cwd` (== `checkoutRoot`) |
 
 For the supported cases the unifying invariant is: **`/workspace` must always expose the worktree the session is in.**
@@ -128,7 +128,9 @@ guestCWD = "/workspace" + <cwd relative to bindRoot>
 
 At the root, `guestCWD == "/workspace"` (identical to today); a `filepath.Rel` failure between `bindRoot` and `cwd`
 degrades to `/workspace` too. In a subdirectory, the full repository remains visible above the agent while it works in
-the subdirectory. For an outside worktree (binding unchanged), `bindRoot == cwd`, so `guestCWD == "/workspace"` as today.
+the subdirectory. An outside worktree binds `worktreeRoot`, so `bindRoot == worktreeRoot`: a launch from a subdirectory
+yields that subdirectory's relative `guestCWD`, exactly like any other checkout, and only a launch at the worktree root
+yields `guestCWD == "/workspace"`.
 
 How `guestCWD` reaches the agent (see Background):
 
@@ -205,8 +207,8 @@ is out of scope beyond not regressing it.
   subdirectory; host/VM see the same files.
 - Nested non-bare worktree and bare-with-worktrees: `/workspace` is the enclosing root; all sibling worktrees are
   visible; the session reuses the project's shared VM; the agent starts in the launched worktree.
-- Outside non-bare worktree: binding is **unchanged** (the worktree/CWD) and the worktree runs as its own checkout — its
-  own VM and home volume; `git` inside the VM may not resolve the repository (#426).
+- Outside non-bare worktree: the worktree root is bound and the worktree runs as its own checkout — its own VM and home
+  volume; `git` inside the VM may not resolve the repository (#426).
 - Naming: VM/volume/state/image names are **unchanged** for every case (no migration); the name parsers are untouched.
 - The recipe page and the skill are present and identical in content; docs link check passes.
 
