@@ -45,6 +45,14 @@ func stopOrKillProjectVM(
 	status := handle.Status()
 	if msb.IsSandboxInactive(status) {
 		ui.Infof("project VM already %s: %s", pastTense, name)
+		if !remove {
+			return nil
+		}
+		if dryRun {
+			ui.Infof("dry-run: Would remove persisted state of %s project VM: %s", pastTense, name)
+			return nil
+		}
+		removePersistedState(ctx, handle, ui, name)
 		return nil
 	}
 	if !msb.IsSandboxActive(status) {
@@ -76,18 +84,24 @@ func stopOrKillProjectVM(
 	ui.Infof("%s project VM: %s", pastTense, name)
 
 	if remove {
-		if err := handle.Remove(ctx); err != nil {
-			ui.Warnf("failed to remove sandbox state: %v", err)
-		} else {
-			ui.Verbosef("persisted state removed: %s", name)
-		}
+		removePersistedState(ctx, handle, ui, name)
 	}
 	return nil
 }
 
+// removePersistedState deletes a sandbox's persisted state, warning rather than
+// failing the command when the removal does not succeed.
+func removePersistedState(ctx context.Context, handle msb.SandboxHandle, ui termio.UI, name string) {
+	if err := handle.Remove(ctx); err != nil {
+		ui.Warnf("failed to remove sandbox state: %v", err)
+		return
+	}
+	ui.Verbosef("persisted state removed: %s", name)
+}
+
 // StopProjectVM gracefully stops the project VM for the current directory and
-// agent. If remove is true, it also removes the VM's persisted state after
-// stopping.
+// agent. If remove is true, it also removes the VM's persisted state; an
+// inactive VM is not stopped, only removed.
 func StopProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agentName string) error {
 	a, ok := agent.Lookup(agentName)
 	if !ok {
@@ -107,7 +121,8 @@ func StopProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agent
 }
 
 // KillProjectVM force-kills the project VM for the current directory and agent.
-// If remove is true, it also removes the VM's persisted state after killing.
+// If remove is true, it also removes the VM's persisted state; an inactive VM
+// is not killed, only removed.
 func KillProjectVM(ctx context.Context, remove, dryRun bool, ui termio.UI, agentName string) error {
 	a, ok := agent.Lookup(agentName)
 	if !ok {

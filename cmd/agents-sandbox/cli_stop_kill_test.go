@@ -230,9 +230,9 @@ func TestStopKillLifecycle(t *testing.T) {
 	}
 }
 
-// TestStopKillAlreadyStopped covers stop/kill on an already-stopped VM: the
-// action and persisted-state removal must be skipped, and the user told the VM
-// is already stopped.
+// TestStopKillAlreadyStopped covers stop/kill on an inactive VM: the action is
+// always skipped, the user is told the VM is already stopped/killed, and
+// persisted state is removed only with --force and outside --dry-run.
 func TestStopKillAlreadyStopped(t *testing.T) {
 	for _, tc := range []struct {
 		cmd        string
@@ -242,11 +242,27 @@ func TestStopKillAlreadyStopped(t *testing.T) {
 		{cmdStop, "project VM already stopped: ", func(h *sandboxmsb.MockSandboxHandle) bool { return h.DidStop }},
 		{cmdKill, "project VM already killed: ", func(h *sandboxmsb.MockSandboxHandle) bool { return h.DidKill }},
 	} {
-		for _, flags := range stopKillFlags {
-			t.Run(tc.cmd+" "+strings.Join(flags, " "), func(t *testing.T) {
+		t.Run(tc.cmd+" without --force", func(t *testing.T) {
+			initTestProjectDir(t)
+			handle := &sandboxmsb.MockSandboxHandle{Status_: msb.SandboxStatusStopped}
+			ui := runStopKill(t, []string{tc.cmd}, func(m *sandboxmsb.MockMsbClient) {
+				m.SetGotSandbox(handle)
+			})
+
+			assertInfoHasPrefix(t, ui, tc.infoPrefix)
+			if tc.action(handle) {
+				t.Errorf("expected no stop/kill action on already-stopped VM; got action")
+			}
+			if handle.DidRemove() {
+				t.Errorf("expected no state removal on already-stopped VM without --force; got removal")
+			}
+		})
+
+		for _, forceFlag := range []string{"--force", "-f"} {
+			t.Run(tc.cmd+" "+forceFlag+" removes state without acting", func(t *testing.T) {
 				initTestProjectDir(t)
 				handle := &sandboxmsb.MockSandboxHandle{Status_: msb.SandboxStatusStopped}
-				ui := runStopKill(t, append([]string{tc.cmd}, flags...), func(m *sandboxmsb.MockMsbClient) {
+				ui := runStopKill(t, []string{tc.cmd, forceFlag}, func(m *sandboxmsb.MockMsbClient) {
 					m.SetGotSandbox(handle)
 				})
 
@@ -254,8 +270,28 @@ func TestStopKillAlreadyStopped(t *testing.T) {
 				if tc.action(handle) {
 					t.Errorf("expected no stop/kill action on already-stopped VM; got action")
 				}
+				if !handle.DidRemove() {
+					t.Errorf("expected --force to remove state on already-stopped VM; got none")
+				}
+				assertVerboseHasPrefix(t, ui, "persisted state removed: ")
+			})
+		}
+
+		for _, flags := range stopKillFlags {
+			t.Run(tc.cmd+" "+strings.Join(flags, " ")+" removes nothing", func(t *testing.T) {
+				initTestProjectDir(t)
+				handle := &sandboxmsb.MockSandboxHandle{Status_: msb.SandboxStatusStopped}
+				ui := runStopKill(t, append([]string{tc.cmd}, flags...), func(m *sandboxmsb.MockMsbClient) {
+					m.SetGotSandbox(handle)
+				})
+
+				assertInfoHasPrefix(t, ui, tc.infoPrefix)
+				assertInfoHasPrefix(t, ui, "dry-run: Would remove persisted state")
+				if tc.action(handle) {
+					t.Errorf("expected no stop/kill action on already-stopped VM; got action")
+				}
 				if handle.DidRemove() {
-					t.Errorf("expected no state removal on already-stopped VM; got removal")
+					t.Errorf("expected --dry-run to remove nothing; got removal")
 				}
 			})
 		}
