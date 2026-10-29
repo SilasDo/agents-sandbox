@@ -67,9 +67,7 @@ func (codexProfile) AttachCommand(_ string, args []string) string {
 		"-c", "check_for_update_on_startup=false",
 		"-c", shellQuote(`sandbox_mode="danger-full-access"`),
 	}
-	for _, arg := range args {
-		parts = append(parts, shellQuote(arg))
-	}
+	parts = append(parts, shellQuoteArgs(args)...)
 	return strings.Join(parts, " ")
 }
 
