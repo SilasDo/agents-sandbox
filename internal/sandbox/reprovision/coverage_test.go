@@ -2,6 +2,7 @@ package reprovision
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -131,6 +132,12 @@ func TestLoadConfigFilesMergedConfigError(t *testing.T) {
 	_, err := LoadConfigFilesForHost(opencodeTestAgent(), t.TempDir(), VMHomeDir, &ui, true)
 	if err == nil || !strings.Contains(err.Error(), "merge agent config") {
 		t.Fatalf("LoadConfigFilesForHost error = %v, want merge agent config error", err)
+	}
+	// The wrapped cause is the JSON marshaler's rejection of the non-finite
+	// float; asserting it kills an ERRORF_WRAP ("%w" -> "%v") that leaves the
+	// message identical.
+	if _, ok := errors.AsType[*json.UnsupportedValueError](err); !ok {
+		t.Errorf("error %v does not wrap *json.UnsupportedValueError", err)
 	}
 }
 
