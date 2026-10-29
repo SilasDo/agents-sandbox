@@ -47,6 +47,7 @@ func TestEnsureNewHomeSeedsFingerprints(t *testing.T) {
 		image.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
 		false, // a real run: only it records a fresh home (#429)
 		desired,
+		"",
 		ui,
 	)
 	if err != nil {
