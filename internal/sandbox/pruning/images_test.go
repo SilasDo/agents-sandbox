@@ -3,6 +3,7 @@ package pruning
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -443,6 +444,97 @@ func TestPruneImagesRunsNativePruneAfterReferenceCleanup(t *testing.T) {
 			t.Errorf("WarnCalls = %v, want native prune warning", ui.WarnCalls)
 		}
 	})
+}
+
+// TestPruneImagesCapturesNativeReport pins that the native image-prune report
+// is captured rather than discarded.
+func TestPruneImagesCapturesNativeReport(t *testing.T) {
+	physical := uint64(2048)
+	client := &msb.MockMsbClient{
+		ImagePruneFn: func(context.Context) (*msbSdk.ImagePruneReport, error) {
+			return &msbSdk.ImagePruneReport{SkippedInUse: 4, BytesReclaimed: &physical}, nil
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+
+	report, err := PruneImages(context.Background(), PruneState{}, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneImages: %v", err)
+	}
+	if report.SkippedInUse != 4 {
+		t.Errorf("SkippedInUse = %d, want 4", report.SkippedInUse)
+	}
+	if report.BytesReclaimed == nil || *report.BytesReclaimed != physical {
+		t.Errorf("BytesReclaimed = %v, want %d", report.BytesReclaimed, physical)
+	}
+}
+
+// TestPruneImagesUnknownNativeBytesStayNil pins the nil-not-zero convention for
+// the native report's byte count.
+func TestPruneImagesUnknownNativeBytesStayNil(t *testing.T) {
+	client := &msb.MockMsbClient{
+		ImagePruneFn: func(context.Context) (*msbSdk.ImagePruneReport, error) {
+			return &msbSdk.ImagePruneReport{SkippedInUse: 1}, nil
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+
+	report, err := PruneImages(context.Background(), PruneState{}, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneImages: %v", err)
+	}
+	if report.BytesReclaimed != nil {
+		t.Errorf("BytesReclaimed = %v, want nil", *report.BytesReclaimed)
+	}
+}
+
+func TestRenderImageReportSurfacesNativePruneReport(t *testing.T) {
+	physical := uint64(2048)
+	ui := &termio.Mock{}
+	RenderImageReport(ui, ImageReport{MSBImagesPruned: 1, SkippedInUse: 4, BytesReclaimed: &physical}, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "4") || !strings.Contains(joined, "2 KiB") {
+		t.Errorf("image report missing skipped/bytes: %v", ui.OutCalls)
+	}
+}
+
+// TestRenderImageReportDataLineBoundaries pins when the native-report line
+// appears: for a skipped-in-use count of exactly one, or for known bytes with no
+// skips, not only when both hold.
+func TestRenderImageReportDataLineBoundaries(t *testing.T) {
+	one := uint64(1)
+	cases := []struct {
+		name     string
+		report   ImageReport
+		wantLine bool
+	}{
+		{"skipped count one", ImageReport{SkippedInUse: 1}, true},
+		{"bytes known without skips", ImageReport{BytesReclaimed: &one}, true},
+		{"nothing to report", ImageReport{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ui := &termio.Mock{}
+			RenderImageReport(ui, tc.report, false)
+			got := slices.ContainsFunc(ui.OutCalls, func(s string) bool { return strings.Contains(s, "image data:") })
+			if got != tc.wantLine {
+				t.Errorf("image data line present = %v, want %v; out=%v", got, tc.wantLine, ui.OutCalls)
+			}
+		})
+	}
+}
+
+// TestRenderImageReportUnknownBytesRenderDash pins that an unknown physical
+// reclamation renders as "-", not "0".
+func TestRenderImageReportUnknownBytesRenderDash(t *testing.T) {
+	ui := &termio.Mock{}
+	RenderImageReport(ui, ImageReport{MSBImagesPruned: 1, SkippedInUse: 2}, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "-") || strings.Contains(joined, "0 B") {
+		t.Errorf("unknown bytes must render as '-', got: %v", ui.OutCalls)
+	}
 }
 
 // TestKeepImagePerAgent verifies that image retention is keyed per (slug, agent).
