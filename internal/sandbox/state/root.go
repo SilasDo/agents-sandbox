@@ -248,6 +248,8 @@ func ReadRootState() (*RootState, error) {
 // The legacy key is decoded into its own small struct rather than a mirror of
 // RootState: a mirror silently drops any field it does not restate, so adding a
 // field to RootState would lose that field's data on every read.
+//
+// A document with a newer schema is refused with ErrStateSchemaUnsupported.
 func parseRootState(data []byte) (RootState, error) {
 	var state RootState
 	if err := yaml.Unmarshal(data, &state); err != nil {
@@ -262,13 +264,16 @@ func parseRootState(data []byte) (RootState, error) {
 		}
 		state.Updates.Agents = legacy.Agents
 	}
+	if err := checkDocumentSchema(data, RootStateSchema); err != nil {
+		return RootState{}, err
+	}
 	return state, nil
 }
 
 // writeRootState atomically writes the launcher-global state to disk. Unexported
 // so every root-state mutation flows through WithRootState.
 func writeRootState(s RootState) error {
-	data, err := marshalRootState(s)
+	data, err := marshalRootState(versionedDocument[RootState]{Schema: RootStateSchema, Document: s})
 	if err != nil {
 		return fmt.Errorf("marshal root state: %w", err)
 	}

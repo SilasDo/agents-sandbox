@@ -177,11 +177,15 @@ func ReadState(k Key) (*HomeState, error) {
 
 // parseHomeState is the pure unmarshal step of ReadState: arbitrary bytes in,
 // HomeState or ErrStateUnparsable-wrapped error out, no file I/O. Kept separate
-// so FuzzParseState can drive it without a filesystem.
+// so FuzzParseState can drive it without a filesystem. A document with a newer
+// schema is refused with ErrStateSchemaUnsupported.
 func parseHomeState(data []byte) (HomeState, error) {
 	var state HomeState
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return HomeState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
+	}
+	if err := checkDocumentSchema(data, HomeStateSchema); err != nil {
+		return HomeState{}, err
 	}
 	return state, nil
 }
@@ -189,7 +193,7 @@ func parseHomeState(data []byte) (HomeState, error) {
 // writeState atomically writes the state to disk. Unexported so every mutation
 // flows through WithHomeState or RecoverHomeState.
 func writeState(k Key, state HomeState) error {
-	data, err := yaml.Marshal(state)
+	data, err := yaml.Marshal(versionedDocument[HomeState]{Schema: HomeStateSchema, Document: state})
 	if err != nil {
 		return fmt.Errorf("marshal state: %w", err)
 	}
