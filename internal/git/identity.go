@@ -22,9 +22,18 @@ type Identity struct {
 	CheckoutRoot    string // enclosing checkout root; "" when cwd is not in a repo
 	WorktreeRoot    string // nearest dir holding a .git entry; "" when cwd is not in a repo
 	OutsideWorktree bool   // cwd is a linked worktree outside CheckoutRoot; gets its own checkout slug
-	Bare            bool   // the shared git dir is a bare repository
-	RepoSlug        string // origin-derived; shared by every clone of a remote
-	CheckoutSlug    string // common-dir-derived, or worktree-root-derived when outside
+	// SharedGitDir is the resolved host path of an outside worktree's shared git
+	// dir, which lies outside BindRoot and must be mounted separately; "" unless
+	// OutsideWorktree.
+	SharedGitDir string
+	// RecordedSharedGitDir is SharedGitDir as the worktree's .git file names it
+	// (unresolved, and relative under worktree.useRelativePaths). Git inside the
+	// VM follows this text, so it is the guest path to mount at; "" unless
+	// OutsideWorktree.
+	RecordedSharedGitDir string
+	Bare                 bool   // the shared git dir is a bare repository
+	RepoSlug             string // origin-derived; shared by every clone of a remote
+	CheckoutSlug         string // common-dir-derived, or worktree-root-derived when outside
 	// LegacyRepoSlugs lists additional origin-keyed identities whose project state
 	// and per-slug config predate this one and must still be adopted. It is only
 	// non-empty for the bare root itself: a bare repository has no worktree, so
@@ -83,14 +92,20 @@ func ResolveIdentity(cwd string) (Identity, error) {
 	repoSlug, checkoutSlug := identitySlugs(worktreeRoot, bindRoot, checkoutHashInput)
 	bare := isBare(commonGitDir)
 	identity := Identity{
-		BindRoot:        bindRoot,
-		CheckoutRoot:    checkoutRoot,
-		WorktreeRoot:    worktreeRoot,
-		OutsideWorktree: outsideWorktree,
-		Bare:            bare,
-		RepoSlug:        repoSlug,
-		CheckoutSlug:    checkoutSlug,
-		LegacyRepoSlugs: nil,
+		BindRoot:             bindRoot,
+		CheckoutRoot:         checkoutRoot,
+		WorktreeRoot:         worktreeRoot,
+		OutsideWorktree:      outsideWorktree,
+		SharedGitDir:         "",
+		RecordedSharedGitDir: "",
+		Bare:                 bare,
+		RepoSlug:             repoSlug,
+		CheckoutSlug:         checkoutSlug,
+		LegacyRepoSlugs:      nil,
+	}
+	if outsideWorktree {
+		identity.SharedGitDir = commonGitDir
+		identity.RecordedSharedGitDir = recordedSharedGitDir(worktreeRoot)
 	}
 	// The bare root is not a linked worktree, so bindRoot is the worktree root
 	// itself: this is the cwd that predates the split with a path-derived slug.
@@ -159,14 +174,16 @@ func resolvePath(path string) (string, error) {
 func nonRepoIdentity(resolved string) Identity {
 	slug := projectSlug(sanitizeFolderName(filepath.Base(resolved)), resolved)
 	return Identity{
-		BindRoot:        resolved,
-		CheckoutRoot:    "",
-		WorktreeRoot:    "",
-		OutsideWorktree: false,
-		Bare:            false,
-		RepoSlug:        slug,
-		CheckoutSlug:    slug,
-		LegacyRepoSlugs: nil,
+		BindRoot:             resolved,
+		CheckoutRoot:         "",
+		WorktreeRoot:         "",
+		OutsideWorktree:      false,
+		SharedGitDir:         "",
+		RecordedSharedGitDir: "",
+		Bare:                 false,
+		RepoSlug:             slug,
+		CheckoutSlug:         slug,
+		LegacyRepoSlugs:      nil,
 	}
 }
 
@@ -187,6 +204,16 @@ func bindLayout(worktreeRoot, commonGitDir string) (string, string, bool) {
 		return checkoutRoot, checkoutRoot, false
 	}
 	return checkoutRoot, worktreeRoot, true
+}
+
+// recordedSharedGitDir returns the shared git dir of the linked worktree at
+// worktreeRoot exactly as its .git file records it, with the worktree
+// registration stripped. Only called for a validated linked worktree, so the
+// registration is known to be present.
+func recordedSharedGitDir(worktreeRoot string) string {
+	gitdir, _ := gitdirFile(worktreeRoot)
+	shared, _ := worktreeRegistration(worktreeRoot, gitdir)
+	return shared
 }
 
 // checkoutRootOf returns the directory that contains the git dir and any nested

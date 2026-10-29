@@ -87,7 +87,7 @@ var exclusiveMountTargets = []string{WorkspaceMountPath, TmpMountPath}
 func ResolveBindMounts(mounts Mounts) (Mounts, error) {
 	resolved := make(map[string]BindMount, len(mounts))
 	for rawTarget, mount := range mounts {
-		target, err := resolveMountTarget(rawTarget)
+		target, err := ResolveMountTarget(rawTarget)
 		if err != nil {
 			return nil, err
 		}
@@ -127,8 +127,9 @@ func MountTargets(mounts Mounts) []string {
 	return targets
 }
 
-// resolveMountTarget validates a guest mount path and returns it cleaned.
-func resolveMountTarget(target string) (string, error) {
+// ResolveMountTarget validates a guest mount path against the managed mounts
+// and returns it cleaned.
+func ResolveMountTarget(target string) (string, error) {
 	if !filepath.IsAbs(target) {
 		return "", fmt.Errorf("mount target %q must be an absolute path", target)
 	}

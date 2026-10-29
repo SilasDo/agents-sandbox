@@ -301,6 +301,12 @@ func IsVolumeNotFound(err error) bool {
 	return msbSdk.IsKind(err, msbSdk.ErrVolumeNotFound)
 }
 
+// IsVolumeAlreadyExists reports whether err is the microsandbox "volume with
+// this name already exists" error, unwrapping any wrapped errors.
+func IsVolumeAlreadyExists(err error) bool {
+	return msbSdk.IsKind(err, msbSdk.ErrVolumeAlreadyExists)
+}
+
 // IsReplaced reports whether err indicates that a handle's name now refers to a
 // different persisted sandbox identity (the handle was replaced), unwrapping any
 // wrapped errors. Operate on live identities and treat a replaced handle as a
