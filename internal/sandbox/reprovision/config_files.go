@@ -233,6 +233,7 @@ func LoadConfigFilesForHost(
 	}
 	if merged.hasSnippets {
 		delete(provisioned, merged.path)
+		// gomutants:disable-next-line STATEMENT_REMOVE reason="applyMirrorPrecedence removes this same key from modes under the identical hasSnippets condition, so dropping the statement leaves ConfigFiles.Modes unchanged"
 		delete(modes, merged.path)
 	}
 	mirrorEntries, err := buildMirror(a, vmHome, src)
