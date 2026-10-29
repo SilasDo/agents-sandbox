@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"slices"
@@ -136,5 +137,34 @@ func TestImagePruneFormatJSON(t *testing.T) {
 	}
 	if got.Details[0].Type != "msb-image" || got.Details[0].Name == "" {
 		t.Errorf("unexpected detail: %+v", got.Details[0])
+	}
+}
+
+// TestImagePruneFormatJSONIncludesNativeReport pins that the native image-prune
+// report's skipped-in-use and reclaimed-bytes reach the JSON.
+func TestImagePruneFormatJSONIncludesNativeReport(t *testing.T) {
+	physical := uint64(2048)
+	m := &sandboxmsb.MockMsbClient{
+		ImagePruneFn: func(context.Context) (*msbSdk.ImagePruneReport, error) {
+			return &msbSdk.ImagePruneReport{SkippedInUse: 4, BytesReclaimed: &physical}, nil
+		},
+	}
+	cmd, ui := setupCommandFixtures(t, "image", "prune", "--format", "json", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	docker.WithNoopDockerMock(t)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got struct {
+		SkippedInUse   uint32  `json:"skipped_in_use"`
+		BytesReclaimed *uint64 `json:"bytes_reclaimed"`
+	}
+	joined := strings.Join(ui.OutCalls, "\n")
+	if err := json.Unmarshal([]byte(joined), &got); err != nil {
+		t.Fatalf("json.Unmarshal: %v; output: %q", err, joined)
+	}
+	if got.SkippedInUse != 4 || got.BytesReclaimed == nil || *got.BytesReclaimed != physical {
+		t.Errorf("native report fields = %+v", got)
 	}
 }

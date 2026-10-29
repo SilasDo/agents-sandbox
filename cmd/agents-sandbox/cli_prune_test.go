@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,12 +28,17 @@ type pruneJSONDetail struct {
 }
 
 type pruneJSONReport struct {
-	DryRun       bool              `json:"dry_run"`
-	Sandboxes    int               `json:"sandboxes"`
-	Volumes      int               `json:"volumes"`
-	Images       int               `json:"images"`
-	DockerImages int               `json:"docker_images"`
-	Details      []pruneJSONDetail `json:"details"`
+	DryRun                        bool              `json:"dry_run"`
+	Sandboxes                     int               `json:"sandboxes"`
+	Volumes                       int               `json:"volumes"`
+	Images                        int               `json:"images"`
+	DockerImages                  int               `json:"docker_images"`
+	SkippedImagesInUse            uint32            `json:"skipped_images_in_use"`
+	ImageBytesReclaimed           *uint64           `json:"image_bytes_reclaimed"`
+	RuntimeFilesRemoved           uint64            `json:"runtime_files_removed"`
+	RuntimeLogicalBytesRemoved    uint64            `json:"runtime_logical_bytes_removed"`
+	RuntimePhysicalBytesReclaimed *uint64           `json:"runtime_physical_bytes_reclaimed"`
+	Details                       []pruneJSONDetail `json:"details"`
 }
 
 func unmarshalPruneJSON(t *testing.T, outCalls []string) pruneJSONReport {
@@ -374,6 +380,126 @@ func TestPruneFormatJSON(t *testing.T) {
 				t.Errorf("volume stale_for_seconds = %d, want ~%d", detail.StaleForSeconds, want)
 			}
 		}
+	}
+}
+
+// TestPruneFormatJSONIncludesStorageAndImageFields pins that the runtime-memory
+// phase's byte accounting and the native image-prune report reach the JSON.
+func TestPruneFormatJSONIncludesStorageAndImageFields(t *testing.T) {
+	physical := uint64(4096)
+	m := &sandboxmsb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msb.StoragePruneOptions) (*msb.StoragePruneReport, error) {
+			return &msb.StoragePruneReport{
+				FilesRemoved:           3,
+				LogicalBytesRemoved:    12288,
+				PhysicalBytesReclaimed: &physical,
+			}, nil
+		},
+		ImagePruneFn: func(context.Context) (*msb.ImagePruneReport, error) {
+			return &msb.ImagePruneReport{SkippedInUse: 4, BytesReclaimed: &physical}, nil
+		},
+	}
+	cmd, ui := setupCommandFixtures(t, "prune", "--format", "json", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	got := unmarshalPruneJSON(t, ui.OutCalls)
+	if got.SkippedImagesInUse != 4 || got.ImageBytesReclaimed == nil || *got.ImageBytesReclaimed != physical {
+		t.Errorf("image fields = %+v", got)
+	}
+	if got.RuntimeFilesRemoved != 3 || got.RuntimeLogicalBytesRemoved != 12288 ||
+		got.RuntimePhysicalBytesReclaimed == nil || *got.RuntimePhysicalBytesReclaimed != physical {
+		t.Errorf("runtime fields = %+v", got)
+	}
+}
+
+// TestPruneJSONUnknownBytesMarshalNull pins the nil-not-zero convention in the
+// JSON projection.
+func TestPruneJSONUnknownBytesMarshalNull(t *testing.T) {
+	m := &sandboxmsb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msb.StoragePruneOptions) (*msb.StoragePruneReport, error) {
+			return &msb.StoragePruneReport{FilesRemoved: 1, LogicalBytesRemoved: 100}, nil
+		},
+	}
+	cmd, ui := setupCommandFixtures(t, "prune", "--format", "json", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, `"runtime_physical_bytes_reclaimed": null`) {
+		t.Errorf("unknown physical bytes must marshal as null: %s", joined)
+	}
+}
+
+func TestPrunePassesAgeToStorage(t *testing.T) {
+	m := &sandboxmsb.MockMsbClient{}
+	cmd, _ := setupCommandFixtures(t, "prune", "--older-than", "2w", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.StoragePruneCalls) != 1 {
+		t.Fatalf("StoragePruneCalls = %v, want 1", m.StoragePruneCalls)
+	}
+	if want := uint64((14 * 24 * time.Hour).Seconds()); m.StoragePruneCalls[0].OlderThanSeconds != want {
+		t.Errorf("OlderThanSeconds = %d, want %d", m.StoragePruneCalls[0].OlderThanSeconds, want)
+	}
+}
+
+func TestPruneDryRunPassesDryRunToStorage(t *testing.T) {
+	m := &sandboxmsb.MockMsbClient{}
+	cmd, _ := setupCommandFixtures(t, "prune", "--dry-run")
+	sandboxmsb.WithMsbMock(t, m)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(m.StoragePruneCalls) != 1 || !m.StoragePruneCalls[0].DryRun {
+		t.Fatalf("StoragePruneCalls = %v, want one dry-run call", m.StoragePruneCalls)
+	}
+}
+
+// TestPruneHumanOutputUnknownBytesRenderDash pins the human-side unknown-bytes
+// rendering across both the storage and image lines.
+func TestPruneHumanOutputUnknownBytesRenderDash(t *testing.T) {
+	m := &sandboxmsb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msb.StoragePruneOptions) (*msb.StoragePruneReport, error) {
+			return &msb.StoragePruneReport{FilesRemoved: 1, LogicalBytesRemoved: 100}, nil
+		},
+		ImagePruneFn: func(context.Context) (*msb.ImagePruneReport, error) {
+			return &msb.ImagePruneReport{SkippedInUse: 2}, nil
+		},
+	}
+	cmd, ui := setupCommandFixtures(t, "prune", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !slices.Contains(ui.OutCalls, "  image data: 2 skipped (in use), - reclaimed") {
+		t.Errorf("expected dash for unknown image bytes, got: %v", ui.OutCalls)
+	}
+	if !slices.Contains(ui.OutCalls, "  runtime memory: 1 file(s), 100 B logical, - reclaimed") {
+		t.Errorf("expected dash for unknown runtime bytes, got: %v", ui.OutCalls)
+	}
+}
+
+func TestPruneStorageFailureJoinsError(t *testing.T) {
+	storageErr := errors.New("storage boom")
+	m := &sandboxmsb.MockMsbClient{
+		StoragePruneFn: func(context.Context, msb.StoragePruneOptions) (*msb.StoragePruneReport, error) {
+			return nil, storageErr
+		},
+	}
+	cmd, ui := setupCommandFixtures(t, "prune", "--yes")
+	sandboxmsb.WithMsbMock(t, m)
+	err := cmd.Execute()
+	if !errors.Is(err, storageErr) {
+		t.Fatalf("expected the storage error joined, got: %v", err)
+	}
+	if !slices.ContainsFunc(ui.WarnCalls, func(s string) bool { return strings.Contains(s, "storage boom") }) {
+		t.Errorf("expected a warning mentioning the failure, got: %v", ui.WarnCalls)
 	}
 }
 

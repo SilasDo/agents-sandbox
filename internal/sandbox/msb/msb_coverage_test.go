@@ -378,6 +378,48 @@ func TestMockMsbClientImage(t *testing.T) {
 	}
 }
 
+// TestMockMsbClientPruneStorage pins that the mock records every
+// StoragePruneOptions it receives and honours StoragePruneFn.
+func TestMockMsbClientPruneStorage(t *testing.T) {
+	ctx := context.Background()
+	physical := uint64(2048)
+	m := &MockMsbClient{
+		StoragePruneFn: func(_ context.Context, _ msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error) {
+			return &msbSdk.StoragePruneReport{
+				FilesRemoved:           3,
+				LogicalBytesRemoved:    4096,
+				PhysicalBytesReclaimed: &physical,
+			}, nil
+		},
+	}
+	report, err := m.PruneStorage(ctx, msbSdk.StoragePruneOptions{DryRun: true, OlderThanSeconds: 600})
+	if err != nil || report.FilesRemoved != 3 || report.LogicalBytesRemoved != 4096 {
+		t.Fatalf("PruneStorage via fn = %+v, %v", report, err)
+	}
+	if len(m.StoragePruneCalls) != 1 || !m.StoragePruneCalls[0].DryRun ||
+		m.StoragePruneCalls[0].OlderThanSeconds != 600 {
+		t.Fatalf("StoragePruneCalls = %+v", m.StoragePruneCalls)
+	}
+
+	empty := &MockMsbClient{}
+	report, err = empty.PruneStorage(ctx, msbSdk.StoragePruneOptions{OlderThanSeconds: 60})
+	if err != nil || report == nil || report.FilesRemoved != 0 {
+		t.Fatalf("PruneStorage default = %+v, %v", report, err)
+	}
+	if len(empty.StoragePruneCalls) != 1 || empty.StoragePruneCalls[0].OlderThanSeconds != 60 {
+		t.Fatalf("StoragePruneCalls = %+v", empty.StoragePruneCalls)
+	}
+
+	failing := &MockMsbClient{
+		StoragePruneFn: func(context.Context, msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error) {
+			return nil, errors.New("prune failed")
+		},
+	}
+	if _, err := failing.PruneStorage(ctx, msbSdk.StoragePruneOptions{}); err == nil {
+		t.Fatal("expected StoragePruneFn error")
+	}
+}
+
 func TestMockSandboxHandleMethods(t *testing.T) {
 	now := time.Date(2026, 8, 17, 10, 0, 0, 0, time.UTC)
 	h := &MockSandboxHandle{
@@ -796,6 +838,7 @@ func TestFailFastClientPanics(t *testing.T) {
 		{"ImageRemove", func() { _ = f.ImageRemove(ctx, "x", false) }},
 		{"ImageLoad", func() { _ = f.ImageLoad(ctx, "x", strings.NewReader("")) }},
 		{"ImageInspect", func() { _, _ = f.ImageInspect(ctx, "x") }},
+		{"PruneStorage", func() { _, _ = f.PruneStorage(ctx, msbSdk.StoragePruneOptions{}) }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

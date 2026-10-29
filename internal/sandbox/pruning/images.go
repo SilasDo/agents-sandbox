@@ -13,10 +13,14 @@ import (
 	"github.com/inoio/agents-sandbox/internal/termio"
 )
 
-// ImageReport summarizes a PruneImages run.
+// ImageReport summarizes a PruneImages run. SkippedInUse and BytesReclaimed
+// come from the runtime's own image-prune report: BytesReclaimed is nil when the
+// runtime cannot measure it.
 type ImageReport struct {
 	MSBImagesPruned    int
 	DockerImagesPruned int
+	SkippedInUse       uint32
+	BytesReclaimed     *uint64
 	Details            []StaleEntry
 }
 
@@ -34,7 +38,7 @@ func PruneImages(
 	dryRun bool,
 	ui termio.UI,
 ) (ImageReport, error) {
-	report := ImageReport{MSBImagesPruned: 0, DockerImagesPruned: 0, Details: nil}
+	report := ImageReport{MSBImagesPruned: 0, DockerImagesPruned: 0, SkippedInUse: 0, BytesReclaimed: nil, Details: nil}
 	handles, err := msb.Get().ImageList(ctx)
 	if err != nil {
 		// gomutants:disable-next-line RETURN_ZERO reason="report is still its zero value at this point, so returning a fresh zero ImageReport is identical"
@@ -71,8 +75,12 @@ func PruneImages(
 		})
 	}
 	if !dryRun {
-		if _, err := msb.Get().ImagePrune(ctx); err != nil {
+		nativeReport, err := msb.Get().ImagePrune(ctx)
+		if err != nil {
 			ui.Warnf("failed to prune unused msb image data: %v", err)
+		} else {
+			report.SkippedInUse = nativeReport.SkippedInUse
+			report.BytesReclaimed = nativeReport.BytesReclaimed
 		}
 	}
 	report.DockerImagesPruned = pruneDockerImages(ctx, dryRun, ui)
@@ -156,6 +164,13 @@ func RenderImageReport(ui termio.UI, r ImageReport, dryRun bool) {
 		r.MSBImagesPruned,
 		r.DockerImagesPruned,
 	)
+	if r.SkippedInUse > 0 || r.BytesReclaimed != nil {
+		ui.Outf(
+			"  image data: %d skipped (in use), %s reclaimed",
+			r.SkippedInUse,
+			formatOptionalBytes(r.BytesReclaimed),
+		)
+	}
 	for _, d := range r.Details {
 		ui.Verbosef("  %s (%s)", d.Name, d.Slug)
 	}

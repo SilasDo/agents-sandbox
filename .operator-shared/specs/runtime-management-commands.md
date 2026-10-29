@@ -300,10 +300,14 @@ The full per-group contract, as the slices deliver it.
 
 Out of scope (explicit): `registry`/`registries`, `context`/`ctx`, `self`/
 `doctor`/`update`/`downgrade`/`uninstall`, and `sandbox compact` (issue #157).
-Runtime-RAM pruning is **not** excluded: it is tracked by issue #156
-(microsandbox's `PruneStorage` over branch/snapshot memory backings) and enriches
-the top-level `prune`. The existing extended `prune` covers VMs, home volumes,
-docker images, and msb images, but not runtime RAM.
+Runtime-RAM pruning enriches the top-level `prune` rather than adding a command
+(#156): a fourth phase calls microsandbox's `PruneStorage` over branch/snapshot
+memory backings under the same `--older-than` threshold (converted to whole
+seconds; a non-positive age means no age filter), honors `--dry-run` through the
+runtime's own flag, and joins a failure into the aggregate error. The native
+image-prune report's `SkippedInUse` and `BytesReclaimed` are surfaced in both the
+human output and `--format json`; unknown byte counts stay unknown (`-` / `null`),
+never `0`.
 
 ## Cross-cutting conventions (delivered by Slice 0)
 

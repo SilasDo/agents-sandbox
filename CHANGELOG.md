@@ -39,6 +39,11 @@ command reports the bare version (e.g. `0.1.0`).
   On by default; turn it off with `open-links: false`,
   `AGENTS_SANDBOX_OPEN_LINKS=false`, or `--open-links=false`. The runner image rebuilds once to install the shim; a
   custom runner base must now provide `curl`, which the image build verifies.
+- `prune` (and its `storage prune` alias) reclaims unused runtime RAM — the published branch/snapshot memory backings —
+  as a fourth phase under the same `--older-than` threshold, and surfaces the native image-prune report: the images it
+  skipped because a live sandbox holds them and the bytes it reclaimed. Byte counts the runtime cannot measure render as
+  unknown (`-` in the human output, `null` in `--format json`), never `0`. The runtime-memory phase honors `--dry-run`
+  through the runtime's own preview flag (#156).
 
 ### Changed
 

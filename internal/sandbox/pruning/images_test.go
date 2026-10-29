@@ -445,6 +445,71 @@ func TestPruneImagesRunsNativePruneAfterReferenceCleanup(t *testing.T) {
 	})
 }
 
+// TestPruneImagesCapturesNativeReport pins that the native image-prune report
+// is captured rather than discarded.
+func TestPruneImagesCapturesNativeReport(t *testing.T) {
+	physical := uint64(2048)
+	client := &msb.MockMsbClient{
+		ImagePruneFn: func(context.Context) (*msbSdk.ImagePruneReport, error) {
+			return &msbSdk.ImagePruneReport{SkippedInUse: 4, BytesReclaimed: &physical}, nil
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+
+	report, err := PruneImages(context.Background(), PruneState{}, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneImages: %v", err)
+	}
+	if report.SkippedInUse != 4 {
+		t.Errorf("SkippedInUse = %d, want 4", report.SkippedInUse)
+	}
+	if report.BytesReclaimed == nil || *report.BytesReclaimed != physical {
+		t.Errorf("BytesReclaimed = %v, want %d", report.BytesReclaimed, physical)
+	}
+}
+
+// TestPruneImagesUnknownNativeBytesStayNil pins the nil-not-zero convention for
+// the native report's byte count.
+func TestPruneImagesUnknownNativeBytesStayNil(t *testing.T) {
+	client := &msb.MockMsbClient{
+		ImagePruneFn: func(context.Context) (*msbSdk.ImagePruneReport, error) {
+			return &msbSdk.ImagePruneReport{SkippedInUse: 1}, nil
+		},
+	}
+	msb.WithMsbMock(t, client)
+	docker.WithNoopDockerMock(t)
+
+	report, err := PruneImages(context.Background(), PruneState{}, false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("PruneImages: %v", err)
+	}
+	if report.BytesReclaimed != nil {
+		t.Errorf("BytesReclaimed = %v, want nil", *report.BytesReclaimed)
+	}
+}
+
+func TestRenderImageReportSurfacesNativePruneReport(t *testing.T) {
+	physical := uint64(2048)
+	ui := &termio.Mock{}
+	RenderImageReport(ui, ImageReport{MSBImagesPruned: 1, SkippedInUse: 4, BytesReclaimed: &physical}, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "4") || !strings.Contains(joined, "2 KiB") {
+		t.Errorf("image report missing skipped/bytes: %v", ui.OutCalls)
+	}
+}
+
+// TestRenderImageReportUnknownBytesRenderDash pins that an unknown physical
+// reclamation renders as "-", not "0".
+func TestRenderImageReportUnknownBytesRenderDash(t *testing.T) {
+	ui := &termio.Mock{}
+	RenderImageReport(ui, ImageReport{MSBImagesPruned: 1, SkippedInUse: 2}, false)
+	joined := strings.Join(ui.OutCalls, "\n")
+	if !strings.Contains(joined, "-") || strings.Contains(joined, "0 B") {
+		t.Errorf("unknown bytes must render as '-', got: %v", ui.OutCalls)
+	}
+}
+
 // TestKeepImagePerAgent verifies that image retention is keyed per (slug, agent).
 func TestKeepImagePerAgent(t *testing.T) {
 	// The per-agent tag for a kept (slug, opencode) is kept while it is recent,
