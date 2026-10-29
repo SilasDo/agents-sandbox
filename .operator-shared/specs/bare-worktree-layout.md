@@ -99,6 +99,12 @@ dir inside the VM. Rather than handle this case (which would require mounting th
 today's binding and emits a **`termio` warning** that a worktree outside its checkout is unsupported and that git may not
 work in the VM. This is not a regression: today's launcher already binds the CWD (the worktree) in this case.
 
+**Current behavior (warning removed).** Under per-checkout identity (#144,
+[`checkout-identity.md`](checkout-identity.md)) an outside worktree is no longer warned about or refused: it runs as its
+own checkout, hashing its worktree root, with its own VM and home volume. Binding only the worktree still leaves the
+checkout's shared git dir outside the mount, so git commands inside the VM may not resolve the repository; that
+remaining limitation is tracked in #426 (the recipe page states it to readers).
+
 The `git rev-parse` phrasing above describes the *facts*, not the implementation. The derivation reuses the existing
 host-side, go-git-based repository inspection (`projectSlugAt` / `resolveGitDir` in `internal/git`); a host `git`
 binary is not a runtime prerequisite and must not be introduced. A linked worktree's `.git` file may record the
