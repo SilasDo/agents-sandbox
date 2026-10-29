@@ -130,6 +130,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- A bare repository cloned as `<name>.git` (no `.git` entry of its own) is now recognized as a bare checkout instead
+  of a non-repo folder, so launching from its root uses the same origin-derived identity — state, VM, home volume — as
+  the worktrees inside it. Its previous path-keyed state is adopted (#433).
 - Without an `origin` remote, a linked worktree inside its checkout now shares the checkout's repo slug, as documented,
   so both see the same `~/.config/agents-sandbox/<repo-slug>/` config dir and `org.agents-sandbox.project` label. It
   previously derived the slug from the worktree's own folder (#434).
