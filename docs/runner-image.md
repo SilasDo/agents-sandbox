@@ -93,8 +93,8 @@ older version) is reported as a generic content change.
 
 The `dev` user is created with your host user's UID and GID, so files it writes to `/workspace` stay owned by you. The
 image records them in the `org.agents-sandbox.identity.user` label, and a run as a user with a different UID or GID
-rebuilds the image (`host user uid/gid changed`). An image built by an older version has no such label and is reused
-until its next rebuild.
+rebuilds the image (`host user uid/gid changed`). Images built by an older agents-sandbox version are rebuilt once
+after the upgrade, since the rendered Dockerfile changed.
 
 The base image is referenced by tag, so it can move. The image records the base it was built from in the
 `org.agents-sandbox.base` label (`<ref>@<image ID>`), and every run compares it with the base cached in your local

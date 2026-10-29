@@ -91,10 +91,9 @@ func buildReasons(state runnerImageState, dockerfileID string, identity imageIde
 
 // changedHostReasons lists the host-dependent identity components that differ
 // from the image's recorded labels. An unknown value on either side is not a
-// change: an image without the label predates its recording, and forcing every
-// existing image to rebuild once is not worth it; a base image that is not
-// cached locally (e.g. pruned) says nothing about a newer base, and the
-// decision must not pull to find out.
+// change: an image without the label has nothing to compare against, and a
+// base image that is not cached locally (e.g. pruned) says nothing about a
+// newer base, so the decision must not pull to find out.
 func changedHostReasons(labels map[string]string, identity imageIdentity) []string {
 	var reasons []string
 	if recorded, ok := labels[userLabelKey]; ok && recorded != identity.User {

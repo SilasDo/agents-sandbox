@@ -147,12 +147,17 @@ func TestResolveBaseDigestRefreshPullsPresentBase(t *testing.T) {
 		},
 	})
 
-	got, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", true, &termio.Mock{})
+	ui := &termio.Mock{}
+
+	got, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", true, ui)
 	if err != nil {
 		t.Fatalf("resolveBaseDigest: %v", err)
 	}
 	if got != "debian:trixie-slim@sha256:fresh" {
 		t.Errorf("resolveBaseDigest = %q, want the freshly pulled digest", got)
+	}
+	if len(ui.WarnCalls) != 0 {
+		t.Errorf("warnings = %v, want none after a successful refresh", ui.WarnCalls)
 	}
 }
 
@@ -194,5 +199,104 @@ func TestResolveBaseDigestRefreshFailsWithoutLocalBase(t *testing.T) {
 	_, err := resolveBaseDigest(context.Background(), "private/base:latest", true, &termio.Mock{})
 	if err == nil || !strings.Contains(err.Error(), "pull base image") {
 		t.Errorf("resolveBaseDigest error = %v, want the pull failure", err)
+	}
+}
+
+func TestResolveBaseDigestUsesLocalBaseWithoutPulling(t *testing.T) {
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{ID: "sha256:cached"}, nil
+		},
+		ImagePullFn: func(_ context.Context, ref string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+			t.Errorf("unexpected pull of %s for a cached base without refresh", ref)
+			return nil, errors.New("unexpected pull")
+		},
+	})
+
+	got, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("resolveBaseDigest: %v", err)
+	}
+	if got != "debian:trixie-slim@sha256:cached" {
+		t.Errorf("resolveBaseDigest = %q, want the cached digest", got)
+	}
+}
+
+func TestResolveBaseDigestLogsPullOfAbsentBase(t *testing.T) {
+	pulled := false
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			if !pulled {
+				return client.ImageInspectResult{}, errors.New("No such image")
+			}
+			return client.ImageInspectResult{ID: "sha256:pulled"}, nil
+		},
+		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+			pulled = true
+			return docker.PullResponse{Body: strings.NewReader("")}, nil
+		},
+	})
+	ui := &termio.Mock{}
+
+	if _, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, ui); err != nil {
+		t.Fatalf("resolveBaseDigest: %v", err)
+	}
+	if len(ui.VerboseCalls) != 1 || !strings.Contains(ui.VerboseCalls[0], "not present locally, pulling") {
+		t.Errorf("verbose lines = %v, want the pull notice", ui.VerboseCalls)
+	}
+}
+
+func TestLocalBaseImageTreatsUnknownImageAsAbsent(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		result client.ImageInspectResult
+		err    error
+		want   string
+	}{
+		{"present", client.ImageInspectResult{ID: "sha256:cached"}, nil, "debian:trixie-slim@sha256:cached"},
+		{"inspect error", client.ImageInspectResult{ID: "sha256:cached"}, errors.New("boom"), ""},
+		{"empty image id", client.ImageInspectResult{}, nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			docker.WithDockerMock(t, &docker.MockDockerClient{
+				ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+					return tc.result, tc.err
+				},
+			})
+			if got := localBaseImage(context.Background(), "debian:trixie-slim"); got != tc.want {
+				t.Errorf("localBaseImage = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveBaseDigestWrapsCauses(t *testing.T) {
+	cause := errors.New("cause")
+	for _, tc := range []struct {
+		name    string
+		pullErr error
+		waitErr error
+	}{
+		{"pull call fails", cause, nil},
+		{"pull stream fails", nil, cause},
+		{"inspect after pull fails", nil, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			docker.WithDockerMock(t, &docker.MockDockerClient{
+				ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+					return client.ImageInspectResult{}, cause
+				},
+				ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+					if tc.pullErr != nil {
+						return nil, tc.pullErr
+					}
+					return docker.PullResponse{Body: strings.NewReader(""), WaitErr: tc.waitErr}, nil
+				},
+			})
+			_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, &termio.Mock{})
+			if !errors.Is(err, cause) {
+				t.Errorf("resolveBaseDigest error = %v, want it to wrap the cause", err)
+			}
+		})
 	}
 }
