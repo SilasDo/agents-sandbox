@@ -355,7 +355,7 @@ func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 		},
 	})
 	const qualified = "docker.io/library/debian:trixie-slim"
-	got, err := resolveBaseDigest(context.Background(), qualified, &termio.Mock{})
+	got, err := resolveBaseDigest(context.Background(), qualified, false, &termio.Mock{})
 	if err != nil {
 		t.Fatalf("resolveBaseDigest: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestResolveBaseDigestSurfacesPullFailure(t *testing.T) {
 					return tc.pull()
 				},
 			})
-			_, err := resolveBaseDigest(context.Background(), "private/base:latest", &termio.Mock{})
+			_, err := resolveBaseDigest(context.Background(), "private/base:latest", false, &termio.Mock{})
 			if err == nil || !strings.Contains(err.Error(), "base image not found or not logged in") {
 				t.Errorf("resolveBaseDigest error = %v, want the classified base-image failure", err)
 			}
@@ -427,7 +427,7 @@ func TestResolveBaseDigestKeepsUnparseableRef(t *testing.T) {
 		},
 	})
 	const unparseable = "Not A Valid Ref"
-	got, err := resolveBaseDigest(context.Background(), unparseable, &termio.Mock{})
+	got, err := resolveBaseDigest(context.Background(), unparseable, false, &termio.Mock{})
 	if err != nil {
 		t.Fatalf("resolveBaseDigest: %v", err)
 	}

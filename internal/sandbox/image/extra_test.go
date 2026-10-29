@@ -238,16 +238,16 @@ func TestEnsureImageCannotInspectBuiltImage(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	WithMockAgentVersion(t, "1.2.3")
 	a := agentOpencode(t)
-	calls := 0
+	built := false
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
-			calls++
-			if calls == 1 {
+			if !built {
 				return client.ImageInspectResult{ID: "sha256:base"}, nil
 			}
 			return client.ImageInspectResult{}, errors.New("inspect boom")
 		},
 		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			built = true
 			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
 		},
 	})
@@ -453,7 +453,7 @@ func TestResolveBaseDigestPullError(t *testing.T) {
 			return nil, errors.New("pull boom")
 		},
 	})
-	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
+	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, &termio.Mock{})
 	if err == nil || !strings.Contains(err.Error(), "pull base image") {
 		t.Errorf("resolveBaseDigest error = %v, want a pull failure", err)
 	}
@@ -470,7 +470,7 @@ func TestResolveBaseDigestInspectAfterPullError(t *testing.T) {
 			return docker.PullResponse{Body: strings.NewReader("")}, nil
 		},
 	})
-	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
+	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, &termio.Mock{})
 	if err == nil || !strings.Contains(err.Error(), "inspect pulled base image") {
 		t.Errorf("resolveBaseDigest error = %v, want an inspect-pulled-image failure", err)
 	}
@@ -485,7 +485,7 @@ func TestResolveBaseDigestPullStreamError(t *testing.T) {
 			return docker.PullResponse{WaitErr: errors.New("read boom")}, nil
 		},
 	})
-	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
+	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", false, &termio.Mock{})
 	if err == nil || !strings.Contains(err.Error(), "pull base image") {
 		t.Errorf("resolveBaseDigest error = %v, want a pull stream failure", err)
 	}

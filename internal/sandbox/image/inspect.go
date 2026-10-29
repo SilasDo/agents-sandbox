@@ -70,21 +70,39 @@ func buildDecision(
 	return buildReasons(inspectRunnerImage(ctx, rTag), dockerfileID, identity)
 }
 
-// buildReasons explains why the runner image must be rebuilt. A matching
-// dockerfile-id means the current inputs are already baked, so no build is
-// needed; otherwise it names the changed identity components.
+// buildReasons explains why the runner image must be rebuilt. A differing
+// dockerfile-id names the changed source components; host-dependent components,
+// which the dockerfile-id leaves out, are compared on their own. No reasons
+// means the current inputs are already baked, so no build is needed.
 func buildReasons(state runnerImageState, dockerfileID string, identity imageIdentity) (bool, []string) {
 	if !state.Present {
 		return true, []string{"runner image not present locally"}
 	}
-	if state.DockerfileID == dockerfileID {
-		return false, nil
+	var reasons []string
+	if state.DockerfileID != dockerfileID {
+		reasons = changedIdentityReasons(state.Labels, identity)
+		if len(reasons) == 0 {
+			reasons = []string{"runner image content changed (tool version or legacy image)"}
+		}
 	}
-	reasons := changedIdentityReasons(state.Labels, identity)
-	if len(reasons) == 0 {
-		reasons = []string{"runner image content changed (tool version or legacy image)"}
+	reasons = append(reasons, changedHostReasons(state.Labels, identity)...)
+	return len(reasons) > 0, reasons
+}
+
+// changedHostReasons lists the host-dependent identity components that differ
+// from the image's recorded labels. An unknown value on either side is not a
+// change: an image without the label has nothing to compare against, and a
+// base image that is not cached locally (e.g. pruned) says nothing about a
+// newer base, so the decision must not pull to find out.
+func changedHostReasons(labels map[string]string, identity imageIdentity) []string {
+	var reasons []string
+	if recorded, ok := labels[userLabelKey]; ok && recorded != identity.User {
+		reasons = append(reasons, "host user uid/gid changed")
 	}
-	return true, reasons
+	if recorded, ok := labels[baseLabelKey]; ok && identity.BaseImage != "" && recorded != identity.BaseImage {
+		reasons = append(reasons, "base image updated")
+	}
+	return reasons
 }
 
 // changedIdentityReasons lists the identity components that differ from the

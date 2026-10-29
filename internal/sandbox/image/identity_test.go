@@ -1,6 +1,7 @@
 package image
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -41,6 +42,8 @@ func identityLabels(id imageIdentity) map[string]string {
 		projectDockerfileHashLabelKey: id.ProjectDockerfileHash,
 		agentVersionLabelKey:          id.AgentVersion,
 		dockerLabelKey:                id.Docker,
+		userLabelKey:                  id.User,
+		baseLabelKey:                  id.BaseImage,
 	}
 }
 
@@ -158,15 +161,78 @@ func TestUserBuildArgsCarryIdentityComponents(t *testing.T) {
 		ProjectDockerfileHash: "hash",
 		AgentVersion:          "1.2.3",
 		Docker:                "false",
+		User:                  "1000:1000",
 	}
 	args := userBuildArgs(1000, 1000, agentOpencode(t).ImageSpec(), "1.2.3", "base", "id", false, id)
 	for key, want := range map[string]string{
 		projectDockerfileHashArg: "hash",
 		agentVersionArg:          "1.2.3",
 		dockerArg:                "false",
+		userArg:                  "1000:1000",
 	} {
 		if args[key] == nil || *args[key] != want {
 			t.Errorf("build arg %s = %v, want %q", key, args[key], want)
 		}
+	}
+}
+
+func TestHostUserIdentityJoinsUIDAndGID(t *testing.T) {
+	if got := hostUserIdentity(1001, 50); got != "1001:50" {
+		t.Errorf("hostUserIdentity = %q, want 1001:50", got)
+	}
+}
+
+func TestBuildReasonsRebuildsWhenHostUserChanged(t *testing.T) {
+	built := computeImageIdentity(nil, "1.2.3", false)
+	built.User = hostUserIdentity(1000, 1000)
+	desired := built
+	desired.User = hostUserIdentity(1001, 1001)
+	state := runnerImageState{Present: true, DockerfileID: "abc", Labels: identityLabels(built)}
+
+	needsBuild, reasons := buildReasons(state, "abc", desired)
+
+	if !needsBuild {
+		t.Fatal("expected a build when the host uid/gid differs from the baked dev user")
+	}
+	if len(reasons) != 1 || reasons[0] != "host user uid/gid changed" {
+		t.Errorf("reasons = %v, want only the host-user reason", reasons)
+	}
+}
+
+func TestBuildReasonsIgnoresHostUserForImageWithoutUserLabel(t *testing.T) {
+	built := computeImageIdentity(nil, "1.2.3", false)
+	labels := identityLabels(built)
+	delete(labels, userLabelKey)
+	desired := built
+	desired.User = hostUserIdentity(1001, 1001)
+	state := runnerImageState{Present: true, DockerfileID: "abc", Labels: labels}
+
+	if needsBuild, reasons := buildReasons(state, "abc", desired); needsBuild {
+		t.Errorf("expected no build for an image that predates the user label, got reasons %v", reasons)
+	}
+}
+
+func TestBuildReasonsCombinesSourceAndHostChanges(t *testing.T) {
+	built := computeImageIdentity(nil, "1.2.3", false)
+	built.User = hostUserIdentity(1000, 1000)
+	desired := computeImageIdentity(nil, "2.0.0", false)
+	desired.User = hostUserIdentity(1001, 1001)
+	state := runnerImageState{Present: true, DockerfileID: "old", Labels: identityLabels(built)}
+
+	_, reasons := buildReasons(state, "new", desired)
+
+	want := []string{"agent version changed", "host user uid/gid changed"}
+	if strings.Join(reasons, "|") != strings.Join(want, "|") {
+		t.Errorf("reasons = %v, want %v", reasons, want)
+	}
+}
+
+func TestRenderBuildPlanRecordsHostUser(t *testing.T) {
+	plan, err := renderBuildPlan(agentOpencode(t), nil, dockerOff, "1.2.3", "1.2.3")
+	if err != nil {
+		t.Fatalf("renderBuildPlan: %v", err)
+	}
+	if want := hostUserIdentity(os.Getuid(), os.Getgid()); plan.identity.User != want {
+		t.Errorf("plan identity User = %q, want %q", plan.identity.User, want)
 	}
 }
