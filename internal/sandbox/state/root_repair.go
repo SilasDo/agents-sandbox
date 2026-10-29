@@ -33,23 +33,22 @@ var renameRootStateFile = os.Rename
 // ErrStateSchemaUnsupported, as is any other read failure: only a document this
 // binary has positively classified as unparsable is moved.
 func RepairRootState() (string, error) {
-	release, _, err := lockRootState(true)
-	if err != nil {
-		return "", err
+	release, _, lockErr := lockRootState(true)
+	if lockErr != nil {
+		return "", lockErr
 	}
 	defer release()
 
-	_, err = ReadRootState()
-	if errors.Is(err, ErrStateUnparsable) {
+	if _, readErr := ReadRootState(); readErr != nil {
+		if !errors.Is(readErr, ErrStateUnparsable) {
+			return "", readErr
+		}
 		path := rootStateFile()
 		quarantinedPath := path + ".corrupt-" + now().UTC().Format(quarantineSuffixLayout)
 		if err := renameRootStateFile(path, quarantinedPath); err != nil {
 			return "", fmt.Errorf("quarantine root state file: %w", err)
 		}
 		return quarantinedPath, nil
-	}
-	if err != nil {
-		return "", err
 	}
 	return "", nil
 }

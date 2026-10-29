@@ -181,9 +181,13 @@ func TestCheckDocumentSchemaReportsMalformedDocumentsAsUnparsable(t *testing.T) 
 	}
 
 	err := checkDocumentSchema([]byte("schema: [1, 2]\n"), RootStateSchema)
-	var typeErr *yaml.TypeError
-	if !errors.As(err, &typeErr) {
+	if _, ok := errors.AsType[*yaml.TypeError](err); !ok {
 		t.Errorf("checkDocumentSchema error = %v, want its *yaml.TypeError cause reachable", err)
+	}
+
+	// A document from a newer schema is refused, not quarantined as unparsable.
+	if err := checkDocumentSchema([]byte("schema: 1\n"), 0); !errors.Is(err, ErrStateSchemaUnsupported) {
+		t.Errorf("checkDocumentSchema with an older supported schema = %v, want ErrStateSchemaUnsupported", err)
 	}
 }
 
