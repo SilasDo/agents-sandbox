@@ -13,12 +13,12 @@ func TestBuildMergedTOMLDeepMergesTOMLSnippets(t *testing.T) {
 	writeSnippet(t, dir, "config-a.toml", "model = \"gpt-5\"\n[sandbox_workspace_write]\nnetwork_access = false\n")
 	writeSnippet(t, dir, "config-b.toml", "[sandbox_workspace_write]\nnetwork_access = true\nretries = 3\n")
 
-	data, sources, has, err := BuildMerged("/home/dev/.codex/config.toml", "config*.toml", dir, "")
-	if err != nil || !has {
-		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
+	built, err := BuildMerged("/home/dev/.codex/config.toml", "config*.toml", dir, "")
+	if err != nil || !built.HasSnippets {
+		t.Fatalf("BuildMerged: has=%v err=%v", built.HasSnippets, err)
 	}
-	if len(sources) != 2 {
-		t.Errorf("sources = %v, want both snippets", sources)
+	if len(built.Sources) != 2 {
+		t.Errorf("sources = %v, want both snippets", built.Sources)
 	}
 	var merged struct {
 		Model   string `toml:"model"`
@@ -27,14 +27,14 @@ func TestBuildMergedTOMLDeepMergesTOMLSnippets(t *testing.T) {
 			Retries       int  `toml:"retries"`
 		} `toml:"sandbox_workspace_write"`
 	}
-	if err := toml.Unmarshal(data, &merged); err != nil {
-		t.Fatalf("output is not TOML: %v\n%s", err, data)
+	if err := toml.Unmarshal(built.Content, &merged); err != nil {
+		t.Fatalf("output is not TOML: %v\n%s", err, built.Content)
 	}
 	if merged.Model != "gpt-5" || !merged.Sandbox.NetworkAccess || merged.Sandbox.Retries != 3 {
 		t.Errorf("merged = %+v, want model, network_access=true, retries=3", merged)
 	}
-	if !strings.Contains(string(data), "retries = 3\n") {
-		t.Errorf("integers must stay integers in TOML output; got:\n%s", data)
+	if !strings.Contains(string(built.Content), "retries = 3\n") {
+		t.Errorf("integers must stay integers in TOML output; got:\n%s", built.Content)
 	}
 }
 
@@ -42,12 +42,12 @@ func TestBuildMergedJSONPathKeepsJSONOutput(t *testing.T) {
 	dir := t.TempDir()
 	writeSnippet(t, dir, "settings-a.json", `{"a": 1}`)
 
-	data, _, has, err := BuildMerged("/home/dev/.claude/settings.json", "settings*.json*", dir, "")
-	if err != nil || !has {
-		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
+	built, err := BuildMerged("/home/dev/.claude/settings.json", "settings*.json*", dir, "")
+	if err != nil || !built.HasSnippets {
+		t.Fatalf("BuildMerged: has=%v err=%v", built.HasSnippets, err)
 	}
-	if string(data) != "{\n  \"a\": 1\n}\n" {
-		t.Errorf("data = %q, want indented JSON", data)
+	if string(built.Content) != "{\n  \"a\": 1\n}\n" {
+		t.Errorf("data = %q, want indented JSON", built.Content)
 	}
 }
 
@@ -56,15 +56,15 @@ func TestBuildMergedSkipsInvalidTOMLSnippet(t *testing.T) {
 	writeSnippet(t, dir, "config-bad.toml", "not = = toml")
 	writeSnippet(t, dir, "config-good.toml", "ok = true\n")
 
-	data, sources, has, err := BuildMerged("config.toml", "config*.toml", dir, "")
-	if err != nil || !has {
-		t.Fatalf("BuildMerged: has=%v err=%v", has, err)
+	built, err := BuildMerged("config.toml", "config*.toml", dir, "")
+	if err != nil || !built.HasSnippets {
+		t.Fatalf("BuildMerged: has=%v err=%v", built.HasSnippets, err)
 	}
-	if len(sources) != 1 || filepath.Base(sources[0]) != "config-good.toml" {
-		t.Errorf("sources = %v, want only config-good.toml", sources)
+	if len(built.Sources) != 1 || filepath.Base(built.Sources[0]) != "config-good.toml" {
+		t.Errorf("sources = %v, want only config-good.toml", built.Sources)
 	}
-	if string(data) != "ok = true\n" {
-		t.Errorf("data = %q, want ok = true", data)
+	if string(built.Content) != "ok = true\n" {
+		t.Errorf("data = %q, want ok = true", built.Content)
 	}
 }
 

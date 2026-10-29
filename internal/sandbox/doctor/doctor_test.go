@@ -94,8 +94,8 @@ func mockedCollectChecks(t *testing.T, warnings []string, errs []error) {
 	t.Cleanup(func() { collectChecksFunc = orig })
 }
 
-func collectChecksMockFunc(warnings []string, errs []error) func(context.Context) ([]string, []error) {
-	return func(context.Context) ([]string, []error) { return warnings, errs }
+func collectChecksMockFunc(warnings []string, errs []error) func(context.Context) checkResults {
+	return func(context.Context) checkResults { return checkResults{infos: warnings, errs: errs} }
 }
 
 func TestCheckAllAggregatesAllFailures(t *testing.T) {
@@ -169,18 +169,18 @@ func TestCollectChecksAggregatesFailures(t *testing.T) {
 	MockedEnsureInstalled(t, false)
 	t.Setenv("PATH", "/nonexistent")
 
-	warnings, errs := collectChecks(context.Background())
-	if len(errs) == 0 {
+	results := collectChecks(context.Background())
+	if len(results.errs) == 0 {
 		t.Fatal("expected collectChecks to collect the docker failure")
 	}
-	joined := strings.Join(errStrings(errs), " ")
+	joined := strings.Join(errStrings(results.errs), " ")
 	if !strings.Contains(joined, "docker not available") {
 		t.Errorf("expected a docker failure, got %q", joined)
 	}
 	if strings.Contains(joined, "binary missing") {
 		t.Errorf("expected no msb binary failure, got %q", joined)
 	}
-	if len(warnings) == 0 {
+	if len(results.infos) == 0 {
 		t.Fatal("expected an informational msb message even when the binary is missing")
 	}
 }
@@ -191,8 +191,8 @@ func TestCollectChecksMsbInfoNamesPrivateHome(t *testing.T) {
 	MockedEnsureInstalled(t, false)
 	t.Setenv("PATH", "/nonexistent")
 
-	messages, errs := collectChecks(context.Background())
-	for _, err := range errs {
+	results := collectChecks(context.Background())
+	for _, err := range results.errs {
 		if strings.Contains(err.Error(), "binary missing") || strings.Contains(err.Error(), "msb") {
 			t.Fatalf("expected no msb error, got %v", err)
 		}
@@ -201,7 +201,7 @@ func TestCollectChecksMsbInfoNamesPrivateHome(t *testing.T) {
 		}
 	}
 	home := runtime.PrivateHome()
-	joined := strings.Join(messages, " ")
+	joined := strings.Join(results.infos, " ")
 	if !strings.Contains(joined, filepath.Join(home, "bin")) {
 		t.Errorf("expected the private-home bin path, got %q", joined)
 	}
@@ -217,8 +217,8 @@ func TestCollectChecksCollectsMsbError(t *testing.T) {
 	MockedCheckDocker(t, true)
 	MockedEnsureInstalled(t, true)
 
-	_, errs := collectChecks(context.Background())
-	joined := strings.Join(errStrings(errs), " ")
+	results := collectChecks(context.Background())
+	joined := strings.Join(errStrings(results.errs), " ")
 	if !strings.Contains(joined, "msb runtime setup failed") {
 		t.Errorf("expected an msb setup failure, got %q", joined)
 	}

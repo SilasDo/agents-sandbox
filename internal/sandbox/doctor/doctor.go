@@ -30,14 +30,21 @@ func CheckAll(ctx context.Context, ui termio.UI) bool {
 	return checkAllFunc(ctx, ui)
 }
 
+// checkResults is what a prerequisite run produced: informational messages and
+// the fatal failures.
+type checkResults struct {
+	infos []string
+	errs  []error
+}
+
 // realCheckAll aggregates the platform checks and reports the results.
 func realCheckAll(ctx context.Context, ui termio.UI) bool {
-	infos, errs := collectChecksFunc(ctx)
-	ok := len(errs) == 0
-	for _, info := range infos {
+	results := collectChecksFunc(ctx)
+	ok := len(results.errs) == 0
+	for _, info := range results.infos {
 		ui.Info(info)
 	}
-	for _, err := range errs {
+	for _, err := range results.errs {
 		ui.Errorf("%s", err)
 	}
 	return ok
@@ -46,23 +53,22 @@ func realCheckAll(ctx context.Context, ui termio.UI) bool {
 // collectChecks runs every prerequisite check, collecting all failures so
 // CheckAll can report them together. checkPlatform is the only platform
 // specific check and comes first.
-func collectChecks(ctx context.Context) ([]string, []error) {
-	var infos []string
-	var errs []error
+func collectChecks(ctx context.Context) checkResults {
+	var results checkResults
 	for _, err := range []error{
 		checkPlatform(),
 		CheckDocker(ctx),
 	} {
 		if err != nil {
-			errs = append(errs, err)
+			results.errs = append(results.errs, err)
 		}
 	}
 	msbMessages, err := checkMsb(ctx)
-	infos = append(infos, msbMessages...)
+	results.infos = append(results.infos, msbMessages...)
 	if err != nil {
-		errs = append(errs, err)
+		results.errs = append(results.errs, err)
 	}
-	return infos, errs
+	return results
 }
 
 // realCheckDocker pings the Docker daemon, describing how to fix it on failure.

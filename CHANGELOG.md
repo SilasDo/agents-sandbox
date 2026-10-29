@@ -101,6 +101,9 @@ command reports the bare version (e.g. `0.1.0`).
 - `--dry-run` and `--dry-run-vm` are modelled as one execution mode resolved at the session/CLI boundary
   (`runoptions.ResolveMode`), with `--dry-run` subsuming `--dry-run-vm`; `--dry-run` no longer prints the
   `dry-run-vm: auto-enabled` verbose line (#344).
+- Internal: the multi-value returns of `reconfig.ResolveReconfig`, the doctor check collector, the reprovision
+  merged-config builder, and `configmerge.BuildMerged` are now named result structs, so call sites read the values
+  they carry instead of positional tuples (#24).
 
 ### Fixed
 
