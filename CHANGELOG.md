@@ -119,6 +119,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Runner image: a change of the host user's UID or GID now rebuilds the image. The `dev` user is created with the host
+  UID/GID, but the rebuild check ignored them, so the image kept the old UID and files in `/workspace` were no longer
+  owned by `dev`. The image records the UID/GID in a new `org.agents-sandbox.identity.user` label; images built before
+  this change are reused until their next rebuild (#355).
 - State: a project's first run no longer persists a `state.yaml` holding only config fingerprints with an empty
   `home_volume`. Recording the fingerprints and the image provenance after a VM is created is now a no-op when no state
   file exists yet — matching the other pre-home-resolution writers — so the next run no longer resolves the empty volume

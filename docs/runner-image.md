@@ -91,6 +91,11 @@ Docker-in-Docker), so the verbose line names the changed input — for example `
 A reuse logs `reusing runner image …: content identity unchanged`; an image without these identity labels (built by an
 older version) is reported as a generic content change.
 
+The `dev` user is created with your host user's UID and GID, so files it writes to `/workspace` stay owned by you. The
+image records them in the `org.agents-sandbox.identity.user` label, and a run as a user with a different UID or GID
+rebuilds the image (`host user uid/gid changed`). An image built by an older version has no such label and is reused
+until its next rebuild.
+
 ### Content-verified load
 
 Before skipping a load, `EnsureLoaded` verifies the microsandbox cache content by comparing its config digest against the

@@ -123,11 +123,14 @@ const dockerfileIDLabelKey = "org.agents-sandbox.dockerfile-id"
 // Image identity labels record the individual inputs that determine the content
 // identity, so a rebuild can name which input changed. Tool-owned render
 // templates are intentionally not represented: a mismatch with matching
-// components is reported as a generic content change.
+// components is reported as a generic content change. The user label records a
+// host-dependent input that the dockerfile-id deliberately leaves out (see
+// computeDockerfileID); it is compared on its own.
 const (
 	projectDockerfileHashLabelKey = "org.agents-sandbox.identity.dockerfile-hash"
 	agentVersionLabelKey          = "org.agents-sandbox.identity.agent-version"
 	dockerLabelKey                = "org.agents-sandbox.identity.docker"
+	userLabelKey                  = "org.agents-sandbox.identity.user"
 )
 
 // Build args carrying the identity components to the finalization block.
@@ -135,6 +138,7 @@ const (
 	projectDockerfileHashArg = "IDENTITY_PROJECT_DOCKERFILE_HASH"
 	agentVersionArg          = "IDENTITY_AGENT_VERSION"
 	dockerArg                = "IDENTITY_DOCKER"
+	userArg                  = "IDENTITY_USER"
 )
 
 // identityNone normalizes an absent identity input (e.g. no project Dockerfile
@@ -147,6 +151,8 @@ type imageIdentity struct {
 	ProjectDockerfileHash string
 	AgentVersion          string
 	Docker                string
+	// User is the host "uid:gid" the dev user is created with (hostUserIdentity).
+	User string
 }
 
 // computeImageIdentity derives the identity components from the build inputs.
@@ -155,7 +161,14 @@ func computeImageIdentity(projectDockerfile []byte, agentVersion string, docker 
 		ProjectDockerfileHash: hashOrNone(projectDockerfile),
 		AgentVersion:          valueOrNone(agentVersion),
 		Docker:                strconv.FormatBool(docker),
+		User:                  "", // host-dependent; set by withHostUser
 	}
+}
+
+// hostUserIdentity renders the host user's uid and gid as the identity value
+// recorded in the user label, e.g. "1000:1000".
+func hostUserIdentity(uid, gid int) string {
+	return strconv.Itoa(uid) + ":" + strconv.Itoa(gid)
 }
 
 // hashOrNone returns the SHA-256 of data, or identityNone when data is empty.
@@ -175,13 +188,16 @@ func valueOrNone(s string) string {
 	return s
 }
 
-// computeDockerfileID returns the content identity of the synthetic build
+// computeDockerfileID returns the source signature of the synthetic build
 // context — the rendered runner Dockerfile and every build-context file — plus
-// the pinned agent version, capturing every input that affects the baked image
-// while excluding host-dependent build args. The files travel under invariant
-// COPY lines, so their bytes and modes must be part of the identity for an edit
-// to invalidate an existing image. The file list is shared with the tar writer
-// so a new asset cannot be missed here.
+// the pinned agent version. It covers every tool- and project-controlled input
+// and deliberately excludes host-dependent ones (the dev user's uid/gid), so the
+// value is reproducible from the project alone (RunnerDockerfileID) and stable
+// across machines. Host-dependent inputs are recorded in their own identity
+// labels and compared separately by the build decision (changedHostReasons).
+// The files travel under invariant COPY lines, so their bytes and modes must be
+// part of the signature for an edit to invalidate an existing image. The file
+// list is shared with the tar writer so a new asset cannot be missed here.
 func computeDockerfileID(rendered []byte, agentVersion string) string {
 	h := sha256.New()
 	h.Write(rendered)
@@ -799,6 +815,7 @@ ARG DOCKERFILE_ID
 ARG IDENTITY_PROJECT_DOCKERFILE_HASH
 ARG IDENTITY_AGENT_VERSION
 ARG IDENTITY_DOCKER
+ARG IDENTITY_USER
 
 USER dev
 # extend PATH with ~/.local/bin
@@ -811,6 +828,7 @@ LABEL org.agents-sandbox.dockerfile-id=$DOCKERFILE_ID
 LABEL org.agents-sandbox.identity.dockerfile-hash=$IDENTITY_PROJECT_DOCKERFILE_HASH
 LABEL org.agents-sandbox.identity.agent-version=$IDENTITY_AGENT_VERSION
 LABEL org.agents-sandbox.identity.docker=$IDENTITY_DOCKER
+LABEL org.agents-sandbox.identity.user=$IDENTITY_USER
 `, pathMergeAsset, pathMergeDest, trustHelperAsset, trustHelperDest, trustHelperLicenseAsset, trustHelperLicenseDest,
 		hostOpenerBlock())
 }

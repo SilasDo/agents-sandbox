@@ -398,6 +398,7 @@ func userBuildArgs(
 		projectDockerfileHashArg: &identity.ProjectDockerfileHash,
 		agentVersionArg:          &identity.AgentVersion,
 		dockerArg:                &identity.Docker,
+		userArg:                  &identity.User,
 	}
 	if docker {
 		v := dockerVersion
@@ -563,11 +564,18 @@ func renderBuildPlan(
 	}
 	return buildPlan{
 		rendered: rendered,
-		identity: computeImageIdentity(
+		identity: withHostUser(computeImageIdentity(
 			projectDockerfile, identityVersion, effectiveDocker(projectDockerfile, docker),
-		),
+		)),
 		dockerfileID: computeDockerfileID(rendered, identityVersion),
 	}, nil
+}
+
+// withHostUser returns identity with the current host user's uid/gid, which
+// buildImage bakes into the dev user via the USER_UID/USER_GID build args.
+func withHostUser(identity imageIdentity) imageIdentity {
+	identity.User = hostUserIdentity(os.Getuid(), os.Getgid())
+	return identity
 }
 
 // planRunnerImage renders the build plan and computes the local build decision.
