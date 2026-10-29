@@ -94,12 +94,14 @@ func ResolveIdentity(cwd string) (Identity, error) {
 	}
 	// The bare root is not a linked worktree, so bindRoot is the worktree root
 	// itself: this is the cwd that predates the split with a path-derived slug.
+	// A bare root named "<name>.git" was keyed under that same slug as a
+	// non-repo folder (#433); its checkout slug hashes the same path, so it only
+	// needs adopting when the origin gives the checkout slug another folder.
 	if bare && bindRoot == worktreeRoot {
 		if legacy := projectSlug(
 			sanitizeFolderName(filepath.Base(worktreeRoot)),
 			worktreeRoot,
-		); legacy != repoSlug &&
-			legacy != checkoutSlug { // gomutants:disable EXPRESSION_REMOVE reason="when reached, commonGitDir differs from the worktree root, so this legacy slug never equals the common-dir-derived checkout slug"
+		); legacy != repoSlug && legacy != checkoutSlug {
 			identity.LegacyRepoSlugs = []string{legacy}
 		}
 	}

@@ -119,6 +119,9 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- A bare repository cloned as `<name>.git` (no `.git` entry of its own) is now recognized as a bare checkout instead
+  of a non-repo folder, so launching from its root uses the same origin-derived identity — state, VM, home volume — as
+  the worktrees inside it. Its previous path-keyed state is adopted (#433).
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with
