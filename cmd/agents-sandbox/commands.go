@@ -160,7 +160,7 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 			return nil
 		}
 		// A dry-run preview is documented to make no network request and no
-		// private-home write, so it must not provision the runtime. It still
+		// runtime download/install, so it must not provision the runtime. It still
 		// points the SDK at the private home so its read-only inspection
 		// (volumes, sandboxes) reports the objects a real run would use (#424).
 		if runoptions.ResolveMode(cmd).Previews() {

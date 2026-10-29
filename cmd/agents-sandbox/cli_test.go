@@ -72,8 +72,8 @@ func TestRootCommandReturnsRuntimePreparationError(t *testing.T) {
 
 // TestDryRunPreviewsSkipPreflightRuntimeInstall pins #424: a dry-run preview
 // must not install the microsandbox runtime in the root preflight. The preview
-// is documented to make no network request and no private-home write, so the
-// runtime install — which downloads into the private runtime home — must be
+// is documented to make no network request and to install/download nothing, so
+// the runtime install — which downloads into the private runtime home — must be
 // skipped before the command body renders the plan.
 func TestDryRunPreviewsSkipPreflightRuntimeInstall(t *testing.T) {
 	skipRuntimeInstall := func(t *testing.T) {
