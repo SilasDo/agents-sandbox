@@ -23,8 +23,8 @@ import (
 // state file does not mint a duplicate volume and orphan the previous one (issue
 // #219). When none is available it falls back to EnsureNewHome.
 //
-// skipVM passes through to EnsureNewHome: a fresh volume is still created and
-// recorded, but its prefill (which spawns a VM) is deferred.
+// skipVM passes through to EnsureNewHome: a fresh home is neither created nor
+// recorded, because its prefill spawns a VM; the first real run creates it.
 func (vm *Manager) ResolveHomeVolume(
 	ctx context.Context,
 	client msb.Client,
@@ -200,8 +200,11 @@ var recoverHomeState = state.RecoverHomeState
 
 // EnsureNewHome creates a fresh home volume from the image and writes the state.
 // It seeds the state with the desired config fingerprints so a fresh state is
-// never fingerprint-less while its VM exists (issue #183). Under skipVM the
-// prefill is deferred, since it spawns a throwaway VM.
+// never fingerprint-less while its VM exists (issue #183).
+//
+// Under skipVM nothing is created or written: the prefill spawns a throwaway
+// VM, and recording an unprefilled volume would make every later run reuse an
+// empty home (#429). The would-be name and state are returned for the preview.
 //
 // A failed state write surfaces the error and removes the volume it just
 // created, so a run never proceeds against a volume the launcher has no record
@@ -219,6 +222,12 @@ func (vm *Manager) EnsureNewHome(
 	ui termio.UI,
 ) (string, state.HomeState, error) {
 	volName := HomeVolumeName(k)
+	hs := fingerprints.Apply(state.NewHomeState(volName, info.Digest))
+	if skipVM {
+		ui.Infof("dry-run-vm: would create and prefill home volume %q (deferred to the next run with a VM)", volName)
+		return volName, hs, nil
+	}
+
 	vol, err := client.CreateVolume(ctx, volName,
 		msbSdk.WithVolumeKind(msbSdk.VolumeKindDir),
 	)
@@ -226,18 +235,13 @@ func (vm *Manager) EnsureNewHome(
 		return "", state.HomeState{}, fmt.Errorf("create volume %s: %w", volName, err)
 	}
 
-	if !skipVM {
-		if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
-			cleanupCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
-			defer cancel()
-			vm.cleanupVolume(cleanupCtx, client, vol.Name(), ui)
-			return "", state.HomeState{}, err
-		}
-	} else {
-		ui.Infof("dry-run: Would prefill home volume")
+	if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
+		defer cancel()
+		vm.cleanupVolume(cleanupCtx, client, vol.Name(), ui)
+		return "", state.HomeState{}, err
 	}
 
-	hs := fingerprints.Apply(state.NewHomeState(volName, info.Digest))
 	// Replace wholesale through the recovery transaction: a fresh home volume's
 	// state is authoritative, and the path is also reached to repair a malformed
 	// state file.

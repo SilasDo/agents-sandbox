@@ -121,6 +121,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- `--dry-run-vm` on a project without a home volume no longer creates the volume and records it in the state without
+  filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
+  for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
+  and fills it (#429).
 - A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
   resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
   managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
