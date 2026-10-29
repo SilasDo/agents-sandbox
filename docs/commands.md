@@ -16,6 +16,7 @@ The commands are grouped by area; jump to a group:
 - **Build and images:** [`build`](#build), [`image`](#image)
 - **Pruning:** [`prune`](#prune), [`image prune`](#image-prune), [`volume prune`](#volume-prune), [`sandbox prune`](#sandbox-prune), [`sandbox compact`](#sandbox-compact)
 - **Storage:** [`df`](#df), [`storage`](#storage)
+- **State:** [`state repair`](#state-repair)
 - **Configuration:** [`config`](#config), [`config paths`](#config-paths)
 - **Agents:** [`config agent`](#config-agent-name), [`config home`](#config-home)
 - **Volumes:** [`volume`](#volume)
@@ -60,7 +61,7 @@ Arguments after `--` are forwarded to the agent. Arguments before `--` that don'
 | `--disk-size`  | —     | `""`     | Project VM root disk size (e.g. 16G). Empty = microsandbox runtime default (~4 GiB). Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
 | `--tmp-size`   | —     | `2G`     | Size of `/tmp` tmpfs in the sandbox. An invalid value is rejected with an error. |
 | `--workspace-quota` | — | `16G` | Guest-write quota for the `/workspace` bind mount (e.g. `32G`), bounding writes on top of the host repo. Applied at VM creation; a change triggers recreation. An invalid value is rejected with an error. |
-| `--dry-run-vm` | —     | `false`  | Skip VM lifecycle but prepare everything else                                                                                              |
+| `--dry-run-vm` | —     | `false`  | Skip the VM lifecycle but prepare everything else. A project without a home volume gets none: creating it needs a VM, so the first run with a VM creates it. |
 | `--serve-only` | `-s`  | `false`  | Start the agent server published on host loopback at a dynamically allocated host port (no in-VM TUI); press `Ctrl-D` to exit, or send `SIGINT`/`SIGTERM` when stdin is not a terminal. The printed `http://127.0.0.1:<port>` URL is authoritative — use it (rather than assuming a fixed port) to connect from clients like Opencode Desktop. Set `OPENCODE_SERVER_PASSWORD` for basic auth (opencode); opencode2's server requires the baked credential `opencode:opencode` (username:password). |
 | `--agent`      | —     | `opencode2` | Coding-agent profile to run: `opencode`, `opencode2` (default), `pi`, `claude-code`, or `codex`.                                                                |
 | `--notify`     | —     | `off`     | Notify on session status: `on`, `off`, `desktop`, or `audio` (bare `--notify` = `on`). Overridable via `AGENTS_SANDBOX_NOTIFY`. Only applies to the `opencode` and `opencode2` agents (the only agents with a session event stream). |
@@ -338,6 +339,21 @@ agents-sandbox storage prune --older-than 24h --yes
 
 ---
 
+### state repair
+
+Quarantine a corrupt launcher-global state file (`~/.local/state/agents-sandbox/state.yaml`). An unparsable file
+blocks update checks, the runtime migration, and identity adoption; the error names this command. `state repair` renames
+the file to `state.yaml.corrupt-<timestamp>` and the next run starts from a fresh launcher state, so recorded update
+checks, migration progress, and adoption claims are lost. Nothing is deleted. A healthy or missing file is left alone,
+and a file written by a newer agents-sandbox is refused: upgrade instead. The command does not need the microsandbox
+runtime.
+
+```console
+agents-sandbox state repair
+```
+
+---
+
 ### list
 
 List all sandboxes on this host (across all projects).
@@ -412,7 +428,7 @@ The output names the launcher (host) config dirs actually read, as absolute path
 config dir: user="/home/me/.config/agents-sandbox/opencode2"  project="/work/repo/.agents-sandbox/opencode2"  (primary)
 ```
 
-The trailing label is `primary` when the agent's own namespace is used, or `legacy fallback "<dir>"` when the agent is reading a shared legacy namespace (see [agent configuration]({% link configuration/agent.md %})). These are host launcher-config dirs; the guest agent config path is always `~/.config/opencode` regardless.
+A dir that does not exist is marked `(missing)`, e.g. `user="/home/me/.config/agents-sandbox/opencode2" (missing)`. The trailing label is `primary` when the agent's own namespace is used, or `legacy fallback "<dir>"` when the agent is reading a shared legacy namespace (see [agent configuration]({% link configuration/agent.md %})). These are host launcher-config dirs; the guest agent config path is always `~/.config/opencode` regardless.
 
 Each host file is listed as `merged` (its VM path is the merged config path or part of the removed config-file family) or `not merged` (copied verbatim). Verbatim mirror files are listed as their host source path → VM path.
 

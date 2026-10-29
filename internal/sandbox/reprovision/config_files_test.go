@@ -1149,3 +1149,52 @@ func countWarns(warns []string, substr string) int {
 	}
 	return n
 }
+
+func TestLoadConfigFilesInfosWhenNoLauncherConfigDirExists(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	a, _ := agent.Lookup("opencode2")
+
+	ui := termio.NewTestMock(t)
+	if _, err := LoadConfigFiles(a, &ui, true); err != nil {
+		t.Fatalf("LoadConfigFiles: %v", err)
+	}
+	if len(ui.InfoCalls) != 1 {
+		t.Fatalf("info count = %d, want 1; infos: %v", len(ui.InfoCalls), ui.InfoCalls)
+	}
+	info := ui.InfoCalls[0]
+	userDir := filepath.Join(cp.UserConfigDir(), "opencode2")
+	projectDir := filepath.Join(cp.ProjectConfigDirAbs(), "opencode2")
+	for _, want := range []string{userDir, projectDir, "agents-sandbox config agent"} {
+		if !strings.Contains(info, want) {
+			t.Errorf("info should mention %q; got %q", want, info)
+		}
+	}
+	if len(ui.WarnCalls) != 0 {
+		t.Errorf("unexpected warnings: %v", ui.WarnCalls)
+	}
+}
+
+func TestLoadConfigFilesNoInfoWhenALauncherConfigDirExists(t *testing.T) {
+	cases := map[string]func(configpaths.ConfigPaths) string{
+		"user":            func(cp configpaths.ConfigPaths) string { return filepath.Join(cp.UserConfigDir(), "opencode2") },
+		"project":         func(cp configpaths.ConfigPaths) string { return filepath.Join(cp.ProjectConfigDirAbs(), "opencode2") },
+		"legacy fallback": func(cp configpaths.ConfigPaths) string { return filepath.Join(cp.UserConfigDir(), "opencode") },
+	}
+	for name, dirOf := range cases {
+		t.Run(name, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			if err := os.MkdirAll(dirOf(configpaths.Get()), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			a, _ := agent.Lookup("opencode2")
+			ui := termio.NewTestMock(t)
+			if _, err := LoadConfigFiles(a, &ui, true); err != nil {
+				t.Fatalf("LoadConfigFiles: %v", err)
+			}
+			if len(ui.InfoCalls) != 0 {
+				t.Errorf("unexpected info: %v", ui.InfoCalls)
+			}
+		})
+	}
+}

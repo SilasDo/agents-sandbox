@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -219,7 +220,8 @@ var marshalRootState = yaml.Marshal
 
 // ReadRootState loads the launcher-global state. A missing file yields a zero
 // RootState with no error; a parse failure is wrapped with ErrStateUnparsable
-// (as in ReadState) and other I/O failures are returned plain.
+// (as in ReadState) and names RepairRootStateCommand as the way out, and other
+// I/O failures are returned plain.
 func ReadRootState() (*RootState, error) {
 	path := rootStateFile()
 	data, err := os.ReadFile(path)
@@ -230,6 +232,10 @@ func ReadRootState() (*RootState, error) {
 		return nil, fmt.Errorf("read root state file %s: %w", path, err)
 	}
 	state, err := parseRootState(data)
+	if errors.Is(err, ErrStateUnparsable) {
+		return nil, fmt.Errorf("parse root state file %s (run `%s` to quarantine it): %w",
+			path, RepairRootStateCommand, err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("parse root state file %s: %w", path, err)
 	}
@@ -248,7 +254,14 @@ func ReadRootState() (*RootState, error) {
 // The legacy key is decoded into its own small struct rather than a mirror of
 // RootState: a mirror silently drops any field it does not restate, so adding a
 // field to RootState would lose that field's data on every read.
+//
+// The schema is checked before any field is decoded, so a newer document whose
+// fields changed shape is refused with ErrStateSchemaUnsupported, never misread
+// as unparsable (which RepairRootState would quarantine).
 func parseRootState(data []byte) (RootState, error) {
+	if err := checkDocumentSchema(data, RootStateSchema); err != nil {
+		return RootState{}, err
+	}
 	var state RootState
 	if err := yaml.Unmarshal(data, &state); err != nil {
 		return RootState{}, fmt.Errorf("%w: %w", ErrStateUnparsable, err)
@@ -268,7 +281,7 @@ func parseRootState(data []byte) (RootState, error) {
 // writeRootState atomically writes the launcher-global state to disk. Unexported
 // so every root-state mutation flows through WithRootState.
 func writeRootState(s RootState) error {
-	data, err := marshalRootState(s)
+	data, err := marshalRootState(versionedDocument[RootState]{Schema: RootStateSchema, Document: s})
 	if err != nil {
 		return fmt.Errorf("marshal root state: %w", err)
 	}

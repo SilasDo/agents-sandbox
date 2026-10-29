@@ -10,6 +10,12 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Added
 
+- `state repair` quarantines a corrupt launcher-global `state.yaml` by renaming it to `state.yaml.corrupt-<timestamp>`,
+  so update checks, the runtime migration, and identity adoption are no longer blocked until manual deletion. The
+  parse error names the command. See `docs/commands.md` (#332).
+- State files carry a `schema:` version. A version of agents-sandbox refuses to change a state file written by a newer
+  version, instead of erasing fields it does not know on its next write (#337).
+
 - CI: `main` merges through a **merge queue**. A queued PR is built on top of the current `main` plus the pull requests
   ahead of it, and the required checks — `lint`, `test`, `race`, `deadcode` — run on that combined tree before it
   merges, so two independently-green PRs can no longer combine into a broken `main`. `race` and `deadcode` are now
@@ -51,6 +57,9 @@ command reports the bare version (e.g. `0.1.0`).
   receives them already split by the host shell and the guest shell splits the joined line again, so an argument
   containing spaces (`agents-sandbox run -- chat -q "explain this function"`) used to reach the agent as several words.
   `opencode`, `opencode2`, `pi`, `claude-code`, and `codex` share the quoting.
+- A first session no longer stays silent when the agent has no launcher config dir: `run` and `shell` print an info
+  line naming the user and project dirs (`~/.config/agents-sandbox/<agent>/`, `.agents-sandbox/<agent>/`), and
+  `config agent` marks each missing dir `(missing)` (#432).
 - `stop --force` and `kill --force` now remove the persisted state of an already-stopped or never-started project VM.
   Previously they printed "already stopped" and left it in place, so `--force` never cleaned up such a VM; they now
   skip the stop or kill, remove the sandbox, and say so. `--dry-run` still removes nothing. See `docs/commands.md`.
@@ -122,6 +131,21 @@ command reports the bare version (e.g. `0.1.0`).
 - A bare repository cloned as `<name>.git` (no `.git` entry of its own) is now recognized as a bare checkout instead
   of a non-repo folder, so launching from its root uses the same origin-derived identity — state, VM, home volume — as
   the worktrees inside it. Its previous path-keyed state is adopted (#433).
+- Without an `origin` remote, a linked worktree inside its checkout now shares the checkout's repo slug, as documented,
+  so both see the same `~/.config/agents-sandbox/<repo-slug>/` config dir and `org.agents-sandbox.project` label. It
+  previously derived the slug from the worktree's own folder (#434).
+- Two sessions starting a new project at the same time no longer leak a home volume. Previously both created a fresh
+  home volume and the later state write replaced the earlier one, leaving a volume unrecorded; in the same second, the
+  generated names collided and the second session failed. The later session now uses the volume the first one recorded
+  and removes its own, and a colliding name is retried with the next timestamp (#431).
+- `--dry-run-vm` on a project without a home volume no longer creates the volume and records it in the state without
+  filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
+  for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
+  and fills it (#429).
+- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
+  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
+  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
+
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with

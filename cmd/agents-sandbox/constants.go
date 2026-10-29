@@ -40,6 +40,8 @@ const (
 	cmdRemove     = "remove"
 	cmdInspect    = "inspect"
 	cmdCompact    = "compact"
+	cmdState      = "state"
+	cmdRepair     = "repair"
 
 	flagRemove = "rm"
 

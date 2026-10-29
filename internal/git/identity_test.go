@@ -112,12 +112,11 @@ func TestResolveIdentityWorktreeSharesCheckoutSlug(t *testing.T) {
 	require.False(t, got.OutsideWorktree)
 }
 
-// TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug pins the checkout-slug
-// derivation when there is no origin: the folder comes from the checkout
-// basename, not the worktree's, so an inside-worktree shares its checkout slug.
-// The repo slug keeps its documented no-origin fallback (folder and hash both
-// from the worktree root), so the inside-worktree still has its own repo slug.
-func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
+// TestResolveIdentityNoOriginWorktreeSharesCheckoutSlugs pins both slugs'
+// derivation when there is no origin: folder and hash come from the checkout,
+// not the worktree, so an inside-worktree shares its checkout's checkout slug
+// and repo slug (#434).
+func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlugs(t *testing.T) {
 	t.Run("plain checkout", func(t *testing.T) {
 		repo := mustResolvePath(t, testutil.InitRepo(t))
 		main := mustResolveIdentity(t, repo)
@@ -131,10 +130,8 @@ func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
 		require.False(t, got.OutsideWorktree)
 		require.Equal(t, repo, got.BindRoot)
 		require.Equal(t, repo, got.CheckoutRoot)
-		// The repo slug's unchanged fallback derives from the worktree root, so
-		// the inside-worktree does not share its checkout's repo slug.
-		require.Equal(t, projectSlug(sanitizeFolderName("wt"), nested), got.RepoSlug)
-		require.NotEqual(t, main.RepoSlug, got.RepoSlug)
+		require.Equal(t, main.RepoSlug, got.RepoSlug)
+		require.Equal(t, projectSlug(sanitizeFolderName(filepath.Base(repo)), repo), got.RepoSlug)
 	})
 
 	t.Run("bare root", func(t *testing.T) {
@@ -149,6 +146,7 @@ func TestResolveIdentityNoOriginWorktreeSharesCheckoutSlug(t *testing.T) {
 		got := mustResolveIdentity(t, filepath.Join(root, "main"))
 
 		require.Equal(t, main.CheckoutSlug, got.CheckoutSlug)
+		require.Equal(t, main.RepoSlug, got.RepoSlug)
 		require.False(t, got.OutsideWorktree)
 		require.Equal(t, root, got.BindRoot)
 		require.Equal(t, root, got.CheckoutRoot)

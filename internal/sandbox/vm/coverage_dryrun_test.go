@@ -105,6 +105,67 @@ func TestPrepareSandboxDryRunVM(t *testing.T) {
 	}
 }
 
+// TestPrepareSandboxDryRunVMFreshProjectCreatesNoHome pins #429 end to end: a
+// --dry-run-vm run on a project without state neither creates a home volume nor
+// writes state, so the first real run creates and prefills the home itself.
+func TestPrepareSandboxDryRunVMFreshProjectCreatesNoHome(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Chdir(testutil.InitRepo(t))
+
+	sandboximage.WithMockAgentVersionResolver(t, func(_ context.Context, _ agent.Agent, req string) (string, error) {
+		return req, nil
+	})
+	origUpgradeInfo := agentLatestVersion
+	agentLatestVersion = func(_ context.Context, _ agent.Agent) (string, error) { return "1.5.0", nil }
+	t.Cleanup(func() { agentLatestVersion = origUpgradeInfo })
+
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		ImageBuildFn: func(_ context.Context, _ io.Reader, _ client.ImageBuildOptions) (client.ImageBuildResult, error) {
+			return client.ImageBuildResult{Body: io.NopCloser(strings.NewReader(""))}, nil
+		},
+		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+			return client.ImageInspectResult{
+				ID: "sha256:abc123",
+				Config: &dockerspec.DockerOCIImageConfig{
+					Env:    []string{"PATH=/usr/bin"},
+					Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+				},
+			}, nil
+		},
+	})
+
+	mock := &msb.MockMsbClient{
+		ImageGetFn: func(_ context.Context, _ string) error { return nil },
+		ImageInspectFn: func(_ context.Context, _ string) (*msbSdk.ImageConfig, error) {
+			return &msbSdk.ImageConfig{
+				Env:    []string{"PATH=/usr/bin"},
+				Labels: map[string]string{"org.agents-sandbox.agent": "opencode"},
+			}, nil
+		},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			t.Errorf("dry-run-vm created home volume %q", name)
+			return &msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	msb.WithMsbMock(t, mock)
+
+	ui := termio.NewTestMock(t)
+	sess, err := PrepareSandbox(context.Background(), options.RunOptions{}, true, &ui)
+	if err != nil {
+		t.Fatalf("PrepareSandbox (dry-run-vm): %v", err)
+	}
+	if sess.Sandbox() != nil {
+		t.Error("expected a nil sandbox for dry-run-vm")
+	}
+	if len(mock.CreatedSandboxes) != 0 {
+		t.Errorf("expected no prefill sandbox, got %d", len(mock.CreatedSandboxes))
+	}
+	k := state.Key{Slug: git.MustCheckoutSlug(), Agent: "opencode"}
+	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("ReadState err = %v, want ErrStateNotFound", err)
+	}
+}
+
 // TestPrepareSandboxDryRunVMServeOnlyPublishesPort covers the serve-only
 // ServeHostPort assignment in PrepareSandbox: with no existing published port
 // the run probes a free host port and records it on the Session, even on the
@@ -284,7 +345,8 @@ func TestPrepareSandboxVolumeError(t *testing.T) {
 	t.Cleanup(func() { SetDaemonHealthFunc(origDaemon) })
 
 	ui := termio.NewTestMock(t)
-	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, true, &ui); err == nil {
+	// A real run: under skip-VM a fresh home volume is never created (#429).
+	if _, err := PrepareSandbox(context.Background(), options.RunOptions{}, false, &ui); err == nil {
 		t.Fatal("expected error when the home volume cannot be created")
 	}
 }

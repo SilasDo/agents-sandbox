@@ -21,10 +21,14 @@ const (
 	dstMount  = "/dst"
 )
 
+// homeVolumeClock is the clock HomeVolumeName timestamps from. It is a seam so
+// tests can control the generated names.
+var homeVolumeClock = time.Now
+
 // HomeVolumeName generates a prefix-free volume name for the given
 // project/agent key with a UTC timestamp.
 func HomeVolumeName(k state.Key) string {
-	ts := time.Now().UTC().Format("20060102T150405")
+	ts := homeVolumeClock().UTC().Format("20060102T150405")
 	return naming.HomeVolumeName(k.Slug, k.Agent, ts)
 }
 

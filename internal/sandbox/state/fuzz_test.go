@@ -11,8 +11,8 @@ import (
 // FuzzParseState drives arbitrary bytes through both persisted-state parsers:
 // the per-project HomeState and the launcher-global RootState. A state file is
 // hand-editable and an interrupted write can corrupt either one, so neither may
-// panic, a malformed document must be classified as ErrStateUnparsable (never a
-// bare error), and a document the parser accepts must serialize stably: a
+// panic, a malformed document must be classified as ErrStateUnparsable or
+// ErrStateSchemaUnsupported (never a bare error), and a document the parser accepts must serialize stably: a
 // re-read of what the writer produces yields the same bytes again, so state
 // never drifts from one rewrite to the next.
 //
@@ -36,6 +36,9 @@ func FuzzParseState(f *testing.F) {
 		"home:\n\tvolume: tab\n",
 		"migrations:\n  a: {status: x}\n  a: {status: y}\n",
 		"a: &anchor [1]\nb: *anchor\n",
+		"schema: 1\nhome_volume: vol\n",
+		"schema: 2\n",
+		"schema: -1\n",
 	} {
 		f.Add([]byte(seed))
 	}
@@ -43,8 +46,12 @@ func FuzzParseState(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		home, err := parseHomeState(data)
 		if err != nil {
-			if !errors.Is(err, ErrStateUnparsable) {
-				t.Fatalf("parseHomeState(%q) error = %v, want ErrStateUnparsable", data, err)
+			if !errors.Is(err, ErrStateUnparsable) && !errors.Is(err, ErrStateSchemaUnsupported) {
+				t.Fatalf(
+					"parseHomeState(%q) error = %v, want ErrStateUnparsable or ErrStateSchemaUnsupported",
+					data,
+					err,
+				)
 			}
 		} else {
 			assertSerializesStably(t, "parseHomeState", home, parseHomeState)
@@ -52,8 +59,12 @@ func FuzzParseState(f *testing.F) {
 
 		root, err := parseRootState(data)
 		if err != nil {
-			if !errors.Is(err, ErrStateUnparsable) {
-				t.Fatalf("parseRootState(%q) error = %v, want ErrStateUnparsable", data, err)
+			if !errors.Is(err, ErrStateUnparsable) && !errors.Is(err, ErrStateSchemaUnsupported) {
+				t.Fatalf(
+					"parseRootState(%q) error = %v, want ErrStateUnparsable or ErrStateSchemaUnsupported",
+					data,
+					err,
+				)
 			}
 		} else {
 			assertSerializesStably(t, "parseRootState", root, parseRootState)
