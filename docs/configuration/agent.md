@@ -41,6 +41,9 @@ Each agent owns its config directories, one subdir per agent under the tool's co
 - **User:** `~/.config/agents-sandbox/<agent>/` (e.g. `~/.config/agents-sandbox/opencode/`, `~/.config/agents-sandbox/opencode2/`)
 - **Project:** `.agents-sandbox/<agent>/` (e.g. `.agents-sandbox/opencode/`, `.agents-sandbox/opencode2/`)
 
+While neither dir exists (and no legacy fallback applies), every `run` and `shell` prints an info line naming both
+paths, so a fresh install shows where launcher config goes. Creating either dir silences it.
+
 > **Note:** Legacy fallback, migrating from an older version — the `opencode2` launcher config dir is new. While **no**
 > `opencode2` dir exists in **either** scope, `opencode2` reads the old shared `opencode` dir — which the `opencode`
 > agent also uses — and warns on every run while it falls back. To migrate, **copy** the files you want `opencode2` to
