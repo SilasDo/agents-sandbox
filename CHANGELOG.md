@@ -122,6 +122,28 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- Without an `origin` remote, a linked worktree inside its checkout now shares the checkout's repo slug, as documented,
+  so both see the same `~/.config/agents-sandbox/<repo-slug>/` config dir and `org.agents-sandbox.project` label. It
+  previously derived the slug from the worktree's own folder (#434).
+- Two sessions starting a new project at the same time no longer leak a home volume. Previously both created a fresh
+  home volume and the later state write replaced the earlier one, leaving a volume unrecorded; in the same second, the
+  generated names collided and the second session failed. The later session now uses the volume the first one recorded
+  and removes its own, and a colliding name is retried with the next timestamp (#431).
+- `--dry-run-vm` on a project without a home volume no longer creates the volume and records it in the state without
+  filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
+  for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
+  and fills it (#429).
+- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
+  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
+  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
+
+- A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
+  prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
+  download and install the preview promises not to perform — and an offline host aborted with
+  `install msb runtime: …` instead of the plan. The preview now points the SDK at the private home without provisioning
+  it, so it still reports the image and home-volume decisions a real run would make. Only the root preflight skips the
+  runtime install for a preview; commands that run their own `doctor` preflight (`shell --dry-run`,
+  `volume migrate/reset/edit --dry-run`) still provision the runtime (#424).
 - State: a project's first run no longer persists a `state.yaml` holding only config fingerprints with an empty
   `home_volume`. Recording the fingerprints and the image provenance after a VM is created is now a no-op when no state
   file exists yet — matching the other pre-home-resolution writers — so the next run no longer resolves the empty volume
@@ -238,6 +260,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
   removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
   longer leaves an orphaned volume that every retry added to (#427).
+- Home volume: a first run whose fresh home volume is created but whose state write fails now surfaces the error and
+  removes the uncommitted volume, instead of warning and continuing against a volume the launcher has no record of. The
+  volume is kept when the write reports an installed-but-not-durable document (`state.WriteInstalled`), since that state
+  already names it (#428).
 - Docs: the bare-worktrees recipe no longer claims a worktree outside its checkout is unsupported and warned about. It
   now says such a worktree runs as its own checkout, names the remaining limit (the checkout's shared git dir is not
   reachable inside the VM), and links the code-fix issue (#435, #426).

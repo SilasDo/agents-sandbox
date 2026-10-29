@@ -42,10 +42,9 @@ Every error before step 4 leaves the destination untouched; an `ErrInstalled` er
 the new one and only its durability is unproven.
 
 A caller that cleans up external resources after a failed state write — the home-volume callers in `volume`
-(`ApplyHomeAction`, `volumeOp`), which would otherwise delete the freshly created volume — **must not** roll back
-when `state.WriteInstalled` is true. Deleting the volume then would leave the just-installed state pointing at a
-removed volume. `Manager.cleanupUncommittedVolume` is the single implementation of that check for the volume
-paths.
+(`ApplyHomeAction`, `volumeOp`, `EnsureNewHome`), which would otherwise delete the freshly created volume — **must not**
+roll back when `state.WriteInstalled` is true. Deleting the volume then would leave the just-installed state pointing at
+a removed volume. `Manager.cleanupUncommittedVolume` is the single implementation of that check for the volume paths.
 
 The error is still returned (durability was not proven); only the destructive rollback is suppressed. Post-commit
 best-effort steps skipped on that path (retiring a spent adoption claim, removing the old volume) are safe to

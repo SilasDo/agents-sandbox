@@ -123,9 +123,8 @@ func PrepareSandbox(
 		return nil, err
 	}
 	k := state.Key{Slug: adoption.Slug, Agent: a.Name()}
-	bindRoot := identity.BindRoot
-	repoSlug := identity.RepoSlug
-	guestCWD := guestWorkspacePath(bindRoot, cwd)
+	opts.Mounts = withSharedGitDirMount(opts.Mounts, identity, ui)
+	guestCWD := guestWorkspacePath(identity.BindRoot, cwd)
 	// Decide the agent version to bake before touching the image: this may offer
 	// an upgrade up front, so a normal run never rebuilds the image twice. See
 	// resolveBuildVersion for the decision rules.
@@ -182,7 +181,9 @@ func PrepareSandbox(
 	opts.Recreate = decision.Recreate
 	opts.ServeHostPort = resolveServeHostPort(opts, decision.ServeHostPort)
 
-	sb, boot, err := ensureProjectVM(ctx, opts, imageInfo, homeVol, bindRoot, k, repoSlug, skipVM, env, ui)
+	sb, boot, err := ensureProjectVM(
+		ctx, opts, imageInfo, homeVol, identity.BindRoot, k, identity.RepoSlug, skipVM, env, ui,
+	)
 	if err != nil {
 		return nil, err
 	}
