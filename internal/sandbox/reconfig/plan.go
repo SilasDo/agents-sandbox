@@ -330,45 +330,52 @@ func resourceModification(cfg *msbSdk.SandboxConfig, opts options.RunOptions) *m
 	return &mo
 }
 
+// ApplyActions names what a resolved reconfiguration should apply: a VM
+// recreate, a daemon restart, or neither.
+type ApplyActions struct {
+	Recreate bool
+	Restart  bool
+}
+
 // ResolveReconfig resolves a Plan into concrete apply actions based on the
-// number of other attached clients. Returns (applyRecreate, applyRestart, error).
+// number of other attached clients.
 func ResolveReconfig(
 	ctx context.Context,
 	ui termio.UI,
 	plan *Plan,
 	otherClientCount int,
 	changes []Change,
-) (bool, bool, error) {
+) (ApplyActions, error) {
 	_ = ctx
 	if plan.Recreate {
 		if otherClientCount == 0 {
 			reportAloneChange(ui, "rebuilding project VM", "rebuild", changes)
-			return true, false, nil
+			return ApplyActions{Recreate: true, Restart: false}, nil
 		}
 		key, err := PromptA(ui, changes, otherClientCount)
 		if err != nil {
-			return false, false, nil //nolint:nilerr // brief: swallow select errors
+			return ApplyActions{}, nil //nolint:nilerr // brief: swallow select errors
 		}
 		if key == quitKey {
-			return false, false, errors.New("config apply aborted by user")
+			return ApplyActions{}, errors.New("config apply aborted by user")
 		}
-		return false, false, nil // keep
+		return ApplyActions{}, nil // keep
 	}
 	if plan.RestartDaemons {
 		if otherClientCount == 0 {
 			reportAloneChange(ui, "restarting daemons", "restart", changes)
-			return false, true, nil
+			return ApplyActions{Recreate: false, Restart: true}, nil
 		}
 		key, err := PromptB(ui, changes, otherClientCount)
 		if err != nil {
-			return false, false, nil //nolint:nilerr // brief: swallow select errors
+			return ApplyActions{}, nil //nolint:nilerr // brief: swallow select errors
 		}
 		if key == quitKey {
-			return false, false, errors.New("config apply aborted by user")
+			return ApplyActions{}, errors.New("config apply aborted by user")
 		}
-		return false, key == restartKey, nil
+		return ApplyActions{Recreate: false, Restart: key == restartKey}, nil
 	}
-	return false, false, nil
+	return ApplyActions{}, nil
 }
 
 func diskMiBOr0(cfg *msbSdk.SandboxConfig) uint32 {

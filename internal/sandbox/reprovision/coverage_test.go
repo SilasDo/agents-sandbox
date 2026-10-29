@@ -2,8 +2,10 @@ package reprovision
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/inoio/agents-sandbox/internal/agent"
@@ -109,6 +111,33 @@ func TestLoadConfigFilesBuildHooksError(t *testing.T) {
 	ui := termio.NewTestMock(t)
 	if _, err := LoadConfigFilesForHost(opencodeTestAgent(), t.TempDir(), VMHomeDir, &ui, true); err == nil {
 		t.Error("expected an error for an invalid hook value")
+	}
+}
+
+// TestLoadConfigFilesMergedConfigError verifies the error path when merging the
+// agent's snippet files fails: the opencode snippet pattern (opencode*.json*)
+// matches the .json.yaml name, and the YAML parser accepts the non-finite float
+// the JSON marshaler then rejects.
+func TestLoadConfigFilesMergedConfigError(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	cp := configpaths.Get()
+	testutil.WriteFile(
+		t,
+		configpaths.MustDir(cp.UserAgentConfigDir(opencodeTestAgent())),
+		"opencode-inf.json.yaml",
+		"v: !!float .inf\n",
+	)
+
+	ui := termio.NewTestMock(t)
+	_, err := LoadConfigFilesForHost(opencodeTestAgent(), t.TempDir(), VMHomeDir, &ui, true)
+	if err == nil || !strings.Contains(err.Error(), "merge agent config") {
+		t.Fatalf("LoadConfigFilesForHost error = %v, want merge agent config error", err)
+	}
+	// The wrapped cause is the JSON marshaler's rejection of the non-finite
+	// float; asserting it kills an ERRORF_WRAP ("%w" -> "%v") that leaves the
+	// message identical.
+	if _, ok := errors.AsType[*json.UnsupportedValueError](err); !ok {
+		t.Errorf("error %v does not wrap *json.UnsupportedValueError", err)
 	}
 }
 

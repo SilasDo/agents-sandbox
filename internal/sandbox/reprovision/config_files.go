@@ -203,11 +203,11 @@ func LoadConfigFilesForHost(
 	if err != nil {
 		return nil, err
 	}
-	mergedPath, mergedConfig, sources, hasSnippets, err := buildMergedConfig(a, vmHome, src)
+	merged, err := buildMergedConfig(a, vmHome, src)
 	if err != nil {
 		return nil, err
 	}
-	reserved, err := reservedHomeTargets(mergedPath, vmHome)
+	reserved, err := reservedHomeTargets(merged.path, vmHome)
 	if err != nil {
 		return nil, err
 	}
@@ -231,9 +231,10 @@ func LoadConfigFilesForHost(
 		delete(provisioned, p)
 		delete(modes, p)
 	}
-	if hasSnippets {
-		delete(provisioned, mergedPath)
-		delete(modes, mergedPath)
+	if merged.hasSnippets {
+		delete(provisioned, merged.path)
+		// gomutants:disable-next-line STATEMENT_REMOVE reason="applyMirrorPrecedence removes this same key from modes under the identical hasSnippets condition, so dropping the statement leaves ConfigFiles.Modes unchanged"
+		delete(modes, merged.path)
 	}
 	mirrorEntries, err := buildMirror(a, vmHome, src)
 	if err != nil {
@@ -243,17 +244,17 @@ func LoadConfigFilesForHost(
 	// Precedence: home overrides the mirror, the merged config overrides
 	// the mirror, and the mirror overrides the drop-in copy for the same path.
 	maps.Copy(modes, mirrorModes)
-	applyMirrorPrecedence(mirror, provisioned, homeFiles, mergedPath, hasSnippets, modes)
+	applyMirrorPrecedence(mirror, provisioned, homeFiles, merged.path, merged.hasSnippets, modes)
 	maps.Copy(modes, homeModes)
 	ensureHookExecutable(modes, hooks)
 	// Remove stale host config so it cannot shadow the merged config: when
 	// snippets exist the merged config must be the only config, and when host
 	// config provisioning is disabled no host file may remain.
-	remove := configFileFamilyPaths(mergedPath, configFamilyNames(a))
+	remove := configFileFamilyPaths(merged.path, configFamilyNames(a))
 	if !provisionHostConfig {
 		remove = append(remove, provisionDestinations(a, hostHome, vmHome)...)
 	}
-	keys := configKeys(mergedPath, hasSnippets, homeFiles, mirror, provisioned)
+	keys := configKeys(merged.path, merged.hasSnippets, homeFiles, mirror, provisioned)
 	if src.Fallback != "" {
 		legacyUser, legacyProject := SourceDirs(src)
 		ui.Warnf(
@@ -269,10 +270,10 @@ func LoadConfigFilesForHost(
 		)
 	}
 	return &ConfigFiles{
-		HasSnippets: hasSnippets,
-		Merged:      mergedConfig,
-		MergedPath:  mergedPath,
-		Sources:     sources,
+		HasSnippets: merged.hasSnippets,
+		Merged:      merged.content,
+		MergedPath:  merged.path,
+		Sources:     merged.sources,
 		Source:      src,
 		HomeFiles:   homeFiles,
 		Provisioned: provisioned,
@@ -450,25 +451,40 @@ func configFileFamilyPaths(mergedPath string, names []string) []string {
 	return paths
 }
 
-// buildMergedConfig merges the agent's snippet files into a single config and
-// returns its destination VM path, content, the snippet source paths, whether
-// any snippet existed, and an error. Every agent in the registry implements
-// ConfigMerger, so a non-merger agent produces no merged config.
-func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (string, []byte, []string, bool, error) {
-	if cm, ok := agent.AsConfigMerger(a); ok {
-		vmConfigPath := cm.VMConfigPath(vmHome)
-		merged, sources, hasSnippets, err := config.BuildMerged(
-			vmConfigPath,
-			cm.SnippetPattern(),
-			src.UserDir,
-			src.ProjectDir,
-		)
-		if err != nil {
-			return "", nil, nil, false, fmt.Errorf("merge agent config: %w", err)
-		}
-		return vmConfigPath, merged, sources, hasSnippets, nil
+// mergedConfig is the outcome of merging an agent's snippet files: the
+// destination VM path, the merged content, the snippet source paths, and
+// whether any snippet existed.
+type mergedConfig struct {
+	path        string
+	content     []byte
+	sources     []string
+	hasSnippets bool
+}
+
+// buildMergedConfig merges the agent's snippet files into a single config.
+// Every agent in the registry implements ConfigMerger, so a non-merger agent
+// produces an empty mergedConfig.
+func buildMergedConfig(a agent.Agent, vmHome string, src ConfigSource) (mergedConfig, error) {
+	cm, ok := agent.AsConfigMerger(a)
+	if !ok {
+		return mergedConfig{}, nil
 	}
-	return "", nil, nil, false, nil
+	vmConfigPath := cm.VMConfigPath(vmHome)
+	built, err := config.BuildMerged(
+		vmConfigPath,
+		cm.SnippetPattern(),
+		src.UserDir,
+		src.ProjectDir,
+	)
+	if err != nil {
+		return mergedConfig{}, fmt.Errorf("merge agent config: %w", err)
+	}
+	return mergedConfig{
+		path:        vmConfigPath,
+		content:     built.Content,
+		sources:     built.Sources,
+		hasSnippets: built.HasSnippets,
+	}, nil
 }
 
 // buildMirror returns the verbatim mirror files for agent a: every file in the

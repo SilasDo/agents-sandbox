@@ -75,9 +75,9 @@ func TestPlanReconfigNoActionsWhenUnchanged(t *testing.T) {
 func TestResolveReconfigSilentWhenAlone(t *testing.T) {
 	plan := &Plan{Recreate: true}
 	ui := &termio.Mock{}
-	applyRecreate, _, err := ResolveReconfig(context.Background(), ui, plan, 0, nil)
-	if err != nil || !applyRecreate {
-		t.Errorf("alone recreate should apply silently, got %v %v", applyRecreate, err)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 0, nil)
+	if err != nil || !actions.Recreate {
+		t.Errorf("alone recreate should apply silently, got %v %v", actions.Recreate, err)
 	}
 	if len(ui.InfoCalls) == 0 {
 		t.Error("expected at least an informational line when recreating silently")
@@ -90,7 +90,7 @@ func TestResolveReconfigVerboseReportsRebuildReasons(t *testing.T) {
 		Changes:  []Change{{Label: "image"}, {Label: "secrets"}},
 	}
 	ui := &termio.Mock{}
-	if _, _, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes); err != nil {
+	if _, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes); err != nil {
 		t.Fatalf("ResolveReconfig: %v", err)
 	}
 	joined := strings.Join(ui.VerboseCalls, "\n")
@@ -106,7 +106,7 @@ func TestResolveReconfigVerboseReportsRestartReasons(t *testing.T) {
 		Changes:        []Change{{Label: "agent config"}},
 	}
 	ui := &termio.Mock{}
-	if _, _, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes); err != nil {
+	if _, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes); err != nil {
 		t.Fatalf("ResolveReconfig: %v", err)
 	}
 	joined := strings.Join(ui.VerboseCalls, "\n")
@@ -121,14 +121,14 @@ func TestResolveReconfigPromptAKeep(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return "q", nil // quit
 	}
-	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err == nil {
 		t.Error("expected quit to abort (return an error)")
 	}
-	if applyRecreate {
+	if actions.Recreate {
 		t.Error("quit must not apply recreate")
 	}
-	if applyRestart {
+	if actions.Restart {
 		t.Error("quit must not apply restart")
 	}
 }
@@ -137,11 +137,11 @@ func TestResolveReconfigPromptBKeepReturnsNoRestart(t *testing.T) {
 	plan := &Plan{RestartDaemons: true}
 	ui := &termio.Mock{}
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return "k", nil }
-	_, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err != nil {
 		t.Fatalf("keep should not error: %v", err)
 	}
-	if applyRestart {
+	if actions.Restart {
 		t.Error("keep must not restart daemons")
 	}
 }
@@ -221,11 +221,11 @@ func TestResolveReconfigPromptBQuit(t *testing.T) {
 	plan := &Plan{RestartDaemons: true}
 	ui := &termio.Mock{}
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return "q", nil }
-	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err == nil {
 		t.Error("expected quit to abort (return an error)")
 	}
-	if applyRecreate || applyRestart {
+	if actions.Recreate || actions.Restart {
 		t.Error("quit must not apply recreate or restart daemons")
 	}
 }
@@ -234,39 +234,39 @@ func TestResolveReconfigPromptBRestart(t *testing.T) {
 	plan := &Plan{RestartDaemons: true}
 	ui := &termio.Mock{}
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return "r", nil }
-	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err != nil {
 		t.Fatalf("restart should not error: %v", err)
 	}
-	if applyRecreate {
+	if actions.Recreate {
 		t.Error("restart must not apply recreate")
 	}
-	if !applyRestart {
-		t.Error("expected applyRestart=true for restart selection")
+	if !actions.Restart {
+		t.Error("expected Restart=true for restart selection")
 	}
 }
 
 func TestResolveReconfigAloneRecreateNoRestart(t *testing.T) {
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), &termio.Mock{}, &Plan{Recreate: true}, 0, nil)
-	if err != nil || !applyRecreate || applyRestart {
-		t.Errorf("alone recreate: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || !actions.Recreate || actions.Restart {
+		t.Errorf("alone recreate: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }
 
 func TestResolveReconfigAloneRestartNoRecreate(t *testing.T) {
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), &termio.Mock{}, &Plan{RestartDaemons: true}, 0, nil)
-	if err != nil || applyRecreate || !applyRestart {
-		t.Errorf("alone restart: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || actions.Recreate || !actions.Restart {
+		t.Errorf("alone restart: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }
 
 func TestResolveReconfigNoActionReturnsNothing(t *testing.T) {
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), &termio.Mock{}, &Plan{}, 0, nil)
-	if err != nil || applyRecreate || applyRestart {
-		t.Errorf("no-action: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || actions.Recreate || actions.Restart {
+		t.Errorf("no-action: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }
 
@@ -275,10 +275,10 @@ func TestResolveReconfigNoActionReturnsNothing(t *testing.T) {
 func TestResolveReconfigPromptAKeepDefers(t *testing.T) {
 	ui := &termio.Mock{}
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return keepKey, nil }
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), ui, &Plan{Recreate: true}, 1, nil)
-	if err != nil || applyRecreate || applyRestart {
-		t.Errorf("keep: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || actions.Recreate || actions.Restart {
+		t.Errorf("keep: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }
 
@@ -289,10 +289,10 @@ func TestResolveReconfigPromptAErrorDefers(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return quitKey, errors.New("select failed")
 	}
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), ui, &Plan{Recreate: true}, 1, nil)
-	if err != nil || applyRecreate || applyRestart {
-		t.Errorf("prompt A error: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || actions.Recreate || actions.Restart {
+		t.Errorf("prompt A error: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }
 
@@ -301,9 +301,9 @@ func TestResolveReconfigPromptBErrorDefers(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return quitKey, errors.New("select failed")
 	}
-	applyRecreate, applyRestart, err := ResolveReconfig(
+	actions, err := ResolveReconfig(
 		context.Background(), ui, &Plan{RestartDaemons: true}, 1, nil)
-	if err != nil || applyRecreate || applyRestart {
-		t.Errorf("prompt B error: recreate=%v restart=%v err=%v", applyRecreate, applyRestart, err)
+	if err != nil || actions.Recreate || actions.Restart {
+		t.Errorf("prompt B error: recreate=%v restart=%v err=%v", actions.Recreate, actions.Restart, err)
 	}
 }

@@ -156,22 +156,28 @@ func isTOMLPath(configPath string) bool {
 	return strings.EqualFold(filepath.Ext(configPath), ".toml")
 }
 
+// MergedConfig is the outcome of merging snippet files: the marshaled config
+// document and the ordered list of snippet files it came from. When no snippet
+// existed, HasSnippets is false and Content and Sources are nil.
+type MergedConfig struct {
+	Content     []byte
+	Sources     []string
+	HasSnippets bool
+}
+
 // BuildMerged merges all snippet files matching pattern under userDir and
 // projectDir into a single config document for configPath: TOML when
-// configPath ends in .toml, indented JSON otherwise. It returns the marshaled
-// bytes, the ordered list of snippet files that were merged, a boolean
-// reporting whether any snippet existed, and an error. When no snippet exists
-// the returned bytes and source list are nil and the boolean is false.
-func BuildMerged(configPath, pattern, userDir, projectDir string) ([]byte, []string, bool, error) {
+// configPath ends in .toml, indented JSON otherwise.
+func BuildMerged(configPath, pattern, userDir, projectDir string) (MergedConfig, error) {
 	merged, sources := scanSnippets([]string{userDir, projectDir}, pattern)
 	if len(sources) == 0 {
-		return nil, nil, false, nil
+		return MergedConfig{}, nil
 	}
 	data, err := marshalConfig(configPath, merged)
 	if err != nil {
-		return nil, nil, false, err
+		return MergedConfig{}, err
 	}
-	return data, sources, true, nil
+	return MergedConfig{Content: data, Sources: sources, HasSnippets: true}, nil
 }
 
 // marshalConfig encodes merged in the format configPath calls for.

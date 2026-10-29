@@ -220,16 +220,16 @@ func resolveReconfigDecision(
 	}
 
 	otherClients := state.CountActiveClients(k)
-	applyRecreate, applyRestart, err := reconfig.ResolveReconfig(ctx, ui, plan, otherClients, plan.Changes)
+	actions, err := reconfig.ResolveReconfig(ctx, ui, plan, otherClients, plan.Changes)
 	if err != nil {
 		return reconfigDecision{}, err
 	}
 
 	// ResolveReconfig reports a daemon restart only when the plan does not
-	// recreate, so applyRestart already implies !applyRecreate && !plan.Recreate.
+	// recreate, so actions.Restart already implies !actions.Recreate && !plan.Recreate.
 	decision := reconfigDecision{
-		Recreate:      applyRecreate,
-		Restart:       applyRestart,
+		Recreate:      actions.Recreate,
+		Restart:       actions.Restart,
 		ServeHostPort: plan.ServeHostPort,
 	}
 

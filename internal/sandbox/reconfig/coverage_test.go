@@ -32,11 +32,11 @@ func TestResolveReconfigPromptAError(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return "", errors.New("select boom")
 	}
-	applyRecreate, _, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err != nil {
 		t.Errorf("expected select error to be swallowed, got %v", err)
 	}
-	if applyRecreate {
+	if actions.Recreate {
 		t.Error("expected no recreate when the select errored")
 	}
 }
@@ -46,11 +46,11 @@ func TestResolveReconfigPromptADefer(t *testing.T) {
 	plan := &Plan{Recreate: true}
 	ui := &termio.Mock{}
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) { return keepKey, nil }
-	applyRecreate, _, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if applyRecreate {
+	if actions.Recreate {
 		t.Error("expected no recreate when keep is selected")
 	}
 }
@@ -63,11 +63,11 @@ func TestResolveReconfigPromptBError(t *testing.T) {
 	ui.SelectFn = func(_ string, _ []termio.Choice, _ string) (string, error) {
 		return "", errors.New("select boom")
 	}
-	_, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 1, plan.Changes)
 	if err != nil {
 		t.Errorf("expected select error to be swallowed, got %v", err)
 	}
-	if applyRestart {
+	if actions.Restart {
 		t.Error("expected no restart when the select errored")
 	}
 }
@@ -77,14 +77,14 @@ func TestResolveReconfigPromptBError(t *testing.T) {
 func TestResolveReconfigRestartAlone(t *testing.T) {
 	plan := &Plan{RestartDaemons: true}
 	ui := &termio.Mock{}
-	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes)
+	actions, err := ResolveReconfig(context.Background(), ui, plan, 0, plan.Changes)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if applyRecreate {
+	if actions.Recreate {
 		t.Error("expected no recreate")
 	}
-	if !applyRestart {
+	if !actions.Restart {
 		t.Error("expected restart when alone")
 	}
 	if len(ui.InfoCalls) == 0 {
@@ -96,12 +96,12 @@ func TestResolveReconfigRestartAlone(t *testing.T) {
 // recreate or restart requirement.
 func TestResolveReconfigNoAction(t *testing.T) {
 	ui := &termio.Mock{}
-	applyRecreate, applyRestart, err := ResolveReconfig(context.Background(), ui, &Plan{}, 1, nil)
+	actions, err := ResolveReconfig(context.Background(), ui, &Plan{}, 1, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if applyRecreate || applyRestart {
-		t.Errorf("expected no actions, got recreate=%v restart=%v", applyRecreate, applyRestart)
+	if actions.Recreate || actions.Restart {
+		t.Errorf("expected no actions, got recreate=%v restart=%v", actions.Recreate, actions.Restart)
 	}
 }
 
