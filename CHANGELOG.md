@@ -112,9 +112,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
-  download and private-home write the preview promises not to make — and an offline host aborted with
+  download and install the preview promises not to perform — and an offline host aborted with
   `install msb runtime: …` instead of the plan. The preview now points the SDK at the private home without provisioning
-  it, so it still reports the image and home-volume decisions a real run would make (#424).
+  it, so it still reports the image and home-volume decisions a real run would make. Every `--dry-run` command reaches
+  this preflight, so none of them installs the runtime (#424).
 - `doctor` runs its own checks instead of provisioning the microsandbox runtime in the root preflight. On a host whose
   private runtime home is absent or broken, a failed runtime install is now reported as `msb runtime setup failed: …`
   with its troubleshooting link while the KVM and Docker checks still run, instead of aborting the command with a raw
