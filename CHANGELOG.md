@@ -119,6 +119,10 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- `--dry-run-vm` on a project without a home volume no longer creates the volume and records it in the state without
+  filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
+  for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
+  and fills it (#429).
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with
