@@ -1,6 +1,7 @@
 // Package runoptions resolves the shared run/shell options from a command's
 // flags and the resolved launcher config, with precedence flag > env > config >
-// default.
+// default. ResolveDockerSetting is shared with the build command, so the two
+// paths cannot resolve the docker capability differently.
 package runoptions
 
 import (
@@ -96,7 +97,7 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 		opts.OpenLinks, _ = cmd.Flags().GetBool(FlagOpenLinks)
 	}
 
-	resolveDockerSetting(cmd, cfg, &opts)
+	opts.Docker = ResolveDockerSetting(cmd, cfg)
 
 	if err := resolveNetwork(cfg, cmd, &opts); err != nil {
 		return options.RunOptions{}, err
@@ -109,24 +110,57 @@ func Build(cfg *viperconfig.Config, cmd *cobra.Command, ui termio.UI) (options.R
 	return opts, nil
 }
 
-// resolveDockerSetting resolves the docker capability with precedence
-// flag > env/config. A changed --docker or --dind is explicit; otherwise the
-// resolver's value and explicitness are used. A nil config leaves the flag
-// result (or zero) in place, so --docker is not dropped in flag-only runs.
-func resolveDockerSetting(cmd *cobra.Command, cfg *viperconfig.Config, opts *options.RunOptions) {
+// ResolveDockerSetting returns the effective docker setting for cmd's changed
+// --docker/--dind flags folded over cfg, the resolved launcher config, through
+// the shared docker/dind precedence. Both the run/shell path (Build) and the
+// build command resolve the setting here, so the two cannot drift. A nil config
+// leaves the flag result (or zero) in place, so --docker is not dropped in
+// flag-only runs.
+func ResolveDockerSetting(cmd *cobra.Command, cfg *viperconfig.Config) options.DockerSetting {
+	sources := flagDockerSources(cmd)
+	// An explicit config source contributes its value ranked by the layer it
+	// came from, so a canonical config key or AGENTS_SANDBOX_DOCKER beats the
+	// deprecated --dind flag.
+	if cfg != nil {
+		if cfg.DockerExplicit() {
+			sources = append(sources, viperconfig.DockerSourceValue{
+				Source: cfg.DockerSource(),
+				Value:  cfg.Docker,
+			})
+		}
+	}
+	winner := viperconfig.EffectiveDockerSource(sources...)
+	if winner.Source != viperconfig.DockerSourceNone {
+		return options.DockerSetting{Enabled: winner.Value, Explicit: true}
+	}
+	// No explicit source: a config value that is set but not explicit still
+	// reaches the boundary with Explicit false, so the project Dockerfile's
+	// content signals decide.
+	enabled := false
+	if cfg != nil {
+		enabled = cfg.Docker
+	}
+	return options.DockerSetting{Enabled: enabled, Explicit: false}
+}
+
+// flagDockerSources lists the changed --docker and --dind flags on cmd, each
+// with the value it carries. A command that does not register one of the flags
+// contributes nothing for it.
+func flagDockerSources(cmd *cobra.Command) []viperconfig.DockerSourceValue {
+	var sources []viperconfig.DockerSourceValue
 	if flag := cmd.Flags().Lookup(viperconfig.KeyDocker); flag != nil && flag.Changed {
-		v, _ := cmd.Flags().GetBool(viperconfig.KeyDocker)
-		opts.Docker = options.DockerSetting{Enabled: v, Explicit: true}
-		return
+		value, _ := cmd.Flags().GetBool(viperconfig.KeyDocker)
+		sources = append(sources, viperconfig.DockerSourceValue{
+			Source: viperconfig.DockerSourceDockerFlag, Value: value,
+		})
 	}
 	if flag := cmd.Flags().Lookup(viperconfig.KeyDind); flag != nil && flag.Changed {
-		v, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
-		opts.Docker = options.DockerSetting{Enabled: v, Explicit: true}
-		return
+		value, _ := cmd.Flags().GetBool(viperconfig.KeyDind)
+		sources = append(sources, viperconfig.DockerSourceValue{
+			Source: viperconfig.DockerSourceDindFlag, Value: value,
+		})
 	}
-	if cfg != nil {
-		opts.Docker = options.DockerSetting{Enabled: cfg.Docker, Explicit: cfg.DockerExplicit()}
-	}
+	return sources
 }
 
 // resolveFlags reads the direct-run flags off the command and returns the

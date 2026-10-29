@@ -118,6 +118,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Env and secrets: the host `env` and `env.secret`/`env.secret.yaml` files are read once per run instead of three
   times, so a malformed entry is warned about once instead of up to three times. The fingerprints a run persists and
   the host env and secrets baked into a newly created VM now come from that one read and cannot disagree (#342).
+- Docker: the canonical `docker` setting now beats the deprecated `dind` alias whichever layer each came from, so
+  `--dind` no longer overrides an explicit `docker` config key or `AGENTS_SANDBOX_DOCKER` (and vice versa) — the
+  deprecation policy's "replacement wins" rule held across the config and env layers but not across the flags. The
+  run/shell and build paths resolve the capability through one shared precedence, so they can no longer disagree (#363).
 - Runner image: the microsandbox load decision now trusts only the content digest. A cached image that records no
   digest is treated as unknown content and reloaded instead of being matched by its `dockerfile-id` label — a source
   signature that can match while the layers differ, so a stale image could previously pass as current. The reload

@@ -448,6 +448,47 @@ func TestBuildDockerFlagWinsOverDind(t *testing.T) {
 	}
 }
 
+// The deprecation policy's "replacement wins" rule holds across layers: the
+// canonical docker config key beats the deprecated --dind flag, so the run path
+// resolves dind only when no docker source is set at all.
+func TestBuildDindFlagLosesToDockerConfig(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	testutil.WriteYAML(t, configpaths.Get().UserConfigDir(), "config.yaml", map[string]any{"docker": false})
+
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("dind", "true"); err != nil {
+		t.Fatalf("set dind: %v", err)
+	}
+	r := mustResolver(t, cmd)
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if want := (options.DockerSetting{Enabled: false, Explicit: true}); opts.Docker != want {
+		t.Errorf("opts.Docker = %+v, want %+v", opts.Docker, want)
+	}
+}
+
+// AGENTS_SANDBOX_DOCKER is the canonical env spelling, so it beats a
+// deprecated --dind flag in either direction.
+func TestBuildDindFlagLosesToDockerEnv(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	t.Setenv("AGENTS_SANDBOX_DOCKER", "true")
+
+	cmd := newRunCommand()
+	if err := cmd.Flags().Set("dind", "false"); err != nil {
+		t.Fatalf("set dind: %v", err)
+	}
+	r := mustResolver(t, cmd)
+	opts, err := Build(r.Config(), cmd, &termio.Mock{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if want := (options.DockerSetting{Enabled: true, Explicit: true}); opts.Docker != want {
+		t.Errorf("opts.Docker = %+v, want %+v", opts.Docker, want)
+	}
+}
+
 func TestBuildAgentVersionFlag(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	cmd := newRunCommand()
@@ -1092,18 +1133,16 @@ func TestBuildPropagatesConfigResourceLimits(t *testing.T) {
 	}
 }
 
-// resolveDockerSetting tolerates a command that never registered --dind.
+// ResolveDockerSetting tolerates a command that never registered --dind.
 func TestResolveDockerSettingWithoutDindFlag(t *testing.T) {
-	opts := options.RunOptions{}
+	got := ResolveDockerSetting(&cobra.Command{Use: "run"}, nil)
 
-	resolveDockerSetting(&cobra.Command{Use: "run"}, nil, &opts)
-
-	if opts.Docker.Enabled {
-		t.Error("Docker.Enabled = true; want the missing --dind flag to be ignored")
+	if got != (options.DockerSetting{}) {
+		t.Errorf("ResolveDockerSetting = %+v; want the zero setting", got)
 	}
 }
 
-// resolveDockerSetting tolerates a command that registered --dind but not the
+// ResolveDockerSetting tolerates a command that registered --dind but not the
 // canonical --docker flag.
 func TestResolveDockerSettingWithoutDockerFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "run"}
@@ -1111,12 +1150,11 @@ func TestResolveDockerSettingWithoutDockerFlag(t *testing.T) {
 	if err := cmd.Flags().Set("dind", "true"); err != nil {
 		t.Fatalf("set dind: %v", err)
 	}
-	opts := options.RunOptions{}
 
-	resolveDockerSetting(cmd, nil, &opts)
+	got := ResolveDockerSetting(cmd, nil)
 
-	if !opts.Docker.Enabled {
-		t.Error("Docker.Enabled = false; want true from the deprecated --dind flag")
+	if !got.Enabled || !got.Explicit {
+		t.Errorf("ResolveDockerSetting = %+v; want enabled and explicit from the deprecated --dind flag", got)
 	}
 }
 

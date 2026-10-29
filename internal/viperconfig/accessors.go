@@ -22,9 +22,17 @@ func (r *Resolver) DockerLegacyAlias() string {
 	return r.dockerLegacy
 }
 
+// DockerSource reports which explicit source the config's docker value came
+// from, or DockerSourceNone when no explicit source is present. It carries the
+// layer information the run and build paths need to fold their flags into the
+// same precedence. Both docker reads live on Config, which Resolver.Config
+// exposes: a Resolver wrapper for the same value would be test-only, and the
+// resolver's any-typed context value hides that from the dead-code gate.
+func (c Config) DockerSource() DockerSource { return c.dockerSource }
+
 // DockerExplicit reports whether the config's docker value came from an
 // explicit source, so it overrides any project-Dockerfile content signal.
-func (c Config) DockerExplicit() bool { return c.dockerExplicit }
+func (c Config) DockerExplicit() bool { return c.dockerSource != DockerSourceNone }
 
 func (r *Resolver) Yes() bool { return r.cfg.Yes }
 
@@ -33,13 +41,6 @@ func (r *Resolver) Quiet() bool { return r.cfg.Quiet }
 func (r *Resolver) LogLevel() string { return r.cfg.LogLevel }
 
 func (r *Resolver) Agent() string { return r.cfg.Agent }
-
-func (r *Resolver) Docker() bool { return r.cfg.Docker }
-
-// DockerExplicit reports whether the resolved docker value came from an
-// explicit source (config key, --docker/--dind flag, or AGENTS_SANDBOX_DOCKER/
-// _DIND env), so it overrides any project-Dockerfile content signal.
-func (r *Resolver) DockerExplicit() bool { return r.cfg.dockerExplicit }
 
 func (r *Resolver) ProvisionHostConfig() bool { return r.cfg.ProvisionHostConfig }
 

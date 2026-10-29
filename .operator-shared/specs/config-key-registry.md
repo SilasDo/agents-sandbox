@@ -11,8 +11,8 @@ default silently ignored the env/config value, so `internal/viperconfig/configke
 
 ## One source: the struct tags
 
-`configKeys()` reflects over `Config` and its nested config structs (in field order), yielding each
-`mapstructure`-tagged key:
+`deriveConfigKeys()` reflects over `Config` and its nested config structs (in field order), yielding each
+`mapstructure`-tagged key (an unexported field contributes none, whatever its tags):
 
 - `configEnvKeys` = the derived keys + `KeyDind`, bound to `AGENTS_SANDBOX_<KEY>` (and the deprecated
   `OPENCODE_SANDBOX_<KEY>` alias). `dind` is the one env-bound key with **no** `Config` field: it is the
@@ -37,4 +37,6 @@ outside viper (mounts, home, notify) and is likewise skipped.
 
 `internal/viperconfig/configkeys_test.go` pins the env-key set as a golden list (a dropped or added key fails
 there), asserts `dind` is absent from the bind list, asserts the egress lists stay unbindable, and pins the
-struct-derived flag-default types.
+struct-derived flag-default types. `walkConfigKeys` is also asserted directly against a synthetic type, because
+`Config` itself has no untagged exported field and no tagged unexported field for the walk's two skip guards to
+act on.

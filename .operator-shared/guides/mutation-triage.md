@@ -35,6 +35,15 @@ This is the field guide for doing it. It was distilled from the first full sweep
   `true && p == "!"`, which is the original. A same-line or `disable-next-line` directive is **type-scoped** (it cannot
   name a stable-id), so recording that one also suppresses the *killable* sibling. Delete the redundant operand — the
   mutant ceases to exist — and let the surviving condition be killed normally.
+- **An `&&` operand that is not itself redundant can still have an equivalent removal mutant, when the code it guards
+  feeds a consumer that discards the mutant's effect.** `runoptions.ResolveDockerSetting` guarded an `append` of
+  `{Source: cfg.DockerSource(), Value: cfg.Docker}` with `cfg != nil && cfg.DockerExplicit()`; a config with no explicit
+  source appends `viperconfig.DockerSourceNone`, which `viperconfig.EffectiveDockerSource` drops, so `cfg != nil && true`
+  resolved identically and one of the two operand mutants survived. Deleting the operand was not available — it would
+  have made `viperconfig.Config.DockerExplicit` test-only and tripped the dead-code gate — and a line-scoped directive
+  would also suppress the killable `cfg != nil` sibling, so **nest the guards** (`if cfg != nil { if cfg.DockerExplicit()
+  { … } }`): the `&&` mutant family ceases to exist, the inner body stays load-bearing, and the predicate stays
+  production-reachable.
 - **A selector argument that every caller ORs across calls is redundant — drop the parameter.** `hasDockerMarker(data,
   want)` had exactly two callers, each `OR`-ing the current and legacy forms (`... dockerMarker`) `|| (... legacyDockerMarker)`,
   so its `ok && marker == want` was equivalent to `marker != ""`: any match satisfied both calls' `OR`. Returning "any
@@ -174,6 +183,12 @@ This is the field guide for doing it. It was distilled from the first full sweep
   with `disable-next-line CONDITIONALS_BOUNDARY,INTEGER_DECREMENT`. Only `N`→`N+1` changes behaviour (an `N+1`-length
   input stops truncating), so kill it with a boundary-length input. The `x[:N]` on the next line is a *separate* mutant
   family (`INTEGER_*` on the slice constant) already killed by a long-enough input.
+- **A reflective derivation's skip guards can be unobservable through the production type.** `viperconfig`'s
+  `walkConfigKeys` skips unexported fields and untagged fields, but `Config` has no unexported *tagged* field and no
+  untagged exported field, so removing either guard changed no derived key (the `BRANCH_IF` body removal and the
+  `EXPRESSION_REMOVE` on `!tagged` → `false` both survived). Pass the walk a synthetic `reflect.Type` with one field
+  per guard (an unexported tagged field, an untagged exported field) and assert the returned keys — both guards are
+  real contracts, so recording them would be wrong.
 - **A non-positive-age guard is killable with a *future* timestamp, so do not record it as equivalent.**
   `if age <= 0 { return false }` (`imageWithinAge`) reads as always-true-equivalent because for a past timestamp the
   fall-through `time.Since(used) < age` is also false. A hostile caller gets through: set `LastUsedAt` to

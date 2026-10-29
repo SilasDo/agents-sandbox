@@ -10,6 +10,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/cliout"
 	"github.com/inoio/agents-sandbox/internal/git"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/doctor"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -217,24 +218,15 @@ func parseLabelFlags(values []string) (map[string]string, error) {
 	return labels, nil
 }
 
-// resolveBuildDockerSetting returns the effective docker setting for a build:
-// the --docker flag when set, else the deprecated --dind alias when set, else
-// the configured resolver value and its explicitness (zero when absent). A
-// changed flag is an explicit source, so it overrides any project-Dockerfile
-// content signal.
+// resolveBuildDockerSetting returns the effective docker setting for a build.
+// It resolves through runoptions.ResolveDockerSetting — the same shared
+// docker/dind precedence the run path uses, so a build and a run of one project
+// cannot disagree — reading the resolver from the command context (a nil one
+// resolves from the changed flags alone).
 func resolveBuildDockerSetting(cmd *cobra.Command) options.DockerSetting {
-	if cmd.Flags().Changed(flagDocker) {
-		docker, _ := cmd.Flags().GetBool(flagDocker)
-		return options.DockerSetting{Enabled: docker, Explicit: true}
-	}
-	if cmd.Flags().Changed(flagDind) {
-		dind, _ := cmd.Flags().GetBool(flagDind)
-		return options.DockerSetting{Enabled: dind, Explicit: true}
-	}
-	if r := resolverFromContext(cmd.Context()); r != nil {
-		return options.DockerSetting{Enabled: r.Docker(), Explicit: r.DockerExplicit()}
-	}
-	return options.DockerSetting{}
+	// Resolver.Config tolerates a nil resolver, so the flag-only path (no
+	// resolver on the context) resolves from the flags alone.
+	return runoptions.ResolveDockerSetting(cmd, resolverFromContext(cmd.Context()).Config())
 }
 
 func buildBuildCmd(ui termio.UI) *cobra.Command {
