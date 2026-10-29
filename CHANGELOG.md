@@ -218,6 +218,10 @@ command reports the bare version (e.g. `0.1.0`).
   command line. After a release changes a helper's flags (dockerd's storage driver, the daemon's serve hostname or health
   format), the old process was no longer matched and both raced for the socket or port, so the run failed with
   "exited before becoming ready" (#343).
+- Runner image: a failed base-image pull is now reported as the classified "base image not found or not logged in"
+  error with its troubleshooting link, instead of a misleading "No such image". The pull stream is waited on (moby's
+  `Wait`), so a registry failure delivered inside it is no longer drained away and re-reported by a follow-up inspect
+  (#425).
 
 ## [0.6.0] - 2026-10-25
 

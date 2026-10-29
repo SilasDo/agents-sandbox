@@ -349,9 +349,9 @@ func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 			}
 			return client.ImageInspectResult{ID: "sha256:pulled"}, nil
 		},
-		ImagePullFn: func(_ context.Context, ref string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+		ImagePullFn: func(_ context.Context, ref string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
 			pulled = ref
-			return io.NopCloser(strings.NewReader("")), nil
+			return docker.PullResponse{Body: strings.NewReader("")}, nil
 		},
 	})
 	const qualified = "docker.io/library/debian:trixie-slim"
@@ -364,6 +364,56 @@ func TestResolveBaseDigestPullsAbsentBase(t *testing.T) {
 	}
 	if got != "debian:trixie-slim@sha256:pulled" {
 		t.Errorf("resolveBaseDigest = %q, want the familiar spelling in the label", got)
+	}
+}
+
+// TestResolveBaseDigestSurfacesPullFailure pins that a registry-level pull
+// failure is surfaced as the classified base-image error with its troubleshooting
+// link, not swallowed and re-reported as a misleading post-pull inspect failure.
+// Both delivery paths are covered: the pull call's own error and a registry
+// failure inside the stream. The test also asserts a surfaced failure leaves no
+// second inspect to confuse the message.
+func TestResolveBaseDigestSurfacesPullFailure(t *testing.T) {
+	const pullFailure = `pull access denied for private/base, repository does not exist or may require 'docker login'`
+	for _, tc := range []struct {
+		name string
+		pull func() (client.ImagePullResponse, error)
+	}{
+		{
+			name: "failure delivered inside the stream",
+			pull: func() (client.ImagePullResponse, error) {
+				return docker.PullResponse{WaitErr: errors.New(pullFailure)}, nil
+			},
+		},
+		{
+			name: "failure returned by the pull call",
+			pull: func() (client.ImagePullResponse, error) {
+				return nil, errors.New(pullFailure)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inspects := 0
+			docker.WithDockerMock(t, &docker.MockDockerClient{
+				ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
+					inspects++
+					return client.ImageInspectResult{}, errors.New("No such image")
+				},
+				ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+					return tc.pull()
+				},
+			})
+			_, err := resolveBaseDigest(context.Background(), "private/base:latest", &termio.Mock{})
+			if err == nil || !strings.Contains(err.Error(), "base image not found or not logged in") {
+				t.Errorf("resolveBaseDigest error = %v, want the classified base-image failure", err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "the-base-image-cannot-be-found") {
+				t.Errorf("resolveBaseDigest error = %v, want the troubleshooting docs link", err)
+			}
+			if inspects != 1 {
+				t.Errorf("ImageInspect called %d times, want 1 (a surfaced pull failure must not re-inspect)", inspects)
+			}
+		})
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/moby/moby/client"
@@ -64,7 +65,7 @@ func TestMockDockerClientFns(t *testing.T) {
 		ImageRemoveFn: func(context.Context, string, client.ImageRemoveOptions) (client.ImageRemoveResult, error) {
 			return client.ImageRemoveResult{}, wantErr
 		},
-		ImagePullFn: func(context.Context, string, client.ImagePullOptions) (io.ReadCloser, error) {
+		ImagePullFn: func(context.Context, string, client.ImagePullOptions) (client.ImagePullResponse, error) {
 			return nil, wantErr
 		},
 		ImageTagFn: func(context.Context, client.ImageTagOptions) (client.ImageTagResult, error) {
@@ -212,6 +213,44 @@ func TestWithDockerMockRestoresGet(t *testing.T) {
 
 	if _, ok := Get().(*failFastDockerClient); !ok {
 		t.Errorf("Get() = %T after the installing test, want the restored *failFastDockerClient", Get())
+	}
+}
+
+// TestPullResponseModelsWait covers the fake response's two roles: a body to
+// drain on success and a Wait error modelling a registry failure delivered
+// inside the stream.
+func TestPullResponseModelsWait(t *testing.T) {
+	ctx := context.Background()
+
+	succeeded := PullResponse{Body: strings.NewReader("{}")}
+	if err := succeeded.Wait(ctx); err != nil {
+		t.Errorf("PullResponse.Wait() = %v, want nil", err)
+	}
+	if err := succeeded.Close(); err != nil {
+		t.Errorf("PullResponse.Close() = %v, want nil", err)
+	}
+	got, err := io.ReadAll(succeeded)
+	if err != nil || string(got) != "{}" {
+		t.Errorf("PullResponse read = %q, %v, want %q, nil", got, err, "{}")
+	}
+	if seq := succeeded.JSONMessages(ctx); seq != nil {
+		for range seq {
+			t.Error("PullResponse.JSONMessages() yielded a message, want none")
+		}
+	}
+
+	wantErr := errors.New("pull access denied")
+	if err := (PullResponse{WaitErr: wantErr}).Wait(ctx); !errors.Is(err, wantErr) {
+		t.Errorf("PullResponse.Wait() = %v, want %v", err, wantErr)
+	}
+}
+
+// TestPullResponseWithoutBody verifies a response with no body reads as an empty
+// stream, so a successful pull that produced nothing still ends cleanly.
+func TestPullResponseWithoutBody(t *testing.T) {
+	got, err := io.ReadAll(PullResponse{})
+	if err != nil || len(got) != 0 {
+		t.Errorf("PullResponse{} read = %q, %v, want empty, nil", got, err)
 	}
 }
 
