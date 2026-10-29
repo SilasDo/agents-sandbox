@@ -7,6 +7,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
@@ -25,7 +26,10 @@ import (
 func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 
+	docker.WithNoopDockerMock(t)
+
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		},
@@ -46,7 +50,7 @@ func TestResolveHomeVolumeSeedsFingerprints(t *testing.T) {
 		client,
 		k,
 		sandboximage.ImageInfo{DockerTag: "img:tag", Ref: "img:tag", Digest: "sha256:digest"},
-		true,
+		false, // a real run: only it creates and records a fresh home (#429)
 		fingerprints,
 		"",
 		&ui,

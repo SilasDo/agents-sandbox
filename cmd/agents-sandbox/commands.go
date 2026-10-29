@@ -10,6 +10,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/git"
+	"github.com/inoio/agents-sandbox/internal/runoptions"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	msbruntime "github.com/inoio/agents-sandbox/internal/sandbox/runtime"
 	"github.com/inoio/agents-sandbox/internal/termio"
@@ -157,6 +158,13 @@ func buildRootCmd(ui termio.UI) *cobra.Command {
 		}
 		if !commandNeedsMSBRuntime(cmd) {
 			return nil
+		}
+		// A dry-run preview is documented to make no network request and no
+		// runtime download/install, so it must not provision the runtime. It still
+		// points the SDK at the private home so its read-only inspection
+		// (volumes, sandboxes) reports the objects a real run would use (#424).
+		if runoptions.ResolveMode(cmd).Previews() {
+			return msbruntime.ApplyPreviewHome()
 		}
 		return prepareMSBRuntime(cmd.Context(), ui, version)
 	}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -672,9 +673,12 @@ func TestResolveHomeVolume_NoStateFile(t *testing.T) {
 	}
 }
 
-// TestResolveHomeVolume_CorruptStateFile covers the branch where the state file
-// exists but cannot be read (a non-not-found error): the caller warns about the
-// unreadable state and creates a fresh home volume.
+// TestResolveHomeVolume_CorruptStateFile covers an unreadable state file (a
+// non-not-found read error): the caller warns about it and falls back to a
+// fresh home volume. A directory in place of the state file cannot be repaired
+// by the fallback's wholesale write either, so the write error now surfaces
+// (#428) instead of the run proceeding against a volume with no state record;
+// the uncommitted volume is removed.
 func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
@@ -693,7 +697,7 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 
 	ui := &termio.Mock{}
 	vm := NewManager(ui)
-	volName, st, err := vm.ResolveHomeVolume(
+	_, _, err := vm.ResolveHomeVolume(
 		context.Background(),
 		mock,
 		state.Key{Slug: "corruptproj", Agent: "opencode"},
@@ -703,17 +707,14 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 		"",
 		ui,
 	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.HasPrefix(volName, "corruptproj-") {
-		t.Errorf("volume = %q, expected prefix %q", volName, "corruptproj-")
-	}
-	if st.ImageDigest != "sha256:def" {
-		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
+	if err == nil {
+		t.Fatal("expected the unrepairable state write to surface, got nil")
 	}
 	if !strings.Contains(strings.Join(ui.WarnCalls, " "), "could not read state file") {
 		t.Errorf("expected a 'could not read state file' warning, got %v", ui.WarnCalls)
+	}
+	if len(mock.RemovedVolumes) != 1 {
+		t.Errorf("expected the uncommitted volume to be removed, got %v", mock.RemovedVolumes)
 	}
 }
 
@@ -1677,6 +1678,7 @@ func TestEnsureNewHome_PrefillFails_RemovesVolume(t *testing.T) {
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1687,6 +1689,76 @@ func TestEnsureNewHome_PrefillFails_RemovesVolume(t *testing.T) {
 	}
 	if len(mock.RemovedVolumes) != 1 || mock.RemovedVolumes[0] != createdVolume {
 		t.Errorf("expected created volume %q to be removed, got %v", createdVolume, mock.RemovedVolumes)
+	}
+}
+
+// TestEnsureNewHome_StateWriteFails covers #428: the state write is the record
+// of the volume a run is about to use, so a failed write must surface an error
+// and remove the uncommitted volume rather than warn and report success. A
+// post-rename durability failure is the exception — the installed state already
+// names the volume, so it must be kept.
+func TestEnsureNewHome_StateWriteFails(t *testing.T) {
+	tests := []struct {
+		name       string
+		writeErr   error
+		wantRemove bool
+	}{
+		{
+			name:       "pre-rename failure removes the uncommitted volume",
+			writeErr:   errors.New("write state file: rename boom"),
+			wantRemove: true,
+		},
+		{
+			name:       "installed write keeps the volume",
+			writeErr:   fmt.Errorf("write state file: %w: sync dir boom", atomicwrite.ErrInstalled),
+			wantRemove: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			restore := recoverHomeState
+			recoverHomeState = func(_ state.Key, _ func(*state.HomeState, bool) (bool, error)) error {
+				return tt.writeErr
+			}
+			t.Cleanup(func() { recoverHomeState = restore })
+
+			docker.WithNoopDockerMock(t)
+
+			var createdVolume string
+			mock := &msb.MockMsbClient{
+				CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
+				CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+					createdVolume = name
+					return &msb.MockVolumeHandle{Name_: name}, nil
+				},
+			}
+			ui := &termio.Mock{}
+
+			_, _, err := NewManager(ui).EnsureNewHome(
+				context.Background(),
+				mock,
+				state.Key{Slug: "statewritefail", Agent: "opencode"},
+				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
+				false, // the prefill succeeds; the state write is the failure under test
+				state.Fingerprints{},
+				"",
+				ui,
+			)
+			if err == nil {
+				t.Fatal("expected the state-write error to surface, got nil")
+			}
+			if !errors.Is(err, tt.writeErr) {
+				t.Errorf("err = %v, want it to carry %v", err, tt.writeErr)
+			}
+			removed := len(mock.RemovedVolumes) == 1
+			if removed != tt.wantRemove {
+				t.Errorf("removed = %v (RemovedVolumes %v), want %v", removed, mock.RemovedVolumes, tt.wantRemove)
+			}
+			if tt.wantRemove && mock.RemovedVolumes[0] != createdVolume {
+				t.Errorf("removed volume = %q, want the created volume %q", mock.RemovedVolumes[0], createdVolume)
+			}
+		})
 	}
 }
 
@@ -1718,6 +1790,7 @@ func TestEnsureNewHome_PrefillCancelled_RemovesVolumeWithLiveContext(t *testing.
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		false,
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err == nil {
@@ -1747,6 +1820,7 @@ func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
 		true, // skipVM
 		state.Fingerprints{},
+		"",
 		&termio.Mock{},
 	)
 	if err != nil {
@@ -1757,6 +1831,98 @@ func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 	}
 	if len(mock.CreatedSandboxes) != 0 {
 		t.Errorf("expected no sandboxes in dry-run-vm, got %d", len(mock.CreatedSandboxes))
+	}
+}
+
+// TestEnsureNewHome_SkipVM_CreatesNothing pins #429: a skip-VM run cannot
+// prefill, so it must neither create the volume nor record it in the state;
+// otherwise a later real run reuses a never-prefilled home.
+func TestEnsureNewHome_SkipVM_CreatesNothing(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	mock := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			t.Errorf("skip-VM run created volume %q", name)
+			return &msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	k := state.Key{Slug: "testproj", Agent: "opencode"}
+	ui := &termio.Mock{}
+
+	volName, hs, err := NewManager(ui).EnsureNewHome(
+		context.Background(),
+		mock,
+		k,
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
+		true, // skipVM
+		state.Fingerprints{},
+		"",
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if volName != HomeVolumeName(k) || hs.HomeVolume != volName {
+		t.Errorf("volName = %q, hs.HomeVolume = %q, want %q", volName, hs.HomeVolume, HomeVolumeName(k))
+	}
+	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("ReadState err = %v, want ErrStateNotFound (no state written under skip-VM)", err)
+	}
+	if len(ui.InfoCalls) != 1 ||
+		!strings.Contains(ui.InfoCalls[0], "would create and prefill home volume "+strconv.Quote(volName)) {
+		t.Errorf("InfoCalls = %v, want the deferred create-and-prefill notice for %q", ui.InfoCalls, volName)
+	}
+}
+
+// TestResolveHomeVolume_SkipVMThenRealRun_Prefills is the #429 scenario: a
+// --dry-run-vm run on a new project followed by a real run must prefill the
+// home volume on the real run and only then record it.
+func TestResolveHomeVolume_SkipVMThenRealRun_Prefills(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+
+	var createdVolumes []string
+	mock := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			createdVolumes = append(createdVolumes, name)
+			return &msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	k := state.Key{Slug: "testproj", Agent: "opencode"}
+	info := image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"}
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+
+	if _, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		k,
+		info,
+		true,
+		state.Fingerprints{},
+		"",
+		ui,
+	); err != nil {
+		t.Fatalf("skip-VM run: %v", err)
+	}
+	volName, _, err := vm.ResolveHomeVolume(context.Background(), mock, k, info, false, state.Fingerprints{}, "", ui)
+	if err != nil {
+		t.Fatalf("real run: %v", err)
+	}
+
+	if len(createdVolumes) != 1 || createdVolumes[0] != volName {
+		t.Errorf("created volumes = %v, want exactly %q created by the real run", createdVolumes, volName)
+	}
+	if len(mock.CreatedSandboxes) != 1 {
+		t.Errorf("prefill sandboxes = %d, want 1 (the real run must prefill)", len(mock.CreatedSandboxes))
+	}
+	onDisk, err := state.ReadState(k)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if onDisk.HomeVolume != volName {
+		t.Errorf("state HomeVolume = %q, want %q", onDisk.HomeVolume, volName)
 	}
 }
 
