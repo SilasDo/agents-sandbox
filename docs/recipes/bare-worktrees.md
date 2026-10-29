@@ -89,8 +89,11 @@ agents-sandbox
   worktree is ignored, and agents-sandbox warns and names it.
 - A worktree that lives *outside* its checkout runs as its own checkout: agents-sandbox binds the worktree directory and
   gives it its own project VM and home volume rather than sharing the checkout's. The checkout's shared git dir sits outside
-  that bind, so git commands inside the VM may fail to resolve the repository. Keep worktrees inside the checkout to
-  avoid this; the outside case is tracked in [#426](https://github.com/inoio/agents-sandbox/issues/426).
+  that bind, so agents-sandbox also mounts it read-write at the same path inside the VM, where the worktree's `.git`
+  file points. The sandbox can therefore write to the whole shared git dir, including the refs of every other worktree.
+  If that mount is impossible — the `.git` file records a relative path (`worktree.useRelativePaths`), or the path lies
+  under `/home/dev`, `/workspace`, or `/tmp` — agents-sandbox warns, and git commands inside the VM fail to resolve the
+  repository.
 
 ## Checking for uncommitted work
 

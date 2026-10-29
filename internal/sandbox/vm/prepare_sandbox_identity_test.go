@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,8 +15,10 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/agent"
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/git"
 	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	sandboximage "github.com/inoio/agents-sandbox/internal/sandbox/image"
+	"github.com/inoio/agents-sandbox/internal/sandbox/mounts"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/naming"
 	"github.com/inoio/agents-sandbox/internal/sandbox/options"
@@ -294,6 +297,36 @@ func TestPrepareSandboxOutsideWorktreeUsesItsOwnKey(t *testing.T) {
 	mountConfig := createdProjectVMConfig(t, mock, projectVMName(key))
 	if got := mountConfig.Volumes[defaultTargetDir].Bind; got != worktreeRoot {
 		t.Errorf("%s mount source = %q, want the worktree root %q", defaultTargetDir, got, worktreeRoot)
+	}
+	assertSharedGitDirMountWired(t, identity, mountConfig.Volumes, ui.WarnCalls)
+}
+
+// assertSharedGitDirMountWired checks that PrepareSandbox routes an outside
+// worktree through withSharedGitDirMount (#426): the shared git dir is bound at
+// its recorded path, or — where the temp dir lies under a managed guest mount
+// such as /tmp on Linux — the session warns instead.
+func assertSharedGitDirMountWired(
+	t *testing.T,
+	identity git.Identity,
+	volumes map[string]msbSdk.MountConfig,
+	warnings []string,
+) {
+	t.Helper()
+	target, err := mounts.ResolveMountTarget(identity.RecordedSharedGitDir)
+	if err != nil {
+		if !slices.ContainsFunc(warnings, func(warning string) bool {
+			return strings.Contains(warning, identity.RecordedSharedGitDir)
+		}) {
+			t.Errorf(
+				"warnings = %q, want one naming the unmountable git dir %q",
+				warnings,
+				identity.RecordedSharedGitDir,
+			)
+		}
+		return
+	}
+	if got := volumes[target].Bind; got != identity.SharedGitDir {
+		t.Errorf("%s mount source = %q, want the shared git dir %q", target, got, identity.SharedGitDir)
 	}
 }
 

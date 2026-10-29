@@ -40,28 +40,28 @@ func FuzzResolveMountTarget(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, target string) {
-		clean, err := resolveMountTarget(target)
+		clean, err := ResolveMountTarget(target)
 		if err != nil {
 			return
 		}
 		if !filepath.IsAbs(clean) || clean == "/" {
-			t.Fatalf("resolveMountTarget(%q) = %q, want an absolute non-root path", target, clean)
+			t.Fatalf("ResolveMountTarget(%q) = %q, want an absolute non-root path", target, clean)
 		}
 		if filepath.Clean(clean) != clean {
-			t.Fatalf("resolveMountTarget(%q) = %q, want a cleaned target", target, clean)
+			t.Fatalf("ResolveMountTarget(%q) = %q, want a cleaned target", target, clean)
 		}
 		for _, managed := range fuzzManagedTargets {
 			if clean == managed || fuzzInside(managed, clean) {
-				t.Fatalf("resolveMountTarget(%q) = %q collides with managed mount %q", target, clean, managed)
+				t.Fatalf("ResolveMountTarget(%q) = %q collides with managed mount %q", target, clean, managed)
 			}
 		}
 		for _, exclusive := range fuzzExclusiveTargets {
 			if fuzzInside(clean, exclusive) {
-				t.Fatalf("resolveMountTarget(%q) = %q would shadow managed mount %q", target, clean, exclusive)
+				t.Fatalf("ResolveMountTarget(%q) = %q would shadow managed mount %q", target, clean, exclusive)
 			}
 		}
-		if again, err := resolveMountTarget(clean); err != nil || again != clean {
-			t.Fatalf("resolveMountTarget(%q) = %q is not a fixed point: got %q, %v", target, clean, again, err)
+		if again, err := ResolveMountTarget(clean); err != nil || again != clean {
+			t.Fatalf("ResolveMountTarget(%q) = %q is not a fixed point: got %q, %v", target, clean, again, err)
 		}
 	})
 }
