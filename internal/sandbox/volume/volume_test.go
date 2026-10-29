@@ -672,9 +672,12 @@ func TestResolveHomeVolume_NoStateFile(t *testing.T) {
 	}
 }
 
-// TestResolveHomeVolume_CorruptStateFile covers the branch where the state file
-// exists but cannot be read (a non-not-found error): the caller warns about the
-// unreadable state and creates a fresh home volume.
+// TestResolveHomeVolume_CorruptStateFile covers an unreadable state file (a
+// non-not-found read error): the caller warns about it and falls back to a
+// fresh home volume. A directory in place of the state file cannot be repaired
+// by the fallback's wholesale write either, so the write error now surfaces
+// (#428) instead of the run proceeding against a volume with no state record;
+// the uncommitted volume is removed.
 func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
 	docker.WithNoopDockerMock(t)
@@ -693,7 +696,7 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 
 	ui := &termio.Mock{}
 	vm := NewManager(ui)
-	volName, st, err := vm.ResolveHomeVolume(
+	_, _, err := vm.ResolveHomeVolume(
 		context.Background(),
 		mock,
 		state.Key{Slug: "corruptproj", Agent: "opencode"},
@@ -703,17 +706,14 @@ func TestResolveHomeVolume_CorruptStateFile(t *testing.T) {
 		"",
 		ui,
 	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.HasPrefix(volName, "corruptproj-") {
-		t.Errorf("volume = %q, expected prefix %q", volName, "corruptproj-")
-	}
-	if st.ImageDigest != "sha256:def" {
-		t.Errorf("digest = %q, want %q", st.ImageDigest, "sha256:def")
+	if err == nil {
+		t.Fatal("expected the unrepairable state write to surface, got nil")
 	}
 	if !strings.Contains(strings.Join(ui.WarnCalls, " "), "could not read state file") {
 		t.Errorf("expected a 'could not read state file' warning, got %v", ui.WarnCalls)
+	}
+	if len(mock.RemovedVolumes) != 1 {
+		t.Errorf("expected the uncommitted volume to be removed, got %v", mock.RemovedVolumes)
 	}
 }
 
@@ -1687,6 +1687,72 @@ func TestEnsureNewHome_PrefillFails_RemovesVolume(t *testing.T) {
 	}
 	if len(mock.RemovedVolumes) != 1 || mock.RemovedVolumes[0] != createdVolume {
 		t.Errorf("expected created volume %q to be removed, got %v", createdVolume, mock.RemovedVolumes)
+	}
+}
+
+// TestEnsureNewHome_StateWriteFails covers #428: the state write is the record
+// of the volume a run is about to use, so a failed write must surface an error
+// and remove the uncommitted volume rather than warn and report success. A
+// post-rename durability failure is the exception — the installed state already
+// names the volume, so it must be kept.
+func TestEnsureNewHome_StateWriteFails(t *testing.T) {
+	tests := []struct {
+		name       string
+		writeErr   error
+		wantRemove bool
+	}{
+		{
+			name:       "pre-rename failure removes the uncommitted volume",
+			writeErr:   errors.New("write state file: rename boom"),
+			wantRemove: true,
+		},
+		{
+			name:       "installed write keeps the volume",
+			writeErr:   fmt.Errorf("write state file: %w: sync dir boom", atomicwrite.ErrInstalled),
+			wantRemove: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			configpaths.WithMockConfigPaths(t)
+			restore := recoverHomeState
+			recoverHomeState = func(_ state.Key, _ func(*state.HomeState, bool) (bool, error)) error {
+				return tt.writeErr
+			}
+			t.Cleanup(func() { recoverHomeState = restore })
+
+			var createdVolume string
+			mock := &msb.MockMsbClient{
+				CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+					createdVolume = name
+					return &msb.MockVolumeHandle{Name_: name}, nil
+				},
+			}
+			ui := &termio.Mock{}
+
+			_, _, err := NewManager(ui).EnsureNewHome(
+				context.Background(),
+				mock,
+				state.Key{Slug: "statewritefail", Agent: "opencode"},
+				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
+				true, // skipVM: the state write is the failure under test
+				state.Fingerprints{},
+				ui,
+			)
+			if err == nil {
+				t.Fatal("expected the state-write error to surface, got nil")
+			}
+			if !errors.Is(err, tt.writeErr) {
+				t.Errorf("err = %v, want it to carry %v", err, tt.writeErr)
+			}
+			removed := len(mock.RemovedVolumes) == 1
+			if removed != tt.wantRemove {
+				t.Errorf("removed = %v (RemovedVolumes %v), want %v", removed, mock.RemovedVolumes, tt.wantRemove)
+			}
+			if tt.wantRemove && mock.RemovedVolumes[0] != createdVolume {
+				t.Errorf("removed volume = %q, want the created volume %q", mock.RemovedVolumes[0], createdVolume)
+			}
+		})
 	}
 }
 

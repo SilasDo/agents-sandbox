@@ -121,6 +121,13 @@ command reports the bare version (e.g. `0.1.0`).
 
 ### Fixed
 
+- A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
+  prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
+  download and install the preview promises not to perform — and an offline host aborted with
+  `install msb runtime: …` instead of the plan. The preview now points the SDK at the private home without provisioning
+  it, so it still reports the image and home-volume decisions a real run would make. Only the root preflight skips the
+  runtime install for a preview; commands that run their own `doctor` preflight (`shell --dry-run`,
+  `volume migrate/reset/edit --dry-run`) still provision the runtime (#424).
 - Runner image: an updated base image now rebuilds the image. The base is referenced by a floating tag, but the
   rebuild check ignored which image the tag pointed to, so a newer base was only picked up by `--rebuild`. Every run now
   compares the base recorded in the image's `org.agents-sandbox.base` label with the base cached in the local Docker
@@ -245,6 +252,10 @@ command reports the bare version (e.g. `0.1.0`).
 - Home volume: a first run whose home-volume prefill fails no longer leaks the volume it just created. `EnsureNewHome`
   removes the freshly created volume before returning the error, as `ApplyHomeAction` already did, so a failed prefill no
   longer leaves an orphaned volume that every retry added to (#427).
+- Home volume: a first run whose fresh home volume is created but whose state write fails now surfaces the error and
+  removes the uncommitted volume, instead of warning and continuing against a volume the launcher has no record of. The
+  volume is kept when the write reports an installed-but-not-durable document (`state.WriteInstalled`), since that state
+  already names it (#428).
 - Docs: the bare-worktrees recipe no longer claims a worktree outside its checkout is unsupported and warned about. It
   now says such a worktree runs as its own checkout, names the remaining limit (the checkout's shared git dir is not
   reachable inside the VM), and links the code-fix issue (#435, #426).

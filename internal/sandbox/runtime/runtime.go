@@ -184,6 +184,21 @@ func PrepareRuntime(ctx context.Context, ui termio.UI, launcherVersion string) e
 	return prepareRuntime(ctx, ui, launcherVersion)
 }
 
+// ApplyPreviewHome points the SDK at the private runtime home for a read-only
+// preview without inspecting or installing the runtime. The preview still reads
+// the private home (volumes, sandboxes) so it reports the objects a real run
+// would use, but it must not download or install the runtime (#424). Mock msb
+// clients used by command tests need no host runtime setup.
+func ApplyPreviewHome() error {
+	if !runtimeClientIsReal() {
+		return nil
+	}
+	if _, err := ApplyHome(); err != nil {
+		return fmt.Errorf("apply microsandbox home: %w", err)
+	}
+	return nil
+}
+
 func prepareRuntime(ctx context.Context, ui termio.UI, launcherVersion string) error {
 	runtimeState.mutex.Lock()
 	defer runtimeState.mutex.Unlock()

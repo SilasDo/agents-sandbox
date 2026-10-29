@@ -191,10 +191,24 @@ func recoveredHomeState(
 	return fingerprints.Apply(hs)
 }
 
+// recoverHomeState is the wholesale state transaction a fresh home volume's
+// state is written through. It is a seam: a state write fails only for
+// environmental reasons a test filesystem cannot force (a read-only state
+// directory, a full disk, a durability error, or an inode at the state path),
+// so a test substitutes a failing writer to exercise the error path.
+var recoverHomeState = state.RecoverHomeState
+
 // EnsureNewHome creates a fresh home volume from the image and writes the state.
 // It seeds the state with the desired config fingerprints so a fresh state is
 // never fingerprint-less while its VM exists (issue #183). Under skipVM the
 // prefill is deferred, since it spawns a throwaway VM.
+//
+// A failed state write surfaces the error and removes the volume it just
+// created, so a run never proceeds against a volume the launcher has no record
+// of (#428). The volume is kept when the write error reports an
+// installed-but-not-durable document (state.WriteInstalled): the installed state
+// already names it, so rolling it back would strand the state on a removed
+// volume (see specs/atomicwrite-durability.md).
 func (vm *Manager) EnsureNewHome(
 	ctx context.Context,
 	client msb.Client,
@@ -227,11 +241,12 @@ func (vm *Manager) EnsureNewHome(
 	// Replace wholesale through the recovery transaction: a fresh home volume's
 	// state is authoritative, and the path is also reached to repair a malformed
 	// state file.
-	if err := state.RecoverHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
+	if err := recoverHomeState(k, func(cur *state.HomeState, _ bool) (bool, error) {
 		*cur = hs
 		return true, nil
 	}); err != nil {
-		ui.Warnf("failed to write state file: %v", err)
+		vm.cleanupUncommittedVolume(ctx, client, vol.Name(), err, ui)
+		return "", state.HomeState{}, err
 	}
 	return volName, hs, nil
 }
