@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1722,8 +1723,11 @@ func TestEnsureNewHome_StateWriteFails(t *testing.T) {
 			}
 			t.Cleanup(func() { recoverHomeState = restore })
 
+			docker.WithNoopDockerMock(t)
+
 			var createdVolume string
 			mock := &msb.MockMsbClient{
+				CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 				CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 					createdVolume = name
 					return &msb.MockVolumeHandle{Name_: name}, nil
@@ -1736,7 +1740,7 @@ func TestEnsureNewHome_StateWriteFails(t *testing.T) {
 				mock,
 				state.Key{Slug: "statewritefail", Agent: "opencode"},
 				image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
-				true, // skipVM: the state write is the failure under test
+				false, // the prefill succeeds; the state write is the failure under test
 				state.Fingerprints{},
 				"",
 				ui,
@@ -1827,6 +1831,98 @@ func TestEnsureNewHome_SkipVM_NoSandbox(t *testing.T) {
 	}
 	if len(mock.CreatedSandboxes) != 0 {
 		t.Errorf("expected no sandboxes in dry-run-vm, got %d", len(mock.CreatedSandboxes))
+	}
+}
+
+// TestEnsureNewHome_SkipVM_CreatesNothing pins #429: a skip-VM run cannot
+// prefill, so it must neither create the volume nor record it in the state;
+// otherwise a later real run reuses a never-prefilled home.
+func TestEnsureNewHome_SkipVM_CreatesNothing(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+
+	mock := &msb.MockMsbClient{
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			t.Errorf("skip-VM run created volume %q", name)
+			return &msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	k := state.Key{Slug: "testproj", Agent: "opencode"}
+	ui := &termio.Mock{}
+
+	volName, hs, err := NewManager(ui).EnsureNewHome(
+		context.Background(),
+		mock,
+		k,
+		image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"},
+		true, // skipVM
+		state.Fingerprints{},
+		"",
+		ui,
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if volName != HomeVolumeName(k) || hs.HomeVolume != volName {
+		t.Errorf("volName = %q, hs.HomeVolume = %q, want %q", volName, hs.HomeVolume, HomeVolumeName(k))
+	}
+	if _, err := state.ReadState(k); !errors.Is(err, state.ErrStateNotFound) {
+		t.Errorf("ReadState err = %v, want ErrStateNotFound (no state written under skip-VM)", err)
+	}
+	if len(ui.InfoCalls) != 1 ||
+		!strings.Contains(ui.InfoCalls[0], "would create and prefill home volume "+strconv.Quote(volName)) {
+		t.Errorf("InfoCalls = %v, want the deferred create-and-prefill notice for %q", ui.InfoCalls, volName)
+	}
+}
+
+// TestResolveHomeVolume_SkipVMThenRealRun_Prefills is the #429 scenario: a
+// --dry-run-vm run on a new project followed by a real run must prefill the
+// home volume on the real run and only then record it.
+func TestResolveHomeVolume_SkipVMThenRealRun_Prefills(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
+
+	var createdVolumes []string
+	mock := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
+		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
+			createdVolumes = append(createdVolumes, name)
+			return &msb.MockVolumeHandle{Name_: name}, nil
+		},
+	}
+	k := state.Key{Slug: "testproj", Agent: "opencode"}
+	info := image.ImageInfo{DockerTag: "img-tag", Ref: "img-tag", Digest: "sha256:abc"}
+	ui := &termio.Mock{}
+	vm := NewManager(ui)
+
+	if _, _, err := vm.ResolveHomeVolume(
+		context.Background(),
+		mock,
+		k,
+		info,
+		true,
+		state.Fingerprints{},
+		"",
+		ui,
+	); err != nil {
+		t.Fatalf("skip-VM run: %v", err)
+	}
+	volName, _, err := vm.ResolveHomeVolume(context.Background(), mock, k, info, false, state.Fingerprints{}, "", ui)
+	if err != nil {
+		t.Fatalf("real run: %v", err)
+	}
+
+	if len(createdVolumes) != 1 || createdVolumes[0] != volName {
+		t.Errorf("created volumes = %v, want exactly %q created by the real run", createdVolumes, volName)
+	}
+	if len(mock.CreatedSandboxes) != 1 {
+		t.Errorf("prefill sandboxes = %d, want 1 (the real run must prefill)", len(mock.CreatedSandboxes))
+	}
+	onDisk, err := state.ReadState(k)
+	if err != nil {
+		t.Fatalf("ReadState: %v", err)
+	}
+	if onDisk.HomeVolume != volName {
+		t.Errorf("state HomeVolume = %q, want %q", onDisk.HomeVolume, volName)
 	}
 }
 

@@ -42,6 +42,9 @@ single `options.Mode`, and `ModePreview` skips the VM (`Mode.SkipsVM`) exactly a
 
 `--dry-run-vm` is unchanged: it still prepares fully (image ensure/build, home volume ensure/create, state writes,
 reconfig) and only skips the VM lifecycle. That is its purpose — running the tool on machines without `/dev/kvm`.
+One exception: a project with no home volume gets none under `--dry-run-vm`. Creating a fresh home needs the prefill
+VM, and recording an unprefilled volume would make every later run reuse an empty home, so the fresh volume and its
+state are left to the first run with a VM (#429). An existing home volume is still reused and its state updated.
 
 ### The preview (contract)
 
@@ -175,6 +178,8 @@ contract. Tests cover that `--dry-run` performs no `ImageInspect`/`ImageBuild` a
 - On a project with an unchanged image and an existing home volume, they report would-reuse for both.
 - `--dry-run-vm` on the same project still prepares fully (image ensured, volume ensured, state written) and skips
   only the VM.
+- `--dry-run-vm` on a project without a home volume creates no volume and writes no state; the next real run creates
+  and prefills the home (#429).
 - CLI tests exercise the prepare path through `--dry-run-vm`; dedicated tests pin the `--dry-run` preview and its
   no-side-effect/no-network guarantees.
 - `volume migrate/reset/edit --dry-run` inspects/builds no image and performs no volume/state mutation, while still

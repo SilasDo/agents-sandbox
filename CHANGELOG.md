@@ -123,6 +123,14 @@ command reports the bare version (e.g. `0.1.0`).
   home volume and the later state write replaced the earlier one, leaving a volume unrecorded; in the same second, the
   generated names collided and the second session failed. The later session now uses the volume the first one recorded
   and removes its own, and a colliding name is retried with the next timestamp (#431).
+- `--dry-run-vm` on a project without a home volume no longer creates the volume and records it in the state without
+  filling it from the image. The next real run reused that empty home, so `/home/dev` lacked the image's home contents
+  for good. A `--dry-run-vm` run now creates no home volume and writes no state, and the first run with a VM creates
+  and fills it (#429).
+- A linked worktree outside its checkout now mounts the checkout's shared git dir read-write at its host path, so git
+  resolves the repository inside the VM. When the `.git` file records a relative path or the path collides with a
+  managed mount (`/home/dev`, `/workspace`, `/tmp`), agents-sandbox warns instead of failing silently (#426).
+
 - A `--dry-run` preview no longer installs the microsandbox runtime. `run --dry-run` and `build --dry-run` skipped the
   prerequisite check but the root preflight still provisioned the runtime, so a fresh host paid the multi-megabyte
   download and install the preview promises not to perform — and an offline host aborted with

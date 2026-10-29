@@ -10,6 +10,7 @@ import (
 	msbSdk "github.com/superradcompany/microsandbox/sdk/go"
 
 	"github.com/inoio/agents-sandbox/internal/configpaths"
+	"github.com/inoio/agents-sandbox/internal/sandbox/docker"
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
@@ -60,12 +61,14 @@ func TestEnsureNewHome_ConcurrentCommitAdoptsWinner(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			configpaths.WithMockConfigPaths(t)
+			docker.WithNoopDockerMock(t)
 			k := state.Key{Slug: "raceproj", Agent: "opencode"}
 			if tt.priorRecorded != "" {
 				require.NoError(t, seedHomeState(k, state.NewHomeState(tt.priorRecorded, "sha256:old")))
 			}
 			var createdVolume string
 			client := &msb.MockMsbClient{
+				CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 				CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 					createdVolume = name
 					commitConcurrentHome(t, k, "winner-vol")
@@ -75,7 +78,7 @@ func TestEnsureNewHome_ConcurrentCommitAdoptsWinner(t *testing.T) {
 			ui := &termio.Mock{}
 
 			volName, hs, err := NewManager(ui).EnsureNewHome(
-				context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, tt.priorRecorded, ui,
+				context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, tt.priorRecorded, ui,
 			)
 
 			require.NoError(t, err)
@@ -95,9 +98,11 @@ func TestEnsureNewHome_ConcurrentCommitAdoptsWinner(t *testing.T) {
 // recorded volume is gone, unchanged since the snapshot, is still replaced.
 func TestEnsureNewHome_ReplacesStaleRecordedVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	k := state.Key{Slug: "staleproj", Agent: "opencode"}
 	require.NoError(t, seedHomeState(k, state.NewHomeState("gone-vol", "sha256:old")))
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			return msb.MockVolumeHandle{Name_: name}, nil
 		},
@@ -105,7 +110,7 @@ func TestEnsureNewHome_ReplacesStaleRecordedVolume(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "gone-vol", ui,
+		context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, "gone-vol", ui,
 	)
 
 	require.NoError(t, err)
@@ -121,8 +126,10 @@ func TestEnsureNewHome_ReplacesStaleRecordedVolume(t *testing.T) {
 // committed winner, so the fresh volume is still recorded.
 func TestEnsureNewHome_ReplacesConcurrentEmptyHomeVolume(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	k := state.Key{Slug: "markerproj", Agent: "opencode"}
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			require.NoError(t, seedHomeState(k, state.HomeState{RecoveredHomeVolume: "legacy-vol"}))
 			return msb.MockVolumeHandle{Name_: name}, nil
@@ -131,7 +138,7 @@ func TestEnsureNewHome_ReplacesConcurrentEmptyHomeVolume(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "gone-vol", ui,
+		context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, "gone-vol", ui,
 	)
 
 	require.NoError(t, err)
@@ -147,10 +154,12 @@ func TestEnsureNewHome_ReplacesConcurrentEmptyHomeVolume(t *testing.T) {
 // observed, not a later re-read that already names the winner.
 func TestResolveHomeVolume_WinnerCommitsBeforeCreation(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	k := state.Key{Slug: "earlyproj", Agent: "opencode"}
 	require.NoError(t, seedHomeState(k, state.NewHomeState("gone-vol", "sha256:old")))
 	var createdVolume string
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		GetVolumeFn: func(_ context.Context, name string) (msb.VolumeHandle, error) {
 			if name == "gone-vol" {
 				commitConcurrentHome(t, k, "winner-vol")
@@ -165,7 +174,7 @@ func TestResolveHomeVolume_WinnerCommitsBeforeCreation(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).ResolveHomeVolume(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
+		context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, "", ui,
 	)
 
 	require.NoError(t, err)
@@ -181,11 +190,13 @@ func TestResolveHomeVolume_WinnerCommitsBeforeCreation(t *testing.T) {
 // the same name. The loser waits for the next name instead of failing.
 func TestEnsureNewHome_NameCollisionRetries(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	waits := withFakeHomeVolumeClock(t)
 	k := state.Key{Slug: "collideproj", Agent: "opencode"}
 	takenName := HomeVolumeName(k)
 	var attemptedNames []string
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, name string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			attemptedNames = append(attemptedNames, name)
 			if name == takenName {
@@ -197,7 +208,7 @@ func TestEnsureNewHome_NameCollisionRetries(t *testing.T) {
 	ui := &termio.Mock{}
 
 	volName, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
+		context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, "", ui,
 	)
 
 	require.NoError(t, err)
@@ -208,10 +219,12 @@ func TestEnsureNewHome_NameCollisionRetries(t *testing.T) {
 
 func TestEnsureNewHome_NameCollisionGivesUp(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	waits := withFakeHomeVolumeClock(t)
 	k := state.Key{Slug: "collideproj", Agent: "opencode"}
 	attempts := 0
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			attempts++
 			return nil, errVolumeExists
@@ -220,7 +233,7 @@ func TestEnsureNewHome_NameCollisionGivesUp(t *testing.T) {
 	ui := &termio.Mock{}
 
 	_, _, err := NewManager(ui).EnsureNewHome(
-		context.Background(), client, k, raceTestImage, true, state.Fingerprints{}, "", ui,
+		context.Background(), client, k, raceTestImage, false, state.Fingerprints{}, "", ui,
 	)
 
 	require.Error(t, err)
@@ -231,9 +244,11 @@ func TestEnsureNewHome_NameCollisionGivesUp(t *testing.T) {
 
 func TestEnsureNewHome_CreateErrorDoesNotRetry(t *testing.T) {
 	configpaths.WithMockConfigPaths(t)
+	docker.WithNoopDockerMock(t)
 	waits := withFakeHomeVolumeClock(t)
 	createErr := errors.New("disk full")
 	client := &msb.MockMsbClient{
+		CreatedSandbox: &msb.MockSandbox{Name_: "prefill"},
 		CreateVolumeFn: func(_ context.Context, _ string, _ ...msbSdk.VolumeOption) (msb.VolumeHandle, error) {
 			return nil, createErr
 		},
@@ -242,7 +257,7 @@ func TestEnsureNewHome_CreateErrorDoesNotRetry(t *testing.T) {
 
 	_, _, err := NewManager(ui).EnsureNewHome(
 		context.Background(), client, state.Key{Slug: "failproj", Agent: "opencode"},
-		raceTestImage, true, state.Fingerprints{}, "", ui,
+		raceTestImage, false, state.Fingerprints{}, "", ui,
 	)
 
 	require.ErrorIs(t, err, createErr)
