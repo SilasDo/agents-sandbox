@@ -7,6 +7,7 @@ import (
 
 	"github.com/inoio/agents-sandbox/internal/sandbox/image"
 	"github.com/inoio/agents-sandbox/internal/sandbox/msb"
+	"github.com/inoio/agents-sandbox/internal/sandbox/options"
 	"github.com/inoio/agents-sandbox/internal/sandbox/state"
 	"github.com/inoio/agents-sandbox/internal/termio"
 
@@ -213,6 +214,9 @@ func (vm *Manager) EnsureNewHome(
 
 	if !skipVM {
 		if err := vm.PrefillVolume(ctx, client, k, vol.Name(), info, ui); err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), options.SandboxStopTimeout)
+			defer cancel()
+			vm.cleanupVolume(cleanupCtx, client, vol.Name(), ui)
 			return "", state.HomeState{}, err
 		}
 	} else {

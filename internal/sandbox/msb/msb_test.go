@@ -234,6 +234,9 @@ func TestRealMsbClientAdapterErrors(t *testing.T) {
 	swapSeam(t, &storageUsage, func(context.Context) (*msbSdk.StorageUsageReport, error) {
 		return nil, wantErr
 	})
+	swapSeam(t, &storagePrune, func(context.Context, msbSdk.StoragePruneOptions) (*msbSdk.StoragePruneReport, error) {
+		return nil, wantErr
+	})
 
 	c := &realMsbClient{}
 	cases := []struct {
@@ -254,6 +257,7 @@ func TestRealMsbClientAdapterErrors(t *testing.T) {
 		{"ImageInspect", func() error { _, err := c.ImageInspect(ctx, "x"); return err }},
 		{"ImagePrune", func() error { _, err := c.ImagePrune(ctx); return err }},
 		{"StorageUsage", func() error { _, err := c.StorageUsage(ctx); return err }},
+		{"PruneStorage", func() error { _, err := c.PruneStorage(ctx, msbSdk.StoragePruneOptions{}); return err }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

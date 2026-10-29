@@ -31,7 +31,7 @@ type Client interface {
 		ctx context.Context,
 		ref string,
 		opts client.ImagePullOptions,
-	) (io.ReadCloser, error)
+	) (client.ImagePullResponse, error)
 	ImageRemove(
 		ctx context.Context,
 		imageID string,
@@ -111,7 +111,7 @@ func (realDockerClient) ImagePull(
 	ctx context.Context,
 	ref string,
 	opts client.ImagePullOptions,
-) (io.ReadCloser, error) {
+) (client.ImagePullResponse, error) {
 	if err := ensureMobyClient(); err != nil {
 		return nil, err
 	}

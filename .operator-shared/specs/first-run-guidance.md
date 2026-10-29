@@ -11,7 +11,9 @@ How agents-sandbox routes a new user from install to a working sandbox, and how 
 
 The prerequisite checks run automatically as a preflight on `run` and `shell` (`build` checks only the Docker
 prerequisite), so starting a sandbox does not require invoking `agents-sandbox doctor` by hand. The `doctor` command is
-the standalone diagnostic and the fresh-install verification.
+the standalone diagnostic and the fresh-install verification; it deliberately does not go through that runtime preflight.
+`doctor` evaluates the runtime as one of its own checks, so a failed runtime install is reported as `msb runtime setup
+failed` with its troubleshooting link alongside the KVM and Docker results rather than aborting before they run (#423).
 
 Each failing check reports, in order:
 

@@ -449,7 +449,7 @@ func TestResolveBaseDigestPullError(t *testing.T) {
 		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
 			return client.ImageInspectResult{}, errors.New("not found")
 		},
-		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (io.ReadCloser, error) {
+		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
 			return nil, errors.New("pull boom")
 		},
 	})
@@ -466,8 +466,8 @@ func TestResolveBaseDigestInspectAfterPullError(t *testing.T) {
 			inspects++
 			return client.ImageInspectResult{}, errors.New("not found")
 		},
-		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (io.ReadCloser, error) {
-			return io.NopCloser(strings.NewReader("")), nil
+		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+			return docker.PullResponse{Body: strings.NewReader("")}, nil
 		},
 	})
 	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
@@ -476,26 +476,20 @@ func TestResolveBaseDigestInspectAfterPullError(t *testing.T) {
 	}
 }
 
-func TestResolveBaseDigestPullDrainError(t *testing.T) {
+func TestResolveBaseDigestPullStreamError(t *testing.T) {
 	docker.WithDockerMock(t, &docker.MockDockerClient{
 		ImageInspectFn: func(_ context.Context, _ string, _ ...client.ImageInspectOption) (client.ImageInspectResult, error) {
 			return client.ImageInspectResult{}, errors.New("not found")
 		},
-		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (io.ReadCloser, error) {
-			return io.NopCloser(&errorReader{}), nil
+		ImagePullFn: func(_ context.Context, _ string, _ client.ImagePullOptions) (client.ImagePullResponse, error) {
+			return docker.PullResponse{WaitErr: errors.New("read boom")}, nil
 		},
 	})
 	_, err := resolveBaseDigest(context.Background(), "debian:trixie-slim", &termio.Mock{})
 	if err == nil || !strings.Contains(err.Error(), "pull base image") {
-		t.Errorf("resolveBaseDigest error = %v, want a pull drain failure", err)
+		t.Errorf("resolveBaseDigest error = %v, want a pull stream failure", err)
 	}
 }
-
-// errorReader always fails reads, used to exercise the drain-failure path when
-// consuming a Docker pull stream.
-type errorReader struct{}
-
-func (errorReader) Read([]byte) (int, error) { return 0, errors.New("read boom") }
 
 func TestResolveAgentVersionFallsBackToEmpty(t *testing.T) {
 	got, err := resolveAgentVersion(context.Background(), plainAgent{}, "")

@@ -260,3 +260,45 @@ func TestCheckAllDelegates(t *testing.T) {
 		t.Fatal("expected CheckAll to return false when a check fails")
 	}
 }
+
+// TestCheckAllReportsMsbRuntimeFailureWithDocsLink drives a failing msb runtime
+// install through the exported CheckAll (not checkMsb directly) and asserts the
+// failure is reported with its troubleshooting link while the other checks still
+// run and report (#423).
+func TestCheckAllReportsMsbRuntimeFailureWithDocsLink(t *testing.T) {
+	configpaths.WithMockConfigPaths(t)
+	docker.WithDockerMock(t, &docker.MockDockerClient{
+		PingFn: func(context.Context, client.PingOptions) (client.PingResult, error) {
+			return client.PingResult{}, errors.New("docker down")
+		},
+	})
+	MockedEnsureInstalled(t, true)
+
+	origCheckAll := checkAllFunc
+	checkAllFunc = realCheckAll
+	t.Cleanup(func() { checkAllFunc = origCheckAll })
+	origCheckDocker := checkDockerFunc
+	checkDockerFunc = realCheckDocker
+	t.Cleanup(func() { checkDockerFunc = origCheckDocker })
+
+	testUI := termio.NewTestMock(t)
+	if CheckAll(context.Background(), &testUI) {
+		t.Fatal("expected CheckAll to fail when the msb runtime cannot be ensured")
+	}
+
+	joined := strings.Builder{}
+	for _, call := range testUI.ErrorCalls {
+		joined.WriteString(call.Msg)
+		joined.WriteByte('\n')
+	}
+	joinedMessages := joined.String()
+	if !strings.Contains(joinedMessages, "msb runtime setup failed") {
+		t.Errorf("expected the msb runtime failure reported, got %q", joinedMessages)
+	}
+	if !strings.Contains(joinedMessages, "troubleshooting.html#microsandbox-runtime") {
+		t.Errorf("expected the msb runtime failure to link troubleshooting, got %q", joinedMessages)
+	}
+	if !strings.Contains(joinedMessages, "docker API unreachable") {
+		t.Errorf("expected the docker check still reported alongside the runtime failure, got %q", joinedMessages)
+	}
+}
